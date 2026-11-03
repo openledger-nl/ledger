@@ -4,6 +4,7 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import House from '@lucide/svelte/icons/house';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Settings from '@lucide/svelte/icons/settings';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -85,16 +86,24 @@
 		if (path === '/search') query = page.url.searchParams.get('q') ?? '';
 	});
 
-	// What the footer says about the vault and GitHub.
+	// "just now" and "5 min ago" are worked out when drawn, so the footer redraws every half minute to keep them true.
+	let tick = $state(0);
+	$effect(() => {
+		const timer = setInterval(() => tick++, 30_000);
+		return () => clearInterval(timer);
+	});
+
+	// What the footer says about the vault and GitHub: how it stands, where the files go (owner/repo@branch) and
+	// whether they go up sealed; a problem adds its message.
 	const footer = $derived.by(() => {
+		void tick;
 		const s = sync.status;
-		if (!s || !s.configured) return { dot: 'off', title: 'Local vault', sub: 'Not synced to GitHub' };
-		// Next to where the files go, whether they go up sealed.
-		const where = `${s.repo ?? ''} · ${s.encrypted ? 'encrypted' : 'not encrypted'}`;
-		if (s.state === 'syncing') return { dot: 'warn pulse', title: 'Syncing…', sub: where };
-		if (s.state === 'error') return { dot: 'bad', title: 'Sync problem', sub: s.lastError ?? 'See Settings', error: true };
-		if (s.pending) return { dot: 'warn', title: 'Changes waiting to sync', sub: where };
-		return { dot: 'ok', title: 'Synced with GitHub', sub: s.lastSyncAt ? `${where} · ${ago(s.lastSyncAt)}` : where };
+		if (!s || !s.configured) return { dot: 'off', title: 'Local vault', when: '', where: 'Not synced to GitHub', encryption: '', error: '' };
+		const base = { when: '', where: `${s.repo ?? ''}@${s.branch ?? ''}`, encryption: s.encrypted ? 'Encrypted' : 'Not encrypted', error: '' };
+		if (s.state === 'syncing') return { ...base, dot: 'warn pulse', title: 'Syncing…' };
+		if (s.state === 'error') return { ...base, dot: 'bad', title: 'Sync problem', error: s.lastError ?? 'See Settings' };
+		if (s.pending) return { ...base, dot: 'warn', title: 'Changes waiting to sync' };
+		return { ...base, dot: 'ok', title: 'Synced with GitHub', when: s.lastSyncAt ? ago(s.lastSyncAt) : '' };
 	});
 
 	function search(e: SubmitEvent) {
@@ -119,6 +128,7 @@
 	</form>
 
 	<a class="nav-item" class:active={path === '/'} href="/"><span class="nav-ico"><House size={16} /></span>Home</a>
+	<a class="nav-item" class:active={on('/settings')} href="/settings"><span class="nav-ico"><Settings size={16} /></span>Settings</a>
 
 	<div class="section-head">
 		<span>Projects</span>
@@ -182,8 +192,12 @@
 	<div class="spacer"></div>
 
 	<div class="sync-box">
-		<div class="sync-line"><span class="dot {footer.dot}"></span><span>{footer.title}</span></div>
-		<div class="sync-sub" class:error={footer.error} title={footer.sub}>{footer.sub}</div>
-		<a class="btn small" class:on={on('/settings')} href="/settings">Settings</a>
+		<div class="sync-line">
+			<span class="dot {footer.dot}"></span><span>{footer.title}</span>
+			{#if footer.when}<span class="sync-when">· {footer.when}</span>{/if}
+		</div>
+		<div class="sync-sub" title={footer.where}>{footer.where}</div>
+		{#if footer.encryption}<div class="sync-sub">{footer.encryption}</div>{/if}
+		{#if footer.error}<div class="sync-sub error">{footer.error}</div>{/if}
 	</div>
 </aside>

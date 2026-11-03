@@ -11,6 +11,7 @@
 	import { deliverableUrl, newProjectFlow, newThreadFlow, projectUrl, snapshotPath, threadUrl } from '$lib/actions';
 	import ContributionGraph from '$lib/components/ContributionGraph.svelte';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
+	import SyncWidget from '$lib/components/SyncWidget.svelte';
 	import { ago, LOCALE, plural, threadMeta } from '$lib/format';
 	import { dashboard, isPinned, togglePin } from '$lib/dashboard.svelte';
 	import type { DeliverableSummary } from '$lib/types';
@@ -207,6 +208,7 @@
 					</div>
 				</section>
 			{/if}
+			<SyncWidget />
 		</div>
 	</div>
 {/if}

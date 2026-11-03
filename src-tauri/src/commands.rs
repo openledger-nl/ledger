@@ -523,6 +523,17 @@ pub fn sync_status(app: State<App>) -> SyncStatus {
     app.syncer.status()
 }
 
+/// What GitHub holds of the vault as of the last sync that finished; nothing while sync is off or hasn't run yet.
+#[tauri::command]
+pub fn sync_overview(app: State<App>) -> Option<crate::sync::Overview> {
+    let (root, config) = {
+        let core = app.lock();
+        (core.vault.root().to_path_buf(), core.sync.clone())
+    };
+    let config = config?;
+    crate::sync::overview(&root, &config.repo, &config.branch)
+}
+
 /// Saves the repository and branch to the vault's settings and the token to its `.env`, and starts syncing. A
 /// blank token keeps the one already saved.
 #[tauri::command]

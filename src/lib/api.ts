@@ -24,6 +24,7 @@ import type {
 	Story,
 	StoryDraft,
 	StoryUpdate,
+	SyncOverview,
 	SyncStatus,
 	Task,
 	TaskUpdate,
@@ -167,6 +168,8 @@ export const api = {
 	// the vault and GitHub sync
 	getSettings: () => call<Settings>('get_settings'),
 	syncStatus: () => call<SyncStatus>('sync_status'),
+	/** Null while sync is off or hasn't run yet. */
+	syncOverview: () => call<SyncOverview | null>('sync_overview'),
 	/** A blank token keeps the saved one. */
 	saveSyncSettings: (repo: string, branch: string, token: string | null) =>
 		call<Settings>('save_sync_settings', { repo, branch, token }),

@@ -160,6 +160,42 @@ fn the_first_sync_pushes_everything_and_the_second_has_nothing_to_do() {
 }
 
 #[test]
+fn the_overview_counts_what_the_last_agreement_holds() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/a/project.md", "a");
+    write(root, "projects/a/threads/t/thread.md", "t");
+    write(root, "projects/a/deliverables/brief.md", "draft");
+    write(root, "projects/a/deliverables/brief@v0.1.md", "draft");
+    write(root, "projects/a/attachments/shot.png", "png");
+    write(root, "semesters/s.md", "s");
+    let remote = Fake::default();
+
+    assert_eq!(sync::overview(root, "me/notes", "main"), None, "nothing is agreed before the first sync");
+    sync(root, &remote);
+
+    let overview = sync::overview(root, "me/notes", "main").unwrap();
+    assert_eq!(overview.head.as_deref(), Some("commit-0"));
+    assert_eq!((overview.files, overview.notes, overview.deliverables, overview.attachments), (6, 3, 2, 1));
+    assert_eq!(overview.key, None);
+    assert_eq!(sync::overview(root, "me/notes", "other"), None, "another branch has its own agreement");
+    assert_eq!(sync::overview(root, "someone/else", "main"), None, "and so does another repository");
+}
+
+#[test]
+fn the_overview_names_the_key_once_everything_on_github_is_sealed() {
+    let dir = tempdir().unwrap();
+    write(dir.path(), "projects/a/project.md", "a");
+    let remote = Fake::default();
+
+    sync_sealed(dir.path(), &remote);
+
+    let overview = sync::overview(dir.path(), "me/notes", "main").unwrap();
+    assert_eq!(overview.key, Some(format!("{:02x}", key().id())));
+    assert_eq!(overview.files, 1);
+}
+
+#[test]
 fn a_new_machine_pulls_everything() {
     let remote = Fake::default();
     remote.elsewhere(&[("threads/a/thread.md", Some("---\ntitle: A\n---\n")), ("threads/a/posts/1.md", Some("hello")), ("README.md", Some("# notes"))]);

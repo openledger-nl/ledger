@@ -435,6 +435,19 @@ export interface SyncStatus {
 	summary: string | null;
 }
 
+/** What GitHub holds of the vault as of the last sync that finished, counted without asking GitHub. */
+export interface SyncOverview {
+	/** The commit both sides last agreed on. */
+	head: string | null;
+	files: number;
+	deliverables: number;
+	attachments: number;
+	/** Everything else: threads, posts, stories, templates, semesters … */
+	notes: number;
+	/** The key the files on GitHub are encrypted with (two hex digits), once they all are. */
+	key: string | null;
+}
+
 export interface SyncSettings {
 	repo: string;
 	branch: string;

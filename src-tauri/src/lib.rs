@@ -209,6 +209,7 @@ pub fn run() {
             commands::delete_column,
             commands::get_settings,
             commands::sync_status,
+            commands::sync_overview,
             commands::save_sync_settings,
             commands::disconnect_sync,
             commands::test_sync,
