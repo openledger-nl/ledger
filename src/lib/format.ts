@@ -1,6 +1,8 @@
 // Timestamps arrive as UTC ISO strings; everything shown to people is in local time, written the European way:
 // day before month ("3 Nov 2026", "03-11-2026") and a 24-hour clock, whatever the system's own locale says.
 
+import type { ThreadSummary } from './types';
+
 /** The locale every date and number is shown in. */
 export const LOCALE = 'en-GB';
 
@@ -54,6 +56,15 @@ export function ago(iso: string): string {
 
 /** "3 posts", "1 post". */
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** "4 posts · 2 prompts · 1 feedback": what a thread holds, leaving out what it has none of. */
+export function threadMeta(t: ThreadSummary): string {
+	const parts = [plural(t.postCount, 'post')];
+	if (t.promptCount) parts.push(plural(t.promptCount, 'prompt'));
+	if (t.feedbackCount) parts.push(`${t.feedbackCount} feedback`);
+	if (t.uploadCount) parts.push(plural(t.uploadCount, 'upload'));
+	return parts.join(' · ');
+}
 
 /** Escapes text and wraps case-insensitive matches of `query` in <mark>, for search snippets. */
 export function highlight(text: string, query: string): string {

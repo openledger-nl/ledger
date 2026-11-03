@@ -1,57 +1,83 @@
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import FileText from '@lucide/svelte/icons/file-text';
 	import House from '@lucide/svelte/icons/house';
 	import Plus from '@lucide/svelte/icons/plus';
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
+	import { api } from '$lib/api';
+	import { deliverableTarget, deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
 	import { ago } from '$lib/format';
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { drawer, sync } from '$lib/ui.svelte';
-	import type { ProjectSummary } from '$lib/types';
+	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
 	import Wordmark from '$lib/components/Wordmark.svelte';
 
 	let { projects }: { projects: ProjectSummary[] } = $props();
 
-	const OPEN_KEY = 'ledger-open-projects';
+	const OPEN_KEY = 'ledger-open-project';
 
 	let query = $state('');
-	let open = $state<string[]>(load());
+	/** The project that is unfolded: one at a time, null when none is. */
+	let open = $state<string | null>(load());
 	const path = $derived(page.url.pathname);
 	const on = (prefix: string) => path === prefix || path.startsWith(prefix + '/');
 	const currentProject = $derived(page.params.project);
+	/** A thread or a deliverable being open is shown on its own row, not on its project's. */
+	const inThread = $derived(!!page.params.thread);
+	const viewing = $derived(page.route.id?.endsWith('/deliverables/view') ? page.url.searchParams.get('path') : null);
 
-	function load(): string[] {
+	function load(): string | null {
 		try {
-			const saved = JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]');
-			return Array.isArray(saved) ? saved.filter((s) => typeof s === 'string') : [];
+			return localStorage.getItem(OPEN_KEY) || null;
 		} catch {
-			return [];
+			return null;
 		}
 	}
 
 	function remember() {
 		try {
-			localStorage.setItem(OPEN_KEY, JSON.stringify(open));
+			if (open) localStorage.setItem(OPEN_KEY, open);
+			else localStorage.removeItem(OPEN_KEY);
 		} catch {
 			// The tree still works for this session.
 		}
 	}
 
-	function toggle(slug: string) {
-		open = open.includes(slug) ? open.filter((s) => s !== slug) : [...open, slug];
+	/** Unfolds a project and, with it, folds the one that was open. */
+	function unfold(slug: string) {
+		open = slug;
 		remember();
 	}
 
-	// The project being looked at is always unfolded, so its threads are one click away.
+	function toggle(slug: string) {
+		open = open === slug ? null : slug;
+		remember();
+	}
+
+	// Going to a project, from anywhere, unfolds it. Folding it again by hand sticks until another project is chosen.
 	$effect(() => {
 		const slug = currentProject;
-		if (slug && !open.includes(slug)) {
-			open = [...open, slug];
-			remember();
-		}
+		if (slug) untrack(() => unfold(slug));
+	});
+
+	// The open project's deliverables, looked up when it opens and again whenever the vault changes (the projects
+	// are loaded afresh then).
+	let deliverables = $state<{ slug: string; items: DeliverableSummary[] } | null>(null);
+	$effect(() => {
+		void projects;
+		const slug = open;
+		if (!slug) return;
+		let stale = false;
+		api.listDeliverables(slug)
+			.then((items) => {
+				if (!stale) deliverables = { slug, items: [...items].sort((a, b) => a.path.localeCompare(b.path)) };
+			})
+			.catch(() => {});
+		return () => (stale = true);
 	});
 
 	// Reflect an open search in the box, so refining it is one edit away.
@@ -100,8 +126,8 @@
 	</div>
 	<nav class="space-list">
 		{#each projects as p (p.slug)}
-			{@const unfolded = open.includes(p.slug)}
-			<div class="folder-row" class:active={on(projectUrl(p.slug)) && !page.params.thread}>
+			{@const unfolded = open === p.slug}
+			<div class="folder-row" class:active={on(projectUrl(p.slug)) && !inThread && viewing === null}>
 				<button
 					class="folder-toggle"
 					aria-label={unfolded ? `Fold ${p.name}` : `Unfold ${p.name}`}
@@ -110,13 +136,16 @@
 				>
 					{#if unfolded}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
 				</button>
-				<a class="folder-link" href={projectUrl(p.slug)}>
+				<a class="folder-link" href={projectUrl(p.slug)} onclick={() => unfold(p.slug)}>
 					<span class="name">{p.name}</span>
 					<span class="count">{p.threads.length || ''}</span>
 				</a>
 			</div>
 			{#if unfolded}
 				<div class="folder-children">
+					<a class="tree-label" class:active={path === `${projectUrl(p.slug)}/threads`} href="{projectUrl(p.slug)}/threads">
+						Threads<span class="count">{p.threads.length || ''}</span>
+					</a>
 					{#each orderThreads(p.threads, listOrder.order) as t (t.slug)}
 						<a class="tree-item" class:active={path === threadUrl(p.slug, t.slug)} href={threadUrl(p.slug, t.slug)}>
 							<span class="dot"></span>
@@ -127,6 +156,22 @@
 						<div class="space-empty">No threads yet</div>
 					{/each}
 					<button class="tree-item add" onclick={() => newThreadFlow(p.slug)}><Plus size={14} />New thread</button>
+
+					<a class="tree-label" class:active={path === `${projectUrl(p.slug)}/deliverables`} href="{projectUrl(p.slug)}/deliverables">
+						Deliverables<span class="count">{p.deliverableCount || ''}</span>
+					</a>
+					{#if deliverables?.slug === p.slug}
+						{#each deliverables.items as d (d.path)}
+							{@const target = deliverableTarget(d)}
+							<a class="tree-item" class:active={viewing === target || viewing === d.path} href={deliverableUrl(p.slug, target)} title={d.path}>
+								<span class="file"><FileText size={13} /></span>
+								<span class="name">{d.name}</span>
+							</a>
+						{:else}
+							<div class="space-empty">No deliverables yet</div>
+						{/each}
+					{/if}
+					<button class="tree-item add" onclick={() => newDeliverableFlow(p.slug)}><Plus size={14} />New deliverable</button>
 				</div>
 			{/if}
 		{:else}

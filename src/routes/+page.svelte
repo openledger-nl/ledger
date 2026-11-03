@@ -11,9 +11,9 @@
 	import { deliverableUrl, newProjectFlow, newThreadFlow, projectUrl, snapshotPath, threadUrl } from '$lib/actions';
 	import ContributionGraph from '$lib/components/ContributionGraph.svelte';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
-	import { ago, LOCALE, plural } from '$lib/format';
+	import { ago, LOCALE, plural, threadMeta } from '$lib/format';
 	import { dashboard, isPinned, togglePin } from '$lib/dashboard.svelte';
-	import type { DeliverableSummary, ThreadSummary } from '$lib/types';
+	import type { DeliverableSummary } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -59,15 +59,6 @@
 	);
 	const others = $derived(cards.filter((c) => !dashboard.pins.includes(c.project.slug)));
 
-	/** "4 posts · 2 prompts · 1 feedback": what a thread holds, leaving out what it has none of. */
-	function threadMeta(t: ThreadSummary): string {
-		const parts = [plural(t.postCount, 'post')];
-		if (t.promptCount) parts.push(plural(t.promptCount, 'prompt'));
-		if (t.feedbackCount) parts.push(`${t.feedbackCount} feedback`);
-		if (t.uploadCount) parts.push(plural(t.uploadCount, 'upload'));
-		return parts.join(' · ');
-	}
-
 	const ICON = { markdown: FileText, image: FileImage, other: File } as const;
 
 	/** A deliverable whose live file is gone opens at its newest published version. */
@@ -105,7 +96,7 @@
 			<div class="proj-section-head">
 				<h3>Latest threads</h3>
 				{#if p.threads.length > THREADS}
-					<a href={projectUrl(p.slug)}>All {p.threads.length}<ArrowRight size={13} /></a>
+					<a href="{projectUrl(p.slug)}/threads">All {p.threads.length}<ArrowRight size={13} /></a>
 				{/if}
 			</div>
 			{#each c.threads as t (t.slug)}

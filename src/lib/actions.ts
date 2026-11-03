@@ -1,7 +1,7 @@
 import { goto } from '$app/navigation';
 import { api } from './api';
 import { attempt, confirmDialog, promptDialog, refresh } from './ui.svelte';
-import type { Bump, Feedback, PromptDraft } from './types';
+import type { Bump, DeliverableSummary, Feedback, PromptDraft } from './types';
 
 export const projectUrl = (project: string) => `/projects/${project}`;
 export const threadUrl = (project: string, thread: string) => `/projects/${project}/threads/${thread}`;
@@ -38,6 +38,21 @@ export async function newThreadFlow(project: string) {
 	await goto(threadUrl(project, created.slug));
 }
 
+/** Asks for a file name, creates an empty deliverable in the project and opens it. (The Deliverables tab can also start one from a template.) */
+export async function newDeliverableFlow(project: string) {
+	const name = await promptDialog({
+		title: 'New deliverable',
+		label: 'File name',
+		placeholder: 'e.g. pricing-brief.md',
+		confirmLabel: 'Create'
+	});
+	if (!name) return;
+	const made = await attempt(() => api.createDeliverable(project, name));
+	if (!made) return;
+	await refresh();
+	await goto(deliverableUrl(project, made.path));
+}
+
 export async function renameProjectFlow(slug: string, current: string) {
 	const name = await promptDialog({ title: 'Rename project', label: 'Name', initial: current, confirmLabel: 'Rename' });
 	if (!name || name === current) return;
@@ -71,6 +86,10 @@ export function snapshotPath(base: string, version: string): string {
 	const dot = file.lastIndexOf('.');
 	return dir + (dot > 0 ? `${file.slice(0, dot)}@v${version}${file.slice(dot)}` : `${file}@v${version}`);
 }
+
+/** Where a deliverable opens: its live file, or its newest published version when the live file is gone. */
+export const deliverableTarget = (d: DeliverableSummary) =>
+	d.exists || d.versions.length === 0 ? d.path : snapshotPath(d.path, d.versions.at(-1) as string);
 
 /** The file name of a deliverable path, without its folders. */
 export const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1);
