@@ -5,7 +5,7 @@
 //!
 //! ```text
 //! 0x89 'L' 'D' 'G'   magic (the first byte is not valid UTF-8, so no text file starts like this)
-//! version            1
+//! version            2 (1 was for branches that stored files under their readable paths)
 //! key id             one byte taken from the key, so a wrong key is recognised before anything is decrypted
 //! nonce              12 random bytes, new for every encryption
 //! ciphertext + tag   AES-256-GCM over the deflated file
@@ -15,6 +15,8 @@
 //! or with its header altered, fails to decrypt. Files are deflated *before* they are sealed, because ciphertext
 //! does not compress. [`armor`] turns a sealed file into base64 text for storage on GitHub, which lets the
 //! GitHub client upload it inside the tree request like any markdown file instead of as one blob request per file.
+//!
+//! On GitHub a file is stored not under its path but under its [`remote_name`], a keyed hash of the path.
 
 use std::fmt;
 use std::io::{Read, Write};
@@ -26,6 +28,7 @@ use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE_NO_PAD
 use flate2::Compression;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
+use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
@@ -33,7 +36,7 @@ use crate::sync::MAX_FILE_BYTES;
 
 pub const KEY_BYTES: usize = 32;
 const MAGIC: [u8; 4] = [0x89, b'L', b'D', b'G'];
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 /// Magic, version and key id: the part of the header that is also authenticated.
 const HEADER_BYTES: usize = MAGIC.len() + 2;
 const NONCE_BYTES: usize = 12;
@@ -50,7 +53,7 @@ const CHECK_BYTES: usize = 4;
 pub enum CryptoError {
     /// Not one of ours: no header.
     NotEncrypted,
-    /// Sealed by a newer format than this app knows.
+    /// Sealed in a format this app doesn't read: a newer one, or the one from before paths were hidden.
     UnsupportedVersion(u8),
     /// Sealed with another key (by its id).
     WrongKey { found: u8, expected: u8 },
@@ -66,6 +69,7 @@ impl fmt::Display for CryptoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CryptoError::NotEncrypted => f.write_str("isn't encrypted"),
+            CryptoError::UnsupportedVersion(v) if *v < VERSION => write!(f, "was encrypted by an earlier version of Ledger (format {v})"),
             CryptoError::UnsupportedVersion(v) => write!(f, "was encrypted by a newer version of Ledger (format {v})"),
             CryptoError::WrongKey { found, expected } => {
                 write!(f, "was encrypted with a different key (id {found:02x}; this machine's key is {expected:02x})")
@@ -188,6 +192,15 @@ impl Key {
     fn cipher(&self) -> std::result::Result<Aes256Gcm, CryptoError> {
         Aes256Gcm::new_from_slice(&self.0[..]).map_err(|_| CryptoError::Failed)
     }
+}
+
+/// The name the file at the vault-relative `path` is stored under on GitHub: 32 hex digits, the same on every
+/// machine with the key, and saying nothing about the path to anyone without it.
+pub fn remote_name(key: &Key, path: &str) -> String {
+    let name_key = Zeroizing::new(digest(b"ledger remote names", &key.0[..]));
+    let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&name_key[..]).expect("HMAC takes a key of any length");
+    mac.update(path.as_bytes());
+    mac.finalize().into_bytes()[..16].iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn digest(domain: &[u8], key: &[u8]) -> [u8; 32] {
