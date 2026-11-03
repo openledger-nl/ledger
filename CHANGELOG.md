@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.0 (2026-11-03)
+
+### Features
+
+- **projects:** add latest threads and deliverables to overview and explorer ([21203eb](https://github.com/openledger-nl/ledger/commit/21203eb691ed370080afb211e4676aa3d1136293))
+- **sync:** add a GitHub sync card to the dashboard ([fa9c222](https://github.com/openledger-nl/ledger/commit/fa9c222f95875cf609ecbe1520449d687be84712))
+- **ui:** unfold one project at a time in the explorer, with a Threads tab ([2dc7762](https://github.com/openledger-nl/ledger/commit/2dc77627ee476db0beb0a491e00e05a6f15218f3))
+- **dashboard:** scope the contribution graph with sprint pills ([fc5fb93](https://github.com/openledger-nl/ledger/commit/fc5fb93a66628d7f93fc02fa1f178338e78bb06d))
+- **planning:** add the NJ26 semester preset ([b8bfde6](https://github.com/openledger-nl/ledger/commit/b8bfde68a941abd606d3b724d82bc8a58eb78635))
+- **settings:** move semesters and templates into settings ([690c3cf](https://github.com/openledger-nl/ledger/commit/690c3cf49d6c138740a2775a1ab7de200ac634fa))
+- **planning:** plan semesters with vacations and sprints ([0a50ab0](https://github.com/openledger-nl/ledger/commit/0a50ab09c9e794182701d82d2ae207d8506005a5))
+
+### Fixes
+
+- **dashboard:** show the days left in the graph and tidy the cards ([19f448a](https://github.com/openledger-nl/ledger/commit/19f448ae2bb67a1e9c7fd5e70b7da8db19a5a178))
+
+### Other changes
+
+- add the dashboard scope ([c70c1e3](https://github.com/openledger-nl/ledger/commit/c70c1e355971992393a11b5fde6efaca76fec562))
+- group stories, board and semesters under one planning scope ([f643c59](https://github.com/openledger-nl/ledger/commit/f643c597b895642a16f00402efeb5712421c1ac0))
+
 ## 0.7.1 (2026-11-03)
 
 ### Other changes
