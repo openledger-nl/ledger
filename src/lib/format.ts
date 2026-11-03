@@ -1,8 +1,14 @@
-// Timestamps arrive as UTC ISO strings; everything shown to people is in local time.
+// Timestamps arrive as UTC ISO strings; everything shown to people is in local time, written the European way:
+// day before month ("3 Nov 2026", "03-11-2026") and a 24-hour clock, whatever the system's own locale says.
 
-const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
-const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-const longDayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+import type { ThreadSummary } from './types';
+
+/** The locale every date and number is shown in. */
+export const LOCALE = 'en-GB';
+
+const timeFormat = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const dateFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' });
+const longDayFormat = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
 
 export const time = (iso: string) => timeFormat.format(new Date(iso));
 
@@ -48,8 +54,23 @@ export function ago(iso: string): string {
 	return date(iso);
 }
 
+/** A timestamp as milliseconds, for comparing; 0 when it isn't one. */
+export const stamp = (iso: string) => new Date(iso).getTime() || 0;
+
+/** The items, the one whose time is latest first. */
+export const newest = <T,>(items: readonly T[], at: (item: T) => string) => [...items].sort((a, b) => stamp(at(b)) - stamp(at(a)));
+
 /** "3 posts", "1 post". */
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** "4 posts · 2 prompts · 1 feedback": what a thread holds, leaving out what it has none of. */
+export function threadMeta(t: ThreadSummary): string {
+	const parts = [plural(t.postCount, 'post')];
+	if (t.promptCount) parts.push(plural(t.promptCount, 'prompt'));
+	if (t.feedbackCount) parts.push(`${t.feedbackCount} feedback`);
+	if (t.uploadCount) parts.push(plural(t.uploadCount, 'upload'));
+	return parts.join(' · ');
+}
 
 /** Escapes text and wraps case-insensitive matches of `query` in <mark>, for search snippets. */
 export function highlight(text: string, query: string): string {

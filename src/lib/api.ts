@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { capture, captureDebug, logError } from './log.svelte';
 import type {
 	ActivityEvent,
+	Semester,
+	SemesterDraft,
 	Board,
 	Bump,
 	Column,
@@ -22,6 +24,7 @@ import type {
 	Story,
 	StoryDraft,
 	StoryUpdate,
+	SyncOverview,
 	SyncStatus,
 	Task,
 	TaskUpdate,
@@ -56,6 +59,12 @@ export const api = {
 	search: (query: string) => call<SearchHit[]>('search', { query }),
 	/** Everything made in the vault and when, oldest first: the contribution graph's events. */
 	listActivity: () => call<ActivityEvent[]>('list_activity'),
+
+	// semesters and their sprints
+	listSemesters: () => call<Semester[]>('list_semesters'),
+	createSemester: (draft: SemesterDraft) => call<Semester>('create_semester', { draft }),
+	updateSemester: (id: string, draft: SemesterDraft) => call<Semester>('update_semester', { id, draft }),
+	deleteSemester: (id: string) => call<void>('delete_semester', { id }),
 
 	// projects
 	listProjects: () => call<ProjectSummary[]>('list_projects'),
@@ -159,6 +168,10 @@ export const api = {
 	// the vault and GitHub sync
 	getSettings: () => call<Settings>('get_settings'),
 	syncStatus: () => call<SyncStatus>('sync_status'),
+	/** Null while sync is off or hasn't run yet. */
+	syncOverview: () => call<SyncOverview | null>('sync_overview'),
+	/** How many commits the synced branch holds, asked of GitHub: null while sync is off, an error while it can't be reached. */
+	syncCommits: () => call<number | null>('sync_commits', undefined, false),
 	/** A blank token keeps the saved one. */
 	saveSyncSettings: (repo: string, branch: string, token: string | null) =>
 		call<Settings>('save_sync_settings', { repo, branch, token }),

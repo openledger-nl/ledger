@@ -2,6 +2,8 @@
 // and the search looks through all of it, so a new panel is added here once and is found both ways.
 
 import type { Component } from 'svelte';
+import CalendarRange from '@lucide/svelte/icons/calendar-range';
+import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 import Sparkles from '@lucide/svelte/icons/sparkles';
 import Palette from '@lucide/svelte/icons/palette';
 import RefreshCw from '@lucide/svelte/icons/refresh-cw';
@@ -17,16 +19,20 @@ import GitHubSettings from './GitHubSettings.svelte';
 import LogSettings from './LogSettings.svelte';
 import OrderSettings from './OrderSettings.svelte';
 import ScreenshotSettings from './ScreenshotSettings.svelte';
+import SemesterSettings from './SemesterSettings.svelte';
+import TemplateSettings from './TemplateSettings.svelte';
 import ThemeSettings from './ThemeSettings.svelte';
 import TrelloSettings from './TrelloSettings.svelte';
 import UpdateSettings from './UpdateSettings.svelte';
 import VaultSettings from './VaultSettings.svelte';
 import YellSettings from './YellSettings.svelte';
 
-export type GroupId = 'features' | 'visual' | 'sync' | 'tools' | 'about' | 'logs';
+export type GroupId = 'features' | 'semesters' | 'templates' | 'visual' | 'sync' | 'tools' | 'about' | 'logs';
 
 export const groups: { id: GroupId; label: string; icon: Component }[] = [
 	{ id: 'features', label: 'Features', icon: Sparkles },
+	{ id: 'semesters', label: 'Semesters', icon: CalendarRange },
+	{ id: 'templates', label: 'Templates', icon: LayoutTemplate },
 	{ id: 'visual', label: 'Visual', icon: Palette },
 	{ id: 'sync', label: 'Sync & external', icon: RefreshCw },
 	{ id: 'tools', label: 'Tools', icon: Wrench },
@@ -47,6 +53,8 @@ export interface Panel {
 
 export const panels: Panel[] = [
 	{ id: 'dashboard', group: 'features', title: 'Contribution graph', keywords: 'dashboard home activity heatmap squares days', component: DashboardSettings },
+	{ id: 'semesters', group: 'semesters', title: 'Semesters', keywords: 'semester sprint sprints vacation holiday break weeks preset nj26 plan calendar half year', component: SemesterSettings },
+	{ id: 'templates', group: 'templates', title: 'Templates', keywords: 'template prompt guiding questions skeleton deliverable shared every project global', component: TemplateSettings },
 	{ id: 'theme', group: 'visual', title: 'Theme', keywords: 'colours colors dark light night appearance look accent', component: ThemeSettings },
 	{ id: 'order', group: 'visual', title: 'Order', keywords: 'sort newest oldest first lists posts threads feedback versions', component: OrderSettings },
 	{ id: 'vault', group: 'sync', title: 'Vault', keywords: 'folder location path obsidian markdown reload disk files switch', component: VaultSettings },

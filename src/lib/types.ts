@@ -134,6 +134,47 @@ export interface ThreadView {
 	stories: Story[];
 }
 
+// ---- semesters and sprints --------------------------------------------------------------------------
+
+/** A stretch of a semester. Dates are calendar days, "2026-09-01", inclusive at both ends. */
+export interface Sprint {
+	name: string;
+	start: string;
+	end: string;
+	goal: string;
+}
+
+/** Days off within a semester: the sprint clock stops, and starts again after it. */
+export interface Vacation {
+	name: string;
+	start: string;
+	end: string;
+}
+
+export interface Semester {
+	id: string;
+	name: string;
+	start: string;
+	end: string;
+	sprintWeeks: number;
+	notes: string;
+	sprints: Sprint[];
+	vacations: Vacation[];
+	createdAt: string;
+	updatedAt: string;
+}
+
+/** What creating or changing a semester takes. Without sprints, they are cut from the start. */
+export interface SemesterDraft {
+	name: string;
+	start: string;
+	end: string;
+	sprintWeeks: number;
+	notes: string;
+	sprints: Sprint[];
+	vacations: Vacation[];
+}
+
 // ---- activity ---------------------------------------------------------------------------------------
 
 export type ActivityKind = 'thread' | 'post' | 'prompt' | 'feedback' | 'upload' | 'version' | 'run' | 'story' | 'task';
@@ -392,6 +433,19 @@ export interface SyncStatus {
 	lastSyncAt: string | null;
 	lastError: string | null;
 	summary: string | null;
+}
+
+/** What GitHub holds of the vault as of the last sync that finished, counted without asking GitHub. */
+export interface SyncOverview {
+	/** The commit both sides last agreed on. */
+	head: string | null;
+	files: number;
+	deliverables: number;
+	attachments: number;
+	/** Everything else: threads, posts, stories, templates, semesters … */
+	notes: number;
+	/** The key the files on GitHub are encrypted with (two hex digits), once they all are. */
+	key: string | null;
 }
 
 export interface SyncSettings {

@@ -46,7 +46,7 @@ repo (`build: move to Node 26`).
 
 | Area | Scopes |
 |---|---|
-| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `stories`, `board`, `templates`, `search` |
+| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `dashboard` (the home page and its contribution graph) |
 | Data and sync | `vault`, `sync`, `crypto`, `settings` |
 | Integrations | `screenshots`, `trello`, `claude` (runs with Claude Code) |
 | Across the app | `ui` (shared components, layout, icons), `brand` (logo, tokens, colours), `updates` (installing new releases from inside the app) |
@@ -59,7 +59,7 @@ repo (`build: move to Node 26`).
 Examples:
 
 ```
-feat(board): drag cards between columns
+feat(planning): drag cards between columns
 fix(sync)!: store the token per vault          (footer: BREAKING CHANGE: re-enter your GitHub token in Settings)
 style(ui): align the icon buttons
 build: move to Node 26

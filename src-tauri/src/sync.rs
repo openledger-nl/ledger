@@ -191,6 +191,50 @@ pub fn load_state(root: &Path) -> Option<State> {
     serde_json::from_str(&fs::read_to_string(root.join(STATE_FILE)).ok()?).ok()
 }
 
+/// What GitHub holds of the vault, as of the last agreement this machine reached with it. It is counted from the
+/// sync state, so looking costs no request.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Overview {
+    /// The commit both sides last agreed on.
+    pub head: Option<String>,
+    /// Files in that agreement.
+    pub files: usize,
+    /// Of those: files under a project's `deliverables/` (published versions included), files under its
+    /// `attachments/`, and the notes that are everything else (threads, posts, stories, templates, semesters …).
+    pub deliverables: usize,
+    pub attachments: usize,
+    pub notes: usize,
+    /// The id of the key the files on GitHub are encrypted with, as two hex digits, once they all are.
+    pub key: Option<String>,
+}
+
+/// `None` while this machine hasn't synced this repository and branch yet.
+pub fn overview(root: &Path, repo: &str, branch: &str) -> Option<Overview> {
+    let state = load_state(root).filter(|s| s.repo == repo && s.branch == branch && s.has_history())?;
+    let (mut deliverables, mut attachments) = (0, 0);
+    for path in state.files.keys() {
+        // projects/<project>/<folder>/…
+        let mut parts = path.split('/');
+        if parts.next() != Some("projects") {
+            continue;
+        }
+        match parts.nth(1) {
+            Some("deliverables") => deliverables += 1,
+            Some("attachments") => attachments += 1,
+            _ => {}
+        }
+    }
+    Some(Overview {
+        head: state.head.clone(),
+        files: state.files.len(),
+        deliverables,
+        attachments,
+        notes: state.files.len() - deliverables - attachments,
+        key: state.encrypted.map(|id| format!("{id:02x}")),
+    })
+}
+
 fn save_state(root: &Path, state: &State) -> Result<()> {
     let file = root.join(STATE_FILE);
     if let Some(dir) = file.parent() {

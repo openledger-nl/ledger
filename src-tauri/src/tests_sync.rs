@@ -10,6 +10,7 @@ use tempfile::tempdir;
 use crate::crypto::{self, CryptoError, Key};
 use crate::encrypted_remote::EncryptedRemote;
 use crate::error::{Error, Result};
+use crate::github::last_page;
 use crate::keystore::{EnvFileKeyStore, KeyStore};
 use crate::sync::{self, Change, DiskApplier, Head, Outcome, Remote, blob_sha};
 
@@ -157,6 +158,50 @@ fn the_first_sync_pushes_everything_and_the_second_has_nothing_to_do() {
     assert_eq!(second, Outcome::default());
     assert_eq!(second.summary(), "Up to date");
     assert_eq!(remote.commits(), 1, "nothing to push, nothing pushed");
+}
+
+#[test]
+fn the_overview_counts_what_the_last_agreement_holds() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/a/project.md", "a");
+    write(root, "projects/a/threads/t/thread.md", "t");
+    write(root, "projects/a/deliverables/brief.md", "draft");
+    write(root, "projects/a/deliverables/brief@v0.1.md", "draft");
+    write(root, "projects/a/attachments/shot.png", "png");
+    write(root, "semesters/s.md", "s");
+    let remote = Fake::default();
+
+    assert_eq!(sync::overview(root, "me/notes", "main"), None, "nothing is agreed before the first sync");
+    sync(root, &remote);
+
+    let overview = sync::overview(root, "me/notes", "main").unwrap();
+    assert_eq!(overview.head.as_deref(), Some("commit-0"));
+    assert_eq!((overview.files, overview.notes, overview.deliverables, overview.attachments), (6, 3, 2, 1));
+    assert_eq!(overview.key, None);
+    assert_eq!(sync::overview(root, "me/notes", "other"), None, "another branch has its own agreement");
+    assert_eq!(sync::overview(root, "someone/else", "main"), None, "and so does another repository");
+}
+
+#[test]
+fn the_overview_names_the_key_once_everything_on_github_is_sealed() {
+    let dir = tempdir().unwrap();
+    write(dir.path(), "projects/a/project.md", "a");
+    let remote = Fake::default();
+
+    sync_sealed(dir.path(), &remote);
+
+    let overview = sync::overview(dir.path(), "me/notes", "main").unwrap();
+    assert_eq!(overview.key, Some(format!("{:02x}", key().id())));
+    assert_eq!(overview.files, 1);
+}
+
+#[test]
+fn the_commit_count_is_the_last_page_of_a_page_per_commit() {
+    let link = r#"<https://api.github.com/repositories/9/commits?sha=abc&per_page=1&page=2>; rel="next", <https://api.github.com/repositories/9/commits?sha=abc&per_page=1&page=57>; rel="last""#;
+    assert_eq!(last_page(link), Some(57), "per_page=1 is not the page");
+    assert_eq!(last_page(r#"<https://api.github.com/x?page=2&per_page=1>; rel="next""#), None, "no last link: one page only");
+    assert_eq!(last_page(""), None);
 }
 
 #[test]

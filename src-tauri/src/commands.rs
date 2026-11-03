@@ -19,7 +19,7 @@ use crate::screenshot::{self, Region, ScreenshotSettings};
 use crate::settings::{self, SyncConfig, SyncEnv};
 use crate::state::App;
 use crate::syncer::SyncStatus;
-use crate::{activity, board, deliverables, feedback, markdown, posts, projects, prompts, provenance, search, stories, templates, threads, uploads};
+use crate::{activity, board, semesters, deliverables, feedback, markdown, posts, projects, prompts, provenance, search, stories, templates, threads, uploads};
 
 #[tauri::command]
 pub fn render_markdown(body: String) -> String {
@@ -29,6 +29,27 @@ pub fn render_markdown(body: String) -> String {
 #[tauri::command]
 pub fn search(app: State<App>, query: String) -> Result<Vec<SearchHit>> {
     app.read(|c, _| search::search(c, &query))
+}
+
+/// Every semester with its sprints, the earliest first.
+#[tauri::command]
+pub fn list_semesters(app: State<App>) -> Result<Vec<SemesterView>> {
+    app.read(|c, _| semesters::list(c))
+}
+
+#[tauri::command]
+pub fn create_semester(app: State<App>, draft: SemesterDraft) -> Result<SemesterView> {
+    app.mutate(|c, _| semesters::create(c, &draft))
+}
+
+#[tauri::command]
+pub fn update_semester(app: State<App>, id: String, draft: SemesterDraft) -> Result<SemesterView> {
+    app.mutate(|c, _| semesters::update(c, &id, &draft))
+}
+
+#[tauri::command]
+pub fn delete_semester(app: State<App>, id: String) -> Result<()> {
+    app.mutate(|c, _| semesters::delete(c, &id))
 }
 
 /// Everything made in the vault and when, oldest first: the contribution graph's events.
@@ -500,6 +521,33 @@ pub fn get_settings(app: State<App>) -> SettingsView {
 #[tauri::command]
 pub fn sync_status(app: State<App>) -> SyncStatus {
     app.syncer.status()
+}
+
+/// What GitHub holds of the vault as of the last sync that finished; nothing while sync is off or hasn't run yet.
+#[tauri::command]
+pub fn sync_overview(app: State<App>) -> Option<crate::sync::Overview> {
+    let (root, config) = {
+        let core = app.lock();
+        (core.vault.root().to_path_buf(), core.sync.clone())
+    };
+    let config = config?;
+    crate::sync::overview(&root, &config.repo, &config.branch)
+}
+
+/// How many commits the synced branch holds, as far as the last agreed commit, asked of GitHub. Nothing while sync is
+/// off or hasn't run yet; an error when GitHub can't be reached, which the sync card leaves out.
+#[tauri::command]
+pub async fn sync_commits(app: State<'_, App>) -> Result<Option<u64>> {
+    let (root, config) = {
+        let core = app.lock();
+        (core.vault.root().to_path_buf(), core.sync.clone())
+    };
+    let Some(config) = config else { return Ok(None) };
+    let Some(head) = crate::sync::overview(&root, &config.repo, &config.branch).and_then(|o| o.head) else { return Ok(None) };
+    let count = tauri::async_runtime::spawn_blocking(move || GithubRemote::new(&config)?.commit_count(&head))
+        .await
+        .map_err(|e| Error::sync(format!("Counting the commits stopped unexpectedly: {e}")))??;
+    Ok(Some(count))
 }
 
 /// Saves the repository and branch to the vault's settings and the token to its `.env`, and starts syncing. A

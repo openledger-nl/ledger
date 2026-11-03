@@ -1,16 +1,14 @@
 <script lang="ts">
-	// Syncing the vault with a private GitHub repository: where to, the token, and how the last sync went.
+	// Syncing the vault with a private GitHub repository: how it stands (the dashboard's card), and where to, and the token.
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Switch from '$lib/components/Switch.svelte';
+	import SyncWidget from '$lib/components/SyncWidget.svelte';
 	import { api } from '$lib/api';
-	import { ago, dateTime } from '$lib/format';
-	import { attempt, confirmDialog, refresh, sync, toast } from '$lib/ui.svelte';
+	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import type { Settings } from '$lib/types';
 
 	let { settings }: { settings: Settings } = $props();
-
-	const status = $derived(sync.status ?? settings.status);
 
 	/** The form's starting values, read once; edits stay local until saved. */
 	function start() {
@@ -52,10 +50,6 @@
 		await refresh();
 	}
 
-	async function syncNow() {
-		await attempt(() => api.syncNow());
-	}
-
 	async function disconnect() {
 		const ok = await confirmDialog({
 			title: 'Turn off GitHub sync?',
@@ -77,13 +71,6 @@
 		toast('Fill in the repository and an access token below, then save.');
 		repoInput?.focus();
 	}
-
-	const stateText = $derived.by(() => {
-		if (!status.configured) return 'Not syncing';
-		if (status.state === 'syncing') return 'Syncing…';
-		if (status.state === 'error') return 'Last sync failed';
-		return status.pending ? 'Changes waiting to be pushed' : 'Up to date';
-	});
 </script>
 
 <div class="panel">
@@ -96,31 +83,7 @@
 		pushes shortly after you make changes, and checks for new changes every few minutes. It refuses to sync to a public repository.
 	</p>
 
-	<div class="kv">
-		<dt>Status</dt>
-		<dd>
-			<span class="dot" class:ok={status.state === 'idle' && !status.pending} class:warn={status.state === 'syncing' || status.pending} class:bad={status.state === 'error'}
-			></span>
-			{stateText}
-		</dd>
-		{#if status.configured}
-			<dt>Syncing with</dt>
-			<dd>{status.repo} <span class="hint">on {status.branch}</span></dd>
-		{/if}
-		{#if status.lastSyncAt}
-			<dt>Last sync</dt>
-			<dd title={dateTime(status.lastSyncAt)}>{ago(status.lastSyncAt)}{status.summary ? ` — ${status.summary}` : ''}</dd>
-		{/if}
-		{#if status.lastError}
-			<dt>Problem</dt>
-			<dd class="error-text">{status.lastError}</dd>
-		{/if}
-	</div>
-	{#if settings.sync.configured}
-		<div class="row-end" style="justify-content:flex-start">
-			<button class="btn small" onclick={syncNow} disabled={status.state === 'syncing'}>Sync now</button>
-		</div>
-	{/if}
+	<SyncWidget embedded />
 
 	<div class="sync-detail">
 		<div class="form-row">

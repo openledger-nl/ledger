@@ -21,6 +21,7 @@ mod prompts;
 mod provenance;
 mod screenshot;
 mod search;
+mod semesters;
 mod settings;
 mod state;
 mod stories;
@@ -144,6 +145,10 @@ pub fn run() {
             commands::render_markdown,
             commands::search,
             commands::list_activity,
+            commands::list_semesters,
+            commands::create_semester,
+            commands::update_semester,
+            commands::delete_semester,
             commands::list_projects,
             commands::create_project,
             commands::rename_project,
@@ -204,6 +209,8 @@ pub fn run() {
             commands::delete_column,
             commands::get_settings,
             commands::sync_status,
+            commands::sync_overview,
+            commands::sync_commits,
             commands::save_sync_settings,
             commands::disconnect_sync,
             commands::test_sync,

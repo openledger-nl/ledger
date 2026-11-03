@@ -152,7 +152,7 @@
 		if (!ok) return;
 		if ((await attempt(() => api.deleteThread(project, slug))) === undefined) return;
 		await refresh();
-		await goto(projectUrl(project));
+		await goto(`${projectUrl(project)}/threads`);
 	}
 
 	async function toggleLink(other: string, on: boolean) {
@@ -182,7 +182,7 @@
 
 <div class="header-wrap">
 	<div class="crumbs">
-		<a href={projectUrl(project)}>{projectName}</a><span>/</span><span>Threads</span>
+		<a href={projectUrl(project)}>{projectName}</a><span>/</span><a href="{projectUrl(project)}/threads">Threads</a>
 	</div>
 	<div class="header-top">
 		<div>

@@ -54,7 +54,7 @@ you push:
 # the commits on your branch that main doesn't have yet
 node scripts/check-commits.mjs
 # a message, before you commit it
-node scripts/check-commits.mjs --message "feat(board): drag cards between columns"
+node scripts/check-commits.mjs --message "feat(planning): drag cards between columns"
 ```
 
 To fix a message, change the commit and push again:
@@ -92,7 +92,7 @@ repo (`build: move to Node 26`).
 
 | Area | Scopes |
 |---|---|
-| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `stories`, `board`, `templates`, `search` |
+| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `dashboard` (the home page and its contribution graph) |
 | Data and sync | `vault`, `sync`, `crypto`, `settings` |
 | Integrations | `screenshots`, `trello`, `claude` (runs with Claude Code) |
 | Across the app | `ui` (shared components, layout, icons), `brand` (logo, tokens, colours), `logs` (the error log, debug captures, reporting a problem) |
@@ -106,7 +106,7 @@ repo (`build: move to Node 26`).
 Examples:
 
 ```
-feat(board): drag cards between columns
+feat(planning): drag cards between columns
 fix(sync)!: store the token per vault
 style(ui): align the icon buttons
 build: move to Node 26

@@ -1,75 +1,127 @@
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import FileText from '@lucide/svelte/icons/file-text';
 	import House from '@lucide/svelte/icons/house';
-	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Settings from '@lucide/svelte/icons/settings';
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
-	import { ago } from '$lib/format';
+	import { api } from '$lib/api';
+	import { deliverableTarget, deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
+	import { ago, newest } from '$lib/format';
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { drawer, sync } from '$lib/ui.svelte';
-	import type { ProjectSummary } from '$lib/types';
+	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
 	import Wordmark from '$lib/components/Wordmark.svelte';
 
 	let { projects }: { projects: ProjectSummary[] } = $props();
 
-	const OPEN_KEY = 'ledger-open-projects';
+	const OPEN_KEY = 'ledger-open-project';
 
 	let query = $state('');
-	let open = $state<string[]>(load());
+	/** The project that is unfolded: one at a time, null when none is. */
+	let open = $state<string | null>(load());
 	const path = $derived(page.url.pathname);
 	const on = (prefix: string) => path === prefix || path.startsWith(prefix + '/');
 	const currentProject = $derived(page.params.project);
+	/** A thread or a deliverable being open is shown on its own row, not on its project's. */
+	const inThread = $derived(!!page.params.thread);
+	const viewing = $derived(page.route.id?.endsWith('/deliverables/view') ? page.url.searchParams.get('path') : null);
 
-	function load(): string[] {
+	function load(): string | null {
 		try {
-			const saved = JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]');
-			return Array.isArray(saved) ? saved.filter((s) => typeof s === 'string') : [];
+			return localStorage.getItem(OPEN_KEY) || null;
 		} catch {
-			return [];
+			return null;
 		}
 	}
 
 	function remember() {
 		try {
-			localStorage.setItem(OPEN_KEY, JSON.stringify(open));
+			if (open) localStorage.setItem(OPEN_KEY, open);
+			else localStorage.removeItem(OPEN_KEY);
 		} catch {
 			// The tree still works for this session.
 		}
 	}
 
-	function toggle(slug: string) {
-		open = open.includes(slug) ? open.filter((s) => s !== slug) : [...open, slug];
+	/** Unfolds a project and, with it, folds the one that was open. */
+	function unfold(slug: string) {
+		open = slug;
 		remember();
 	}
 
-	// The project being looked at is always unfolded, so its threads are one click away.
+	function toggle(slug: string) {
+		open = open === slug ? null : slug;
+		remember();
+	}
+
+	/** Choosing a project unfolds it and goes to its page. Choosing the one that is already unfolded folds it instead and
+	 *  goes nowhere: what is open stays open, be it the project's page, a thread or a deliverable. */
+	function choose(e: MouseEvent, slug: string) {
+		const plain = e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey;
+		if (open === slug && plain) {
+			e.preventDefault();
+			toggle(slug);
+		} else {
+			unfold(slug);
+		}
+	}
+
+	// Going to a project, from anywhere, unfolds it. Folding it again by hand sticks until another project is chosen.
 	$effect(() => {
 		const slug = currentProject;
-		if (slug && !open.includes(slug)) {
-			open = [...open, slug];
-			remember();
-		}
+		if (slug) untrack(() => unfold(slug));
 	});
+
+	// Every project's deliverables, by project: the unfolded project's list and the Latest section read them. They are
+	// looked up again whenever the vault changes (the projects are loaded afresh then).
+	let deliverables = $state<Record<string, DeliverableSummary[]>>({});
+	$effect(() => {
+		const slugs = projects.map((p) => p.slug);
+		let stale = false;
+		Promise.all(slugs.map((slug) => api.listDeliverables(slug).then((items) => [slug, items] as const, () => [slug, []] as const))).then((all) => {
+			if (!stale) deliverables = Object.fromEntries(all);
+		});
+		return () => (stale = true);
+	});
+	const byPath = (items: DeliverableSummary[]) => [...items].sort((a, b) => a.path.localeCompare(b.path));
+
+	/** What was last worked on across all projects: the newest threads and deliverables. */
+	const LATEST = 3;
+	const latestThreads = $derived(
+		newest(projects.flatMap((project) => project.threads.map((thread) => ({ thread, project }))), (x) => x.thread.lastActivity).slice(0, LATEST)
+	);
+	const latestDeliverables = $derived(
+		newest(projects.flatMap((project) => (deliverables[project.slug] ?? []).map((d) => ({ d, project }))), (x) => x.d.modified).slice(0, LATEST)
+	);
 
 	// Reflect an open search in the box, so refining it is one edit away.
 	$effect(() => {
 		if (path === '/search') query = page.url.searchParams.get('q') ?? '';
 	});
 
-	// What the footer says about the vault and GitHub.
+	// "just now" and "5 min ago" are worked out when drawn, so the footer redraws every half minute to keep them true.
+	let tick = $state(0);
+	$effect(() => {
+		const timer = setInterval(() => tick++, 30_000);
+		return () => clearInterval(timer);
+	});
+
+	// What the footer says about the vault and GitHub: how it stands, where the files go (owner/repo@branch) and
+	// whether they go up sealed; a problem adds its message.
 	const footer = $derived.by(() => {
+		void tick;
 		const s = sync.status;
-		if (!s || !s.configured) return { dot: 'off', title: 'Local vault', sub: 'Not synced to GitHub' };
-		// Next to where the files go, whether they go up sealed.
-		const where = `${s.repo ?? ''} · ${s.encrypted ? 'encrypted' : 'not encrypted'}`;
-		if (s.state === 'syncing') return { dot: 'warn pulse', title: 'Syncing…', sub: where };
-		if (s.state === 'error') return { dot: 'bad', title: 'Sync problem', sub: s.lastError ?? 'See Settings', error: true };
-		if (s.pending) return { dot: 'warn', title: 'Changes waiting to sync', sub: where };
-		return { dot: 'ok', title: 'Synced with GitHub', sub: s.lastSyncAt ? `${where} · ${ago(s.lastSyncAt)}` : where };
+		if (!s || !s.configured) return { dot: 'off', title: 'Local vault', when: '', where: 'Not synced to GitHub', encryption: '', error: '' };
+		const base = { when: '', where: `${s.repo ?? ''}@${s.branch ?? ''}`, encryption: s.encrypted ? 'Encrypted' : 'Not encrypted', error: '' };
+		if (s.state === 'syncing') return { ...base, dot: 'warn pulse', title: 'Syncing…' };
+		if (s.state === 'error') return { ...base, dot: 'bad', title: 'Sync problem', error: s.lastError ?? 'See Settings' };
+		if (s.pending) return { ...base, dot: 'warn', title: 'Changes waiting to sync' };
+		return { ...base, dot: 'ok', title: 'Synced with GitHub', when: s.lastSyncAt ? ago(s.lastSyncAt) : '' };
 	});
 
 	function search(e: SubmitEvent) {
@@ -80,6 +132,8 @@
 
 	// On a narrow window the drawer closes after every choice (but not after folding a project).
 	function closeDrawer(e: MouseEvent) {
+		// Folding a project goes nowhere, so the drawer stays.
+		if (e.defaultPrevented) return;
 		const target = (e.target as HTMLElement).closest('a, button');
 		if (target && !target.classList.contains('folder-toggle')) drawer.open = false;
 	}
@@ -94,7 +148,43 @@
 	</form>
 
 	<a class="nav-item" class:active={path === '/'} href="/"><span class="nav-ico"><House size={16} /></span>Home</a>
-	<a class="nav-item" class:active={on('/templates')} href="/templates"><span class="nav-ico"><LayoutTemplate size={16} /></span>Templates</a>
+	<a class="nav-item" class:active={on('/settings')} href="/settings"><span class="nav-ico"><Settings size={16} /></span>Settings</a>
+
+	{#if latestThreads.length || latestDeliverables.length}
+		<div class="section-head"><span>Latest</span></div>
+		<nav class="space-list" aria-label="Latest">
+			{#if latestThreads.length}
+				<div class="tree-label plain">Threads</div>
+				{#each latestThreads as { thread, project } (project.slug + '/' + thread.slug)}
+					<a class="tree-item" class:active={path === threadUrl(project.slug, thread.slug)} href={threadUrl(project.slug, thread.slug)}>
+						<span class="dot"></span>
+						<span class="stack">
+							<span class="name">{thread.title}</span>
+							<span class="of">{project.name}</span>
+						</span>
+					</a>
+				{/each}
+			{/if}
+			{#if latestDeliverables.length}
+				<div class="tree-label plain">Deliverables</div>
+				{#each latestDeliverables as { d, project } (project.slug + '/' + d.path)}
+					{@const target = deliverableTarget(d)}
+					<a
+						class="tree-item"
+						class:active={currentProject === project.slug && (viewing === target || viewing === d.path)}
+						href={deliverableUrl(project.slug, target)}
+						title={d.path}
+					>
+						<span class="file"><FileText size={13} /></span>
+						<span class="stack">
+							<span class="name">{d.name}</span>
+							<span class="of">{project.name}</span>
+						</span>
+					</a>
+				{/each}
+			{/if}
+		</nav>
+	{/if}
 
 	<div class="section-head">
 		<span>Projects</span>
@@ -102,8 +192,8 @@
 	</div>
 	<nav class="space-list">
 		{#each projects as p (p.slug)}
-			{@const unfolded = open.includes(p.slug)}
-			<div class="folder-row" class:active={on(projectUrl(p.slug)) && !page.params.thread}>
+			{@const unfolded = open === p.slug}
+			<div class="folder-row" class:active={on(projectUrl(p.slug)) && !inThread && viewing === null}>
 				<button
 					class="folder-toggle"
 					aria-label={unfolded ? `Fold ${p.name}` : `Unfold ${p.name}`}
@@ -112,13 +202,16 @@
 				>
 					{#if unfolded}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
 				</button>
-				<a class="folder-link" href={projectUrl(p.slug)}>
+				<a class="folder-link" href={projectUrl(p.slug)} onclick={(e) => choose(e, p.slug)}>
 					<span class="name">{p.name}</span>
 					<span class="count">{p.threads.length || ''}</span>
 				</a>
 			</div>
 			{#if unfolded}
 				<div class="folder-children">
+					<a class="tree-label" class:active={path === `${projectUrl(p.slug)}/threads`} href="{projectUrl(p.slug)}/threads">
+						Threads<span class="count">{p.threads.length || ''}</span>
+					</a>
 					{#each orderThreads(p.threads, listOrder.order) as t (t.slug)}
 						<a class="tree-item" class:active={path === threadUrl(p.slug, t.slug)} href={threadUrl(p.slug, t.slug)}>
 							<span class="dot"></span>
@@ -129,6 +222,22 @@
 						<div class="space-empty">No threads yet</div>
 					{/each}
 					<button class="tree-item add" onclick={() => newThreadFlow(p.slug)}><Plus size={14} />New thread</button>
+
+					<a class="tree-label" class:active={path === `${projectUrl(p.slug)}/deliverables`} href="{projectUrl(p.slug)}/deliverables">
+						Deliverables<span class="count">{p.deliverableCount || ''}</span>
+					</a>
+					{#if deliverables[p.slug]}
+						{#each byPath(deliverables[p.slug]) as d (d.path)}
+							{@const target = deliverableTarget(d)}
+							<a class="tree-item" class:active={viewing === target || viewing === d.path} href={deliverableUrl(p.slug, target)} title={d.path}>
+								<span class="file"><FileText size={13} /></span>
+								<span class="name">{d.name}</span>
+							</a>
+						{:else}
+							<div class="space-empty">No deliverables yet</div>
+						{/each}
+					{/if}
+					<button class="tree-item add" onclick={() => newDeliverableFlow(p.slug)}><Plus size={14} />New deliverable</button>
 				</div>
 			{/if}
 		{:else}
@@ -139,8 +248,12 @@
 	<div class="spacer"></div>
 
 	<div class="sync-box">
-		<div class="sync-line"><span class="dot {footer.dot}"></span><span>{footer.title}</span></div>
-		<div class="sync-sub" class:error={footer.error} title={footer.sub}>{footer.sub}</div>
-		<a class="btn small" class:on={on('/settings')} href="/settings">Settings</a>
+		<div class="sync-line">
+			<span class="dot {footer.dot}"></span><span>{footer.title}</span>
+			{#if footer.when}<span class="sync-when">· {footer.when}</span>{/if}
+		</div>
+		<div class="sync-sub" title={footer.where}>{footer.where}</div>
+		{#if footer.encryption}<div class="sync-sub">{footer.encryption}</div>{/if}
+		{#if footer.error}<div class="sync-sub error">{footer.error}</div>{/if}
 	</div>
 </aside>
