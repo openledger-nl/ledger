@@ -1,17 +1,26 @@
 <script lang="ts">
 	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
-	import { dayKey, plural } from '$lib/format';
-	import type { ActivityEvent, ActivityKind, ProjectSummary } from '$lib/types';
+	import { dayKey, LOCALE, plural } from '$lib/format';
+	import { currentSemester, currentSprint, parseDay, spanLabel } from '$lib/semesters';
+	import type { ActivityEvent, ActivityKind, ProjectSummary, Semester } from '$lib/types';
 
-	// A year of days, a square each, shaded by how much was made that day: like GitHub's contribution graph. Weeks
-	// run down the columns, Monday first. Days are local days, so an evening's work lands on that evening.
+	// A stretch of days, a square each, shaded by how much was made that day: like GitHub's contribution graph.
+	// Weeks run down the columns, Monday first. Days are local days, so an evening's work lands on that evening.
+	// A semester shows its sprints under the squares, with what was made in each; pick one to see only that sprint.
 
-	let { events, projects }: { events: ActivityEvent[]; projects: ProjectSummary[] } = $props();
+	let { events, projects, semesters }: { events: ActivityEvent[]; projects: ProjectSummary[]; semesters: Semester[] } = $props();
 
 	/** '' is every project. */
 	let project = $state('');
-	/** 'month' is the last 30 days, 'last' the last twelve months; otherwise a year, "2026". */
-	let period = $state('last');
+	/** 'last' is the last twelve months, 'sem:<id>' a semester; otherwise a year, "2026". It opens on the semester
+	 *  we're in, if there is one. */
+	const opening = () => {
+		const now = currentSemester(semesters);
+		return now ? `sem:${now.id}` : 'last';
+	};
+	let period = $state(opening());
+	/** Within a semester: '' for all of it, or the index of a sprint. */
+	let sprintChoice = $state('');
 
 	const KIND: Record<ActivityKind, [string, string]> = {
 		post: ['post', 'posts'],
@@ -30,9 +39,9 @@
 	const mondayOf = (d: Date) => addDays(d, -((d.getDay() + 6) % 7));
 	const keyOf = (d: Date) => dayKey(d.toISOString());
 	const today = addDays(new Date(), 0);
-	const monthFormat = new Intl.DateTimeFormat(undefined, { month: 'short' });
-	const longDate = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-	const shortDate = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
+	const monthFormat = new Intl.DateTimeFormat(LOCALE, { month: 'short' });
+	const longDate = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+	const shortDate = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' });
 
 	type Day = { date: Date; key: string; kinds: Partial<Record<ActivityKind, number>>; total: number; level: number };
 
@@ -53,23 +62,45 @@
 
 	const years = $derived([...new Set(events.map((e) => new Date(e.at).getFullYear()))].sort((a, b) => b - a));
 
-	const range = $derived(
-		period === 'month'
-			? { from: addDays(today, -29), to: today }
-			: period === 'last'
-				? { from: addDays(mondayOf(today), -52 * 7), to: today }
-				: { from: new Date(+period, 0, 1), to: new Date(+period, 11, 31) }
-	);
+	const semester = $derived(period.startsWith('sem:') ? semesters.find((s) => `sem:${s.id}` === period) : undefined);
+	const sprint = $derived(semester && sprintChoice !== '' ? semester.sprints[+sprintChoice] : undefined);
+
+	function choosePeriod(value: string) {
+		period = value;
+		sprintChoice = '';
+	}
+
+	const range = $derived.by(() => {
+		const span = sprint ?? semester;
+		if (span) return { from: parseDay(span.start) as Date, to: parseDay(span.end) as Date };
+		return period === 'last'
+			? { from: addDays(mondayOf(today), -52 * 7), to: today }
+			: { from: new Date(+period, 0, 1), to: new Date(+period, 11, 31) };
+	});
+	/** Squares grow as the stretch shrinks: a year, a semester, a sprint. */
+	const size = $derived(sprint ? 'big' : semester ? 'mid' : '');
 
 	const projectOptions = $derived<DropdownOption[]>([
 		{ value: '', label: 'All projects' },
 		...projects.map((p) => ({ value: p.slug, label: p.name, group: 'Projects' }))
 	]);
 	const periodOptions = $derived<DropdownOption[]>([
-		{ value: 'month', label: 'Last month' },
 		{ value: 'last', label: 'Last 12 months' },
+		...[...semesters].reverse().map((s) => ({ value: `sem:${s.id}`, label: s.name, group: 'Semesters' })),
 		...years.map((y) => ({ value: String(y), label: String(y), group: 'Year' }))
 	]);
+	const sprintOptions = $derived<DropdownOption[]>(
+		semester
+			? [
+					{ value: '', label: 'Whole semester' },
+					...semester.sprints.map((s, i) => ({
+						value: String(i),
+						label: `${s.name}${i === currentSprint(semester) ? ' · now' : ''}`,
+						group: 'Sprints'
+					}))
+				]
+			: []
+	);
 
 	/** The weeks shown, each seven days from Monday; null where a day falls outside the period or in the future. */
 	const weeks = $derived.by(() => {
@@ -101,6 +132,15 @@
 	});
 
 	const days = $derived(weeks.flat().filter((d): d is Day => !!d));
+
+	/** Every vacation day of every semester: "2026-12-24" → "Christmas break". */
+	const offDays = $derived.by(() => {
+		const off = new Map<string, string>();
+		for (const s of semesters)
+			for (const v of s.vacations)
+				for (let d = parseDay(v.start) as Date; d <= (parseDay(v.end) as Date); d = addDays(d, 1)) off.set(keyOf(d), v.name || 'Vacation');
+		return off;
+	});
 	const total = $derived(days.reduce((n, d) => n + d.total, 0));
 
 	/** A month's name above the first week in which it starts; dropped when it would crowd the one before. */
@@ -109,10 +149,28 @@
 		weeks.forEach((week, column) => {
 			const first = week.find((d) => d && (column === 0 || d.date.getDate() === 1));
 			if (!first) return;
-			if (column > 0 && labels.length && column - labels.at(-1)!.column < (period === 'month' ? 2 : 3)) labels.pop();
+			if (column > 0 && labels.length && column - labels.at(-1)!.column < (size ? 2 : 3)) labels.pop();
 			labels.push({ column, label: monthFormat.format(first.date) });
 		});
 		return labels;
+	});
+
+	/** Under a whole semester: each sprint as a band beneath its weeks, with what was made in it. */
+	const bands = $derived.by(() => {
+		if (!semester || sprint) return [];
+		const first = mondayOf(range.from).getTime();
+		const column = (day: string) => Math.round((mondayOf(parseDay(day) as Date).getTime() - first) / (7 * 86_400_000));
+		const now = currentSprint(semester);
+		let previous = -1;
+		return semester.sprints.map((s, index) => {
+			// A sprint that starts mid-week shares that week with the one before; the band starts a week later.
+			const a = Math.max(column(s.start), previous + 1);
+			const b = Math.max(a, column(s.end));
+			previous = b;
+			let count = 0;
+			for (let d = parseDay(s.start) as Date; d <= (parseDay(s.end) as Date); d = addDays(d, 1)) count += totalOf(keyOf(d));
+			return { index, s, a, b, count, now: index === now, ahead: (parseDay(s.start) as Date) > today };
+		});
 	});
 
 	const stats = $derived.by(() => {
@@ -165,18 +223,24 @@
 		if (scroller) scroller.scrollLeft = scroller.scrollWidth;
 	});
 
-	const periodLabel = $derived(period === 'month' ? 'in the last month' : period === 'last' ? 'in the last year' : `in ${period}`);
+	const periodLabel = $derived(
+		sprint ? `in ${sprint.name}` : semester ? `in ${semester.name}` : period === 'last' ? 'in the last year' : `in ${period}`
+	);
 </script>
 
 <section class="panel contrib" aria-label="Contributions" bind:this={box}>
 	<div class="header-top">
 		<h2>
-			{total.toLocaleString()} {total === 1 ? 'contribution' : 'contributions'}
+			{total.toLocaleString(LOCALE)} {total === 1 ? 'contribution' : 'contributions'}
 			{periodLabel}{#if project}<span class="contrib-in"> · {projects.find((p) => p.slug === project)?.name}</span>{/if}
 		</h2>
 		<div class="contrib-filters">
+			{#if !semesters.length}<a class="link accent" href="/semesters">Plan semesters</a>{/if}
 			<Dropdown bind:value={project} options={projectOptions} label="Project" align="end" />
-			<Dropdown bind:value={period} options={periodOptions} label="Period" align="end" />
+			<Dropdown bind:value={() => period, choosePeriod} options={periodOptions} label="Period" align="end" />
+			{#if semester}
+				<Dropdown bind:value={sprintChoice} options={sprintOptions} label="Sprint" align="end" />
+			{/if}
 		</div>
 	</div>
 
@@ -184,9 +248,11 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="contrib-grid"
-			class:big={period === 'month'}
+			class:big={size === 'big'}
+			class:mid={size === 'mid'}
+			class:with-sprints={bands.length > 0}
 			style="--weeks: {weeks.length}"
-			role="img"
+			role="group"
 			aria-label="{plural(total, 'contribution')} on {plural(stats.active, 'day')} {periodLabel}"
 			onpointerover={hover}
 			onpointerleave={() => (tip = null)}
@@ -200,12 +266,34 @@
 			{#each weeks as week, w (w)}
 				{#each week as d, i (i)}
 					{#if d}
-						<span class="contrib-day l{d.level}" class:today={d.key === keyOf(today)} style="grid-column: {w + 2}; grid-row: {i + 2}" data-key={d.key}></span>
+						<span class="contrib-day l{d.level}" class:today={d.key === keyOf(today)} class:vac={offDays.has(d.key)} style="grid-column: {w + 2}; grid-row: {i + 2}" data-key={d.key}></span>
 					{/if}
 				{/each}
 			{/each}
+			{#each bands as band (band.index)}
+				<button
+					type="button"
+					class="contrib-band"
+					class:now={band.now}
+					class:ahead={band.ahead}
+					style="grid-column: {band.a + 2} / {band.b + 3}"
+					title="{band.s.name} · {spanLabel(band.s.start, band.s.end)} · {plural(band.count, 'contribution')}{band.s.goal ? ` · Goal: ${band.s.goal}` : ''}"
+					onclick={() => (sprintChoice = String(band.index))}
+				>
+					<span class="label">S{band.index + 1}</span>
+					{#if !band.ahead}<span class="count">{band.count}</span>{/if}
+				</button>
+			{/each}
 		</div>
 	</div>
+
+	{#if sprint}
+		<div class="contrib-sprint">
+			<span><b>{sprint.name}</b> · {spanLabel(sprint.start, sprint.end)}</span>
+			{#if sprint.goal}<span class="goal">Goal: {sprint.goal}</span>{/if}
+			<button type="button" class="link accent" onclick={() => (sprintChoice = '')}>Whole semester</button>
+		</div>
+	{/if}
 
 	<div class="contrib-foot">
 		<div class="contrib-stats">
@@ -227,6 +315,7 @@
 		<div class="contrib-tip" style="left: {tip.x}px; top: {tip.y}px" role="tooltip">
 			<b>{tip.day.total ? plural(tip.day.total, 'contribution') : 'No contributions'}</b> on {longDate.format(tip.day.date)}
 			{#if tip.day.total}<span>{breakdown(tip.day)}</span>{/if}
+			{#if offDays.has(tip.day.key)}<span>Vacation: {offDays.get(tip.day.key)}</span>{/if}
 		</div>
 	{/if}
 </section>

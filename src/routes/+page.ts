@@ -10,8 +10,9 @@ export interface ProjectDetail {
 
 export const load: PageLoad = async ({ parent }) => {
 	const { projects } = await parent();
-	const [activity, details] = await Promise.all([
+	const [activity, semesters, details] = await Promise.all([
 		api.listActivity(),
+		api.listSemesters(),
 		Promise.all(
 			projects.map(async (p) => {
 				const [deliverables, view] = await Promise.all([api.listDeliverables(p.slug), api.getProject(p.slug)]);
@@ -19,5 +20,5 @@ export const load: PageLoad = async ({ parent }) => {
 			})
 		)
 	]);
-	return { activity, details: Object.fromEntries(details) as Record<string, ProjectDetail> };
+	return { activity, semesters, details: Object.fromEntries(details) as Record<string, ProjectDetail> };
 };

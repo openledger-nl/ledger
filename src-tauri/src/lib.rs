@@ -20,6 +20,7 @@ mod prompts;
 mod provenance;
 mod screenshot;
 mod search;
+mod semesters;
 mod settings;
 mod state;
 mod stories;
@@ -115,6 +116,10 @@ pub fn run() {
             commands::render_markdown,
             commands::search,
             commands::list_activity,
+            commands::list_semesters,
+            commands::create_semester,
+            commands::update_semester,
+            commands::delete_semester,
             commands::list_projects,
             commands::create_project,
             commands::rename_project,

@@ -3,6 +3,7 @@
 //!
 //! ```text
 //! templates/<id>.md                              a vault-wide template
+//! semesters/<id>.md                              a semester and its sprints
 //! projects/<project>/project.md                  a project: name, board columns
 //! projects/<project>/README.md                   the project's reading guide
 //! projects/<project>/threads/<thread>/thread.md  a thread
@@ -41,7 +42,8 @@ use serde_yaml_ng::{Mapping, Value};
 use crate::db::{self, query_all};
 use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
-use crate::{board, deliverables, ids, projects, provenance, settings};
+use crate::models::{SemesterDraft, Sprint, Vacation};
+use crate::{board, deliverables, ids, projects, provenance, semesters, settings};
 
 // ---- layout -----------------------------------------------------------------------------------------
 
@@ -75,6 +77,10 @@ fn task_file(project: &str, id: &str) -> String {
 
 fn template_file(scope: &str, id: &str) -> String {
     if scope.is_empty() { format!("templates/{id}.md") } else { format!("projects/{scope}/templates/{id}.md") }
+}
+
+fn semester_file(id: &str) -> String {
+    format!("semesters/{id}.md")
 }
 
 fn deliverable_file(project: &str, path: &str) -> String {
@@ -199,7 +205,7 @@ fn stamp_of(fp: Option<&Fingerprint>) -> String {
     fp.map_or_else(ids::now, |(_, nanos)| ids::format_millis((nanos / 1_000_000) as i64))
 }
 
-/// Whether the app looks at this path: markdown anywhere under `projects/` and `templates/`, and any file at all
+/// Whether the app looks at this path: markdown anywhere under `projects/`, `templates/` and `semesters/`, and any file at all
 /// under a project's `deliverables/`.
 fn managed(rel: &str) -> bool {
     let parts: Vec<&str> = rel.split('/').collect();
@@ -232,7 +238,7 @@ fn managed_listing(root: &Path) -> BTreeMap<String, Fingerprint> {
     }
 
     let mut out = BTreeMap::new();
-    for dir in ["projects", "templates"] {
+    for dir in ["projects", "templates", "semesters"] {
         walk(root, dir, &mut out);
     }
     out
@@ -268,6 +274,7 @@ pub fn export(conn: &Connection) -> Result<BTreeMap<String, String>> {
     export_projects(conn, &mut files)?;
     export_threads(conn, &mut files)?;
     export_templates(conn, &mut files)?;
+    export_semesters(conn, &mut files)?;
     export_stories_and_tasks(conn, &mut files)?;
     export_deliverables(conn, &mut files)?;
     export_version_records(conn, &mut files)?;
@@ -458,6 +465,47 @@ fn export_templates(conn: &Connection, files: &mut BTreeMap<String, String>) -> 
     Ok(())
 }
 
+fn export_semesters(conn: &Connection, files: &mut BTreeMap<String, String>) -> Result<()> {
+    for semester in semesters::list(conn)? {
+        let mut meta = Mapping::new();
+        frontmatter::set(&mut meta, "name", semester.name);
+        frontmatter::set(&mut meta, "start", semester.start);
+        frontmatter::set(&mut meta, "end", semester.end);
+        frontmatter::set(&mut meta, "sprintWeeks", semester.sprint_weeks);
+        let sprints: Vec<Value> = semester
+            .sprints
+            .into_iter()
+            .map(|s| {
+                let mut item = Mapping::new();
+                frontmatter::set(&mut item, "name", s.name);
+                frontmatter::set(&mut item, "start", s.start);
+                frontmatter::set(&mut item, "end", s.end);
+                frontmatter::set_opt(&mut item, "goal", Some(&s.goal));
+                Value::Mapping(item)
+            })
+            .collect();
+        frontmatter::set(&mut meta, "sprints", Value::Sequence(sprints));
+        let vacations: Vec<Value> = semester
+            .vacations
+            .into_iter()
+            .map(|v| {
+                let mut item = Mapping::new();
+                frontmatter::set(&mut item, "name", v.name);
+                frontmatter::set(&mut item, "start", v.start);
+                frontmatter::set(&mut item, "end", v.end);
+                Value::Mapping(item)
+            })
+            .collect();
+        if !vacations.is_empty() {
+            frontmatter::set(&mut meta, "vacations", Value::Sequence(vacations));
+        }
+        frontmatter::set(&mut meta, "createdAt", semester.created_at);
+        frontmatter::set(&mut meta, "updatedAt", semester.updated_at);
+        files.insert(semester_file(&semester.id), frontmatter::render(&meta, &semester.notes));
+    }
+    Ok(())
+}
+
 fn export_stories_and_tasks(conn: &Connection, files: &mut BTreeMap<String, String>) -> Result<()> {
     for project in query_all(conn, "SELECT slug FROM projects", [], |r| r.get::<_, String>(0))? {
         for story in crate::stories::list(conn, &project)? {
@@ -600,6 +648,7 @@ fn import(conn: &Connection, root: &Path, listing: &BTreeMap<String, Fingerprint
     let tx = conn.unchecked_transaction()?;
 
     import_templates(&tx, &source, "")?;
+    import_semesters(&tx, &source)?;
     for project in import_projects(&tx, &source)? {
         import_templates(&tx, &source, &project)?;
         let threads = import_threads(&tx, &source, &project)?;
@@ -666,6 +715,57 @@ fn import_templates(conn: &Connection, source: &Source, scope: &str) -> Result<(
                 params![scope, id, position as i64, question],
             )?;
         }
+    }
+    Ok(())
+}
+
+/// A semester whose own dates don't hold is skipped; sprints that don't fit it are cut again from its first day.
+fn import_semesters(conn: &Connection, source: &Source) -> Result<()> {
+    for id in source.stems("semesters") {
+        let rel = semester_file(&id);
+        let Some((meta, notes)) = source.parsed(&rel) else { continue };
+        let sprints = meta
+            .maps("sprints")
+            .into_iter()
+            .map(|item| Sprint {
+                name: item.text("name").unwrap_or_default(),
+                start: item.text("start").unwrap_or_default(),
+                end: item.text("end").unwrap_or_default(),
+                goal: item.text("goal").unwrap_or_default(),
+            })
+            .collect();
+        let vacations = meta
+            .maps("vacations")
+            .into_iter()
+            .map(|item| Vacation {
+                name: item.text("name").unwrap_or_default(),
+                start: item.text("start").unwrap_or_default(),
+                end: item.text("end").unwrap_or_default(),
+            })
+            .collect();
+        let draft = SemesterDraft {
+            name: meta.text("name").unwrap_or_else(|| id.clone()),
+            start: meta.text("start").unwrap_or_default(),
+            end: meta.text("end").unwrap_or_default(),
+            sprint_weeks: meta.text("sprintWeeks").and_then(|w| w.parse().ok()).unwrap_or(0),
+            notes,
+            sprints,
+            vacations,
+        };
+        let checked = match semesters::check(&draft) {
+            Ok(checked) => checked,
+            // Sprints that don't fit are cut again; vacations that don't fit are dropped, and the sprints with them.
+            Err(_) => match semesters::check(&SemesterDraft { sprints: vec![], ..draft.clone() }) {
+                Ok(checked) => checked,
+                Err(_) => match semesters::check(&SemesterDraft { sprints: vec![], vacations: vec![], ..draft }) {
+                    Ok(checked) => checked,
+                    Err(_) => continue,
+                },
+            },
+        };
+        let created_at = meta.text("createdAt").unwrap_or_else(|| source.stamp(&rel));
+        let updated_at = meta.text("updatedAt").unwrap_or_else(|| created_at.clone());
+        semesters::insert(conn, &id, &checked, &created_at, &updated_at)?;
     }
     Ok(())
 }

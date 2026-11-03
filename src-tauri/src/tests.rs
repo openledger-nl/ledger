@@ -6,9 +6,9 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 use crate::error::Error;
-use crate::models::{Bump, Criterion, StoryDraft, StoryUpdate, TaskUpdate};
+use crate::models::{Bump, Criterion, SemesterDraft, Sprint, StoryDraft, StoryUpdate, TaskUpdate, Vacation};
 use crate::posts::AddOptions;
-use crate::{activity, board, db, deliverables, feedback, markdown, posts, projects, prompts, search, stories, templates, threads, uploads};
+use crate::{activity, board, db, deliverables, semesters, feedback, markdown, posts, projects, prompts, search, stories, templates, threads, uploads};
 
 fn conn() -> Connection {
     db::open_in_memory().unwrap()
@@ -608,6 +608,120 @@ fn columns_are_per_project_and_guarded() {
     board::delete_column(&c, &other, "backlog").unwrap();
     board::delete_column(&c, &other, "doing").unwrap();
     assert_eq!(message(board::delete_column(&c, &other, "done").unwrap_err()), "The board needs at least one column");
+}
+
+// ---- semesters and sprints ----------------------------------------------------------------------------
+
+fn semester(name: &str, start: &str, end: &str) -> SemesterDraft {
+    SemesterDraft { name: name.into(), start: start.into(), end: end.into(), ..Default::default() }
+}
+
+fn spans(sprints: &[Sprint]) -> Vec<(String, String, String)> {
+    sprints.iter().map(|s| (s.name.clone(), s.start.clone(), s.end.clone())).collect()
+}
+
+#[test]
+fn a_semester_is_cut_into_three_week_sprints_from_its_first_day() {
+    let c = conn();
+    // 1 Sep 2026 to 31 Jan 2027: 153 days, seven sprints of 21 days and six left over, which join the last one.
+    let made = semesters::create(&c, &semester("  Semester 1 ", "2026-09-01", "31-01-2027")).unwrap();
+    assert_eq!((made.id.as_str(), made.name.as_str(), made.start.as_str(), made.end.as_str()), ("semester-1", "Semester 1", "2026-09-01", "2027-01-31"));
+    assert_eq!(made.sprint_weeks, 3);
+    let sprints = spans(&made.sprints);
+    assert_eq!(sprints.len(), 7, "{sprints:?}");
+    assert_eq!(sprints[0], ("Sprint 1".into(), "2026-09-01".into(), "2026-09-21".into()));
+    assert_eq!(sprints[1], ("Sprint 2".into(), "2026-09-22".into(), "2026-10-12".into()));
+    assert_eq!(sprints[6], ("Sprint 7".into(), "2027-01-05".into(), "2027-01-31".into()));
+
+    // A leftover of a week or more is a sprint of its own; other lengths can be chosen.
+    let two = semesters::plan(chrono::NaiveDate::from_ymd_opt(2027, 2, 1).unwrap(), chrono::NaiveDate::from_ymd_opt(2027, 2, 21).unwrap(), 2, &[]);
+    assert_eq!(spans(&two), [("Sprint 1".into(), "2027-02-01".into(), "2027-02-14".into()), ("Sprint 2".into(), "2027-02-15".into(), "2027-02-21".into())]);
+}
+
+fn vacation(name: &str, start: &str, end: &str) -> Vacation {
+    Vacation { name: name.into(), start: start.into(), end: end.into() }
+}
+
+#[test]
+fn sprints_are_weeks_of_work_and_stop_for_vacations() {
+    let c = conn();
+    let draft = SemesterDraft {
+        vacations: vec![vacation("Christmas", "21-12-2026", "2027-01-03"), vacation(" Autumn break ", "2026-10-19", "2026-10-25")],
+        ..semester("Semester 1", "2026-09-01", "2027-01-31")
+    };
+    let made = semesters::create(&c, &draft).unwrap();
+    let vacations: Vec<_> = made.vacations.iter().map(|v| (v.name.as_str(), v.start.as_str(), v.end.as_str())).collect();
+    assert_eq!(vacations, [("Autumn break", "2026-10-19", "2026-10-25"), ("Christmas", "2026-12-21", "2027-01-03")], "in order, trimmed, stored form");
+
+    let sprints: Vec<_> = made.sprints.iter().map(|s| (s.start.as_str(), s.end.as_str())).collect();
+    assert_eq!(
+        sprints,
+        [
+            ("2026-09-01", "2026-09-21"),
+            ("2026-09-22", "2026-10-12"),
+            ("2026-10-13", "2026-11-09"), // six days, the autumn break, then fifteen more
+            ("2026-11-10", "2026-11-30"),
+            ("2026-12-01", "2027-01-04"), // twenty days, Christmas, and one more
+            ("2027-01-05", "2027-01-31"), // with the six days left over
+        ]
+    );
+
+    let clash = SemesterDraft { vacations: vec![vacation("A", "2026-10-19", "2026-10-25"), vacation("B", "2026-10-25", "2026-10-30")], ..semester("X", "2026-09-01", "2027-01-31") };
+    assert_eq!(message(semesters::check(&clash).err().unwrap()), "A and B overlap");
+    let outside = SemesterDraft { vacations: vec![vacation("", "2026-08-20", "2026-09-02")], ..semester("X", "2026-09-01", "2027-01-31") };
+    assert_eq!(message(semesters::check(&outside).err().unwrap()), "Vacation falls outside the semester");
+    let all_off = SemesterDraft { vacations: vec![vacation("Off", "2026-09-01", "2026-09-30")], ..semester("X", "2026-09-01", "2026-09-30") };
+    assert_eq!(message(semesters::check(&all_off).err().unwrap()), "The semester has no days outside its vacations");
+}
+
+#[test]
+fn sprints_can_be_renamed_and_moved_but_stay_inside_their_semester_in_order() {
+    let c = conn();
+    let made = semesters::create(&c, &semester("Spring", "2027-02-01", "2027-07-31")).unwrap();
+    let mut draft = SemesterDraft { sprint_weeks: 3, sprints: made.sprints.clone(), ..semester("Spring 2027", "2027-02-01", "2027-07-31") };
+    draft.sprints[0].name = "Kick-off".into();
+    draft.sprints[0].goal = "  Pick the client  ".into();
+    draft.sprints[1].name = "  ".into();
+    let changed = semesters::update(&c, &made.id, &draft).unwrap();
+    assert_eq!((changed.id.as_str(), changed.name.as_str()), ("spring", "Spring 2027"), "the id stays");
+    assert_eq!((changed.sprints[0].name.as_str(), changed.sprints[0].goal.as_str()), ("Kick-off", "Pick the client"));
+    assert_eq!(changed.sprints[1].name, "Sprint 2", "an empty name is the sprint's number");
+
+    let mut outside = draft.clone();
+    outside.sprints[0].start = "2027-01-25".into();
+    assert_eq!(message(semesters::update(&c, &made.id, &outside).unwrap_err()), "Kick-off falls outside the semester");
+    let mut crossing = draft.clone();
+    crossing.sprints[2].start = crossing.sprints[1].end.clone();
+    assert_eq!(message(semesters::update(&c, &made.id, &crossing).unwrap_err()), "Sprint 3 starts before the sprint before it ends");
+    let mut backwards = draft.clone();
+    backwards.sprints[0].end = "2027-01-31".into();
+    assert_eq!(message(semesters::update(&c, &made.id, &backwards).unwrap_err()), "Kick-off ends before it starts");
+}
+
+#[test]
+fn semesters_are_checked_and_do_not_share_days() {
+    let c = conn();
+    assert_eq!(message(semesters::create(&c, &semester(" ", "2026-09-01", "2027-01-31")).unwrap_err()), "Name is required");
+    assert_eq!(message(semesters::create(&c, &semester("A", "1 Sep", "2027-01-31")).unwrap_err()), "The first day is not a date (use DD-MM-YYYY)");
+    assert_eq!(message(semesters::create(&c, &semester("A", "2027-01-31", "2026-09-01")).unwrap_err()), "The semester ends before it starts");
+    assert_eq!(message(semesters::create(&c, &semester("A", "2026-01-01", "2027-06-01")).unwrap_err()), "A semester is at most a year long");
+    let weeks = SemesterDraft { sprint_weeks: 13, ..semester("A", "2026-09-01", "2027-01-31") };
+    assert_eq!(message(semesters::create(&c, &weeks).unwrap_err()), "A sprint is 1 to 12 weeks long");
+
+    let first = semesters::create(&c, &semester("Semester 1", "2026-09-01", "2027-01-31")).unwrap();
+    let second = semesters::create(&c, &semester("Semester 2", "2027-02-01", "2027-07-31")).unwrap();
+    assert_eq!(
+        message(semesters::create(&c, &semester("Overlap", "2027-01-15", "2027-03-01")).unwrap_err()),
+        "It overlaps “Semester 1” (01-09-2026 to 31-01-2027); semesters can't share days"
+    );
+    // Changing a semester doesn't clash with itself; listing goes by start.
+    semesters::update(&c, &first.id, &semester("Semester 1", "2026-08-31", "2027-01-31")).unwrap();
+    let order: Vec<_> = semesters::list(&c).unwrap().into_iter().map(|s| s.id).collect();
+    assert_eq!(order, [first.id.clone(), second.id.clone()]);
+
+    semesters::delete(&c, &first.id).unwrap();
+    assert_eq!(message(semesters::get(&c, &first.id).unwrap_err()), "Semester not found");
+    assert_eq!(message(semesters::delete(&c, &first.id).unwrap_err()), "Semester not found");
 }
 
 // ---- activity ---------------------------------------------------------------------------------------
