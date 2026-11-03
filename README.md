@@ -72,6 +72,28 @@ Use a [fine-grained token](https://github.com/settings/personal-access-tokens/ne
 - **Board** — per project, with customisable columns (Backlog → Doing → Done by default). Tasks can point at a story and a thread. Drag a card, or use its arrows, to change column; a column that still holds tasks can't be deleted.
 - **Screenshots** — press a global hotkey (default Ctrl/⌘+Shift+S) anywhere: your own screenshot tool (Flameshot, say) or the built-in capture takes the picture, and Ledger offers to attach it to the thread you have open. Pictures sent to Ledger with "Open with" land the same way. See below.
 - **Search** across every post, prompt, feedback and deliverable, with highlighted snippets. **Themes**: Dark, Night, Forest, Ocean, Sepia, Light. **Order** (Settings): one choice, newest first by default, for the posts of a thread, the threads in the sidebar, and the feedback, versions and "Produced by" window of a deliverable. It only changes how things are shown. **Run prompts by themselves** (Settings → Claude Code, off by default): a prompt you create starts running in Claude Code at once, without the confirmation of what will be sent.
+- **Jira** — a project's tasks and user stories kept in step with the Tasks and Stories of a Jira Cloud project. See below.
+
+## Syncing with Jira
+
+**Settings → Sync to Jira** takes the Jira site (`https://<name>.atlassian.net`, or just the name), the email address of your Atlassian account and an [API token](https://id.atlassian.com/manage-profile/security/api-tokens). *Test connection* names the account; *Remove email and token* takes them off this machine again. The email address and token go in `.ledger/.env`, the site and the links in `.ledger/jira.json`, the sync's bookkeeping in `.ledger/jira-sync.json`; none of it is synced to GitHub, and the screen is only told whether a token is saved and its last four characters:
+
+```
+JIRA_EMAIL=you@example.com
+JIRA_API_TOKEN=ATATT…
+```
+
+Then link each project that should sync to a Jira project (one Jira project serves one project), and, where a column's name isn't the name of a Jira status, choose its status (or *Don't sync this column*).
+
+- **What syncs.** A user story ↔ an issue of type Story: the summary, and a description that reads `**As a** … / **I want to** … / **Such that** …`, the acceptance criteria as a list, then the notes. A task ↔ a Task: the title, the body as the description, and the column as the status. Moving a task moves its issue through a transition of the Jira workflow; when the workflow has none that leads there, the settings say so and the next sync tries again. Other issue types (bugs, epics, subtasks) are never read or changed.
+- **Descriptions** are converted between markdown and Atlassian Document Format: paragraphs and line breaks, headings, bullet and numbered lists (nested), code blocks, quotes, rules, bold, italic, strikethrough, inline code and links. A description on Jira that holds more than that (pictures, tables, mentions, colours) comes in as text but is never overwritten from Ledger, since that would remove them; an edit made in Ledger to such a description stays in Ledger, with a note.
+- **Identity.** The issue key is kept in the item's frontmatter (`jiraIssue: ACME-12`), so it travels to other machines with the GitHub sync. An issue brought in from Jira becomes `jira-acme-12` (a task) or `ACME-12` (a story), so two machines that bring in the same issue make the same file.
+- **The `ledger` label.** Every issue that has a Ledger item carries the label `ledger`: Ledger adds it to the issues it makes and to those it brings in. An issue with the label and no item is never brought in, because its item is either still on its way from another machine or was deleted. A second machine therefore never makes a duplicate, and a deleted item stays deleted. Take the label off an issue in Jira to bring it in again.
+- **Changes** are compared field by field with what both sides agreed on at the last sync. A field one side changed goes to the other. When both changed the same field, this machine's version wins and Jira's is kept in `.ledger/conflicts/<time>/jira/`.
+- **Deletes never propagate.** An issue that is deleted, moved to another Jira project or given another type leaves its item in place: the item stops syncing, says why (`jiraUnlinked`), and is listed under *No longer synced*, where *Make a new issue* gives it a fresh one. Deleting an item in Ledger leaves its issue on Jira. Nothing is ever deleted on Jira.
+- **When it runs**: a few seconds after the vault has gone quiet, every three minutes to notice changes made on Jira, and on *Sync now*. A 429 (or a 503 with `Retry-After`) is waited out as long as Jira asks, server errors and dropped connections are retried with a growing pause, and when that isn't enough the sync backs off for a few minutes; the status and the last problem are shown in Settings. The email address and token are sent in the `Authorization` header only, never in a web address, a log or an error message.
+
+Issue types are found by their names, *Story* and *Task*. A Jira project whose types are named otherwise (a team-managed project in another language, say) syncs only the kinds it has, and Settings says which are missing.
 
 ## Screenshots
 
@@ -132,7 +154,7 @@ pnpm test              # Rust: stores, vault round-trips, and the sync algorithm
 pnpm run check         # Svelte + TypeScript
 ```
 
-Environment variables, mostly for development: `LEDGER_VAULT` fixes the vault location (and locks it in Settings); `LEDGER_CONFIG_DIR` moves the per-machine settings (the vault location); `LEDGER_GITHUB_API` points the sync at another API base (GitHub Enterprise, or a mock).
+Environment variables, mostly for development: `LEDGER_VAULT` fixes the vault location (and locks it in Settings); `LEDGER_CONFIG_DIR` moves the per-machine settings (the vault location); `LEDGER_GITHUB_API` points the sync at another API base (GitHub Enterprise, or a mock); `LEDGER_JIRA_API` does the same for the Jira sync, in place of `https://<site>/rest/api/3`.
 
 ## Versions and releases
 
@@ -180,6 +202,8 @@ src-tauri/src/
   screenshot.rs          hotkey, your own tool, pictures opened with Ledger, the built-in capture; Linux portals
   state.rs commands.rs   the running app and the thin Tauri command layer
   markdown.rs            markdown → HTML; raw HTML is escaped and unsafe link targets dropped
+  jira.rs jira_api.rs jira_adf.rs jira_config.rs jira_ledger.rs jira_sync.rs
+                         the Jira sync: worker and commands, the REST client, markdown ⇄ ADF, settings, vault writes, the round
   tests*.rs              behaviour tests
 ```
 

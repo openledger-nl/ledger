@@ -5,6 +5,7 @@
 	import HotkeyInput from '$lib/components/HotkeyInput.svelte';
 	import OrderSettings from '$lib/components/OrderSettings.svelte';
 	import TrelloSettings from '$lib/components/TrelloSettings.svelte';
+	import JiraSettings from '$lib/components/JiraSettings.svelte';
 	import { api } from '$lib/api';
 	import { ago, dateTime } from '$lib/format';
 	import { attempt, confirmDialog, refresh, setTheme, sync, theme, themes, toast } from '$lib/ui.svelte';
@@ -495,6 +496,8 @@ templates/&lt;id&gt;.md                               templates for every projec
 
 		<!-- Trello sync (feat/trello-sync) -->
 		<TrelloSettings />
+
+		<JiraSettings />
 
 		<div class="panel">
 			<h2>Screenshots</h2>

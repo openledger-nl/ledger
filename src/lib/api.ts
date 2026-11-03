@@ -246,3 +246,27 @@ export const trelloApi = {
 	trelloRelinkItem: (project: string, kind: 'task' | 'story', id: string) =>
 		call<TrelloView>('trello_relink_item', { project, kind, id })
 };
+
+// ---- Jira sync --------------------------------------------------------------------------------------
+
+import type { JiraMapping, JiraProjectInfo, JiraStatus, JiraView } from './types';
+
+export const jiraApi = {
+	jiraGet: () => call<JiraView>('jira_get'),
+	jiraStatus: () => call<JiraStatus>('jira_status'),
+	/** Tries what is on screen (a blank field means the saved value) without saving it. Resolves to a message naming the account. */
+	jiraTest: (site: string | null, email: string | null, token: string | null) => call<string>('jira_test', { site, email, token }),
+	/** A blank field keeps the saved value. */
+	jiraSaveCredentials: (site: string | null, email: string | null, token: string | null) =>
+		call<JiraView>('jira_save_credentials', { site, email, token }),
+	jiraDisconnect: () => call<JiraView>('jira_disconnect'),
+	jiraProjects: () => call<JiraProjectInfo[]>('jira_projects'),
+	/** Links a project to a Jira project by key; `null` stops syncing the project. */
+	jiraLinkProject: (project: string, jiraProject: string | null) => call<JiraView>('jira_link_project', { project, jiraProject }),
+	jiraProjectMapping: (project: string) => call<JiraMapping>('jira_project_mapping', { project }),
+	/** `choice` is "auto", "none" or a status id. */
+	jiraSetColumnStatus: (project: string, column: string, choice: string) => call<void>('jira_set_column_status', { project, column, choice }),
+	jiraSyncNow: () => call<void>('jira_sync_now'),
+	/** Gives an item that stopped syncing a new issue on the next sync (the old issue is left alone). */
+	jiraRelinkItem: (project: string, kind: 'task' | 'story', id: string) => call<JiraView>('jira_relink_item', { project, kind, id })
+};

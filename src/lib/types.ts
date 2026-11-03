@@ -681,3 +681,95 @@ export interface TrelloMapping {
 	/** Lists no column uses: their cards aren't added. */
 	unusedLists: string[];
 }
+
+// ---- Jira sync --------------------------------------------------------------------------------------
+
+export interface JiraProjectInfo {
+	id: string;
+	key: string;
+	name: string;
+}
+
+export interface JiraStatusInfo {
+	id: string;
+	name: string;
+}
+
+/** What the last Jira round did, and what it wants a person to know. */
+export interface JiraReport {
+	issuesCreated: number;
+	issuesUpdated: number;
+	itemsCreated: number;
+	itemsUpdated: number;
+	detached: number;
+	conflicts: number;
+	/** Tasks without a status and issues without a column: left out. */
+	unmatched: number;
+	skipped: number;
+	/** Items that are not syncing because their issue is gone, moved or of another type now. */
+	unlinked: number;
+	vaultWrites: number;
+	notes: string[];
+}
+
+export interface JiraStatus {
+	/** There are a site, credentials and at least one linked project. */
+	configured: boolean;
+	state: 'disabled' | 'idle' | 'syncing' | 'error';
+	/** Changes made here that the sync hasn't looked at yet. */
+	pending: boolean;
+	lastSyncAt: string | null;
+	lastError: string | null;
+	summary: string | null;
+	report: JiraReport | null;
+}
+
+export interface JiraProject {
+	slug: string;
+	name: string;
+	/** The key of the Jira project the project is linked to; a project with none isn't synced. */
+	jiraProject: string | null;
+	jiraProjectName: string | null;
+}
+
+/** An item that stopped syncing because its issue was deleted, moved or became another type. */
+export interface JiraUnlinkedItem {
+	project: string;
+	projectName: string;
+	kind: 'task' | 'story';
+	id: string;
+	title: string;
+	reason: string;
+}
+
+export interface JiraView {
+	site: string;
+	email: string;
+	/** The token itself never reaches the screen. */
+	hasToken: boolean;
+	tokenHint: string;
+	configured: boolean;
+	projects: JiraProject[];
+	unlinked: JiraUnlinkedItem[];
+	status: JiraStatus;
+	settingsFile: string;
+	secretsFile: string;
+}
+
+export interface JiraColumnChoice {
+	id: string;
+	name: string;
+	/** "auto" (the status with the same name), "none" (not synced) or the id of a status. */
+	choice: string;
+	statusId: string | null;
+	statusName: string | null;
+}
+
+export interface JiraMapping {
+	statuses: JiraStatusInfo[];
+	columns: JiraColumnChoice[];
+	/** Statuses no column uses: their tasks aren't added. */
+	unusedStatuses: string[];
+	/** Which of the Story and Task issue types the Jira project lacks. */
+	missingTypes: string[];
+}

@@ -55,7 +55,7 @@ pub fn list(conn: &Connection, project: &str) -> Result<Vec<StoryView>> {
 
     let mut stories = query_all(
         conn,
-        "SELECT project_slug, id, summary, role, want, reason, notes, created_at, updated_at, trello_card, trello_unlinked
+        "SELECT project_slug, id, summary, role, want, reason, notes, created_at, updated_at, trello_card, trello_unlinked, jira_issue, jira_unlinked
          FROM user_stories WHERE project_slug = ?1 ORDER BY created_at, id COLLATE NOCASE",
         [project],
         |r| {
@@ -74,6 +74,8 @@ pub fn list(conn: &Connection, project: &str) -> Result<Vec<StoryView>> {
                 updated_at: r.get(8)?,
                 trello_card: r.get(9)?,
                 trello_unlinked: r.get(10)?,
+                jira_issue: r.get(11)?,
+                jira_unlinked: r.get(12)?,
             })
         },
     )?;

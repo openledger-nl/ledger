@@ -210,6 +210,9 @@ CREATE TABLE user_stories (
     -- The Trello card this story is synced with, and, once that sync has stopped, why (see trello_sync.rs).
     trello_card     TEXT,
     trello_unlinked TEXT,
+    -- The Jira issue (its key) this item is synced with, and, once that sync has stopped, why (see jira_sync.rs).
+    jira_issue      TEXT,
+    jira_unlinked   TEXT,
     PRIMARY KEY (project_slug, id)
 );
 
@@ -248,6 +251,9 @@ CREATE TABLE tasks (
     -- The Trello card this task is synced with, and, once that sync has stopped, why (see trello_sync.rs).
     trello_card     TEXT,
     trello_unlinked TEXT,
+    -- The Jira issue (its key) this item is synced with, and, once that sync has stopped, why (see jira_sync.rs).
+    jira_issue      TEXT,
+    jira_unlinked   TEXT,
     FOREIGN KEY (project_slug, column_id) REFERENCES project_columns(project_slug, id),
     FOREIGN KEY (project_slug) REFERENCES projects(slug) ON DELETE CASCADE
 );

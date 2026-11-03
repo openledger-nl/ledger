@@ -38,6 +38,14 @@ mod trello_ledger;
 mod trello_sync;
 // ---- end Trello sync ----
 
+// ---- Jira sync ----
+mod jira;
+mod jira_adf;
+mod jira_api;
+mod jira_config;
+mod jira_ledger;
+mod jira_sync;
+
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -48,6 +56,8 @@ mod tests_trello;
 mod tests_crypto;
 #[cfg(test)]
 mod tests_provenance;
+#[cfg(test)]
+mod tests_jira;
 #[cfg(test)]
 mod tests_screenshot;
 #[cfg(test)]
@@ -87,6 +97,7 @@ pub fn run() {
             let sync = core.sync.clone();
             let core = Arc::new(Mutex::new(core));
             let trello_core = core.clone(); // for the Trello sync (feat/trello-sync), started below
+            let jira_core = core.clone(); // for the Jira sync, started below
 
             let handle = app.handle().clone();
             let syncer = syncer::spawn(
@@ -103,6 +114,7 @@ pub fn run() {
 
             app.manage(state::App::new(core, syncer, screenshot::Screenshots::new()));
             trello::start_app(app.handle(), trello_core); // feat/trello-sync: its own worker, needs the App state above
+            jira::start_app(app.handle(), jira_core);
             screenshot::register_saved(app.handle());
             // Launched with a picture to attach: it waits until the window asks for it.
             let args: Vec<String> = std::env::args().skip(1).collect();
@@ -197,6 +209,17 @@ pub fn run() {
             trello::trello_sync_now,
             trello::trello_relink_item,
             // ---- end Trello sync ----
+            jira::jira_get,
+            jira::jira_status,
+            jira::jira_test,
+            jira::jira_save_credentials,
+            jira::jira_disconnect,
+            jira::jira_projects,
+            jira::jira_link_project,
+            jira::jira_project_mapping,
+            jira::jira_set_column_status,
+            jira::jira_sync_now,
+            jira::jira_relink_item,
             commands::set_vault_path,
             commands::reload_vault,
             commands::check_vault_changes,

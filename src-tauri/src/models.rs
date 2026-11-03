@@ -257,6 +257,9 @@ pub struct StoryView {
     /// The Trello card this story is synced with, if any, and (when the sync has stopped) why.
     pub trello_card: Option<String>,
     pub trello_unlinked: Option<String>,
+    /// The key of the Jira issue this item is synced with, if any, and (when the sync has stopped) why.
+    pub jira_issue: Option<String>,
+    pub jira_unlinked: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -282,6 +285,9 @@ pub struct TaskView {
     /// The Trello card this task is synced with, if any, and (when the sync has stopped) why.
     pub trello_card: Option<String>,
     pub trello_unlinked: Option<String>,
+    /// The key of the Jira issue this item is synced with, if any, and (when the sync has stopped) why.
+    pub jira_issue: Option<String>,
+    pub jira_unlinked: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
