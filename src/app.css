@@ -740,22 +740,23 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 /* ---------- the contribution graph: a semester's sprints ---------- */
 .contrib-grid.mid { --cell: 16px; --gap: 4px; }
 .contrib-grid.mid .contrib-day { border-radius: 3px; }
-.contrib-grid.with-sprints { grid-template-rows: 15px repeat(7, var(--cell)) 26px; }
 .contrib-filters { align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.contrib-filters > .link { font-size: 12.5px; text-decoration: none; margin-right: 4px; }
-.contrib-band {
-	grid-row: 9; margin-top: 4px; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 4px;
-	padding: 0 6px; border: 0; border-radius: 6px; background: var(--card-2); color: var(--muted); font-size: 11px; font-weight: 600;
+.contrib-scope { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.contrib-scope .link { font-size: 12.5px; text-decoration: none; margin-left: 6px; }
+.contrib-pill {
+	display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 600;
+	background: transparent; border: 1px solid var(--line); color: var(--faint);
 }
-.contrib-band:hover { background: var(--accent-soft); color: var(--accent); }
-.contrib-band.now { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.contrib-band.ahead { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--faint); }
-.contrib-band .count { color: var(--ink); font-variant-numeric: tabular-nums; }
-.contrib-band.ahead .count { display: none; }
-.contrib-sprint { display: flex; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.contrib-pill .count { font-variant-numeric: tabular-nums; font-weight: 500; }
+.contrib-pill:hover { border-color: var(--accent); color: var(--accent); }
+.contrib-pill.lit { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.contrib-pill.lit .count { color: var(--ink); }
+.contrib-pill.now { box-shadow: 0 0 0 1px var(--accent); }
+.contrib-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 12px; text-align: center; }
+.contrib-empty .sub { margin: 0 0 6px; }
+.contrib-sprint { display: flex; align-items: baseline; justify-content: center; gap: 6px 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
 .contrib-sprint b { color: var(--ink); }
 .contrib-sprint .goal { color: var(--ink); }
-.contrib-sprint .link { margin-left: auto; text-decoration: none; }
 
 /* ---------- a date, the European way: typed or picked ---------- */
 .date-input { position: relative; display: flex; align-items: stretch; min-width: 0; }

@@ -152,6 +152,14 @@ export function nj26Draft(): SemesterDraft {
 	return { name: 'NJ26 - Semester X', start, end, sprintWeeks: 3, notes: '', sprints, vacations };
 }
 
+/** A sprint's short name, for a pill: "Sprint 2" → "S2"; a short name of its own stays as it is. */
+export function sprintLabel(name: string, index: number): string {
+	const numbered = /^\s*(?:sprint|s)\s*(\d+)\s*$/i.exec(name);
+	if (numbered) return `S${numbered[1]}`;
+	const short = name.trim();
+	return short && short.length <= 8 ? short : `S${index + 1}`;
+}
+
 export type Phase = 'current' | 'upcoming' | 'past';
 
 export function phaseOf(s: { start: string; end: string }, day = today()): Phase {
@@ -160,6 +168,11 @@ export function phaseOf(s: { start: string; end: string }, day = today()): Phase
 
 /** The semester today falls in, if any. */
 export const currentSemester = (semesters: Semester[], day = today()) => semesters.find((s) => phaseOf(s, day) === 'current');
+
+/** The semester the graph opens on: the one we're in, else the latest one that has ended, else the next to come. */
+export function nearestSemester(semesters: Semester[], day = today()): Semester | undefined {
+	return currentSemester(semesters, day) ?? [...semesters].reverse().find((s) => phaseOf(s, day) === 'past') ?? semesters.find((s) => phaseOf(s, day) === 'upcoming');
+}
 
 /** The index of the sprint today falls in, or -1. */
 export const currentSprint = (s: Semester, day = today()) => s.sprints.findIndex((p) => phaseOf(p, day) === 'current');
