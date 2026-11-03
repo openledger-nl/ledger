@@ -152,14 +152,6 @@ export function nj26Draft(): SemesterDraft {
 	return { name: 'NJ26 - Semester X', start, end, sprintWeeks: 3, notes: '', sprints, vacations };
 }
 
-/** A sprint's short name, for a pill: "Sprint 2" → "S2"; a short name of its own stays as it is. */
-export function sprintLabel(name: string, index: number): string {
-	const numbered = /^\s*(?:sprint|s)\s*(\d+)\s*$/i.exec(name);
-	if (numbered) return `S${numbered[1]}`;
-	const short = name.trim();
-	return short && short.length <= 8 ? short : `S${index + 1}`;
-}
-
 export type Phase = 'current' | 'upcoming' | 'past';
 
 export function phaseOf(s: { start: string; end: string }, day = today()): Phase {

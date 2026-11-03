@@ -170,6 +170,8 @@ export const api = {
 	syncStatus: () => call<SyncStatus>('sync_status'),
 	/** Null while sync is off or hasn't run yet. */
 	syncOverview: () => call<SyncOverview | null>('sync_overview'),
+	/** How many commits the synced branch holds, asked of GitHub: null while sync is off, an error while it can't be reached. */
+	syncCommits: () => call<number | null>('sync_commits', undefined, false),
 	/** A blank token keeps the saved one. */
 	saveSyncSettings: (repo: string, branch: string, token: string | null) =>
 		call<Settings>('save_sync_settings', { repo, branch, token }),

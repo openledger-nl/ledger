@@ -210,6 +210,7 @@ pub fn run() {
             commands::get_settings,
             commands::sync_status,
             commands::sync_overview,
+            commands::sync_commits,
             commands::save_sync_settings,
             commands::disconnect_sync,
             commands::test_sync,

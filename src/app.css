@@ -454,7 +454,7 @@ mark { background: var(--highlight); color: inherit; border-radius: 3px; padding
 .dash-when.fresh { color: var(--accent); font-weight: 600; }
 .dash-empty { font-size: 12.5px; color: var(--faint); padding: 8px 0; display: flex; gap: 8px; align-items: baseline; }
 .dash-empty .link { font-size: 12.5px; text-decoration: none; }
-.proj-foot { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: -2px; }
+.proj-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: -2px; }
 .proj-foot .btn.ghost { border-color: transparent; color: var(--muted); }
 .proj-foot .btn.ghost:hover { color: var(--ink); background: var(--card-2); }
 .proj-foot .n { font-size: 11px; color: var(--faint); font-weight: 500; }
@@ -681,8 +681,6 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 .contrib-filters { display: flex; gap: 8px; }
 .contrib-scroll { overflow-x: auto; padding-bottom: 2px; }
 .contrib-grid { --cell: 11px; --gap: 3px; display: grid; grid-template-columns: 30px repeat(var(--weeks), var(--cell)); grid-template-rows: 15px repeat(7, var(--cell)); gap: var(--gap); width: max-content; margin: 0 auto; }
-.contrib-grid.big { --cell: 26px; --gap: 5px; }
-.contrib-grid.big .contrib-day { border-radius: 5px; }
 .contrib-month { grid-row: 1; font-size: 11px; line-height: 1; color: var(--muted); white-space: nowrap; }
 .contrib-wd { grid-column: 1; font-size: 10.5px; line-height: var(--cell); color: var(--muted); }
 .contrib-day { width: var(--cell, 11px); height: var(--cell, 11px); border-radius: 2px; background: var(--cg-0); outline: 1px solid color-mix(in srgb, var(--ink) 6%, transparent); outline-offset: -1px; }
@@ -691,13 +689,17 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 .contrib-day.l3 { background: var(--cg-3); }
 .contrib-day.l4 { background: var(--cg-4); }
 .contrib-grid .contrib-day:hover { outline: 1px solid var(--ink); }
-.contrib-day.today { outline: 1px solid var(--muted); }
+/* Today has a ring; a day still to come is empty and dashed (a vacation day keeps its amber dashes). */
+.contrib-day.today, .contrib-grid .contrib-day.today { outline: 2px solid var(--accent); outline-offset: 1px; position: relative; z-index: 1; }
+.contrib-day.future { background: transparent; outline: 1px dashed color-mix(in srgb, var(--ink) 22%, transparent); outline-offset: -1px; }
 .contrib-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px 20px; flex-wrap: wrap; }
 .contrib-stats { display: flex; gap: 6px 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
 .contrib-stats b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
-.contrib-legend { display: flex; align-items: center; gap: 3px; font-size: 11.5px; color: var(--muted); }
-.contrib-legend .contrib-day:first-of-type { margin-left: 3px; }
-.contrib-legend .contrib-day:last-of-type { margin-right: 3px; }
+.contrib-legend { display: flex; align-items: center; gap: 4px 16px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
+.contrib-legend .key { display: inline-flex; align-items: center; gap: 3px; }
+.contrib-legend .key:not(.scale) { gap: 6px; }
+.contrib-legend .scale .contrib-day:first-of-type { margin-left: 3px; }
+.contrib-legend .scale .contrib-day:last-of-type { margin-right: 3px; }
 .contrib-tip {
 	position: absolute; z-index: 5; transform: translate(-50%, calc(-100% - 8px)); pointer-events: none;
 	background: var(--ink); color: var(--bg); border-radius: 8px; padding: 6px 10px; font-size: 12px; white-space: nowrap;
@@ -736,26 +738,14 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 .contrib-grid.mid { --cell: 16px; --gap: 4px; }
 .contrib-grid.mid .contrib-day { border-radius: 3px; }
 .contrib-filters { align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.contrib-scope { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
-.contrib-scope .link { font-size: 12.5px; text-decoration: none; margin-left: 6px; }
-.contrib-pill {
-	display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 600;
-	background: transparent; border: 1px solid var(--line); color: var(--faint);
-}
-.contrib-pill .count { font-variant-numeric: tabular-nums; font-weight: 500; }
-.contrib-pill:hover { border-color: var(--accent); color: var(--accent); }
-.contrib-pill.lit { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
-.contrib-pill.lit .count { color: var(--ink); }
-.contrib-pill.now { box-shadow: 0 0 0 1px var(--accent); }
 .contrib-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 12px; text-align: center; }
 .contrib-empty .sub { margin: 0 0 6px; }
-.contrib-sprint { display: flex; align-items: baseline; justify-content: center; gap: 6px 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
-.contrib-sprint b { color: var(--ink); }
-.contrib-sprint .goal { color: var(--ink); }
 
 /* ---------- the dashboard's GitHub sync card ---------- */
 .sync-widget .header-top { align-items: center; flex-wrap: wrap; }
 .sync-widget h2 { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.sync-widget.embedded { display: flex; flex-direction: column; gap: 12px; }
+.sw-actions { display: flex; align-items: center; gap: 8px; }
 .sw-title { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; }
 .sw-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
 .sw-repo { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; font-size: 13px; }

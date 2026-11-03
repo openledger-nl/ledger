@@ -59,6 +59,18 @@
 		remember();
 	}
 
+	/** Choosing a project unfolds it and goes to its page. Choosing the one that is already unfolded folds it instead and
+	 *  goes nowhere: what is open stays open, be it the project's page, a thread or a deliverable. */
+	function choose(e: MouseEvent, slug: string) {
+		const plain = e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey;
+		if (open === slug && plain) {
+			e.preventDefault();
+			toggle(slug);
+		} else {
+			unfold(slug);
+		}
+	}
+
 	// Going to a project, from anywhere, unfolds it. Folding it again by hand sticks until another project is chosen.
 	$effect(() => {
 		const slug = currentProject;
@@ -114,6 +126,8 @@
 
 	// On a narrow window the drawer closes after every choice (but not after folding a project).
 	function closeDrawer(e: MouseEvent) {
+		// Folding a project goes nowhere, so the drawer stays.
+		if (e.defaultPrevented) return;
 		const target = (e.target as HTMLElement).closest('a, button');
 		if (target && !target.classList.contains('folder-toggle')) drawer.open = false;
 	}
@@ -146,7 +160,7 @@
 				>
 					{#if unfolded}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
 				</button>
-				<a class="folder-link" href={projectUrl(p.slug)} onclick={() => unfold(p.slug)}>
+				<a class="folder-link" href={projectUrl(p.slug)} onclick={(e) => choose(e, p.slug)}>
 					<span class="name">{p.name}</span>
 					<span class="count">{p.threads.length || ''}</span>
 				</a>

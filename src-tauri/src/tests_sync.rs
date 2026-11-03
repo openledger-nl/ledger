@@ -10,6 +10,7 @@ use tempfile::tempdir;
 use crate::crypto::{self, CryptoError, Key};
 use crate::encrypted_remote::EncryptedRemote;
 use crate::error::{Error, Result};
+use crate::github::last_page;
 use crate::keystore::{EnvFileKeyStore, KeyStore};
 use crate::sync::{self, Change, DiskApplier, Head, Outcome, Remote, blob_sha};
 
@@ -193,6 +194,14 @@ fn the_overview_names_the_key_once_everything_on_github_is_sealed() {
     let overview = sync::overview(dir.path(), "me/notes", "main").unwrap();
     assert_eq!(overview.key, Some(format!("{:02x}", key().id())));
     assert_eq!(overview.files, 1);
+}
+
+#[test]
+fn the_commit_count_is_the_last_page_of_a_page_per_commit() {
+    let link = r#"<https://api.github.com/repositories/9/commits?sha=abc&per_page=1&page=2>; rel="next", <https://api.github.com/repositories/9/commits?sha=abc&per_page=1&page=57>; rel="last""#;
+    assert_eq!(last_page(link), Some(57), "per_page=1 is not the page");
+    assert_eq!(last_page(r#"<https://api.github.com/x?page=2&per_page=1>; rel="next""#), None, "no last link: one page only");
+    assert_eq!(last_page(""), None);
 }
 
 #[test]

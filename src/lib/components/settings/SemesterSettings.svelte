@@ -94,7 +94,7 @@
 			<h3>No semester set up yet</h3>
 			<p class="sub">
 				Start from the NJ26 preset, or give a semester a first and a last day (half a year) and Ledger cuts it into sprints. Name them, set a
-				goal for each, or move their dates. On the dashboard you then see how much you made per sprint.
+				goal for each, or move their dates. The dashboard's contribution graph then follows the semester, day by day.
 			</p>
 			<div class="sem-empty-actions">
 				<button class="btn primary" onclick={() => add(nj26Draft())}><Plus size={16} />Add preset NJ26</button>

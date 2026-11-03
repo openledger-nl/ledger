@@ -534,6 +534,22 @@ pub fn sync_overview(app: State<App>) -> Option<crate::sync::Overview> {
     crate::sync::overview(&root, &config.repo, &config.branch)
 }
 
+/// How many commits the synced branch holds, as far as the last agreed commit, asked of GitHub. Nothing while sync is
+/// off or hasn't run yet; an error when GitHub can't be reached, which the sync card leaves out.
+#[tauri::command]
+pub async fn sync_commits(app: State<'_, App>) -> Result<Option<u64>> {
+    let (root, config) = {
+        let core = app.lock();
+        (core.vault.root().to_path_buf(), core.sync.clone())
+    };
+    let Some(config) = config else { return Ok(None) };
+    let Some(head) = crate::sync::overview(&root, &config.repo, &config.branch).and_then(|o| o.head) else { return Ok(None) };
+    let count = tauri::async_runtime::spawn_blocking(move || GithubRemote::new(&config)?.commit_count(&head))
+        .await
+        .map_err(|e| Error::sync(format!("Counting the commits stopped unexpectedly: {e}")))??;
+    Ok(Some(count))
+}
+
 /// Saves the repository and branch to the vault's settings and the token to its `.env`, and starts syncing. A
 /// blank token keeps the one already saved.
 #[tauri::command]

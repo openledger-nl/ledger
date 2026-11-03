@@ -1,13 +1,14 @@
 <script lang="ts">
+	import Wrench from '@lucide/svelte/icons/wrench';
 	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import { dayKey, LOCALE, plural } from '$lib/format';
-	import { currentSprint, nearestSemester, parseDay, spanLabel, sprintLabel } from '$lib/semesters';
+	import { nearestSemester, parseDay } from '$lib/semesters';
 	import type { ActivityEvent, ActivityKind, ProjectSummary, Semester } from '$lib/types';
 
 	// A stretch of days, a square each, shaded by how much was made that day: like GitHub's contribution graph.
 	// Weeks run down the columns, Monday first. Days are local days, so an evening's work lands on that evening.
-	// It opens on a semester. Under it each sprint is a pill: the ones in the scope are lit and what the squares show,
-	// the others stay greyed. Click a greyed pill to widen the scope to it, a lit one to narrow the scope past it.
+	// It opens on a semester and draws all of it: today has a ring and the days still to come are dashed and empty, so what
+	// is left of the semester shows next to what was made.
 
 	let { events, projects, semesters }: { events: ActivityEvent[]; projects: ProjectSummary[]; semesters: Semester[] } = $props();
 
@@ -17,8 +18,6 @@
 	 *  we're in, or the nearest one. */
 	const opening = () => `sem:${nearestSemester(semesters)?.id ?? ''}`;
 	let period = $state(opening());
-	/** Within a semester: the first and last sprint in the scope, as indexes; null for all of them. */
-	let scope = $state<{ from: number; to: number } | null>(null);
 
 	const KIND: Record<ActivityKind, [string, string]> = {
 		post: ['post', 'posts'],
@@ -42,7 +41,7 @@
 	const longDate = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 	const shortDate = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' });
 
-	type Day = { date: Date; key: string; kinds: Partial<Record<ActivityKind, number>>; total: number; level: number };
+	type Day = { date: Date; key: string; kinds: Partial<Record<ActivityKind, number>>; total: number; level: number; today: boolean; future: boolean };
 
 	const mine = $derived(project ? events.filter((e) => e.projectSlug === project) : events);
 
@@ -64,38 +63,14 @@
 
 	const bySemester = $derived(period.startsWith('sem:'));
 	const semester = $derived(bySemester ? semesters.find((s) => `sem:${s.id}` === period) : undefined);
-	const sprints = $derived(semester?.sprints ?? []);
-	/** The scope, kept inside the semester's sprints. */
-	const first = $derived(Math.max(0, Math.min(scope?.from ?? 0, sprints.length - 1)));
-	const last = $derived(Math.max(first, Math.min(scope?.to ?? sprints.length - 1, sprints.length - 1)));
-	const whole = $derived(first === 0 && last === sprints.length - 1);
-	const inWindow = (i: number) => i >= first && i <= last;
-
-	function choosePeriod(value: string) {
-		period = value;
-		scope = null;
-	}
-
-	/** A greyed pill widens the scope to include it; a lit one narrows the scope past it, from the nearer end. The
-	 *  last lit pill stays. */
-	function pick(i: number) {
-		if (!inWindow(i)) scope = { from: Math.min(first, i), to: Math.max(last, i) };
-		else if (first === last) return;
-		else if (i - first < last - i) scope = { from: i + 1, to: last };
-		else scope = { from: first, to: i - 1 };
-	}
 
 	/** The days shown; null while there is no semester to look at. */
 	const range = $derived.by(() => {
-		if (semester) {
-			return whole
-				? { from: parseDay(semester.start) as Date, to: parseDay(semester.end) as Date }
-				: { from: parseDay(sprints[first].start) as Date, to: parseDay(sprints[last].end) as Date };
-		}
+		if (semester) return { from: parseDay(semester.start) as Date, to: parseDay(semester.end) as Date };
 		return bySemester ? null : { from: new Date(+period, 0, 1), to: new Date(+period, 11, 31) };
 	});
-	/** Squares grow as the stretch shrinks: a year, a semester, a few sprints. */
-	const size = $derived(semester && range ? ((range.to.getTime() - range.from.getTime()) / DAY < 60 ? 'big' : 'mid') : '');
+	/** Squares grow a little for a semester, which is shorter than a year. */
+	const size = $derived(semester ? 'mid' : '');
 
 	const projectOptions = $derived<DropdownOption[]>([
 		{ value: '', label: 'All projects' },
@@ -108,7 +83,8 @@
 		...years.map((y) => ({ value: String(y), label: String(y), group: 'Year' }))
 	]);
 
-	/** The weeks shown, each seven days from Monday; null where a day falls outside the period or in the future. */
+	/** The weeks shown, each seven days from Monday; null where a day falls outside the period. A year stops at today,
+	 *  a semester goes on to its last day: those days are drawn, but empty. */
 	const weeks = $derived.by(() => {
 		const out: (Day | null)[][] = [];
 		if (!range) return out;
@@ -116,12 +92,12 @@
 			const week: (Day | null)[] = [];
 			for (let i = 0; i < 7; i++) {
 				const date = addDays(monday, i);
-				if (date < range.from || date > range.to || date > today) {
+				if (date < range.from || date > range.to || (date > today && !semester)) {
 					week.push(null);
 					continue;
 				}
 				const key = keyOf(date);
-				week.push({ date, key, kinds: byDay.get(key) ?? {}, total: totalOf(key), level: 0 });
+				week.push({ date, key, kinds: byDay.get(key) ?? {}, total: totalOf(key), level: 0, today: date.getTime() === today.getTime(), future: date > today });
 			}
 			out.push(week);
 		}
@@ -149,6 +125,7 @@
 		return off;
 	});
 	const total = $derived(days.reduce((n, d) => n + d.total, 0));
+	const hasToday = $derived(days.some((d) => d.today));
 
 	/** A month's name above the first week in which it starts; dropped when it would crowd the one before. */
 	const months = $derived.by(() => {
@@ -160,16 +137,6 @@
 			labels.push({ column, label: monthFormat.format(first.date) });
 		});
 		return labels;
-	});
-
-	/** The pills: each sprint with what was made in it, whatever the scope. */
-	const pills = $derived.by(() => {
-		const now = semester ? currentSprint(semester) : -1;
-		return sprints.map((s, index) => {
-			let count = 0;
-			for (let d = parseDay(s.start) as Date; d <= (parseDay(s.end) as Date); d = addDays(d, 1)) count += totalOf(keyOf(d));
-			return { index, s, count, now: index === now, ahead: (parseDay(s.start) as Date) > today };
-		});
 	});
 
 	const stats = $derived.by(() => {
@@ -188,7 +155,7 @@
 			current++;
 			day = addDays(day, -1);
 		}
-		return { active: days.filter((d) => d.total > 0).length, longest, current, busiest };
+		return { active: days.filter((d) => d.total > 0).length, longest, current, busiest, left: days.filter((d) => d.future).length };
 	});
 
 	const breakdown = (d: Day) =>
@@ -215,16 +182,19 @@
 		tip = { day, x, y: a.top - b.top };
 	}
 
-	// The newest weeks are on the right: start there when the graph is wider than its box.
+	// When the graph is wider than its box, start with today in the middle; a stretch without it starts at the newest
+	// weeks, on the right.
 	let scroller: HTMLElement | undefined = $state();
 	$effect(() => {
 		void weeks;
-		if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+		if (!scroller) return;
+		const cell = scroller.querySelector<HTMLElement>('.contrib-day.today');
+		if (!cell) return void (scroller.scrollLeft = scroller.scrollWidth);
+		const at = cell.getBoundingClientRect().left - scroller.getBoundingClientRect().left + scroller.scrollLeft;
+		scroller.scrollLeft = at - (scroller.clientWidth - cell.offsetWidth) / 2;
 	});
 
-	const periodLabel = $derived(
-		semester ? (whole ? `in ${semester.name}` : first === last ? `in ${sprints[first].name}` : `in ${sprints[first].name} – ${sprints[last].name}`) : `in ${period}`
-	);
+	const periodLabel = $derived(semester ? `in ${semester.name}` : `in ${period}`);
 </script>
 
 <section class="panel contrib" aria-label="Contributions" bind:this={box}>
@@ -235,14 +205,15 @@
 		</h2>
 		<div class="contrib-filters">
 			<Dropdown bind:value={project} options={projectOptions} label="Project" align="end" />
-			<Dropdown bind:value={() => period, choosePeriod} options={periodOptions} label="Period" align="end" />
+			<Dropdown bind:value={period} options={periodOptions} label="Period" align="end" />
+			<a class="btn small" href="/settings/semesters" title="Set up the semesters this graph follows"><Wrench size={14} />Semesters</a>
 		</div>
 	</div>
 
 	{#if !range}
 		<div class="contrib-empty">
 			<b>No semester set up yet</b>
-			<p class="sub">Set one up to see what you made per sprint, or pick a year above.</p>
+			<p class="sub">Set one up to follow it here, day by day, or pick a year above.</p>
 			<a class="btn primary small" href="/settings/semesters">Set up a semester</a>
 		</div>
 	{:else}
@@ -250,7 +221,6 @@
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="contrib-grid"
-				class:big={size === 'big'}
 				class:mid={size === 'mid'}
 				style="--weeks: {weeks.length}"
 				role="group"
@@ -267,60 +237,44 @@
 				{#each weeks as week, w (w)}
 					{#each week as d, i (i)}
 						{#if d}
-							<span class="contrib-day l{d.level}" class:today={d.key === keyOf(today)} class:vac={offDays.has(d.key)} style="grid-column: {w + 2}; grid-row: {i + 2}" data-key={d.key}></span>
+							<span class="contrib-day l{d.level}" class:today={d.today} class:future={d.future} class:vac={offDays.has(d.key)} style="grid-column: {w + 2}; grid-row: {i + 2}" data-key={d.key}></span>
 						{/if}
 					{/each}
 				{/each}
 			</div>
 		</div>
 
-		{#if semester}
-			<div class="contrib-scope" role="group" aria-label="Sprints shown">
-				{#each pills as p (p.index)}
-					<button
-						type="button"
-						class="contrib-pill"
-						class:lit={inWindow(p.index)}
-						class:now={p.now}
-						aria-pressed={inWindow(p.index)}
-						title="{p.s.name} · {spanLabel(p.s.start, p.s.end)} · {plural(p.count, 'contribution')}{p.s.goal ? ` · Goal: ${p.s.goal}` : ''}{inWindow(p.index) ? (first === last ? '' : ' · click to leave it out') : ' · click to include it'}"
-						onclick={() => pick(p.index)}
-					>
-						<span class="label">{sprintLabel(p.s.name, p.index)}</span>
-						{#if !p.ahead}<span class="count">{p.count}</span>{/if}
-					</button>
-				{/each}
-				{#if !whole}<button type="button" class="link accent" onclick={() => (scope = null)}>Whole semester</button>{/if}
-			</div>
-			{#if first === last && sprints.length > 1}
-				<div class="contrib-sprint">
-					<span><b>{sprints[first].name}</b> · {spanLabel(sprints[first].start, sprints[first].end)}</span>
-					{#if sprints[first].goal}<span class="goal">Goal: {sprints[first].goal}</span>{/if}
-				</div>
-			{/if}
-		{/if}
-
 		<div class="contrib-foot">
 			<div class="contrib-stats">
 				<span><b>{stats.active}</b> active {stats.active === 1 ? 'day' : 'days'}</span>
 				<span><b>{stats.current}</b> {stats.current === 1 ? 'day' : 'days'} current streak</span>
 				<span><b>{stats.longest}</b> {stats.longest === 1 ? 'day' : 'days'} longest streak</span>
+				{#if stats.left}<span><b>{stats.left}</b> {stats.left === 1 ? 'day' : 'days'} left</span>{/if}
 				{#if stats.busiest}
 					<span>Busiest: <b>{shortDate.format(stats.busiest.date)}</b> ({stats.busiest.total})</span>
 				{/if}
 			</div>
 			<div class="contrib-legend" aria-hidden="true">
-				Less
-				{#each [0, 1, 2, 3, 4] as l (l)}<span class="contrib-day l{l}"></span>{/each}
-				More
+				{#if hasToday}<span class="key"><span class="contrib-day today"></span>Today</span>{/if}
+				{#if stats.left}<span class="key"><span class="contrib-day future"></span>Still to come</span>{/if}
+				<span class="key scale">
+					Less
+					{#each [0, 1, 2, 3, 4] as l (l)}<span class="contrib-day l{l}"></span>{/each}
+					More
+				</span>
 			</div>
 		</div>
 	{/if}
 
 	{#if tip}
 		<div class="contrib-tip" style="left: {tip.x}px; top: {tip.y}px" role="tooltip">
-			<b>{tip.day.total ? plural(tip.day.total, 'contribution') : 'No contributions'}</b> on {longDate.format(tip.day.date)}
-			{#if tip.day.total}<span>{breakdown(tip.day)}</span>{/if}
+			{#if tip.day.future}
+				<b>Still to come</b> · {longDate.format(tip.day.date)}
+			{:else}
+				<b>{tip.day.total ? plural(tip.day.total, 'contribution') : tip.day.today ? 'No contributions yet' : 'No contributions'}</b>
+				{tip.day.today ? 'today,' : 'on'} {longDate.format(tip.day.date)}
+				{#if tip.day.total}<span>{breakdown(tip.day)}</span>{/if}
+			{/if}
 			{#if offDays.has(tip.day.key)}<span>Vacation: {offDays.get(tip.day.key)}</span>{/if}
 		</div>
 	{/if}

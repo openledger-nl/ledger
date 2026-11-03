@@ -79,6 +79,19 @@ impl GithubRemote {
         Ok(())
     }
 
+    /// How many commits lead up to `head`. With one commit to a page, the number of the last page is the count.
+    pub fn commit_count(&self, head: &str) -> Result<u64> {
+        let response = self.request(Method::GET, &self.repo_path(&format!("/commits?sha={head}&per_page=1")), None, "application/vnd.github+json")?;
+        let status = response.status();
+        let link = response.headers().get("link").and_then(|v| v.to_str().ok()).map(str::to_string);
+        let body: Value = response.json().unwrap_or(Value::Null);
+        if !status.is_success() {
+            return Err(failure(status, &body));
+        }
+        // Without a `last` link everything fits on one page: nothing, or the one commit.
+        Ok(link.as_deref().and_then(last_page).unwrap_or_else(|| body.as_array().map_or(0, |commits| commits.len() as u64)))
+    }
+
     fn repo_path(&self, rest: &str) -> String {
         format!("/repos/{}{rest}", self.repo)
     }
@@ -114,6 +127,15 @@ impl GithubRemote {
         let (status, json) = self.call(method, path, body)?;
         if status.is_success() { Ok(json) } else { Err(failure(status, &json)) }
     }
+}
+
+/// The number of the page that a `Link` header calls `last`:
+/// `<https://api.github.com/repositories/1/commits?sha=x&per_page=1&page=57>; rel="last"` → 57.
+pub fn last_page(link: &str) -> Option<u64> {
+    let last = link.split(',').find(|part| part.contains("rel=\"last\""))?;
+    let url = last.split(['<', '>']).nth(1)?;
+    let query = url.split_once('?')?.1;
+    query.split('&').find_map(|pair| pair.strip_prefix("page=")?.parse().ok())
 }
 
 fn failure(status: StatusCode, body: &Value) -> Error {

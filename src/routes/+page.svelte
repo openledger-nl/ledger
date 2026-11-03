@@ -7,8 +7,7 @@
 	import MessagesSquare from '@lucide/svelte/icons/messages-square';
 	import Plus from '@lucide/svelte/icons/plus';
 	import SquareKanban from '@lucide/svelte/icons/square-kanban';
-	import Wrench from '@lucide/svelte/icons/wrench';
-	import { deliverableUrl, newProjectFlow, newThreadFlow, projectUrl, snapshotPath, threadUrl } from '$lib/actions';
+	import { deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, snapshotPath, threadUrl } from '$lib/actions';
 	import ContributionGraph from '$lib/components/ContributionGraph.svelte';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
 	import SyncWidget from '$lib/components/SyncWidget.svelte';
@@ -156,6 +155,7 @@
 				<SquareKanban size={14} />Board{#if c.openTasks}<span class="n">{c.openTasks} open</span>{/if}
 			</a>
 			<button class="btn small ghost" onclick={() => newThreadFlow(p.slug)}><Plus size={14} />New thread</button>
+			<button class="btn small ghost" onclick={() => newDeliverableFlow(p.slug)}><Plus size={14} />New deliverable</button>
 			<a class="btn small proj-open" href={projectUrl(p.slug)}>Open project<ArrowRight size={14} /></a>
 		</footer>
 	</article>
@@ -181,7 +181,6 @@
 				<div class="sub">{today} · {plural(data.projects.length, 'project')} in your vault</div>
 			</div>
 			<div class="header-actions">
-				<a class="btn" href="/settings/semesters"><Wrench size={16} />Semesters</a>
 				<button class="btn primary" onclick={newProjectFlow}><Plus size={16} />New project</button>
 			</div>
 		</div>
