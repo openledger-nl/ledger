@@ -56,6 +56,14 @@ GITHUB_TOKEN=github_pat_…
 
 Use a [fine-grained token](https://github.com/settings/personal-access-tokens/new) limited to that one repository with **Contents: Read and write**. The repository must already have a commit (a README will do).
 
+### Encrypting what goes to GitHub
+
+**Settings → Sync to GitHub → Encryption** seals the vault before it is uploaded. The vault on disk stays plain markdown; only the copy on GitHub is encrypted, with a key that stays on this machine (`LEDGER_ENCRYPTION_KEY` in `.ledger/.env`) and is never uploaded. Export the recovery key to use the same repository on another machine, and keep a copy somewhere else: without the key, the copy on GitHub can't be read by anyone.
+
+- **What is encrypted**: the contents of every file (compressed, then AES-256-GCM) and every file's path. On GitHub each file is stored under a keyed hash of its path (32 hex digits, all side by side in the top folder), and one more file, `manifest`, holds the real paths, encrypted. No project, thread, deliverable or upload name can be read there, and neither can how the files are grouped into folders. A file's encryption is bound to its real path, so a file put under another name on GitHub doesn't open.
+- **What stays visible** to anyone who can read the repository: that it is a Ledger vault, how many files it holds, roughly how big each one is (about its compressed size), and when files are added, changed or removed: the commits, whose messages count the files updated and removed. The manifest changes when a file is added or removed, not when one is edited.
+- **Encryption starts fresh**, on a new repository or on a branch that doesn't exist yet. A branch that already holds the vault in plain text is never converted, because its history would keep the files. Nor is a branch encrypted by an earlier version of Ledger, which left the paths readable: sync stops there and says so. Change the branch to a new one, on every machine, and the vault goes up there with its names hidden; the old branch can be deleted on GitHub once every machine has moved.
+
 ## What it does
 
 - **Projects** — each has a reading guide (its `README.md`, rendered and editable on the overview), threads, deliverables, user stories, a board and templates. Deleting a project removes its folder.
