@@ -301,6 +301,56 @@ pub struct Board {
     pub stories: Vec<StorySummary>,
 }
 
+// ---- semesters and sprints ----------------------------------------------------------------------------
+
+/// A stretch of a semester. Dates are calendar days ("2026-09-01"), inclusive at both ends.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Sprint {
+    pub name: String,
+    pub start: String,
+    pub end: String,
+    pub goal: String,
+}
+
+/// Days off within a semester: the sprint clock stops, and starts again after it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Vacation {
+    pub name: String,
+    pub start: String,
+    pub end: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemesterView {
+    pub id: String,
+    pub name: String,
+    pub start: String,
+    pub end: String,
+    pub sprint_weeks: i64,
+    pub notes: String,
+    pub sprints: Vec<Sprint>,
+    pub vacations: Vec<Vacation>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// What the caller supplies to create or change a semester. Without sprints, they are cut from the start in
+/// stretches of `sprint_weeks` weeks of work, around the vacations.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SemesterDraft {
+    pub name: String,
+    pub start: String,
+    pub end: String,
+    pub sprint_weeks: i64,
+    pub notes: String,
+    pub sprints: Vec<Sprint>,
+    pub vacations: Vec<Vacation>,
+}
+
 // ---- activity ---------------------------------------------------------------------------------------
 
 /// One thing made in a project, at a moment: what the contribution graph counts.

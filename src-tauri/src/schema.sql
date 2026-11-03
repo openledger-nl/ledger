@@ -251,3 +251,36 @@ CREATE TABLE tasks (
     FOREIGN KEY (project_slug, column_id) REFERENCES project_columns(project_slug, id),
     FOREIGN KEY (project_slug) REFERENCES projects(slug) ON DELETE CASCADE
 );
+
+-- A semester: half a year, set by hand, cut into sprints (three weeks unless chosen otherwise). Kept as
+-- semesters/<id>.md. Dates are calendar days, "2026-09-01", inclusive at both ends.
+CREATE TABLE semesters (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    start_date   TEXT NOT NULL,
+    end_date     TEXT NOT NULL,
+    sprint_weeks INTEGER NOT NULL DEFAULT 3,
+    notes        TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+
+CREATE TABLE sprints (
+    semester_id TEXT NOT NULL REFERENCES semesters(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    start_date  TEXT NOT NULL,
+    end_date    TEXT NOT NULL,
+    goal        TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (semester_id, position)
+);
+
+-- Days off within a semester, in order and not overlapping. Sprints are counted in days of work, around them.
+CREATE TABLE vacations (
+    semester_id TEXT NOT NULL REFERENCES semesters(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    start_date  TEXT NOT NULL,
+    end_date    TEXT NOT NULL,
+    PRIMARY KEY (semester_id, position)
+);

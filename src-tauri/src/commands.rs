@@ -19,7 +19,7 @@ use crate::screenshot::{self, Region, ScreenshotSettings};
 use crate::settings::{self, SyncConfig, SyncEnv};
 use crate::state::App;
 use crate::syncer::SyncStatus;
-use crate::{activity, board, deliverables, feedback, markdown, posts, projects, prompts, provenance, search, stories, templates, threads, uploads};
+use crate::{activity, board, semesters, deliverables, feedback, markdown, posts, projects, prompts, provenance, search, stories, templates, threads, uploads};
 
 #[tauri::command]
 pub fn render_markdown(body: String) -> String {
@@ -29,6 +29,27 @@ pub fn render_markdown(body: String) -> String {
 #[tauri::command]
 pub fn search(app: State<App>, query: String) -> Result<Vec<SearchHit>> {
     app.read(|c, _| search::search(c, &query))
+}
+
+/// Every semester with its sprints, the earliest first.
+#[tauri::command]
+pub fn list_semesters(app: State<App>) -> Result<Vec<SemesterView>> {
+    app.read(|c, _| semesters::list(c))
+}
+
+#[tauri::command]
+pub fn create_semester(app: State<App>, draft: SemesterDraft) -> Result<SemesterView> {
+    app.mutate(|c, _| semesters::create(c, &draft))
+}
+
+#[tauri::command]
+pub fn update_semester(app: State<App>, id: String, draft: SemesterDraft) -> Result<SemesterView> {
+    app.mutate(|c, _| semesters::update(c, &id, &draft))
+}
+
+#[tauri::command]
+pub fn delete_semester(app: State<App>, id: String) -> Result<()> {
+    app.mutate(|c, _| semesters::delete(c, &id))
 }
 
 /// Everything made in the vault and when, oldest first: the contribution graph's events.

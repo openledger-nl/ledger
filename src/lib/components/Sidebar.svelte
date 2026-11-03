@@ -1,4 +1,5 @@
 <script lang="ts">
+	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import House from '@lucide/svelte/icons/house';
@@ -95,6 +96,7 @@
 
 	<a class="nav-item" class:active={path === '/'} href="/"><span class="nav-ico"><House size={16} /></span>Home</a>
 	<a class="nav-item" class:active={on('/templates')} href="/templates"><span class="nav-ico"><LayoutTemplate size={16} /></span>Templates</a>
+	<a class="nav-item" class:active={on('/semesters')} href="/semesters"><span class="nav-ico"><CalendarRange size={16} /></span>Semesters</a>
 
 	<div class="section-head">
 		<span>Projects</span>

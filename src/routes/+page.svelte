@@ -10,7 +10,7 @@
 	import { deliverableUrl, newProjectFlow, newThreadFlow, projectUrl, snapshotPath, threadUrl } from '$lib/actions';
 	import ContributionGraph from '$lib/components/ContributionGraph.svelte';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
-	import { ago, plural } from '$lib/format';
+	import { ago, LOCALE, plural } from '$lib/format';
 	import { dashboard, isPinned, togglePin } from '$lib/dashboard.svelte';
 	import type { DeliverableSummary, ThreadSummary } from '$lib/types';
 	import type { PageData } from './$types';
@@ -25,7 +25,7 @@
 	const newest = <T,>(items: readonly T[], at: (item: T) => string) => [...items].sort((a, b) => time(at(b)) - time(at(a)));
 	const within = (iso: string, ms: number) => Date.now() - time(iso) < ms;
 
-	const today = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+	const today = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 
 	/** Every project with what it shows, the most recently active first. */
 	const cards = $derived(
@@ -196,7 +196,7 @@
 	<div class="page">
 		<div class="page-inner wide">
 			{#if dashboard.showActivity}
-				<ContributionGraph events={data.activity} projects={data.projects} />
+				<ContributionGraph events={data.activity} projects={data.projects} semesters={data.semesters} />
 			{/if}
 			{#if pinned.length}
 				<section class="proj-group" aria-label="Pinned projects">

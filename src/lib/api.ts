@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
 	ActivityEvent,
+	Semester,
+	SemesterDraft,
 	Board,
 	Bump,
 	Column,
@@ -48,6 +50,12 @@ export const api = {
 	search: (query: string) => call<SearchHit[]>('search', { query }),
 	/** Everything made in the vault and when, oldest first: the contribution graph's events. */
 	listActivity: () => call<ActivityEvent[]>('list_activity'),
+
+	// semesters and their sprints
+	listSemesters: () => call<Semester[]>('list_semesters'),
+	createSemester: (draft: SemesterDraft) => call<Semester>('create_semester', { draft }),
+	updateSemester: (id: string, draft: SemesterDraft) => call<Semester>('update_semester', { id, draft }),
+	deleteSemester: (id: string) => call<void>('delete_semester', { id }),
 
 	// projects
 	listProjects: () => call<ProjectSummary[]>('list_projects'),

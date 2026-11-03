@@ -1,8 +1,12 @@
-// Timestamps arrive as UTC ISO strings; everything shown to people is in local time.
+// Timestamps arrive as UTC ISO strings; everything shown to people is in local time, written the European way:
+// day before month ("3 Nov 2026", "03-11-2026") and a 24-hour clock, whatever the system's own locale says.
 
-const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
-const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-const longDayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+/** The locale every date and number is shown in. */
+export const LOCALE = 'en-GB';
+
+const timeFormat = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const dateFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' });
+const longDayFormat = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
 
 export const time = (iso: string) => timeFormat.format(new Date(iso));
 

@@ -8,12 +8,12 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 use crate::frontmatter::{self, MetaExt};
-use crate::models::{Bump, Criterion, StoryDraft, TaskUpdate};
+use crate::models::{Bump, Criterion, SemesterDraft, StoryDraft, TaskUpdate};
 use crate::posts::AddOptions;
 use crate::provenance::{self, Origin};
 use crate::settings::{self, SyncEnv};
 use crate::vault::{self, Vault};
-use crate::{board, db, deliverables, feedback, posts, projects, prompts, stories, templates, threads, uploads};
+use crate::{board, db, deliverables, feedback, posts, projects, prompts, semesters, stories, templates, threads, uploads};
 
 fn write(root: &Path, rel: &str, text: &str) {
     let file = root.join(rel);
@@ -40,6 +40,18 @@ fn open(root: &Path) -> (Vault, Connection) {
 /// A vault with a bit of everything in it. Returns the project and thread slugs.
 fn populate(conn: &Connection, root: &Path) -> (String, String) {
     templates::create(conn, "", "Interview", "after a call", &["Who?".into(), "Why: really?".into()], "# Interview\n\n## Who\n").unwrap();
+    let autumn = SemesterDraft {
+        name: "Semester 1: autumn".into(),
+        start: "2026-09-01".into(),
+        end: "2027-01-31".into(),
+        notes: "Exams in week 4.".into(),
+        vacations: vec![crate::models::Vacation { name: "Christmas".into(), start: "2026-12-21".into(), end: "2027-01-03".into() }],
+        ..Default::default()
+    };
+    let made = semesters::create(conn, &autumn).unwrap();
+    let mut sprints = made.sprints.clone();
+    sprints[0].goal = "Pick: the client".into();
+    semesters::update(conn, &made.id, &SemesterDraft { sprints, ..autumn }).unwrap();
     let project = projects::create(conn, "Acme").unwrap().slug;
     templates::create(conn, &project, "House style", "", &[], "Short sentences.").unwrap();
     projects::save_readme(conn, &project, "# Acme\n\nRead the call notes first.\n").unwrap();
@@ -97,7 +109,7 @@ fn snapshot(conn: &Connection, root: &Path) -> String {
         }
         out += &format!("{:?}\n{:?}\n{:?}\n", stories::list(conn, &p.slug).unwrap(), board::get(conn, &p.slug).unwrap(), templates::for_project(conn, &p.slug).unwrap());
     }
-    out + &format!("{:?}\n", templates::list(conn, "").unwrap())
+    out + &format!("{:?}\n{:?}\n", templates::list(conn, "").unwrap(), semesters::list(conn).unwrap())
 }
 
 // ---- what the files look like -----------------------------------------------------------------------
@@ -413,6 +425,37 @@ fn a_hand_written_vault_loads_and_is_repaired() {
     assert_eq!(snapshot(&conn, root), snapshot(&again, root));
     assert_eq!(again_vault.persist(&again).unwrap(), 0);
     assert_eq!(read(root, "projects/ideas/deliverables/x.md"), "---\ntitle: X\nauthor: me\n---\n\n# The brief\n", "not rewritten");
+}
+
+#[test]
+fn a_hand_written_semester_loads_with_european_dates_and_gets_its_sprints() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "semesters/spring.md", "---\nname: Spring 2027\nstart: 01-02-2027\nend: 31-07-2027\nsprintWeeks: 3\n---\nInternship half.\n");
+    write(root, "semesters/broken.md", "---\nname: Broken\nstart: someday\nend: 2027-07-31\n---\n");
+    write(root, "semesters/odd.md", "---\nname: Odd sprints\nstart: 2027-08-01\nend: 2027-08-31\nsprints:\n  - name: Late\n    start: 2027-09-10\n    end: 2027-09-20\n---\n");
+    let (mut vault, conn) = open(root);
+
+    let all = semesters::list(&conn).unwrap();
+    let ids: Vec<_> = all.iter().map(|s| s.id.as_str()).collect();
+    assert_eq!(ids, ["spring", "odd"], "a semester without real dates is skipped");
+    assert_eq!((all[0].start.as_str(), all[0].end.as_str(), all[0].notes.as_str()), ("2027-02-01", "2027-07-31", "Internship half."));
+    assert_eq!(all[0].sprints.len(), 9); // 181 days: eight sprints of three weeks and one of 13 days
+    assert_eq!(all[1].sprints[0].start, "2027-08-01", "sprints outside the semester are cut again");
+
+    // Like every hand-written file, it keeps its form until it is changed in the app; a reload agrees.
+    assert_eq!(vault.persist(&conn).unwrap(), 0);
+    assert!(read(root, "semesters/spring.md").contains("start: 01-02-2027"));
+    let (_, again) = open(root);
+    assert_eq!(format!("{:?}", semesters::list(&conn).unwrap()), format!("{:?}", semesters::list(&again).unwrap()));
+
+    // Once changed in the app, it is written in the stored form, sprints and all.
+    let spring = &all[0];
+    let draft = SemesterDraft { name: spring.name.clone(), start: spring.start.clone(), end: spring.end.clone(), notes: "Internship.".into(), ..Default::default() };
+    semesters::update(&conn, "spring", &draft).unwrap();
+    vault.persist(&conn).unwrap();
+    let written = read(root, "semesters/spring.md");
+    assert!(written.contains("start: 2027-02-01") && written.contains("- name: Sprint 1") && written.ends_with("Internship.\n"), "{written}");
 }
 
 #[test]
