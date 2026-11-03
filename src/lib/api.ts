@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { capture, captureDebug, logError } from './log.svelte';
 import type {
 	ActivityEvent,
 	Semester,
@@ -34,14 +35,21 @@ import type {
 } from './types';
 
 /** Commands reject with a plain message; surface it as an `Error` so callers can `catch (e)` uniformly. */
-async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+/** Runs a backend command; a failure is written to the app's log (unless `log` is false) and thrown. */
+async function call<T>(command: string, args?: Record<string, unknown>, log = true): Promise<T> {
 	if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
 		throw new Error('Ledger needs its desktop shell — start it with `pnpm run tauri dev`.');
 	}
+	const started = performance.now();
 	try {
-		return await invoke<T>(command, args);
+		const result = await invoke<T>(command, args);
+		// A debug capture records each action by name and time only: the arguments hold what you wrote.
+		if (log && capture.active) captureDebug(command, `ok in ${Math.round(performance.now() - started)} ms`);
+		return result;
 	} catch (e) {
-		throw new Error(typeof e === 'string' ? e : e instanceof Error ? e.message : String(e));
+		const message = typeof e === 'string' ? e : e instanceof Error ? e.message : String(e);
+		if (log) logError(command, `${message}${capture.active ? ` (after ${Math.round(performance.now() - started)} ms)` : ''}`);
+		throw new Error(message);
 	}
 }
 
@@ -256,4 +264,32 @@ export const trelloApi = {
 	/** Gives an item that stopped syncing a new card on the next sync (the old card is left alone). */
 	trelloRelinkItem: (project: string, kind: 'task' | 'story', id: string) =>
 		call<TrelloView>('trello_relink_item', { project, kind, id })
+};
+
+// ---- Updating Ledger from inside the app (see src-tauri/src/updates.rs) -----------------------------
+
+import type { InstallStep, RunsChoice, UpdateCheck, UpdateInfo, UpdateView } from './types';
+
+export const updatesApi = {
+	status: () => call<UpdateView>('update_status'),
+	/** Whether to look for updates by itself; kept for this machine, not in the vault. */
+	saveSettings: (automatic: boolean) => call<UpdateView>('save_update_settings', { automatic }),
+	/** Looks now, whether or not automatic checks are on. */
+	check: () => call<UpdateCheck>('check_for_updates'),
+	/** Downloads (once), waits for syncs and runs, installs and restarts. Call again while the answer is to wait. */
+	install: (choice: RunsChoice) => call<InstallStep>('install_update', { choice }),
+	/** Development builds only: pretend a release was found. */
+	simulate: (major: boolean) => call<UpdateInfo>('simulate_update', { major })
+};
+
+import type { AboutInfo, LogEntry } from './types';
+
+export const logApi = {
+	/** The last entries of the log, oldest first. */
+	// Not logged: reading the log must not write to it, or a screen that follows the log could go round in circles.
+	read: (limit?: number) => call<LogEntry[]>('log_read', { limit }, false),
+	clear: () => call<void>('log_clear', undefined, false),
+	/** Sets the most the log may take on disk; resolves to the limit as set. */
+	setMaxBytes: (bytes: number) => call<number>('log_set_max_bytes', { bytes }),
+	about: () => call<AboutInfo>('about_info', undefined, false)
 };

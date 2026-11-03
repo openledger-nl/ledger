@@ -64,7 +64,7 @@ Use a [fine-grained token](https://github.com/settings/personal-access-tokens/ne
 - **Projects** — each has a reading guide (its `README.md`, rendered and editable on the overview), threads, deliverables, user stories, a board and templates. Deleting a project removes its folder.
 - **Threads** — one per topic you're juggling. A timeline of markdown posts (replies quote their parent; edit and delete), prompts, feedback and uploads, grouped by day. Threads can be linked to each other, in both directions, and to user stories.
 - **Prompts** — a request for a deliverable, written in a thread. Started from a **template**, its guiding questions are added to the thread as posts to answer first (a one-time snapshot), and replies to a question are shown inside its card. A prompt can create a deliverable (starting from the template's skeleton) or link existing ones.
-- **Deliverables** — files in the project's `deliverables/`. Markdown ones are edited in the app (write / split / preview, autosave); any other kind opens with the system's program. **Publish** a version (minor, major or a custom `M.m`) to freeze an immutable copy named `name@v0.1.ext`, which also drops a note in the thread of the prompt that produced it. Each deliverable has a **Produced by** window beside it (see below) and lists the feedback on it.
+- **Deliverables** — files in the project's `deliverables/`. Markdown ones are edited in the app, autosaved, in source mode (the raw markdown), live preview or reading mode, as in Obsidian; any other kind opens with the system's program. **Publish** a version (minor, major or a custom `M.m`) to freeze an immutable copy named `name@v0.1.ext`, which also drops a note in the thread of the prompt that produced it. Each deliverable has a **Produced by** window beside it (see below) and lists the feedback on it.
 - **Produced by, and AI use** — every published version records who made the change: you (you typed it), Claude Code (a run started from the app, which also links the version to its prompt), or AI you say you used elsewhere. The **Produced by** window on the right of a deliverable lists its threads and under each thread what happened there, in the order set under Settings → Order (newest first unless you change it): the prompt that asked for the file, the run, each version with who made it, its size and a SHA-256, and the feedback on it. The "version published" note in a thread links to the prompt that caused the version, and quotes the changelog you wrote for it ("from changelog: …"), if you wrote one. When you publish, a checkbox says the change was made with generative AI (it starts ticked when a Claude Code run changed the file and nothing published it), and you can attach a label from the [Me & My Machine](https://mmmlabel.tech) scheme — Lazy Prompter, Piggybacker, Cyborg, Handyman or Man-Made. Ledger records the facts; the label is yours to declare, per version, because it describes the product as it stands then. Versions published before this existed show what the runs and notes prove (versions a run published are known to be AI) and otherwise "origin not recorded"; **Details** has a button to mark them. The records are plain files, so they can be edited by hand.
 - **Feedback** — written in a thread, landing on a deliverable or on one of its published versions; open or resolved.
 - **Uploads** — pick files in a thread (they are copied into the project's `attachments/` and noted in an `uploads/<id>.md` manifest with a description). Screenshots land the same way.
@@ -72,6 +72,7 @@ Use a [fine-grained token](https://github.com/settings/personal-access-tokens/ne
 - **User stories** — an id you choose (`MM01`), a summary, "As a / I want to / Such that", notes and acceptance criteria you tick off. A story links to any number of threads.
 - **Board** — per project, with customisable columns (Backlog → Doing → Done by default). Tasks can point at a story and a thread. Drag a card, or use its arrows, to change column; a column that still holds tasks can't be deleted.
 - **Screenshots** — press a global hotkey (default Ctrl/⌘+Shift+S) anywhere: your own screenshot tool (Flameshot, say) or the built-in capture takes the picture, and Ledger offers to attach it to the thread you have open. Pictures sent to Ledger with "Open with" land the same way. See below.
+- **Writing** — every markdown field (notes, prompts, feedback, descriptions, deliverables, templates, the reading guide) is the same inline editor ([CodeMirror 6](https://codemirror.net)). It edits the markdown itself, so the file gets exactly what you typed, but reads like the rendered page: headings, bold, code and links are shown as such and their marks fade away except where the cursor is, tables are drawn as tables until you click into one, and pictures are shown in place. Task boxes can be ticked, Ctrl/⌘+click opens a link, and Ctrl/⌘+B, I and K make bold, italic and a link.
 - **Dashboard** (Home) — a card per project, the most recently active first, with its three latest threads and two latest deliverables, and links to its board and a new thread. **Pin** a project (the pin on its card) to keep it at the top. Above them, a contribution graph like GitHub's: a square per day, shaded by how much you made that day, for all projects or one. It opens on the semester you're in, with its sprints under the squares and what you made in each; pick a sprint to see only that one, or look at the last twelve months or a year. It counts what you make: threads, your posts, prompts, feedback, uploads, published versions, Claude Code runs, stories and tasks; not edits, which leave no history, nor what the app writes for you. Switch it off under Settings → Dashboard. Pins and that setting are kept per machine, like the theme.
 - **Semesters** (sidebar → Semesters) — half years you set by hand: a name, a first and a last day, and the vacations in them. Each is cut into sprints of three weeks of work (or another length for all, and any sprint can have a length of its own) from its first day. The sprint clock stops for a vacation: a sprint that runs into one carries on after it, one that would start in it starts after it, and less than a week of work left at the end joins the last sprint. So the sprints always fit; you name them and give them goals. Semesters can't share days, so a day belongs to one semester at most. Kept as `semesters/<id>.md`, synced like everything else; on the dashboard's graph vacation days are outlined.
 - **Dates** are shown the European way everywhere: day before month ("3 Nov 2026", typed as 03-11-2026) and a 24-hour clock. Files keep the ISO form (2026-11-03) that YAML and other tools expect; a hand-written semester may use either.
@@ -121,13 +122,47 @@ The built-in capture on Windows is exercised end to end. The macOS paths, and th
 
 ## Running it
 
+Install a release to use Ledger and get updates from inside the app; build it from source to work on it.
+
+### Installing a release
+
+Every [release](https://github.com/openledger-nl/ledger/releases) carries installers:
+
+| System | Download |
+|---|---|
+| Windows (64-bit) | `Ledger_X.Y.Z_x64-setup.exe`: installs for your account only, no administrator needed |
+| macOS (Apple silicon and Intel) | `Ledger_X.Y.Z_universal.dmg`: open it and drag Ledger to Applications |
+| Linux (x86-64) | `Ledger_X.Y.Z_amd64.AppImage` (`chmod +x` it and run it), or the `.deb` / `.rpm` for your package manager |
+
+The installers aren't signed with a Windows or Apple developer certificate yet, so the first start needs one extra step:
+
+- **Windows**: SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**. Your browser may also ask whether to keep the download.
+- **macOS**: the first time you open Ledger, macOS says it can't check it for malicious software and won't open it. Click **Done**, open **System Settings → Privacy & Security**, find "Ledger was blocked to protect your Mac" and click **Open Anyway**, then confirm. (Before macOS 15, right-clicking Ledger in Applications and choosing **Open** also works.) Without a developer certificate, macOS may ask again for the Screen Recording permission after an update.
+- **Linux**: nothing extra. The `.deb` and `.rpm` also add the desktop entry that *Open with* uses (see [Screenshots](#screenshots)).
+
+Updates don't need these steps again: Ledger downloads them itself and checks their signature.
+
+### Updates
+
+Ledger looks for a new release shortly after it starts and every few hours. When one is out, a notice in the corner shows the version and what changed, with **Install and restart** and **Later**. A major version (the first number goes up) and its breaking changes stand out: something you rely on may work differently afterwards. **Later** hides the notice until the next check. Nothing is installed until you click **Install and restart**.
+
+Installing downloads the new version and checks that it is signed with Ledger's key (the public half is built into the app, `plugins.updater` in `src-tauri/tauri.conf.json`); an update with a wrong or missing signature is refused, and the notice says so. It then waits until a restart cuts nothing off: a GitHub or Trello sync that is running finishes first, and if Claude Code is still running a prompt, you choose between waiting for it and stopping it. Then Ledger installs and restarts. Every change you make is written to the vault straight away, and changes not yet on GitHub are pushed when Ledger starts again. An update replaces the program only: the vault, its `.ledger/` folder and Ledger's config are left alone.
+
+**Settings → About** shows the version you have and has **Check for updates**. To stop the automatic checks, untick **Check for updates automatically** there; **Check for updates** still works. The choice belongs to this computer, not to the vault: it is kept in Ledger's `config.json` in the app's config folder (next to the vault's location), so another computer syncing the same vault keeps its own.
+
+Ledger built from source with `pnpm run tauri dev` (or any debug build) never looks for updates; its Settings → About can simulate one, to try the notice. A release build you make yourself does look, and offers the official releases.
+
+### Building from source
+
 You need [Node.js](https://nodejs.org) 26 (the version in `.nvmrc`; `nvm use` picks it) with [pnpm](https://pnpm.io) (`corepack enable` activates the version pinned in `package.json`), a Rust toolchain and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform (on Windows: the MSVC build tools and WebView2).
 
 ```bash
 pnpm install
 pnpm run tauri dev     # the app, with hot reload
-pnpm run tauri build   # an installer / bundle
+pnpm run tauri build   # an installer / bundle for this machine
 ```
+
+A local `tauri build` makes the installers but not the updater's signatures: those need the private key, which only CI has.
 
 Checks:
 
@@ -136,7 +171,9 @@ pnpm test              # Rust: stores, vault round-trips, and the sync algorithm
 pnpm run check         # Svelte + TypeScript
 ```
 
-Environment variables, mostly for development: `LEDGER_VAULT` fixes the vault location (and locks it in Settings); `LEDGER_CONFIG_DIR` moves the per-machine settings (the vault location); `LEDGER_GITHUB_API` points the sync at another API base (GitHub Enterprise, or a mock).
+Environment variables, mostly for development: `LEDGER_VAULT` fixes the vault location (and locks it in Settings); `LEDGER_CONFIG_DIR` moves the per-machine settings (the vault location, whether to check for updates); `LEDGER_GITHUB_API` points the sync at another API base (GitHub Enterprise, or a mock).
+
+To send a change, read [CONTRIBUTING.md](CONTRIBUTING.md): the checks, and how to write the commits.
 
 ## Versions and releases
 
@@ -150,10 +187,20 @@ the largest one wins:
 | `feat:` | minor | 0.4.2 → 0.5.0 |
 | any other type: `fix`, `perf`, `refactor`, `docs`, `style`, `test`, `build`, `ci`, `chore`, `revert` | patch | 0.4.2 → 0.4.3 |
 
+Changes reach `main` as pull requests merged with a merge commit, so every commit on a branch lands as it is and
+counts (merge commits don't); [CONTRIBUTING.md](CONTRIBUTING.md) lists the types and scopes a commit may use, and a
+check holds every commit in a pull request to them.
+
 Commits that aren't conventional are left out; with none that count, there is no release. The version is written to
 `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `Cargo.lock` (the app shows the Cargo one), the
 notes go to [CHANGELOG.md](CHANGELOG.md), and CI commits that as `chore(release): vX.Y.Z`, tags it `vX.Y.Z` and
-publishes a GitHub release. Don't bump versions by hand.
+creates the GitHub release as a draft. It then builds the installers from the tag on Windows, macOS and Linux, signs
+them for the updater with the password-less key in the repository secret `TAURI_SIGNING_PRIVATE_KEY`, uploads them with
+their `.sig` files and the `latest.json` the app reads, and publishes the release once every platform has been built. A
+release whose build failed stays a draft, which the app never sees. Don't bump versions by hand.
+
+`main` only takes pull requests (the `protected-main` ruleset), so CI pushes that release commit and tag with a deploy
+key the ruleset lets through: the write key whose private half is the Actions secret `RELEASE_DEPLOY_KEY`.
 
 ```bash
 pnpm release:preview   # what the next release would be, and its notes; changes nothing
@@ -167,9 +214,14 @@ src/                     SvelteKit frontend (static SPA)
                          stories, board, templates · templates · search · settings
   lib/api.ts             typed wrappers over the Tauri commands
   lib/ui.svelte.ts       toasts, dialogs, theme, and the backend's sync/vault/screenshot events
+  lib/updates.svelte.ts  the update notice's state, and installing (waits, then restarts)
+  lib/markdownEditor.ts  the markdown editor (CodeMirror 6): looks, live preview of the marks, tables, source mode, keys
+  lib/vaultImages.ts     pictures in markdown: read from the vault, beside the file that shows them
   lib/components/        sidebar tree, post/prompt/feedback/upload cards, composer, modals, hotkey recorder …
   routes/screenshot-overlay  the built-in capture's region picker (its own window; not used on Linux)
 scripts/release.mjs      the next version from the conventional commits (run by CI)
+scripts/check-commits.mjs  checks every commit in a pull request against CONTRIBUTING.md (run by CI)
+scripts/conventional.mjs what counts as a conventional commit, shared by both
 src-tauri/src/
   schema.sql             the in-memory database's shape and rules
   projects.rs threads.rs posts.rs prompts.rs feedback.rs uploads.rs deliverables.rs templates.rs
@@ -182,6 +234,7 @@ src-tauri/src/
   github.rs              the GitHub REST implementation of `Remote`
   syncer.rs              the background worker: debounce, poll, retry, status events
   screenshot.rs          hotkey, your own tool, pictures opened with Ledger, the built-in capture; Linux portals
+  updates.rs             looking for releases, the notice's view of one, and when it is safe to install and restart
   state.rs commands.rs   the running app and the thin Tauri command layer
   markdown.rs            markdown → HTML; raw HTML is escaped and unsafe link targets dropped
   tests*.rs              behaviour tests

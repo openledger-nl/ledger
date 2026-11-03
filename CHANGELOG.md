@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.7.1 (2026-11-03)
+
+### Other changes
+
+- set the updater public key ([efa944e](https://github.com/openledger-nl/ledger/commit/efa944e58ea5fe5dad850c98a31760265beaf814))
+- sign updates with a key that has no password ([dafb6be](https://github.com/openledger-nl/ledger/commit/dafb6be5869d60b722f0473487b2e0221a0dfd88))
+
+## 0.7.0 (2026-11-03)
+
+### Features
+
+- **settings:** show what Ledger is and where it keeps things in the About tab ([b09b75a](https://github.com/openledger-nl/ledger/commit/b09b75ab2eebbea3fa93f18f6a5cc84272aa29bf))
+- **logs:** log errors on this machine and report them from a new Logs tab ([b701f71](https://github.com/openledger-nl/ledger/commit/b701f711ccd15e2276bad1887d3607c1017812b4))
+- **settings:** group the settings into tabs, with a search and on/off switches ([49edeb3](https://github.com/openledger-nl/ledger/commit/49edeb3681319411d2bcf2eced6445ebb67ea31a))
+
+### Other changes
+
+- change the app identifier to nl.openledger.ledger ([c6c1e3b](https://github.com/openledger-nl/ledger/commit/c6c1e3bffb3fa8b331d925d9849e33dea060d057))
+
+## 0.6.0 (2026-11-03)
+
+### Features
+
+- **updates:** install new releases from inside the app ([485fd0e](https://github.com/openledger-nl/ledger/commit/485fd0ef02dcb863dbf0789a7908724088254ada))
+- **deliverables:** switch between source, live preview and reading, as in Obsidian ([d9a19d1](https://github.com/openledger-nl/ledger/commit/d9a19d18a0b6978b9b8cef80f94f42cdcc0008e7))
+- **deliverables:** write a version's changelog in the markdown editor ([c9132c8](https://github.com/openledger-nl/ledger/commit/c9132c8b1a948b96eb36cb67353799f2fbf1ede8))
+- **ui:** write markdown in an inline CodeMirror editor everywhere ([8adcbf4](https://github.com/openledger-nl/ledger/commit/8adcbf4ceade87e554cec49adaf15419c02a325f))
+
+### Fixes
+
+- **ui:** draw tables in the live preview and show pictures from the vault ([4d03d83](https://github.com/openledger-nl/ledger/commit/4d03d83a186f15714329ad32af760647ed1df811))
+
+### Other changes
+
+- push the release commit with a deploy key so the main ruleset lets it through ([e81017a](https://github.com/openledger-nl/ledger/commit/e81017a132cbd737de9f4d1c7f4cf43eb4240d93))
+- check that every commit in a pull request is conventional ([e2e7df8](https://github.com/openledger-nl/ledger/commit/e2e7df8ada8581e907e3c23fdffd3565378e8f22))
+- add a contributing guide ([a548042](https://github.com/openledger-nl/ledger/commit/a548042ec8a72ed5b4ca818e8f96ae30de4e6382))
+
+## 0.5.0 (2026-11-03)
+
+### Features
+
+- contribution graph and dashboard update ([5a72938](https://github.com/openledger-nl/ledger/commit/5a72938ba1adba6e6a90d8572bd743b7e83aabc3))
+
 ## 0.4.0 (2026-11-03)
 
 ### Features

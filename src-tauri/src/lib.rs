@@ -1,4 +1,5 @@
 mod activity;
+mod applog;
 mod board;
 mod claude_code;
 mod commands;
@@ -28,6 +29,7 @@ mod sync;
 mod syncer;
 mod templates;
 mod threads;
+mod updates;
 mod uploads;
 mod vault;
 
@@ -43,6 +45,8 @@ mod trello_sync;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_applog;
+#[cfg(test)]
 mod tests_claude_code;
 #[cfg(test)]
 mod tests_trello;
@@ -54,6 +58,8 @@ mod tests_provenance;
 mod tests_screenshot;
 #[cfg(test)]
 mod tests_sync;
+#[cfg(test)]
+mod tests_updates;
 #[cfg(test)]
 mod tests_vault;
 
@@ -74,17 +80,38 @@ pub fn run() {
         screenshot::reveal_main(app);
         screenshot::open_files(app, args.get(1..).unwrap_or_default(), std::path::Path::new(&cwd));
     }));
+    // Looking for and installing new releases (`updates.rs`): in release builds only, so `tauri dev`, debug builds
+    // and sandboxes never look. `updates::BUILT_IN` says the same to the rest of the app.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // The vault is loaded into memory before the window shows anything.
-            // LEDGER_CONFIG_DIR moves the per-machine settings (vault location, screenshot hotkey) for testing.
+            // LEDGER_CONFIG_DIR moves the per-machine settings (vault location, screenshot hotkey, update checks) for testing.
             let config_dir = match std::env::var_os("LEDGER_CONFIG_DIR") {
                 Some(dir) => dir.into(),
                 None => app.path().app_config_dir()?,
             };
+            // The log first, so whatever goes wrong from here on is in it. LEDGER_CONFIG_DIR moves it along.
+            let log_dir = match std::env::var_os("LEDGER_CONFIG_DIR") {
+                Some(_) => config_dir.join("logs"),
+                None => app.path().app_log_dir()?,
+            };
+            let log_handle = app.handle().clone();
+            applog::init(
+                &log_dir,
+                settings::load_config(&config_dir).log_max_bytes.unwrap_or(applog::DEFAULT_MAX_BYTES),
+                Box::new(move |entry| {
+                    let _ = log_handle.emit("log-entry", entry);
+                }),
+            );
+            applog::info("app", format!("Ledger {} started on {} {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH));
+            if std::env::var_os("LEDGER_CONFIG_DIR").is_none() && settings::adopt_old_config(&config_dir, settings::OLD_IDENTIFIER) {
+                applog::info("app", format!("Brought the settings over from the {} folder", settings::OLD_IDENTIFIER));
+            }
             let core = state::Core::open(config_dir.clone(), app.path().document_dir().ok())?;
             let sync = core.sync.clone();
             let core = Arc::new(Mutex::new(core));
@@ -105,6 +132,8 @@ pub fn run() {
 
             app.manage(state::App::new(core, syncer, screenshot::Screenshots::new()));
             trello::start_app(app.handle(), trello_core); // feat/trello-sync: its own worker, needs the App state above
+            // Looks for new releases now and then (release builds only); it asks the syncs above whether they are busy.
+            updates::start(app.handle(), config_dir);
             screenshot::register_saved(app.handle());
             // Launched with a picture to attach: it waits until the window asks for it.
             let args: Vec<String> = std::env::args().skip(1).collect();
@@ -189,6 +218,16 @@ pub fn run() {
             commands::generate_encryption_key,
             commands::import_encryption_key,
             commands::export_recovery_key,
+            applog::about_info,
+            applog::log_write,
+            applog::log_read,
+            applog::log_clear,
+            applog::log_set_max_bytes,
+            applog::capture_status,
+            applog::capture_start,
+            applog::capture_debug,
+            applog::capture_stop,
+            applog::capture_save,
             // ---- Trello sync (feat/trello-sync) ----
             trello::trello_get,
             trello::trello_status,
@@ -227,6 +266,11 @@ pub fn run() {
             claude_code::claude_code_cancel,
             claude_code::claude_code_runs,
             claude_code::claude_code_run,
+            updates::update_status,
+            updates::save_update_settings,
+            updates::check_for_updates,
+            updates::install_update,
+            updates::simulate_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
