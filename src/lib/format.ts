@@ -54,6 +54,12 @@ export function ago(iso: string): string {
 	return date(iso);
 }
 
+/** A timestamp as milliseconds, for comparing; 0 when it isn't one. */
+export const stamp = (iso: string) => new Date(iso).getTime() || 0;
+
+/** The items, the one whose time is latest first. */
+export const newest = <T,>(items: readonly T[], at: (item: T) => string) => [...items].sort((a, b) => stamp(at(b)) - stamp(at(a)));
+
 /** "3 posts", "1 post". */
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 

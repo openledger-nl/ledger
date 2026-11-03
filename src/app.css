@@ -454,6 +454,9 @@ mark { background: var(--highlight); color: inherit; border-radius: 3px; padding
 .dash-when.fresh { color: var(--accent); font-weight: 600; }
 .dash-empty { font-size: 12.5px; color: var(--faint); padding: 8px 0; display: flex; gap: 8px; align-items: baseline; }
 .dash-empty .link { font-size: 12.5px; text-decoration: none; }
+/* A project's latest threads and deliverables side by side, on its Overview. */
+.latest-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 32px; }
+@media (max-width: 760px) { .latest-cols { grid-template-columns: 1fr; } }
 .proj-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: -2px; }
 .proj-foot .btn.ghost { border-color: transparent; color: var(--muted); }
 .proj-foot .btn.ghost:hover { color: var(--ink); background: var(--card-2); }
@@ -588,6 +591,9 @@ details.more p { margin: 0; }
 .tree-label:first-child { margin-top: 2px; }
 .tree-label:hover, .tree-label.active { color: var(--side-ink); }
 .tree-label .count { font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.tree-label.plain:hover { color: var(--side-faint); }
+.tree-item .stack { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.tree-item .of { font-size: 11px; font-weight: 400; color: var(--side-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- project pages ---------- */
 .crumbs { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 4px; flex-wrap: wrap; }

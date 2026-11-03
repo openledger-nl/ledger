@@ -1,30 +1,17 @@
 <script lang="ts">
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
-	import File from '@lucide/svelte/icons/file';
-	import FileImage from '@lucide/svelte/icons/file-image';
-	import FileText from '@lucide/svelte/icons/file-text';
 	import Pin from '@lucide/svelte/icons/pin';
-	import MessagesSquare from '@lucide/svelte/icons/messages-square';
 	import Plus from '@lucide/svelte/icons/plus';
 	import SquareKanban from '@lucide/svelte/icons/square-kanban';
-	import { deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, snapshotPath, threadUrl } from '$lib/actions';
+	import { newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl } from '$lib/actions';
 	import ContributionGraph from '$lib/components/ContributionGraph.svelte';
-	import MmmBadge from '$lib/components/MmmBadge.svelte';
+	import ProjectLatest from '$lib/components/ProjectLatest.svelte';
 	import SyncWidget from '$lib/components/SyncWidget.svelte';
-	import { ago, LOCALE, plural, threadMeta } from '$lib/format';
+	import { ago, LOCALE, newest, plural, stamp } from '$lib/format';
 	import { dashboard, isPinned, togglePin } from '$lib/dashboard.svelte';
-	import type { DeliverableSummary } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
-
-	const THREADS = 3;
-	const DELIVERABLES = 2;
-	const DAY = 86_400_000;
-
-	const time = (iso: string) => new Date(iso).getTime() || 0;
-	const newest = <T,>(items: readonly T[], at: (item: T) => string) => [...items].sort((a, b) => time(at(b)) - time(at(a)));
-	const within = (iso: string, ms: number) => Date.now() - time(iso) < ms;
 
 	const today = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 
@@ -37,18 +24,16 @@
 				const latest = newest(deliverables, (d) => d.modified);
 				const active = [p.updatedAt, threads[0]?.lastActivity, latest[0]?.modified]
 					.filter((at): at is string => !!at)
-					.reduce((a, b) => (time(b) > time(a) ? b : a));
+					.reduce((a, b) => (stamp(b) > stamp(a) ? b : a));
 				return {
 					project: p,
 					active,
-					threads: threads.slice(0, THREADS),
-					deliverables: latest.slice(0, DELIVERABLES),
 					deliverableCount: deliverables.length,
 					openFeedback: deliverables.reduce((n, d) => n + d.openFeedback, 0),
 					openTasks: data.details[p.slug]?.openTasks ?? 0
 				};
 			})
-			.sort((a, b) => time(b.active) - time(a.active))
+			.sort((a, b) => stamp(b.active) - stamp(a.active))
 	);
 
 	type Card = (typeof cards)[number];
@@ -58,12 +43,6 @@
 		dashboard.pins.map((slug) => cards.find((c) => c.project.slug === slug)).filter((c): c is Card => !!c)
 	);
 	const others = $derived(cards.filter((c) => !dashboard.pins.includes(c.project.slug)));
-
-	const ICON = { markdown: FileText, image: FileImage, other: File } as const;
-
-	/** A deliverable whose live file is gone opens at its newest published version. */
-	const target = (d: DeliverableSummary) =>
-		d.exists || d.versions.length === 0 ? d.path : snapshotPath(d.path, d.versions.at(-1) as string);
 </script>
 
 {#snippet card(c: Card)}
@@ -92,63 +71,7 @@
 			</div>
 		</header>
 
-		<section class="proj-section">
-			<div class="proj-section-head">
-				<h3>Latest threads</h3>
-				{#if p.threads.length > THREADS}
-					<a href="{projectUrl(p.slug)}/threads">All {p.threads.length}<ArrowRight size={13} /></a>
-				{/if}
-			</div>
-			{#each c.threads as t (t.slug)}
-				<a class="dash-row" href={threadUrl(p.slug, t.slug)}>
-					<span class="dash-ico"><MessagesSquare size={16} /></span>
-					<span class="dash-main">
-						<span class="dash-title">{t.title}</span>
-						<span class="dash-meta">{threadMeta(t)}</span>
-					</span>
-					<span class="dash-when" class:fresh={within(t.lastActivity, DAY)}>{ago(t.lastActivity)}</span>
-				</a>
-			{:else}
-				<div class="dash-empty">
-					No threads yet.
-					<button class="link accent" onclick={() => newThreadFlow(p.slug)}>Start one</button>
-				</div>
-			{/each}
-		</section>
-
-		<section class="proj-section">
-			<div class="proj-section-head">
-				<h3>Latest deliverables</h3>
-				{#if c.deliverableCount > DELIVERABLES}
-					<a href="{projectUrl(p.slug)}/deliverables">All {c.deliverableCount}<ArrowRight size={13} /></a>
-				{/if}
-			</div>
-			{#each c.deliverables as d (d.path)}
-				{@const Icon = ICON[d.kind]}
-				<a class="dash-row" href={deliverableUrl(p.slug, target(d))}>
-					<span class="dash-ico"><Icon size={16} /></span>
-					<span class="dash-main">
-						<span class="dash-title" title={d.path}>{d.name}</span>
-						<span class="dash-meta dash-badges">
-							{#if d.versions.length}
-								<span class="badge published">v{d.versions.at(-1)}</span>
-							{:else}
-								<span class="badge draft">Draft</span>
-							{/if}
-							{#if d.mmm}<MmmBadge level={d.mmm} />{/if}
-							{#if d.openFeedback}<span class="badge draft">{d.openFeedback} open</span>{/if}
-							{#if !d.exists}<span class="badge">live file removed</span>{/if}
-						</span>
-					</span>
-					<span class="dash-when" class:fresh={within(d.modified, DAY)}>{ago(d.modified)}</span>
-				</a>
-			{:else}
-				<div class="dash-empty">
-					Nothing delivered yet.
-					<a class="link accent" href="{projectUrl(p.slug)}/deliverables">Create one</a>
-				</div>
-			{/each}
-		</section>
+		<ProjectLatest project={p} deliverables={data.details[p.slug]?.deliverables ?? []} />
 
 		<footer class="proj-foot">
 			<a class="btn small ghost" href="{projectUrl(p.slug)}/board">

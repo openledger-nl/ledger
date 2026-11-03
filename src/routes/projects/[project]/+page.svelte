@@ -1,13 +1,17 @@
 <script lang="ts">
+	import Plus from '@lucide/svelte/icons/plus';
 	import { api } from '$lib/api';
+	import { newDeliverableFlow, newThreadFlow } from '$lib/actions';
 	import Markdown from '$lib/components/Markdown.svelte';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import ProjectLatest from '$lib/components/ProjectLatest.svelte';
 	import { attempt, refresh } from '$lib/ui.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
 	const project = $derived(data.project);
+	const summary = $derived(data.projects.find((p) => p.slug === project.slug));
 	// The guide is the project's README.md: pictures in it are looked for from the project's folder.
 	const images = $derived({ project: project.slug, dir: '' });
 
@@ -32,6 +36,18 @@
 
 <div class="page">
 	<div class="page-inner wide">
+		{#if summary}
+			<section class="panel" aria-label="Latest">
+				<div class="latest-cols">
+					<ProjectLatest project={summary} deliverables={data.deliverables} />
+				</div>
+				<footer class="proj-foot">
+					<button class="btn small" onclick={() => newThreadFlow(project.slug)}><Plus size={14} />New thread</button>
+					<button class="btn small" onclick={() => newDeliverableFlow(project.slug)}><Plus size={14} />New deliverable</button>
+				</footer>
+			</section>
+		{/if}
+
 		<section class="panel">
 			<div class="header-top">
 				<div>

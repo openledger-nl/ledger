@@ -10,7 +10,7 @@
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
 	import { deliverableTarget, deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
-	import { ago } from '$lib/format';
+	import { ago, newest } from '$lib/format';
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { drawer, sync } from '$lib/ui.svelte';
@@ -77,21 +77,27 @@
 		if (slug) untrack(() => unfold(slug));
 	});
 
-	// The open project's deliverables, looked up when it opens and again whenever the vault changes (the projects
-	// are loaded afresh then).
-	let deliverables = $state<{ slug: string; items: DeliverableSummary[] } | null>(null);
+	// Every project's deliverables, by project: the unfolded project's list and the Latest section read them. They are
+	// looked up again whenever the vault changes (the projects are loaded afresh then).
+	let deliverables = $state<Record<string, DeliverableSummary[]>>({});
 	$effect(() => {
-		void projects;
-		const slug = open;
-		if (!slug) return;
+		const slugs = projects.map((p) => p.slug);
 		let stale = false;
-		api.listDeliverables(slug)
-			.then((items) => {
-				if (!stale) deliverables = { slug, items: [...items].sort((a, b) => a.path.localeCompare(b.path)) };
-			})
-			.catch(() => {});
+		Promise.all(slugs.map((slug) => api.listDeliverables(slug).then((items) => [slug, items] as const, () => [slug, []] as const))).then((all) => {
+			if (!stale) deliverables = Object.fromEntries(all);
+		});
 		return () => (stale = true);
 	});
+	const byPath = (items: DeliverableSummary[]) => [...items].sort((a, b) => a.path.localeCompare(b.path));
+
+	/** What was last worked on across all projects: the newest threads and deliverables. */
+	const LATEST = 3;
+	const latestThreads = $derived(
+		newest(projects.flatMap((project) => project.threads.map((thread) => ({ thread, project }))), (x) => x.thread.lastActivity).slice(0, LATEST)
+	);
+	const latestDeliverables = $derived(
+		newest(projects.flatMap((project) => (deliverables[project.slug] ?? []).map((d) => ({ d, project }))), (x) => x.d.modified).slice(0, LATEST)
+	);
 
 	// Reflect an open search in the box, so refining it is one edit away.
 	$effect(() => {
@@ -144,6 +150,42 @@
 	<a class="nav-item" class:active={path === '/'} href="/"><span class="nav-ico"><House size={16} /></span>Home</a>
 	<a class="nav-item" class:active={on('/settings')} href="/settings"><span class="nav-ico"><Settings size={16} /></span>Settings</a>
 
+	{#if latestThreads.length || latestDeliverables.length}
+		<div class="section-head"><span>Latest</span></div>
+		<nav class="space-list" aria-label="Latest">
+			{#if latestThreads.length}
+				<div class="tree-label plain">Threads</div>
+				{#each latestThreads as { thread, project } (project.slug + '/' + thread.slug)}
+					<a class="tree-item" class:active={path === threadUrl(project.slug, thread.slug)} href={threadUrl(project.slug, thread.slug)}>
+						<span class="dot"></span>
+						<span class="stack">
+							<span class="name">{thread.title}</span>
+							<span class="of">{project.name}</span>
+						</span>
+					</a>
+				{/each}
+			{/if}
+			{#if latestDeliverables.length}
+				<div class="tree-label plain">Deliverables</div>
+				{#each latestDeliverables as { d, project } (project.slug + '/' + d.path)}
+					{@const target = deliverableTarget(d)}
+					<a
+						class="tree-item"
+						class:active={currentProject === project.slug && (viewing === target || viewing === d.path)}
+						href={deliverableUrl(project.slug, target)}
+						title={d.path}
+					>
+						<span class="file"><FileText size={13} /></span>
+						<span class="stack">
+							<span class="name">{d.name}</span>
+							<span class="of">{project.name}</span>
+						</span>
+					</a>
+				{/each}
+			{/if}
+		</nav>
+	{/if}
+
 	<div class="section-head">
 		<span>Projects</span>
 		<button class="icon-btn" title="New project" aria-label="New project" onclick={newProjectFlow}><Plus size={16} /></button>
@@ -184,8 +226,8 @@
 					<a class="tree-label" class:active={path === `${projectUrl(p.slug)}/deliverables`} href="{projectUrl(p.slug)}/deliverables">
 						Deliverables<span class="count">{p.deliverableCount || ''}</span>
 					</a>
-					{#if deliverables?.slug === p.slug}
-						{#each deliverables.items as d (d.path)}
+					{#if deliverables[p.slug]}
+						{#each byPath(deliverables[p.slug]) as d (d.path)}
 							{@const target = deliverableTarget(d)}
 							<a class="tree-item" class:active={viewing === target || viewing === d.path} href={deliverableUrl(p.slug, target)} title={d.path}>
 								<span class="file"><FileText size={13} /></span>
