@@ -135,6 +135,23 @@ export function suggestDraft(existing: Semester[]): SemesterDraft {
 	};
 }
 
+/**
+ * NJ26, the autumn semester of 2026, as its calendar has it: a kick-off week, a shorter sprint 0, five sprints of three
+ * weeks, a week off in autumn and two at Christmas. It ends with the last sprint: the weeks after it (the end talks
+ * and the graduation conference) are events, not sprints. The name keeps its X for whoever adds it to fill in.
+ */
+export function nj26Draft(): SemesterDraft {
+	const start = '2026-08-31';
+	const end = '2027-01-24';
+	const vacations: Vacation[] = [
+		{ name: 'Autumn break', start: '2026-10-19', end: '2026-10-25' },
+		{ name: 'Christmas break', start: '2026-12-21', end: '2027-01-03' }
+	];
+	const plan: [name: string, weeks: number][] = [['Kick-off', 1], ['Sprint 0', 2], ['Sprint 1', 3], ['Sprint 2', 3], ['Sprint 3', 3], ['Sprint 4', 3], ['Sprint 5', 3]];
+	const sprints = planSprints(start, end, (i) => plan[i]?.[1] ?? 3, vacations).map((s, i) => ({ ...s, name: plan[i]?.[0] ?? s.name }));
+	return { name: 'NJ26 - Semester X', start, end, sprintWeeks: 3, notes: '', sprints, vacations };
+}
+
 export type Phase = 'current' | 'upcoming' | 'past';
 
 export function phaseOf(s: { start: string; end: string }, day = today()): Phase {

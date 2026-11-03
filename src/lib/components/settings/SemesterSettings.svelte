@@ -6,16 +6,39 @@
 	import { page } from '$app/state';
 	import SemesterModal from '$lib/components/SemesterModal.svelte';
 	import SprintTimeline from '$lib/components/SprintTimeline.svelte';
-	import { currentSprint, length, phaseOf, spanLabel, today, workDays } from '$lib/semesters';
-	import type { Semester } from '$lib/types';
+	import { currentSprint, length, nj26Draft, phaseOf, spanLabel, today, workDays } from '$lib/semesters';
+	import type { Semester, SemesterDraft } from '$lib/types';
 
-	// The semesters the dashboard's contribution graph follows: a list, and a button that adds one. They are loaded by the
-	// settings layout, so they stay current when one is saved.
+	// The semesters the dashboard's contribution graph follows: a list, and a + that adds one from a preset or from scratch.
+	// They are loaded by the settings layout, so they stay current when one is saved.
 
 	const semesters = $derived(page.data.semesters as Semester[]);
 
-	/** The editor: undefined when closed; otherwise the semester it changes, or null for a new one. */
-	let editor = $state<{ semester: Semester | null } | undefined>(undefined);
+	/** The editor: undefined when closed; otherwise the semester it changes, or null for a new one (from `preset`, if given). */
+	let editor = $state<{ semester: Semester | null; preset?: SemesterDraft } | undefined>(undefined);
+
+	let adding = $state(false);
+	let menu: HTMLElement | undefined = $state();
+
+	function add(preset?: SemesterDraft) {
+		adding = false;
+		editor = { semester: null, preset };
+	}
+
+	// A click anywhere else, or Escape, closes the menu.
+	$effect(() => {
+		if (!adding) return;
+		const away = (e: PointerEvent) => {
+			if (menu && !menu.contains(e.target as Node)) adding = false;
+		};
+		const escape = (e: KeyboardEvent) => e.key === 'Escape' && (adding = false);
+		document.addEventListener('pointerdown', away);
+		document.addEventListener('keydown', escape);
+		return () => {
+			document.removeEventListener('pointerdown', away);
+			document.removeEventListener('keydown', escape);
+		};
+	});
 
 	const now = today();
 	/** The current semester first, then what's coming (soonest first), then what's past (latest first). */
@@ -37,23 +60,46 @@
 	}
 </script>
 
+{#snippet addMenu()}
+	<div class="dd" bind:this={menu}>
+		<button class="btn primary small" aria-haspopup="menu" aria-expanded={adding} aria-label="Add a semester" title="Add a semester" onclick={() => (adding = !adding)}>
+			<Plus size={16} />
+		</button>
+		{#if adding}
+			<div class="dd-menu end" role="menu" aria-label="Add a semester">
+				<button type="button" class="dd-option menu-item" role="menuitem" onclick={() => add(nj26Draft())}>
+					<span class="menu-title">Add preset NJ26</span>
+					<span class="menu-sub">Autumn 2026: kick-off, sprint 0, five sprints, three weeks off</span>
+				</button>
+				<button type="button" class="dd-option menu-item" role="menuitem" onclick={() => add()}>
+					<span class="menu-title">New semester</span>
+					<span class="menu-sub">Your own days, vacations and sprints</span>
+				</button>
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
 <div class="panel">
 	<div class="header-top">
 		<div>
 			<h2>Semesters</h2>
 			<div class="sub">Half years, cut into sprints of three weeks of work. The contribution graph on the dashboard follows them.</div>
 		</div>
-		{#if semesters.length}<button class="btn primary small" onclick={() => (editor = { semester: null })}><Plus size={16} />New semester</button>{/if}
+		{#if semesters.length}{@render addMenu()}{/if}
 	</div>
 	{#if semesters.length === 0}
 		<div class="sem-empty">
 			<span class="sem-empty-ico"><CalendarRange size={28} /></span>
 			<h3>No semester set up yet</h3>
 			<p class="sub">
-				Give a semester a first and a last day (half a year) and Ledger cuts it into sprints of three weeks. Name them, set a goal for each,
-				or move their dates. On the dashboard you then see how much you made per sprint.
+				Start from the NJ26 preset, or give a semester a first and a last day (half a year) and Ledger cuts it into sprints. Name them, set a
+				goal for each, or move their dates. On the dashboard you then see how much you made per sprint.
 			</p>
-			<button class="btn primary" onclick={() => (editor = { semester: null })}><Plus size={16} />New semester</button>
+			<div class="sem-empty-actions">
+				<button class="btn primary" onclick={() => add(nj26Draft())}><Plus size={16} />Add preset NJ26</button>
+				<button class="btn" onclick={() => add()}>New semester</button>
+			</div>
 		</div>
 	{/if}
 </div>
@@ -112,5 +158,5 @@
 {/each}
 
 {#if editor}
-	<SemesterModal semester={editor.semester} existing={semesters} onclose={() => (editor = undefined)} />
+	<SemesterModal semester={editor.semester} preset={editor.preset} existing={semesters} onclose={() => (editor = undefined)} />
 {/if}

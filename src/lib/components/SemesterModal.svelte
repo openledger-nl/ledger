@@ -7,7 +7,7 @@
 	import { api } from '$lib/api';
 	import { addDays, halfYearFrom, length, parseDay, planSprints, spanLabel, suggestDraft, toDay, workDays } from '$lib/semesters';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
-	import type { Semester, Vacation } from '$lib/types';
+	import type { Semester, SemesterDraft, Vacation } from '$lib/types';
 	import DateInput from './DateInput.svelte';
 	import Modal from './Modal.svelte';
 	import SprintTimeline from './SprintTimeline.svelte';
@@ -16,12 +16,12 @@
 	// vacations and how many weeks of work each sprint is (the semester's length unless a sprint has its own), so
 	// they always fit. Only their names and goals are written by hand.
 
-	/** `semester` is null when making one; `existing` gives a new one a sensible first guess. */
-	let { semester, existing, onclose }: { semester: Semester | null; existing: Semester[]; onclose: () => void } = $props();
+	/** `semester` is null when making one; `existing` gives a new one a sensible first guess, unless a `preset` says what to start from. */
+	let { semester, existing, preset, onclose }: { semester: Semester | null; existing: Semester[]; preset?: SemesterDraft; onclose: () => void } = $props();
 
 	/** The form's starting values, read once (the modal is mounted fresh each time); edits stay local until Save. */
 	function opening() {
-		const draft = semester ? structuredClone($state.snapshot(semester)) : suggestDraft(existing);
+		const draft = semester ? structuredClone($state.snapshot(semester)) : (preset ?? suggestDraft(existing));
 		const weeks = draft.sprintWeeks || 3;
 		// A sprint's own length, where it differs from the semester's; the last one is whatever is left.
 		const lengths = draft.sprints.map((s, i) => {
