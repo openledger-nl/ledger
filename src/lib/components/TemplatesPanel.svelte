@@ -33,6 +33,12 @@
 		<h2>{scope ? 'This project’s templates' : 'Templates'}</h2>
 		<button class="btn primary small" onclick={() => (editing = 'new')}>New template</button>
 	</div>
+	{#if !scope}
+		<p class="sub" style="margin:0">
+			Shared by every project. A prompt started from a template gets its guiding questions as posts to answer, and its deliverable starts from
+			the template’s skeleton. A project can replace any of them with its own.
+		</p>
+	{/if}
 	{#if own.length === 0}
 		<div class="hint">
 			{scope
@@ -58,7 +64,7 @@
 	<div class="panel">
 		<h2>Shared with every project</h2>
 		{#if inherited.length === 0}
-			<div class="hint">There are no shared templates. Add some under Templates in the sidebar.</div>
+			<div class="hint">There are no shared templates. Add some under Settings → Templates.</div>
 		{:else}
 			<div class="tpl-list">
 				{#each inherited as t (t.id)}
