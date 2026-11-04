@@ -337,6 +337,13 @@ export interface StoppedRun {
 	finishedAt: string;
 }
 
+/** What the live file holds that no version does: the version it follows, when it last changed. */
+export interface ProvenanceDraft {
+	since: string | null;
+	modified: string;
+	stoppedRun: StoppedRun | null;
+}
+
 export interface Provenance {
 	groups: ProvenanceGroup[];
 	summary: {
@@ -348,7 +355,7 @@ export interface Provenance {
 		label: { level: MmmLevel; version: string } | null;
 	};
 	/** The live file when it holds something no version does. */
-	draft: { since: string | null; modified: string; stoppedRun: StoppedRun | null } | null;
+	draft: ProvenanceDraft | null;
 	/** Where a publish goes when the person does not say. */
 	defaultThread: string | null;
 	stoppedRun: StoppedRun | null;

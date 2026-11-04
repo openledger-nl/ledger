@@ -2,25 +2,34 @@
 	import { onDestroy, untrack } from 'svelte';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import CodeXml from '@lucide/svelte/icons/code-xml';
+	import Copy from '@lucide/svelte/icons/copy';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import FileText from '@lucide/svelte/icons/file-text';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
+	import MessagesSquare from '@lucide/svelte/icons/messages-square';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
+	import Trash from '@lucide/svelte/icons/trash';
 	import { goto } from '$app/navigation';
-	import FeedbackCard from '$lib/components/FeedbackCard.svelte';
+	import Dropdown from '$lib/components/Dropdown.svelte';
+	import DocSide from '$lib/components/DocSide.svelte';
 	import FileImage from '$lib/components/FileImage.svelte';
 	import Markdown from '$lib/components/Markdown.svelte';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import Menu, { type MenuItem } from '$lib/components/Menu.svelte';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
 	import Modal from '$lib/components/Modal.svelte';
-	import ProvenancePanel from '$lib/components/ProvenancePanel.svelte';
+	import SelectionComment from '$lib/components/SelectionComment.svelte';
 	import { api } from '$lib/api';
-	import { deliverableFile, deliverableUrl, formatSize, nextVersion, snapshotPath } from '$lib/actions';
+	import { deliverableFile, deliverableUrl, formatSize, newThreadFlow, nextVersion, snapshotPath } from '$lib/actions';
+	import { locate, plain, type Anchor, type Mark } from '$lib/anchors';
+	import { sha256Hex } from '$lib/hash';
 	import { ago, dateTime } from '$lib/format';
 	import { MMM } from '$lib/mmm';
-	import { orderFeedback, orderVersions } from '$lib/order';
-	import { listOrder } from '$lib/order.svelte';
 	import { dirOf } from '$lib/vaultImages';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import { beforeRestart } from '$lib/updates.svelte';
-	import type { Bump, MmmLevel } from '$lib/types';
+	import type { Bump, Feedback, MmmLevel, ProvenanceDraft, ProvenanceVersion } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -44,6 +53,9 @@
 	let loadedKey = '';
 	let loadedPath = '';
 	let dirty = false;
+	/** Typed in this file during this visit, and when last. */
+	let touched = $state(false);
+	let editedAt = $state('');
 	let lastSaved = 0;
 	let saveState = $state<'saved' | 'saving' | 'unsaved'>('saved');
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -61,6 +73,7 @@
 				body = theirs;
 				html = theirHtml;
 				saveState = 'saved';
+				touched = false;
 			} else if (!dirty && saveState === 'saved' && Date.now() - lastSaved > 1500 && theirs !== body) {
 				body = theirs;
 				html = theirHtml;
@@ -80,6 +93,8 @@
 	}
 
 	function edited() {
+		touched = true;
+		editedAt = new Date().toISOString();
 		dirty = true;
 		saveState = 'unsaved';
 		clearTimeout(saveTimer);
@@ -109,10 +124,8 @@
 	];
 	let mode = $state<Mode>('live');
 	try {
-		// The modes before these: Write and Split were editors, Preview was reading.
 		const saved = localStorage.getItem('ledger-doc-mode');
 		if (saved === 'source' || saved === 'live' || saved === 'reading') mode = saved;
-		else if (saved === 'preview') mode = 'reading';
 	} catch {
 		// Storage unavailable: the default is fine.
 	}
@@ -125,24 +138,46 @@
 		}
 	}
 
-	// ---- the "Produced by" side window -----------------------------------------------------------
-	// Open by default where the window is wide enough to hold it next to the page (below that it is a drawer over it).
+	// ---- the thread of this page ---------------------------------------------------------------
+	// One thread for everything done here: the note a publish leaves, new feedback, and the prompts made from feedback. It is
+	// chosen once, at the top, and kept for this deliverable. Until then: where the last version went (or the prompt that
+	// asked for the file was written), or else the project's first thread.
 
-	let sideOpen = $state(true);
-	try {
-		const saved = localStorage.getItem('ledger-doc-provenance');
-		sideOpen = saved === 'open' || saved === 'closed' ? saved === 'open' : window.innerWidth >= 1100;
-	} catch {
-		// Storage unavailable: open.
-	}
-	function setSide(open: boolean) {
-		sideOpen = open;
-		try {
-			localStorage.setItem('ledger-doc-provenance', open ? 'open' : 'closed');
-		} catch {
-			// Not persisted.
-		}
-	}
+	let workThread = $state('');
+	let threadKey = '';
+
+	$effect(() => {
+		const key = `ledger-doc-thread:${project}:${doc.basePath}`;
+		const options = threads.map((t) => t.slug);
+		const fallback = [provenance.defaultThread, doc.prompts[0]?.threadSlug].find((slug) => slug && options.includes(slug)) ?? options[0] ?? '';
+		untrack(() => {
+			if (key !== threadKey) {
+				threadKey = key;
+				try {
+					workThread = localStorage.getItem(key) ?? '';
+				} catch {
+					workThread = '';
+				}
+			}
+			if (!options.includes(workThread)) workThread = fallback;
+		});
+	});
+
+	// Remembered as soon as it is chosen.
+	$effect(() => {
+		const slug = workThread;
+		untrack(() => {
+			if (!slug || !threadKey) return;
+			try {
+				localStorage.setItem(threadKey, slug);
+			} catch {
+				// Not persisted.
+			}
+		});
+	});
+
+	const threadTitle = $derived(threads.find((t) => t.slug === workThread)?.title ?? '');
+	const threadOptions = $derived(threads.map((t) => ({ value: t.slug, label: t.title })));
 
 	// ---- actions -------------------------------------------------------------------------------
 
@@ -154,7 +189,6 @@
 
 	// What the person says about the change. Claude Code runs started here are recorded as they happen; the box is for AI
 	// used anywhere else, and starts ticked when a run is known to have changed this file without being published.
-	let thread = $state('');
 	let aiMade = $state(false);
 	let level = $state<MmmLevel | ''>('');
 	let promptId = $state('');
@@ -166,7 +200,6 @@
 	function startPublishing() {
 		bump = 'minor';
 		custom = '';
-		thread = provenance.defaultThread ?? '';
 		aiMade = stopped !== null;
 		level = provenance.suggestedLabel ?? '';
 		promptId = stopped?.promptId ?? '';
@@ -179,7 +212,7 @@
 		await flush();
 		const published = await attempt(() =>
 			api.publishDeliverable(project, doc.path, bump === 'custom' ? 'minor' : bump, bump === 'custom' ? custom : null, {
-				thread,
+				thread: workThread,
 				ai: aiMade,
 				mmm: level || null,
 				prompt: aiMade ? promptId || null : null,
@@ -222,53 +255,129 @@
 
 	const open = (reveal: boolean) => attempt(() => api.openProjectFile(project, file, reveal));
 
-	// ---- feedback ------------------------------------------------------------------------------
+	// What else can be done with it, behind the ⋯ next to Publish. Delete only for the live file; a version is kept.
+	const more = $derived<MenuItem[]>([
+		...(isMarkdown ? [{ id: 'copy', label: 'Copy markdown', icon: Copy }] : []),
+		...(doc.exists
+			? [
+					{ id: 'open', label: 'Open in editor', icon: ExternalLink },
+					{ id: 'reveal', label: 'Show in folder', icon: FolderOpen }
+				]
+			: []),
+		...(!snapshot && doc.exists ? [{ id: 'delete', label: 'Delete deliverable', icon: Trash, danger: true, rule: true }] : [])
+	]);
 
-	let feedbackThread = $state('');
-	let feedbackText = $state('');
-	let feedbackBusy = $state(false);
-
-	// Feedback is written in a thread: start from the one that asked for this file, else the first.
-	$effect(() => {
-		const wanted = doc.prompts[0]?.threadSlug;
-		const options = threads.map((t) => t.slug);
-		if (!options.includes(feedbackThread)) feedbackThread = wanted && options.includes(wanted) ? wanted : (options[0] ?? '');
-	});
-
-	async function addFeedback() {
-		feedbackBusy = true;
-		const added = await attempt(() => api.addFeedback(project, feedbackThread, doc.path, feedbackText));
-		feedbackBusy = false;
-		if (!added) return;
-		feedbackText = '';
-		await refresh();
+	function doMore(id: string) {
+		if (id === 'copy') void copyMarkdown();
+		else if (id === 'open') void open(false);
+		else if (id === 'reveal') void open(true);
+		else if (id === 'delete') void remove();
 	}
 
-	const openCount = $derived(doc.feedback.filter((f) => f.status === 'open').length);
-	// Only how the list is read changes (see Settings); `doc.feedback` stays oldest first.
-	// "Live" is the newest of all: first when newest reads first, last when oldest does.
-	const showLive = $derived(!!doc.basePath && (doc.exists || !snapshot));
-	const orderedVersions = $derived(orderVersions(doc.versions, listOrder.order));
-	const feedbackList = $derived(orderFeedback(doc.feedback, listOrder.order));
+	// ---- feedback on a passage -----------------------------------------------------------------
+	// A passage selected in the document, in any mode, can be commented on: the comment icon beside the selection hands it
+	// here, and the Feedback window opens with it ready to be written on. The passages that already have feedback are lit up
+	// in the text, and a click on one shows its feedback.
+
+	let side: DocSide | undefined = $state();
+	let docArea: HTMLElement | undefined = $state();
+	let reader: Markdown | undefined = $state();
+	let editor: MarkdownEditor | undefined = $state();
+	/** The passage that feedback is being written on. */
+	let pending = $state<Anchor | null>(null);
+
+	// Another file, another selection.
+	$effect(() => {
+		void doc.path;
+		untrack(() => (pending = null));
+	});
+
+	const anchorFor = (f: Feedback): Anchor => ({ text: f.quote ?? '', prefix: f.quotePrefix ?? '', suffix: f.quoteSuffix ?? '' });
+	/** When each version was published, oldest first. */
+	const published = $derived(
+		provenance.groups
+			.flatMap((g) => g.entries)
+			.filter((e): e is ProvenanceVersion => e.kind === 'version')
+			.sort((a, b) => a.at.localeCompare(b.at))
+	);
+	/**
+	 * Whether a piece of feedback belongs to what the page shows: the live file takes what was given on it, a version what was
+	 * given on that version (`givenOn`: feedback on the live file is on the version that froze it, once one is published).
+	 */
+	const here = (f: Feedback) => (doc.version === null ? f.deliverableVersion === null : f.givenOn === doc.version);
+	/** Feedback on a passage of what is open now: the live file, or the version being read. */
+	const anchored = $derived(doc.feedback.filter((f) => f.quote && here(f)));
+	const marks = $derived<Mark[]>([
+		...anchored.map((f) => ({ id: f.id, anchor: anchorFor(f), tone: f.status })),
+		...(pending ? [{ id: 'new', anchor: pending, tone: 'new' as const }] : [])
+	]);
+	/** The feedback whose passage is no longer in the text. */
+	const lost = $derived.by(() => {
+		if (!isMarkdown || !anchored.length) return new Set<string>();
+		const text = plain(snapshot ? (doc.body ?? '') : body, true);
+		return new Set(anchored.filter((f) => !locate(text, anchorFor(f))).map((f) => f.id));
+	});
+
+	function commentOn(anchor: Anchor) {
+		pending = anchor;
+		void side?.reveal('feedback');
+	}
+
+	/** A lit-up passage was clicked: show its feedback. */
+	const showFeedback = (id: string) => void side?.reveal('feedback', id);
+
+	/** Feedback's passage, shown in the document. */
+	const showPassage = (id: string) => (snapshot || mode === 'reading' ? reader : editor)?.reveal(id);
+
+	// ---- the live file against the last version ------------------------------------------------
+	// What the backend says (`provenance.draft`) is true as the page loads. Once you type, the text is compared with the last
+	// version's right here, so "same as" turns into "draft" with the first change, and back when you undo it.
+
+	const latest = $derived(doc.versions.at(-1) ?? null);
+	const latestSha = $derived(published.find((v) => v.version === latest)?.sha256 ?? null);
+	let sameAsLatest = $state<boolean | null>(null);
+	$effect(() => {
+		const text = body;
+		const sha = latestSha;
+		if (!touched || !isMarkdown || snapshot || !sha) {
+			sameAsLatest = null;
+			return;
+		}
+		let stale = false;
+		void sha256Hex(text).then((hash) => {
+			if (!stale) sameAsLatest = hash === sha;
+		});
+		return () => (stale = true);
+	});
+	const draft = $derived<ProvenanceDraft | null>(
+		sameAsLatest === null ? provenance.draft : sameAsLatest ? null : { since: latest, modified: editedAt, stoppedRun: provenance.draft?.stoppedRun ?? null }
+	);
 </script>
 
 <svelte:head><title>{doc.name} · Ledger</title></svelte:head>
 
-<div class="header-wrap">
+<div class="header-wrap flat">
 	<div class="crumbs">
 		<a href="/projects/{project}">{data.project.name}</a><span>/</span><a href="/projects/{project}/deliverables">Deliverables</a>
 	</div>
 	<div class="header-top">
 		<div style="flex:1;min-width:0">
-			<h1 title={doc.path}>{doc.name}</h1>
+			<h1 title={doc.path}>
+				{doc.name}
+				<span class="thread-box deliverable-pill" title="The deliverable this page is about, and which of its versions is open">
+					<FileText size={15} />
+					<span class="tb-label">Deliverable</span>
+					<span class="db-value">{snapshot ? `v${doc.version}` : 'Live'}</span>
+				</span>
+			</h1>
 			<div class="subline">
 				<span class="badge type">{doc.kind === 'markdown' ? 'Markdown' : doc.kind === 'image' ? 'Image' : 'File'}</span>
 				{#if snapshot}
 					<span class="badge published">v{doc.version}</span>
+				{:else if draft || !latest}
+					<span class="badge draft">{draft?.since ? `Draft after v${draft.since}` : 'Draft'}</span>
 				{:else}
-					<span class="badge {doc.versions.length ? 'published' : 'draft'}">
-						{doc.versions.length ? `Draft after v${doc.versions.at(-1)}` : 'Draft'}
-					</span>
+					<span class="badge published">Same as v{latest}</span>
 				{/if}
 				<span>{formatSize(doc.size)}</span>
 				{#if provenance.summary.label}<MmmBadge level={provenance.summary.label.level} />{/if}
@@ -279,40 +388,29 @@
 			</div>
 		</div>
 		<div class="header-actions">
-			<button class="btn ghost small" aria-pressed={sideOpen} onclick={() => setSide(!sideOpen)}>Produced by</button>
-			{#if isMarkdown}<button class="btn ghost small" onclick={copyMarkdown}>Copy markdown</button>{/if}
-			{#if doc.exists}
-				<button class="btn ghost small" onclick={() => open(false)}>Open</button>
-				<button class="btn ghost small" onclick={() => open(true)}>Show in folder</button>
-			{/if}
+			<div class="thread-box" title="Notes on publishing, new feedback and the prompts made from feedback go to this thread">
+				<MessagesSquare size={15} />
+				<span class="tb-label">Thread</span>
+				{#if threadOptions.length}
+					<Dropdown bind:value={workThread} options={threadOptions} label="Thread for this page" align="end" />
+				{:else}
+					<button class="link accent" onclick={() => newThreadFlow(project)}>Create one</button>
+				{/if}
+			</div>
 			{#if !snapshot && doc.exists}
-				<button class="btn ghost small danger" onclick={remove}>Delete</button>
 				<button class="btn primary" onclick={startPublishing}>Publish version…</button>
+			{/if}
+			{#if more.length}
+				<Menu class="btn ghost icon-only" label="More actions" items={more} onpick={doMore} align="end"><Ellipsis size={18} /></Menu>
 			{/if}
 		</div>
 	</div>
 
-	<div class="subline" style="padding-bottom:12px">
-		<span>Versions:</span>
-		<div class="version-strip">
-			{#snippet liveChip()}
-				<a class="vchip" class:on={!snapshot} href={deliverableUrl(project, doc.basePath)}>Live</a>
-			{/snippet}
-			{#if showLive && listOrder.order === 'desc'}{@render liveChip()}{/if}
-			<!-- `doc.versions` itself stays oldest first, which "latest" relies on; only the chips follow the setting. -->
-			{#each orderedVersions as v (v)}
-				<a class="vchip" class:on={doc.version === v} href={deliverableUrl(project, snapshotPath(doc.basePath, v))}>v{v}</a>
-			{:else}
-				<span class="hint">none published yet</span>
-			{/each}
-			{#if showLive && listOrder.order === 'asc'}{@render liveChip()}{/if}
-		</div>
-	</div>
 </div>
 
 <div class="doc-body">
 <div class="page">
-	<div class="page-inner wide">
+	<div class="page-inner wide" bind:this={docArea}>
 		{#if snapshot}
 			<div class="notice info">
 				Published version {doc.version}, {dateTime(doc.modified)} — read-only.
@@ -325,7 +423,7 @@
 		{#if !doc.exists && !snapshot}
 			<div class="notice">The file is not in the project’s deliverables folder (any more).</div>
 		{:else if isMarkdown && snapshot}
-			<div class="doc-view"><Markdown html={doc.html ?? ''} {images} /></div>
+			<div class="doc-view"><Markdown bind:this={reader} html={doc.html ?? ''} {images} {marks} onmark={showFeedback} /></div>
 		{:else if isMarkdown}
 			<div class="form-row" style="justify-content:space-between">
 				<div class="seg" role="group" aria-label="View">
@@ -337,10 +435,11 @@
 			</div>
 			{#if mode === 'reading'}
 				<div class="doc-view">
-					{#if body.trim()}<Markdown {html} {images} />{:else}<span class="hint">Nothing here yet.</span>{/if}
+					{#if body.trim()}<Markdown bind:this={reader} {html} {images} {marks} onmark={showFeedback} />{:else}<span class="hint">Nothing here yet.</span>{/if}
 				</div>
 			{:else}
 				<MarkdownEditor
+					bind:this={editor}
 					bind:value={body}
 					variant="doc"
 					minHeight="58vh"
@@ -348,6 +447,8 @@
 					placeholder="Write it in markdown…"
 					source={mode === 'source'}
 					{images}
+					{marks}
+					onmark={showFeedback}
 					oninput={edited}
 				/>
 			{/if}
@@ -368,61 +469,18 @@
 				</div>
 			</div>
 		{/if}
-
-		<div>
-			<section class="panel">
-				<div class="header-top">
-					<h2>Feedback{doc.feedback.length ? ` · ${openCount} open` : ''}</h2>
-				</div>
-				<div class="field">
-					<span>
-						{#if snapshot}On version {doc.version}{:else}On this file{/if}, written in a thread
-					</span>
-					{#if threads.length === 0}
-						<span class="hint">Create a thread first — feedback is written in one.</span>
-					{:else}
-						<div class="form-row" style="flex-wrap:nowrap">
-							<select bind:value={feedbackThread} aria-label="Thread" style="max-width:220px">
-								{#each threads as t (t.slug)}<option value={t.slug}>{t.title}</option>{/each}
-							</select>
-						</div>
-						<MarkdownEditor
-							bind:value={feedbackText}
-							label="Feedback"
-							placeholder="What works, what doesn’t, what to change…"
-							onsubmit={() => feedbackText.trim() && addFeedback()}
-						/>
-						<div class="row-end">
-							<button class="btn small primary" onclick={addFeedback} disabled={feedbackBusy || !feedbackText.trim() || !feedbackThread}>
-								Add feedback
-							</button>
-						</div>
-					{/if}
-				</div>
-				<div style="display:flex;flex-direction:column;gap:10px">
-					{#each feedbackList as f (f.id)}
-						<FeedbackCard {project} thread={f.threadSlug} feedback={f} onDeliverable />
-					{/each}
-				</div>
-			</section>
-		</div>
 	</div>
 </div>
 
-{#if sideOpen}
-	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-	<div class="side-scrim open" onclick={() => setSide(false)}></div>
-	<aside class="side-window" aria-label="Produced by">
-		<ProvenancePanel {project} {doc} {provenance} onclose={() => setSide(false)} />
-	</aside>
-{/if}
+<SelectionComment root={docArea} oncomment={commentOn} />
+<DocSide bind:this={side} {project} {doc} {provenance} {draft} prompts={data.prompts} {threads} thread={workThread} {threadTitle} bind:pending {lost} {here} onlocate={showPassage} />
 </div>
 
 {#if publishing}
 	<Modal title="Publish a version" onclose={() => (publishing = false)}>
 		<p style="margin:0;color:var(--muted)">
 			Publishing freezes the current file as an immutable version (<code>{snapshotPath(doc.path, bump === 'custom' ? custom || 'x.y' : preview[bump])}</code>),
-			records who made the change, and leaves a note in the thread you pick.
+			records who made the change{#if workThread}, and leaves a note in <code>{threadTitle}</code>{/if}.
 			{doc.versions.length ? `Latest so far: v${doc.versions.at(-1)}.` : 'This is the first version.'}
 		</p>
 		<label class="check"><input type="radio" bind:group={bump} value="minor" /> Minor — v{preview.minor}</label>
@@ -438,13 +496,6 @@
 		</label>
 
 		<hr class="rule" />
-		<label class="field">
-			<span>Note in thread</span>
-			<select bind:value={thread}>
-				<option value="">No thread — just record it</option>
-				{#each threads as t (t.slug)}<option value={t.slug}>{t.title}</option>{/each}
-			</select>
-		</label>
 		<div class="field">
 			<label class="check">
 				<input type="checkbox" bind:checked={aiMade} /> This change was made with generative AI
