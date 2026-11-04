@@ -601,6 +601,8 @@ export interface ClaudeCodeSettings {
 	confine: boolean;
 	/** A prompt that is created starts running at once, without the confirmation. */
 	autoRun: boolean;
+	/** A new prompt is named by Claude Code from what it asks. */
+	namePrompts: boolean;
 	/** The program that would be run, when it can be found. */
 	resolvedPath: string | null;
 	/** Why it can't be found. */

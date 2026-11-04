@@ -162,6 +162,27 @@ pub fn run_args(settings: &ClaudeSettings, guard_file: Option<&Path>) -> Vec<OsS
     args
 }
 
+/// The arguments for naming a prompt: print mode, plain text out, a small fast model, and nothing it could use or leave
+/// behind: no tools, no commands from the project, no MCP servers, no saved session. The request goes on standard input.
+pub fn name_args() -> Vec<OsString> {
+    [
+        "-p",
+        "--output-format",
+        "text",
+        "--model",
+        "haiku",
+        "--tools",
+        "",
+        "--disable-slash-commands",
+        "--strict-mcp-config",
+        "--setting-sources",
+        "user",
+        "--no-session-persistence",
+    ]
+    .map(OsString::from)
+    .into()
+}
+
 pub fn version_args() -> Vec<OsString> {
     vec![OsString::from("--version")]
 }

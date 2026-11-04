@@ -73,6 +73,7 @@
 	let saving = $state(false);
 	// Whether saving a new prompt starts it in Claude Code by itself, and whether Claude Code names it: both are settings.
 	let autoRun = $state(false);
+	let naming = $state(false);
 
 	onMount(async () => {
 		if (prompt) {
@@ -82,6 +83,7 @@
 		try {
 			const settings = await claudeCodeApi.settings();
 			autoRun = settings.autoRun;
+			naming = settings.namePrompts && !!settings.resolvedPath;
 		} catch {
 			// The lines about them are only a courtesy.
 		}
@@ -206,7 +208,7 @@
 <Modal title={prompt ? 'Edit prompt' : 'New prompt'} wide {onclose}>
 	<p class="hint" style="margin:0">
 		A prompt asks for a deliverable. Whatever produces it — you, an assistant — lands the file in the project’s deliverables.
-		{#if !prompt}The prompt is called by the start of its text.{/if}
+		{#if !prompt}{naming ? 'Claude Code gives the prompt a name from what it asks.' : 'The prompt is called by the start of its text.'}{/if}
 	</p>
 
 	{#if prompt}

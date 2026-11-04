@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use tempfile::{TempDir, tempdir};
 
 use crate::claude_code::cli::{self, Search};
+use crate::claude_code::naming;
 use crate::claude_code::config::{self, ClaudeSettings, PermissionMode};
 use crate::claude_code::prompt::{self, RunRequest};
 use crate::claude_code::records::{self, RunFacts, RunRecord};
@@ -365,7 +366,7 @@ fn without_a_settings_file_the_defaults_apply() {
 #[test]
 fn settings_persist_in_the_ledger_folder_which_git_ignores() {
     let dir = tempdir().unwrap();
-    let saved = ClaudeSettings::validated(" \"C:\\Program Files\\Claude\\claude.exe\" ", "plan", " claude-sonnet-4-5 ", false, true).unwrap();
+    let saved = ClaudeSettings::validated(" \"C:\\Program Files\\Claude\\claude.exe\" ", "plan", " claude-sonnet-4-5 ", false, true, true).unwrap();
     assert_eq!(saved.cli_path, "C:\\Program Files\\Claude\\claude.exe", "pasted quotes are dropped");
     config::save(dir.path(), &saved).unwrap();
 
@@ -419,17 +420,17 @@ fn an_old_or_damaged_settings_file_loads_field_by_field() {
 #[test]
 fn what_is_typed_in_settings_is_checked_because_it_reaches_the_command_line() {
     for fine in ["sonnet", "opus", "claude-sonnet-4-5", "claude-opus-4-1-20250805", "sonnet[1m]", "us.anthropic.claude-sonnet-4-5-v1:0"] {
-        assert!(ClaudeSettings::validated("", "acceptEdits", fine, true, false).is_ok(), "{fine}");
+        assert!(ClaudeSettings::validated("", "acceptEdits", fine, true, false, true).is_ok(), "{fine}");
     }
     let too_long = "m".repeat(101);
     for bad in ["--dangerously-skip-permissions", "-p", "two words", "a&b", "%PATH%", "\"quoted\"", "x\ny", "a;b", "$(id)", "é", too_long.as_str()] {
-        assert!(ClaudeSettings::validated("", "acceptEdits", bad, true, false).is_err(), "{bad:?}");
+        assert!(ClaudeSettings::validated("", "acceptEdits", bad, true, false, true).is_err(), "{bad:?}");
     }
     for mode in ["bypassPermissions", "default", "auto", "", "AcceptEdits", "--dangerously-skip-permissions"] {
-        assert!(ClaudeSettings::validated("", mode, "", true, false).is_err(), "{mode:?}");
+        assert!(ClaudeSettings::validated("", mode, "", true, false, true).is_err(), "{mode:?}");
     }
-    assert!(ClaudeSettings::validated("a\nb", "plan", "", true, false).is_err());
-    assert_eq!(ClaudeSettings::validated("", "dontAsk", "", true, false).unwrap().permission_mode, PermissionMode::DontAsk);
+    assert!(ClaudeSettings::validated("a\nb", "plan", "", true, false, true).is_err());
+    assert_eq!(ClaudeSettings::validated("", "dontAsk", "", true, false, true).unwrap().permission_mode, PermissionMode::DontAsk);
 }
 
 // ---- the command line ---------------------------------------------------------------------------------
@@ -439,7 +440,7 @@ fn the_command_line_is_a_fixed_set_of_flags_and_the_chosen_values() {
     let plain = ClaudeSettings { confine: false, ..Default::default() };
     assert_eq!(cli::run_args(&plain, None), os(&["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"]));
 
-    let all = ClaudeSettings { permission_mode: PermissionMode::Plan, model: "opus".into(), confine: true, cli_path: String::new(), auto_run: true };
+    let all = ClaudeSettings { permission_mode: PermissionMode::Plan, model: "opus".into(), confine: true, cli_path: String::new(), auto_run: true, name_prompts: false };
     assert_eq!(
         cli::run_args(&all, Some(Path::new("/vault/.ledger/runs/claude-guard.json"))),
         os(&[
@@ -466,7 +467,7 @@ fn no_combination_of_settings_can_skip_the_permission_checks() {
     for mode in [PermissionMode::AcceptEdits, PermissionMode::Plan, PermissionMode::DontAsk] {
         for model in ["", "sonnet"] {
             for confine in [false, true] {
-                let settings = ClaudeSettings { permission_mode: mode, model: model.into(), confine, cli_path: String::new(), auto_run: false };
+                let settings = ClaudeSettings { permission_mode: mode, model: model.into(), confine, cli_path: String::new(), auto_run: false, name_prompts: true };
                 let args = cli::run_args(&settings, confine.then(|| Path::new("guard.json")));
                 for arg in &args {
                     let arg = arg.to_string_lossy();
@@ -723,6 +724,54 @@ first text
         "the versions, oldest first, as history: {text}"
     );
     assert!(!text.contains("(not written yet)"));
+}
+
+// ---- naming a prompt -----------------------------------------------------------------------------------
+
+#[test]
+fn a_name_is_the_first_line_of_the_answer_without_decoration() {
+    for (said, name) in [
+        ("Pricing brief for Ana\n", "Pricing brief for Ana"),
+        ("  \"Pricing brief for Ana\".  ", "Pricing brief for Ana"),
+        ("Title: **Fix the intro**\n\nBecause it is long.", "Fix the intro"),
+        ("“Prijzen uitleggen.”", "Prijzen uitleggen"),
+    ] {
+        assert_eq!(naming::clean(said).as_deref(), Some(name), "{said:?}");
+    }
+    assert_eq!(naming::clean("  \n \n"), None);
+    assert_eq!(naming::clean("\"\""), None);
+    let long = naming::clean(&"word ".repeat(40)).unwrap();
+    assert!(long.chars().count() <= 61 && long.ends_with('…'), "{long}");
+}
+
+#[test]
+fn claude_code_is_asked_for_a_name_with_nothing_it_could_use() {
+    let (_dir, search) = fake_cli();
+    let cwd = tempdir().unwrap();
+    let runner = FakeRunner::scripted(&["\"Pricing brief for Ana\"\n"], &[], 0);
+    let name = naming::suggest(&runner, &ClaudeSettings::default(), &search, cwd.path(), "Write the pricing brief for Ana.");
+    assert_eq!(name.as_deref(), Some("Pricing brief for Ana"));
+
+    let spec = runner.spec(0);
+    for flag in ["-p", "--no-session-persistence", "--strict-mcp-config", "--disable-slash-commands"] {
+        assert!(spec.args.iter().any(|a| a == flag), "{flag}: {:?}", spec.args);
+    }
+    let tools = spec.args.iter().position(|a| a == "--tools").unwrap();
+    assert_eq!(spec.args[tools + 1], "", "no tools at all");
+    assert_eq!(spec.cwd, cwd.path(), "it runs where the vault is not");
+    let sent = String::from_utf8(spec.stdin).unwrap();
+    assert!(sent.contains("Write the pricing brief for Ana.") && sent.contains("at most six words"), "{sent}");
+
+    // Nothing is started for an empty request; a program that fails, or says nothing, leaves the prompt as it is.
+    let idle = FakeRunner::default();
+    assert_eq!(naming::suggest(&idle, &ClaudeSettings::default(), &search, cwd.path(), "   "), None);
+    assert_eq!(idle.spawned(), 0);
+    let failing = FakeRunner::scripted(&["x"], &["not logged in"], 1);
+    assert_eq!(naming::suggest(&failing, &ClaudeSettings::default(), &search, cwd.path(), "Write it."), None);
+    let silent = FakeRunner::scripted(&["   "], &[], 0);
+    assert_eq!(naming::suggest(&silent, &ClaudeSettings::default(), &search, cwd.path(), "Write it."), None);
+    let nowhere = Search { path_var: None, fallback_dirs: vec![], windows: cfg!(windows) };
+    assert_eq!(naming::suggest(&idle, &ClaudeSettings::default(), &nowhere, cwd.path(), "Write it."), None, "no program, no name");
 }
 
 #[test]

@@ -153,10 +153,12 @@ pub fn delete_post(app: State<App>, project: String, thread: String, id: String)
 // ---- prompts ----------------------------------------------------------------------------------------
 
 /// A new prompt, with what it can come with: an existing deliverable it asks changes to, or the name of a new one (blank:
-/// the AI names it), and the feedback it is meant to resolve. It has no title: it is called by the start of its text.
+/// the AI names it), and the feedback it is meant to resolve. It has no title: Claude Code names it, in the background.
 #[tauri::command]
-pub fn create_prompt(app: State<App>, project: String, thread: String, draft: NewPrompt) -> Result<PromptView> {
-    app.mutate(|c, _| prompts::create(c, &project, &thread, &draft))
+pub fn create_prompt(handle: AppHandle, app: State<App>, project: String, thread: String, draft: NewPrompt) -> Result<PromptView> {
+    let prompt = app.mutate(|c, _| prompts::create(c, &project, &thread, &draft))?;
+    crate::claude_code::name_prompt_later(&handle, &project, &thread, &prompt.id);
+    Ok(prompt)
 }
 
 /// What a new prompt's base text starts as, from the template or the feedback it is made from.

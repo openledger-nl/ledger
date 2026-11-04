@@ -233,8 +233,8 @@ import type {
 
 export const claudeCodeApi = {
 	settings: () => call<ClaudeCodeSettings>('claude_code_settings'),
-	saveSettings: (cliPath: string, permissionMode: string, model: string, confine: boolean, autoRun: boolean) =>
-		call<ClaudeCodeSettings>('save_claude_code_settings', { cliPath, permissionMode, model, confine, autoRun }),
+	saveSettings: (cliPath: string, permissionMode: string, model: string, confine: boolean, autoRun: boolean, namePrompts: boolean) =>
+		call<ClaudeCodeSettings>('save_claude_code_settings', { cliPath, permissionMode, model, confine, autoRun, namePrompts }),
 	/** Runs `claude --version` with the path as typed (blank: look on the PATH). Doesn't save anything. */
 	check: (cliPath: string) => call<ClaudeCodeCheck>('check_claude_code', { cliPath }),
 	/** Everything a run would send and where, for the confirmation. */
