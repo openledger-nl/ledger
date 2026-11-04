@@ -94,7 +94,7 @@ repo (`build: move to Node 26`).
 |---|---|
 | The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `dashboard` (the home page and its contribution graph) |
 | Data and sync | `vault`, `sync`, `crypto`, `settings` |
-| Integrations | `screenshots`, `trello`, `claude` (runs with Claude Code) |
+| Integrations | `screenshots`, `trello`, `portflow` (the Fontys portfolio: feedback, evidence, learning outcomes), `claude` (runs with Claude Code) |
 | Across the app | `ui` (shared components, layout, icons), `brand` (logo, tokens, colours), `logs` (the error log, debug captures, reporting a problem) |
 | Reserved | `release`: only CI's own `chore(release)` commits; never use it yourself |
 
