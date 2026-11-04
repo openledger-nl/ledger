@@ -14,6 +14,7 @@
 //! This file holds the Tauri side: the commands, and the host that tells the window what is happening. The runs live
 //! in a state of their own that is set up the first time it is needed, so the app's own setup is untouched.
 
+pub mod acp;
 pub mod cli;
 pub mod config;
 pub mod finish;
@@ -90,15 +91,53 @@ fn manager(app: &AppHandle) -> Runs {
     app.state::<Runs>().inner().clone()
 }
 
-/// Closing the main window stops the runs still going: Claude Code can edit files and uses your Claude allowance, and with the
-/// window gone there would be no way to see or stop it. Registered with `Builder::on_window_event`.
+#[derive(Default)]
+struct Closing(std::sync::atomic::AtomicBool);
+
+/// Keep the main window alive until owned Prime sessions have acknowledged cleanup (or its bounded fallback ends).
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
-    if matches!(event, WindowEvent::Destroyed)
-        && window.label() == "main"
-        && let Some(runs) = window.app_handle().try_state::<Runs>()
-    {
+    if window.label() != "main" { return; }
+    let Some(runs) = window.app_handle().try_state::<Runs>() else { return; };
+    if let WindowEvent::CloseRequested { api, .. } = event {
+        if !runs.running().iter().any(|run| run.provider == "prime") { return; }
+        api.prevent_close();
+        window.app_handle().manage(Closing::default());
+        let closing = window.app_handle().state::<Closing>();
+        if closing.0.swap(true, std::sync::atomic::Ordering::SeqCst) { return; }
+        let runs = runs.inner().clone();
+        let window = window.clone();
+        std::thread::spawn(move || {
+            runs.stop_for_exit();
+            // execute_prime bounds its close and EOF phases. Do not terminate the app before those run.
+            while !runs.running().is_empty() {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            let _ = window.destroy();
+        });
+    } else if matches!(event, WindowEvent::Destroyed) {
         runs.cancel_all();
     }
+}
+
+/// Explicit app quit (including the macOS menu) must also keep the event loop alive during owned cleanup.
+pub fn on_run_event(app: &AppHandle, event: &tauri::RunEvent) {
+    let tauri::RunEvent::ExitRequested { api, code, .. } = event else { return; };
+    let Some(runs) = app.try_state::<Runs>() else { return; };
+    if !runs.running().iter().any(|run| run.provider == "prime") { return; }
+    api.prevent_exit();
+    app.manage(Closing::default());
+    let closing = app.state::<Closing>();
+    if closing.0.swap(true, std::sync::atomic::Ordering::SeqCst) { return; }
+    let runs = runs.inner().clone();
+    let app = app.clone();
+    let code = code.unwrap_or(0);
+    std::thread::spawn(move || {
+        runs.stop_for_exit();
+        while !runs.running().is_empty() {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        app.exit(code);
+    });
 }
 
 fn vault_root(app: &App) -> PathBuf {

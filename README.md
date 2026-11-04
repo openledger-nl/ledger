@@ -86,7 +86,11 @@ separately. The model setting is passed to that harness; available models depend
 This does not make every model compatible with every harness.
 
 The adapters share prompt preparation, live output, cancellation and run records, but use each CLI's own command
-line and output format. Prime Agent output appears when each assistant message completes, rather than token by token.
+line and protocol. Ledger starts Prime Agent with `--mode acp` and uses the Agent Client Protocol (ACP) to initialize
+and create a session, then sends the original prompt in `session/prompt`. The preview shows that prompt, not the
+JSON-RPC messages sent on standard input. Output arrives through ACP session updates; completion comes from the
+`session/prompt` response, not process exit. Cancel requests cancellation with `session/cancel`; Ledger then closes
+the session and its input stream. Session cleanup can take time and does not shut down other Prime sessions.
 Existing Claude Code settings and historical run records remain readable. Install a CLI version that supports the
 adapter's documented headless protocol; an unrecognized or incomplete final response fails the run rather than
 publishing it as successful.
@@ -96,6 +100,11 @@ Switching harnesses does not silently remove those rules: acknowledge the differ
 running without them. Prime Agent executes tools with your user permissions and provides no security sandbox.
 Antigravity's permission modes are policies, not a guarantee of filesystem isolation. Use only trusted projects and
 prompts, or run the harness in a separately configured sandbox.
+
+**Codex on Windows:** `--sandbox workspace-write` can downgrade when the Windows sandbox is not configured.
+Configure a supported sandbox in Codex before running it through Ledger. The Codex desktop app's WSL preference
+does not configure the native CLI. Ledger never bypasses the sandbox. Running unelevated also failed the verified
+host capability test, so it is not a confirmed fix. This caveat does not change the Linux or macOS setup.
 
 Real-CLI smoke tests are opt-in and use a temporary vault. They require an authenticated CLI and may incur
 inference charges. Set `LEDGER_SMOKE_PROVIDER` (`claude`, `codex`, `agy` or `prime`) and `LEDGER_SMOKE_CLI`

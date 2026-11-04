@@ -189,7 +189,17 @@
 
 		<details open>
 			<summary><ChevronRight size={14} class="disclosure" />What will be sent</summary>
-			<div class="hint" style="margin:6px 0">This is the prompt sent to {harnessLabel(shown.provider)}. {shown.provider === 'agy' ? 'AGY receives it inside a JSON message on standard input.' : 'It is sent on standard input.'}</div>
+			<div class="hint" style="margin:6px 0">
+				This is the prompt sent to {harnessLabel(shown.provider)}.
+				{#if shown.provider === 'prime'}
+					Ledger sends it in an ACP session prompt, not as raw text on standard input. The run finishes when that prompt completes.
+					Cancel requests cancellation through ACP; session cleanup can take time.
+				{:else if shown.provider === 'agy'}
+					AGY receives it inside a JSON message on standard input.
+				{:else}
+					It is sent on standard input.
+				{/if}
+			</div>
 			<pre class="mono sent">{shown.prompt}</pre>
 		</details>
 		<details>

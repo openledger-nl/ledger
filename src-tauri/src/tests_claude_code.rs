@@ -1999,7 +1999,7 @@ fn harness_permissions_never_silently_drop_guards() {
     assert!(cli::validate_adapter(&prime).is_err());
     prime.permission_mode = PermissionMode::Trusted;
     assert!(cli::validate_adapter(&prime).is_ok());
-    assert!(cli::run_args(&prime, None).iter().any(|a| a == "json"));
+    assert!(cli::run_args(&prime, None).iter().any(|a| a == "acp"));
     let agy = ClaudeSettings { provider: Provider::Agy, confine: false, permission_mode: PermissionMode::DontAsk, ..Default::default() };
     assert!(cli::validate_adapter(&agy).is_err());
 }
@@ -2023,8 +2023,7 @@ fn provider_output_records_answers_and_exit_zero_errors() {
     assert!(!agy.result.unwrap().is_error);
     let agy_error = render::render_for(Provider::Agy, r#"{"event":"result","result":{"status":"WAITING","response":"Approval required"}}"#);
     assert!(agy_error.result.unwrap().is_error);
-    let prime = render::render_for(Provider::Prime, r#"{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"Quota exhausted"}}"#);
-    let result = prime.result.unwrap();
+    let result = render::render_for(Provider::Codex, r#"{"type":"turn.failed","error":{"message":"Quota exhausted"}}"#).result.unwrap();
     assert!(result.is_error);
     assert_eq!(runs::outcome(false, &Ok(Exit { code: Some(0), signal: None }), Some(&result), false).0, Status::Failed);
 }
@@ -2049,9 +2048,6 @@ fn native_runs_require_terminal_success_and_keep_provider_and_stdin() {
         (Provider::Codex, &[r#"{"type":"item.completed","item":{"type":"agent_message","text":"Done"}}"#, r#"{"type":"turn.completed"}"#], Status::Finished),
         (Provider::Agy, &[r#"{"event":"init","init":{}}"#], Status::Failed),
         (Provider::Agy, &[r#"{"event":"result","result":{"status":"SUCCESS","response":"Done"}}"#], Status::Finished),
-        (Provider::Prime, &[r#"{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"toolUse"}}"#, r#"{"type":"agent_end"}"#], Status::Failed),
-        (Provider::Prime, &[r#"{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Done"}],"stopReason":"stop"}}"#, r#"{"type":"agent_end"}"#], Status::Finished),
-        (Provider::Prime, &[r#"{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"Quota"}}"#, r#"{"type":"agent_end"}"#], Status::Failed),
     ];
     for (provider, output, expected) in cases {
         let f = Fixture::new();
@@ -2114,6 +2110,12 @@ impl Runner for SmokeRunner {
         let spawned = OsRunner.spawn(spec)?;
         *lock(&self.process) = Some(spawned.process.clone());
         Ok(spawned)
+    }
+
+    fn spawn_interactive(&self, spec: &SpawnSpec) -> io::Result<runner::InteractiveSpawned> {
+        let interactive = OsRunner.spawn_interactive(spec)?;
+        *lock(&self.process) = Some(interactive.spawned.process.clone());
+        Ok(interactive)
     }
 }
 
@@ -2190,12 +2192,107 @@ fn real_harness_smoke(cancel_only: bool) {
     let process = lock(&runner.process).clone().expect("a real process was started");
     assert_eq!(runs.snapshot(&cancelled.id).unwrap().run.status, Status::Running);
     runs.cancel(&cancelled.id).unwrap();
-    let stopped = smoke_wait(&runs, &cancelled.id, Duration::from_secs(30));
+    let stopped = smoke_wait(&runs, &cancelled.id, Duration::from_secs(if provider == Provider::Prime { 90 } else { 30 }));
     assert_eq!(stopped.run.status, Status::Cancelled, "{}", stopped.output);
     assert!(stopped.run.linked.is_empty());
-    assert!(!process.wait().unwrap().success(), "the real CLI was stopped");
+    let exit = process.wait().unwrap();
+    if provider != Provider::Prime {
+        assert!(!exit.success(), "the real CLI was stopped");
+    }
+    // Prime can exit cleanly after acknowledging protocol cancellation and closing its session.
     let core = lock(&host.0);
     let prompt = prompts::get(&core.conn, &cancel_request.project, &cancel_request.thread, &cancel_request.prompt_id).unwrap();
     assert_eq!(prompt.runs[0].provider, provider.as_str());
     assert_eq!(prompt.runs[0].status, "cancelled");
+}
+
+
+struct AcpTestInput {
+    pending: Vec<u8>,
+    frames: Arc<Mutex<Vec<serde_json::Value>>>,
+    process: Arc<Handle>,
+}
+
+impl Write for AcpTestInput {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.pending.extend_from_slice(bytes);
+        while let Some(end) = self.pending.iter().position(|b| *b == b'\n') {
+            let line: Vec<_> = self.pending.drain(..=end).collect();
+            let frame: serde_json::Value = serde_json::from_slice(&line)?;
+            lock(&self.frames).push(frame.clone());
+            let id = frame["id"].clone();
+            let result = match frame["method"].as_str() {
+                Some("initialize") => serde_json::json!({"protocolVersion":1}),
+                Some("session/new") => serde_json::json!({"sessionId":"test-session"}),
+                Some("session/prompt") => {
+                    self.process.stdout(r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"test-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Done"}}}}"#);
+                    serde_json::json!({"stopReason":"end_turn"})
+                }
+                Some("session/close") => serde_json::json!({}),
+                _ => continue,
+            };
+            self.process.stdout(&serde_json::json!({"jsonrpc":"2.0","id":id,"result":result}).to_string());
+        }
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+}
+
+impl Drop for AcpTestInput {
+    fn drop(&mut self) { self.process.exit(0); }
+}
+
+#[derive(Default)]
+struct AcpTestRunner {
+    fake: FakeRunner,
+    frames: Arc<Mutex<Vec<serde_json::Value>>>,
+}
+
+impl Runner for AcpTestRunner {
+    fn spawn(&self, _spec: &SpawnSpec) -> io::Result<Spawned> {
+        Err(io::Error::other("ACP must keep stdin open"))
+    }
+    fn spawn_interactive(&self, spec: &SpawnSpec) -> io::Result<runner::InteractiveSpawned> {
+        let spawned = self.fake.spawn(spec)?;
+        let process = self.fake.handle(0);
+        Ok(runner::InteractiveSpawned { spawned, stdin: Box::new(AcpTestInput { pending: vec![], frames: self.frames.clone(), process }) })
+    }
+}
+
+#[test]
+fn prime_acp_finishes_on_prompt_response_then_closes_owned_session() {
+    use crate::claude_code::config::Provider;
+    let f = Fixture::new();
+    let runner = Arc::new(AcpTestRunner::default());
+    let host = Arc::new(FakeHost::default());
+    let runs = Runs::new(runner.clone(), host.clone());
+    let (cli_dir, search) = fake_cli();
+    let settings = ClaudeSettings {
+        provider: Provider::Prime,
+        cli_path: cli_dir.path().join(cli::candidate_names(cfg!(windows))[0]).display().to_string(),
+        permission_mode: PermissionMode::Trusted, confine: false, ..Default::default()
+    };
+    let run = runs.start(f.request(), f.context(settings), &search).unwrap();
+    wait_until("ACP session cleanup", || runs.snapshot(&run.id).unwrap().run.status != Status::Running);
+    let done = runs.snapshot(&run.id).unwrap();
+    assert_eq!(done.run.status, Status::Finished, "{}", done.output);
+    assert_eq!(done.run.provider, "prime");
+    assert!(done.output.contains("Done"));
+    let methods: Vec<_> = lock(&runner.frames).iter().filter_map(|v| v["method"].as_str().map(str::to_string)).collect();
+    assert_eq!(methods, ["initialize", "session/new", "session/prompt", "session/close"]);
+    assert!(!runner.fake.handle(0).killed(), "normal ACP completion uses session close and EOF");
+    assert!(lock(&host.vault_calls)[0].1);
+    assert!(lock(&host.records)[0].body.contains("Done"));
+}
+
+#[test]
+fn stopping_for_exit_cancels_runs_and_rejects_new_prompts() {
+    let f = Fixture::new();
+    let rig = Rig::new();
+    let active = rig.start(&f).unwrap();
+    let process = rig.runner.handle(0);
+    rig.runs.stop_for_exit();
+    rig.wait_for(&active.id, Status::Cancelled);
+    assert!(process.killed());
+    assert!(rig.start(&f).is_err());
 }

@@ -70,8 +70,17 @@ pub struct Spawned {
     pub process: Arc<dyn Process>,
 }
 
+pub struct InteractiveSpawned {
+    pub spawned: Spawned,
+    pub stdin: Box<dyn Write + Send>,
+}
+
 pub trait Runner: Send + Sync {
     fn spawn(&self, spec: &SpawnSpec) -> io::Result<Spawned>;
+
+    fn spawn_interactive(&self, _spec: &SpawnSpec) -> io::Result<InteractiveSpawned> {
+        Err(io::Error::new(io::ErrorKind::Unsupported, "interactive input is not supported by this runner"))
+    }
 }
 
 pub trait Process: Send + Sync {
@@ -91,6 +100,20 @@ pub struct OsRunner;
 
 impl Runner for OsRunner {
     fn spawn(&self, spec: &SpawnSpec) -> io::Result<Spawned> {
+        let InteractiveSpawned { spawned, mut stdin } = self.spawn_interactive(spec)?;
+        let data = spec.stdin.clone();
+        let writer = thread::Builder::new().name("claude-stdin".into()).spawn(move || {
+            let _ = stdin.write_all(&data);
+        });
+        if let Err(e) = writer {
+            spawned.process.kill_tree();
+            let _ = spawned.process.wait();
+            return Err(e);
+        }
+        Ok(spawned)
+    }
+
+    fn spawn_interactive(&self, spec: &SpawnSpec) -> io::Result<InteractiveSpawned> {
         let mut command = Command::new(&spec.program);
         command.args(&spec.args).current_dir(&spec.cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         for (name, value) in &spec.env {
@@ -100,22 +123,13 @@ impl Runner for OsRunner {
         lead_own_group(&mut command);
 
         let mut child = command.spawn()?;
-        // A thread writes the prompt, so a program that starts talking before it has read everything can't deadlock.
-        if let Some(mut stdin) = child.stdin.take() {
-            let data = spec.stdin.clone();
-            let writer = thread::Builder::new().name("claude-stdin".into()).spawn(move || {
-                // A program that quits early closes the pipe: nothing more to do. Dropping `stdin` sends EOF.
-                let _ = stdin.write_all(&data);
-            });
-            if let Err(e) = writer {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(e);
-            }
-        }
+        let stdin = child.stdin.take().ok_or_else(|| io::Error::other("no standard input"))?;
         let stdout = child.stdout.take().ok_or_else(|| io::Error::other("no standard output"))?;
         let stderr = child.stderr.take().ok_or_else(|| io::Error::other("no standard error"))?;
-        Ok(Spawned { stdout: Box::new(stdout), stderr: Box::new(stderr), process: Arc::new(OsProcess::new(child)) })
+        Ok(InteractiveSpawned {
+            spawned: Spawned { stdout: Box::new(stdout), stderr: Box::new(stderr), process: Arc::new(OsProcess::new(child)) },
+            stdin: Box::new(stdin),
+        })
     }
 }
 

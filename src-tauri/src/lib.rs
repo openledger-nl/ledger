@@ -277,6 +277,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app, _event| {
+            claude_code::on_run_event(_app, &_event);
             // macOS doesn't pass opened files as arguments: they arrive here, at launch and while running.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = &_event {

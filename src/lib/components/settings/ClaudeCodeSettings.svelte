@@ -134,7 +134,7 @@
 		</div>
 		<span class="hint">
 			{#if provider === 'claude'}{modes.find((m) => m.id === mode)?.hint}
-			{:else if provider === 'codex'}Edit files uses Codex’s workspace-write sandbox. Plan only and Read only both use its read-only sandbox; they do not enforce a planning workflow.
+			{:else if provider === 'codex'}Edit files requests Codex’s workspace-write sandbox. Plan only and Read only both use its read-only sandbox; they do not enforce a planning workflow. On native Windows, Codex requires a configured Windows sandbox; otherwise it may remain read-only.
 			{:else}AGY uses its accept-edits or plan policy. Read only is not supported. Unapproved actions may be refused without failing the run.{/if}
 		</span>
 	</div>
@@ -173,6 +173,7 @@
 		<input type="checkbox" checked={!confine && mode === 'trusted'} onchange={(e) => { confine = !e.currentTarget.checked; mode = e.currentTarget.checked ? 'trusted' : 'acceptEdits'; }} />
 		Allow Prime Agent native tool access with my user permissions
 	</label>
+	<div class="hint">Ledger starts Prime Agent with <code>--mode acp</code> and sends prompts through the Agent Client Protocol.</div>
 	<div class="notice bad">
 		Prime Agent is not sandboxed. It can execute model-generated Python and commands with your user permissions,
 		including access outside the project. Ledger cannot enforce file-only, read-only or plan-only permissions for it.

@@ -229,27 +229,7 @@ pub fn render_for(provider: super::config::Provider, line: &str) -> Rendered {
             }
             _ => {}
         },
-        Provider::Prime => match v["type"].as_str().unwrap_or_default() {
-            "agent_end" => { out.terminal = true; }
-            "message_end" if v["message"]["role"] == "assistant" && v["message"]["stopReason"] == "toolUse" => {
-                out.result = Some(ResultInfo { is_error: true, text: "Prime Agent ended before completing its tool calls.".to_string(), ..ResultInfo::default() });
-            }
-            "message_end" if v["message"]["role"] == "assistant" => {
-                let message = &v["message"];
-                let text = message["content"].as_array().map(|parts| parts.iter().filter(|p| p["type"] == "text").filter_map(|p| p["text"].as_str()).collect::<Vec<_>>().join("\n")).unwrap_or_default();
-                let error = string(message, "errorMessage");
-                let is_error = !error.is_empty() || !matches!(message["stopReason"].as_str(), Some("stop" | "length"));
-                out.text = if text.is_empty() { String::new() } else { format!("{text}\n") };
-                out.model = message.get("model").and_then(Value::as_str).map(str::to_string);
-                out.result = Some(ResultInfo { is_error, text: if is_error && !error.is_empty() { error } else { text }, ..ResultInfo::default() });
-            }
-            "tool_execution_start" => {
-                let name = string(&v, "toolName");
-                out.text = format!("→ {name}\n");
-                out.steps.push(Step { name, detail: String::new(), failed: false });
-            }
-            _ => {}
-        },
+        Provider::Prime => {} // Prime uses the bidirectional ACP client, not stdout event envelopes.
         Provider::Claude => unreachable!(),
     }
     out

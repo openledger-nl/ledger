@@ -177,7 +177,7 @@ pub fn run_args(settings: &ClaudeSettings, guard_file: Option<&Path>) -> Vec<OsS
         let raw: Vec<&str> = match settings.provider {
             Provider::Codex => vec!["exec", "--json", "--skip-git-repo-check", "--sandbox", if settings.permission_mode == PermissionMode::AcceptEdits { "workspace-write" } else { "read-only" }, "-"],
             Provider::Agy => vec!["--input-format", "stream-json", "--output-format", "stream-json", "--mode", if settings.permission_mode == PermissionMode::Plan { "plan" } else { "accept-edits" }],
-            Provider::Prime => vec!["--print", "--mode", "json"],
+            Provider::Prime => vec!["--mode", "acp"],
             Provider::Claude => unreachable!(),
         };
         let mut args: Vec<OsString> = raw.into_iter().map(OsString::from).collect();
