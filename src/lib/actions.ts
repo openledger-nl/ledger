@@ -1,7 +1,7 @@
 import { goto } from '$app/navigation';
 import { api } from './api';
 import { attempt, confirmDialog, promptDialog, refresh } from './ui.svelte';
-import type { Bump, DeliverableSummary, Feedback, PromptDraft } from './types';
+import type { Bump, DeliverableSummary, Prompt } from './types';
 
 export const projectUrl = (project: string) => `/projects/${project}`;
 export const threadUrl = (project: string, thread: string) => `/projects/${project}/threads/${thread}`;
@@ -97,17 +97,12 @@ export const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 /** The live file behind a deliverable path: feedback given on version 0.1 names "plan@v0.1.md", whose live file is "plan.md". */
 export const liveDeliverable = (path: string, version: string | null) => (version ? path.replace(`@v${version}`, '') : path);
 
-/** What "Create prompt…" on a piece of feedback starts from: the feedback as a request, for the document it was given on. */
-export function feedbackPromptDraft(feedback: Feedback): PromptDraft {
-	const live = liveDeliverable(feedback.deliverablePath, feedback.deliverableVersion);
-	const name = baseName(live);
-	const given = feedback.deliverableVersion ? `\n\n(This was given on version ${feedback.deliverableVersion} of ${name}.)` : '';
-	return {
-		title: `Resolve feedback on ${name}`,
-		body: `Please resolve the following feedback:\n\n${feedback.body.trim()}${given}`,
-		deliverable: live,
-		note: `Started from the feedback on ${name}. Reword it as you like, and choose below whether the prompt asks for changes to that document or for a new one.`
-	};
+/** What a prompt is called on screen: the name it was given, or the start of what it asks while it has none. */
+export function promptName(prompt: Pick<Prompt, 'title' | 'base' | 'body'>): string {
+	const title = prompt.title.trim();
+	if (title) return title;
+	const line = (prompt.body.trim() || prompt.base.trim()).split('\n').find((l) => l.trim()) ?? 'Untitled prompt';
+	return line.length > 60 ? `${line.slice(0, 60).trimEnd()}…` : line;
 }
 
 /** Where a project's deliverable lives relative to the project's folder (what file commands take). */

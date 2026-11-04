@@ -64,8 +64,11 @@ export interface Post {
 }
 
 export interface PromptDeliverable {
+	/** The live path: a prompt belongs to the deliverable, not to one of its versions. */
 	path: string;
 	exists: boolean;
+	/** The versions published so far, oldest first. */
+	versions: string[];
 }
 
 export interface Prompt {
@@ -74,13 +77,34 @@ export interface Prompt {
 	title: string;
 	templateId: string | null;
 	templateName: string | null;
+	/** What is filled in for the person, from a template or from feedback; they can edit it. */
+	base: string;
+	baseHtml: string;
+	/** What the person adds, in their own words. */
 	body: string;
 	html: string;
 	createdAt: string;
 	updatedAt: string;
 	deliverables: PromptDeliverable[];
+	/** The pieces of feedback (ids) it was written to resolve. */
+	feedback: string[];
 	/** The times it was run with Claude Code, newest first. */
 	runs: ClaudeRunRecord[];
+}
+
+/** What a new prompt is made of. It has no title: Claude Code names it from what it asks. */
+export interface NewPromptInput {
+	/** Filled in from the template or the feedback (`suggestPromptBase`), edited or not. */
+	base: string;
+	/** What the person adds. */
+	body: string;
+	templateId: string | null;
+	/** An existing deliverable the prompt asks changes to. */
+	deliverable: string | null;
+	/** The name of a new deliverable to start for it; null leaves the naming to whatever produces it. */
+	newDeliverable: string | null;
+	/** The pieces of feedback (ids) it is meant to resolve. */
+	feedback: string[];
 }
 
 /** What the New prompt dialog starts from when it is opened for something other than a blank prompt. */
@@ -89,6 +113,8 @@ export interface PromptDraft {
 	body: string;
 	/** An existing deliverable the prompt asks for changes to, by its live path; null leaves the choice at "a new deliverable". */
 	deliverable: string | null;
+	/** The pieces of feedback (ids) the prompt is written to resolve. */
+	feedback?: string[];
 	/** Said at the top of the dialog: where the draft came from. */
 	note: string;
 }
@@ -103,6 +129,14 @@ export interface Feedback {
 	html: string;
 	createdAt: string;
 	updatedAt: string;
+	/** The passage it is about, as plain text, with the words just before and after it (see anchors.ts); null when it is
+	 *  about the whole document. */
+	quote: string | null;
+	quotePrefix: string | null;
+	quoteSuffix: string | null;
+	/** The version it was given on: the one it names, or for feedback on the live file the first version published after it
+	 *  was written (what that version froze); null while none has been published since. */
+	givenOn: string | null;
 }
 
 export interface Upload {
@@ -303,6 +337,13 @@ export interface StoppedRun {
 	finishedAt: string;
 }
 
+/** What the live file holds that no version does: the version it follows, when it last changed. */
+export interface ProvenanceDraft {
+	since: string | null;
+	modified: string;
+	stoppedRun: StoppedRun | null;
+}
+
 export interface Provenance {
 	groups: ProvenanceGroup[];
 	summary: {
@@ -314,7 +355,7 @@ export interface Provenance {
 		label: { level: MmmLevel; version: string } | null;
 	};
 	/** The live file when it holds something no version does. */
-	draft: { since: string | null; modified: string; stoppedRun: StoppedRun | null } | null;
+	draft: ProvenanceDraft | null;
 	/** Where a publish goes when the person does not say. */
 	defaultThread: string | null;
 	stoppedRun: StoppedRun | null;
@@ -507,6 +548,14 @@ export interface Settings {
 	encryption: EncryptionStatus;
 }
 
+/** The guide on the home page for a new client (see onboarding.rs). */
+export interface OnboardingStatus {
+	/** The guide is on the home page. */
+	active: boolean;
+	/** The steps that were put off: only "semester" and "sync" can be. */
+	skipped: string[];
+}
+
 /** A dragged rectangle, in the capture's own pixels. */
 export interface Region {
 	x: number;
@@ -567,6 +616,8 @@ export interface ClaudeCodeSettings {
 	confine: boolean;
 	/** A prompt that is created starts running at once, without the confirmation. */
 	autoRun: boolean;
+	/** A new prompt is named by Claude Code from what it asks. */
+	namePrompts: boolean;
 	/** The program that would be run, when it can be found. */
 	resolvedPath: string | null;
 	/** Why it can't be found. */
@@ -751,6 +802,7 @@ export interface TrelloMapping {
 
 /** A release newer than this one, as the notice shows it. */
 export interface UpdateInfo {
+	kind: 'release';
 	version: string;
 	currentVersion: string;
 	/** When it was published (ISO), if the release says. */
@@ -761,20 +813,48 @@ export interface UpdateInfo {
 	notesHtml: string;
 	/** The "Breaking changes" section, rendered, shown apart. */
 	breakingHtml: string | null;
-	/** A development build's pretend update: installing it installs nothing. */
-	simulated: boolean;
 }
+
+/** One of the new commits on the branch a development build follows. */
+export interface BranchCommit {
+	hash: string;
+	subject: string;
+	/** The first line marks it as breaking (`feat!:`). */
+	breaking: boolean;
+}
+
+/** Commits the branch a development build follows has and its checkout lacks (see devupdates.rs). */
+export interface BranchUpdate {
+	kind: 'branch';
+	branch: string;
+	/** What it follows, as `origin/main`. */
+	upstream: string;
+	/** Where the checkout is now (short), and the commit the update goes to (full). */
+	head: string;
+	target: string;
+	/** All the commits it lacks; the newest are listed, `more` is how many are left out. */
+	behind: number;
+	commits: BranchCommit[];
+	more: number;
+	/** Files have changes that aren't committed. They are kept, and the update stops if it would touch them. */
+	dirty: boolean;
+}
+
+/** What there is to install: a release, or new commits on a development build's branch. */
+export type Announced = UpdateInfo | BranchUpdate;
 
 /** Settings → About. */
 export interface UpdateView {
 	currentVersion: string;
 	/** Look by itself shortly after starting and every few hours. */
 	automatic: boolean;
-	/** Why this build doesn't look for updates (a development build, or no updater key yet). */
+	/** Why this build can't look for anything newer (a debug build `tauri dev` didn't start, or no updater key yet). */
 	unavailable: string | null;
-	/** A development build, which can simulate an update. */
+	/** A development build, which follows its git branch instead of the releases. */
 	devBuild: boolean;
-	available: UpdateInfo | null;
+	/** The branch it follows, as `origin/main`, once a look has found it. */
+	following: string | null;
+	available: Announced | null;
 	/** When a check last worked (ISO). */
 	checkedAt: string | null;
 	/** Where the choice is kept: the app's config, on this machine only. */
@@ -782,18 +862,21 @@ export interface UpdateView {
 }
 
 export interface UpdateCheck {
-	available: UpdateInfo | null;
+	available: Announced | null;
 	message: string;
 }
 
 /** What to do about Claude Code runs that a restart would stop: ask, wait for them, or stop them. */
 export type RunsChoice = 'ask' | 'wait' | 'stop';
 
-/** Where installing got to when it couldn't restart (yet). A real install that goes through ends in a restart. */
+/**
+ * Where installing got to when it couldn't restart (yet). A release that installs ends in a restart; commits brought into
+ * a development build end in `applied`: the toolchain is rebuilding when `rebuild` says so, or the window reloads.
+ */
 export type InstallStep =
 	| { state: 'wait'; waitingFor: string[] }
 	| { state: 'ask'; runs: string[] }
-	| { state: 'simulated'; version: string };
+	| { state: 'applied'; commits: number; head: string; rebuild: boolean };
 
 /** The `update-progress` event. */
 export interface UpdateProgress {

@@ -9,10 +9,11 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use tempfile::tempdir;
 
+use crate::devupdates::{BranchUpdate, Commit};
 use crate::settings::{self, UpdateConfig};
 use crate::updates::{
-    Activity, Due, EVERY, FIRST_CHECK, Readiness, RunsChoice, SYNC_WAIT, install_failure, is_major, is_signature_error, key_problem, readiness,
-    simulated_notes, simulated_version, split_notes, update_info, when_due,
+    Activity, Announced, DEV_EVERY, Due, EVERY, FIRST_CHECK, InstallStep, Readiness, RunsChoice, SYNC_WAIT, install_failure, is_major, is_signature_error,
+    key_problem, readiness, split_notes, update_info, when_due,
 };
 
 fn idle() -> Activity {
@@ -79,6 +80,36 @@ fn the_answer_reaches_the_window_tagged_by_state() {
     assert_eq!(json(Readiness::Ask { runs: vec!["p".into()] }), serde_json::json!({ "state": "ask", "runs": ["p"] }));
     let choice: RunsChoice = serde_json::from_str("\"stop\"").unwrap();
     assert_eq!(choice, RunsChoice::Stop);
+
+    // What a development build did with the commits is told the same way.
+    let step = InstallStep::Applied { commits: 3, head: "abc1234".into(), rebuild: true };
+    assert_eq!(
+        serde_json::to_value(step).unwrap(),
+        serde_json::json!({ "state": "applied", "commits": 3, "head": "abc1234", "rebuild": true })
+    );
+}
+
+#[test]
+fn the_window_is_told_what_kind_of_update_it_is() {
+    let release = Announced::Release(update_info("0.5.0", "0.4.2", None, None));
+    let json = serde_json::to_value(release).unwrap();
+    assert_eq!(json["kind"], "release");
+    assert_eq!(json["version"], "0.5.0");
+
+    let branch = Announced::Branch(BranchUpdate {
+        branch: "main".into(),
+        upstream: "origin/main".into(),
+        head: "abc1234".into(),
+        target: "f".repeat(40),
+        behind: 2,
+        commits: vec![Commit { hash: "def5678".into(), subject: "feat(ui): add a thing".into(), breaking: false }],
+        more: 1,
+        dirty: true,
+    });
+    let json = serde_json::to_value(branch).unwrap();
+    assert_eq!(json["kind"], "branch");
+    assert_eq!((json["upstream"].as_str(), json["behind"].as_u64(), json["more"].as_u64(), json["dirty"].as_bool()), (Some("origin/main"), Some(2), Some(1), Some(true)));
+    assert_eq!(json["commits"][0]["subject"], "feat(ui): add a thing");
 }
 
 // ---- when a check is due -------------------------------------------------------------------------------------
@@ -88,6 +119,8 @@ fn checks_happen_soon_after_starting_then_every_few_hours_and_never_during_a_syn
     assert!(FIRST_CHECK.as_secs() < 60);
     assert!((2 * 3600..=12 * 3600).contains(&EVERY.as_secs()), "every few hours, not {EVERY:?}");
     assert!(SYNC_WAIT < EVERY);
+    // A development build asks its branch's remote much more often than a release build asks for releases.
+    assert!(SYNC_WAIT < DEV_EVERY && DEV_EVERY < EVERY && DEV_EVERY.as_secs() >= 60);
 
     assert_eq!(when_due(true, false), Due::Check);
     assert_eq!(when_due(true, true), Due::AfterSync);
@@ -144,7 +177,7 @@ fn the_breaking_changes_are_taken_apart_from_the_other_notes() {
 
 #[test]
 fn the_notice_gets_the_notes_as_safe_html_with_the_breaking_changes_apart() {
-    let info = update_info("v1.0.0", "0.4.2", Some("2026-11-03T10:00:00Z"), Some(NOTES), false);
+    let info = update_info("v1.0.0", "0.4.2", Some("2026-11-03T10:00:00Z"), Some(NOTES));
     assert_eq!((info.version.as_str(), info.current_version.as_str()), ("1.0.0", "0.4.2"));
     assert!(info.major);
     assert_eq!(info.date.as_deref(), Some("2026-11-03T10:00:00Z"));
@@ -154,22 +187,10 @@ fn the_notice_gets_the_notes_as_safe_html_with_the_breaking_changes_apart() {
     assert!(info.notes_html.contains("<h3>Features</h3>"));
 
     // A minor release without notes, and notes that try to inject markup.
-    let plain = update_info("0.5.0", "0.4.2", Some(" "), None, false);
+    let plain = update_info("0.5.0", "0.4.2", Some(" "), None);
     assert!(!plain.major && plain.breaking_html.is_none() && plain.notes_html.is_empty() && plain.date.is_none());
-    let hostile = update_info("0.5.0", "0.4.2", None, Some("<script>alert(1)</script>\n\n[x](javascript:alert(1))"), false);
+    let hostile = update_info("0.5.0", "0.4.2", None, Some("<script>alert(1)</script>\n\n[x](javascript:alert(1))"));
     assert!(!hostile.notes_html.contains("<script>") && !hostile.notes_html.contains("javascript:"), "{}", hostile.notes_html);
-}
-
-#[test]
-fn a_development_build_pretends_a_minor_or_a_major_release() {
-    assert_eq!(simulated_version("0.4.0", false), "0.5.0");
-    assert_eq!(simulated_version("0.4.7", true), "1.0.0");
-    assert_eq!(simulated_version("v2.3.1-beta", false), "2.4.0");
-
-    let minor = update_info(&simulated_version("0.4.0", false), "0.4.0", None, Some(&simulated_notes(false)), true);
-    assert!(minor.simulated && !minor.major && minor.breaking_html.is_none());
-    let major = update_info(&simulated_version("0.4.0", true), "0.4.0", None, Some(&simulated_notes(true)), true);
-    assert!(major.major && major.breaking_html.is_some());
 }
 
 // ---- the key, and the config that ships ------------------------------------------------------------------------

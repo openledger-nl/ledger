@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use tempfile::tempdir;
 
 use crate::crypto::{self, CryptoError, Key};
-use crate::encrypted_remote::EncryptedRemote;
+use crate::encrypted_remote::{EncryptedRemote, MANIFEST};
 use crate::error::{Error, Result};
 use crate::github::last_page;
 use crate::keystore::{EnvFileKeyStore, KeyStore};
@@ -24,7 +24,7 @@ struct Fake {
 struct Inner {
     commits: Vec<BTreeMap<String, Vec<u8>>>,
     /// Another machine pushes this just before our next push lands, which therefore bounces once.
-    race: Option<(String, String)>,
+    race: Option<Vec<(String, Option<Vec<u8>>)>>,
     pushes: usize,
     /// The next `tree` call fails (a connection lost right after a push, say).
     tree_fails: bool,
@@ -107,8 +107,8 @@ impl Remote for Fake {
 
     fn push(&self, parent: Option<&Head>, changes: &[Change], _message: &str) -> Result<Head> {
         let mut inner = self.inner.lock().unwrap();
-        if let Some((path, text)) = inner.race.take() {
-            inner.commit([(path, Some(text.into_bytes()))]);
+        if let Some(changes) = inner.race.take() {
+            inner.commit(changes);
             return Err(Error::Rejected);
         }
         let current = inner.commits.len().checked_sub(1);
@@ -343,7 +343,7 @@ fn a_push_that_loses_a_race_is_retried_on_top_of_the_new_state() {
     sync(dir.path(), &remote);
 
     write(dir.path(), "mine.md", "mine, edited");
-    remote.inner.lock().unwrap().race = Some(("theirs.md".into(), "theirs".into()));
+    remote.inner.lock().unwrap().race = Some(vec![("theirs.md".into(), Some(b"theirs".to_vec()))]);
 
     let outcome = sync(dir.path(), &remote);
     assert_eq!(remote.files()["mine.md"], "mine, edited");
@@ -470,37 +470,68 @@ fn seal(path: &str, text: &str) -> Vec<u8> {
     crypto::armor(&crypto::encrypt(&key(), path, text.as_bytes()).unwrap())
 }
 
+/// The name a file is stored under with the shared key.
+fn name(path: &str) -> String {
+    crypto::remote_name(&key(), path)
+}
+
 impl Fake {
-    /// What another machine that has the key pushes.
-    fn elsewhere_sealed(&self, changes: &[(&str, Option<&str>)]) {
-        self.inner.lock().unwrap().commit(changes.iter().map(|(p, t)| (p.to_string(), t.map(|t| seal(p, t)))));
+    /// The stored files another machine that has the key would commit for `changes`, manifest included.
+    fn sealed(&self, changes: &[(&str, Option<&str>)]) -> Vec<(String, Option<Vec<u8>>)> {
+        let scratch = Fake::default();
+        scratch.inner.lock().unwrap().commits = self.inner.lock().unwrap().commits.clone();
+        let changes: Vec<Change> = changes
+            .iter()
+            .map(|(path, text)| match text {
+                Some(text) => Change::Put { path: path.to_string(), bytes: text.as_bytes().to_vec() },
+                None => Change::Delete { path: path.to_string() },
+            })
+            .collect();
+        let before = scratch.raw();
+        EncryptedRemote::new(&scratch, key()).push(scratch.head().unwrap().as_ref(), &changes, "elsewhere").unwrap();
+        let after = scratch.raw();
+        let mut stored: Vec<(String, Option<Vec<u8>>)> = before.keys().filter(|name| !after.contains_key(*name)).map(|name| (name.clone(), None)).collect();
+        stored.extend(after.into_iter().filter(|(name, bytes)| before.get(name) != Some(bytes)).map(|(name, bytes)| (name, Some(bytes))));
+        stored
     }
 
-    /// The files as stored.
+    /// What another machine that has the key pushes.
+    fn elsewhere_sealed(&self, changes: &[(&str, Option<&str>)]) {
+        let stored = self.sealed(changes);
+        self.inner.lock().unwrap().commit(stored);
+    }
+
+    /// The files as stored, by the names they are stored under.
     fn raw(&self) -> BTreeMap<String, Vec<u8>> {
         self.inner.lock().unwrap().head_files()
     }
 
-    /// The files as the key opens them. Panics if any of them isn't sealed.
+    /// The stored form of the file at `path`.
+    fn stored(&self, path: &str) -> Vec<u8> {
+        self.raw()[&name(path)].clone()
+    }
+
+    /// The files by their real paths, as the key opens them. Panics if any of them doesn't open.
     fn opened(&self) -> BTreeMap<String, String> {
-        let opened = |path: &String, stored: &Vec<u8>| {
-            String::from_utf8(crypto::decrypt(&key(), path, &crypto::unarmor(stored).unwrap()).unwrap()).unwrap()
-        };
-        self.raw().iter().map(|(path, stored)| (path.clone(), opened(path, stored))).collect()
+        let remote = EncryptedRemote::new(self, key());
+        let Some(head) = remote.head().unwrap() else { return BTreeMap::new() };
+        let tree = remote.tree(&head).unwrap();
+        tree.iter().map(|(path, sha)| (path.clone(), String::from_utf8(remote.blob(path, sha).unwrap()).unwrap())).collect()
     }
 
     /// Changes a stored file in place, as someone with write access to the repository could.
     fn tamper(&self, path: &str, change: impl FnOnce(&mut Vec<u8>)) {
         let mut inner = self.inner.lock().unwrap();
-        change(inner.commits.last_mut().unwrap().get_mut(path).unwrap());
+        change(inner.commits.last_mut().unwrap().get_mut(&name(path)).unwrap());
     }
 
     fn swap(&self, a: &str, b: &str) {
         let mut inner = self.inner.lock().unwrap();
         let files = inner.commits.last_mut().unwrap();
-        let (x, y) = (files[a].clone(), files[b].clone());
-        files.insert(a.to_string(), y);
-        files.insert(b.to_string(), x);
+        let (a, b) = (name(a), name(b));
+        let (x, y) = (files[&a].clone(), files[&b].clone());
+        files.insert(a, y);
+        files.insert(b, x);
     }
 }
 
@@ -562,7 +593,7 @@ fn a_sealed_sync_uploads_no_plaintext_and_another_machine_reads_it() {
     for bytes in remote.raw().values() {
         assert!(!String::from_utf8_lossy(bytes).contains("private") && !String::from_utf8_lossy(bytes).contains("# notes"));
     }
-    assert_eq!(paths(&remote.opened()), ["README.md", "threads/t/posts/1.md"], "paths stay readable");
+    assert_eq!(paths(&remote.opened()), ["README.md", "threads/t/posts/1.md"], "the key brings the paths back");
     assert_eq!(remote.opened()["threads/t/posts/1.md"], "my private thoughts");
     assert_eq!(read(a.path(), "threads/t/posts/1.md").unwrap(), "my private thoughts", "the vault on disk is untouched");
 
@@ -570,7 +601,7 @@ fn a_sealed_sync_uploads_no_plaintext_and_another_machine_reads_it() {
     let state = sync::load_state(a.path()).unwrap();
     assert_eq!(state.encrypted, Some(key().id()));
     assert_eq!(state.files["README.md"], blob_sha(b"# notes"));
-    assert_eq!(state.remote["README.md"], blob_sha(&remote.raw()["README.md"]));
+    assert_eq!(state.remote["README.md"], blob_sha(&remote.stored("README.md")));
     assert_ne!(state.files["README.md"], state.remote["README.md"]);
 
     assert_eq!(sync_sealed(a.path(), &remote), Outcome::default());
@@ -623,9 +654,10 @@ fn only_the_files_that_changed_are_sealed_and_pushed_again() {
     let outcome = sync_sealed(dir.path(), &remote);
     assert_eq!((outcome.pushed, outcome.pulled), (1, 0));
     let after = remote.raw();
-    assert_eq!(after["a.md"], before["a.md"], "an unchanged file is not sealed again (a new nonce would be churn)");
-    assert_eq!(after["c.md"], before["c.md"]);
-    assert_ne!(after["b.md"], before["b.md"]);
+    assert_eq!(after[&name("a.md")], before[&name("a.md")], "an unchanged file is not sealed again (a new nonce would be churn)");
+    assert_eq!(after[&name("c.md")], before[&name("c.md")]);
+    assert_ne!(after[&name("b.md")], before[&name("b.md")]);
+    assert_eq!(after[MANIFEST], before[MANIFEST], "an edit leaves the list of paths as it was");
     assert_eq!(remote.opened()["b.md"], "b.md v2");
 
     // Saving a file again with the same contents changes nothing either.
@@ -741,7 +773,8 @@ fn a_push_that_loses_a_race_is_retried_when_sealed() {
     sync_sealed(dir.path(), &remote);
 
     write(dir.path(), "mine.md", "mine, edited");
-    remote.inner.lock().unwrap().race = Some(("theirs.md".into(), String::from_utf8(seal("theirs.md", "theirs")).unwrap()));
+    let theirs = remote.sealed(&[("theirs.md", Some("theirs"))]);
+    remote.inner.lock().unwrap().race = Some(theirs);
     let outcome = sync_sealed(dir.path(), &remote);
     assert_eq!((outcome.pushed, outcome.pulled), (1, 1));
     assert_eq!(remote.opened()["mine.md"], "mine, edited");
@@ -893,20 +926,127 @@ fn plain_files_on_a_sealed_remote_are_refused_not_imported() {
 }
 
 #[test]
-fn a_plain_file_appearing_later_in_a_sealed_remote_is_refused_too() {
+fn a_file_the_manifest_does_not_list_is_left_alone_and_plain_text_under_a_listed_name_is_refused() {
     let dir = tempdir().unwrap();
     write(dir.path(), "a.md", "a");
     let remote = Fake::default();
     sync_sealed(dir.path(), &remote);
 
-    // A new plain file, and a plain replacement of a file this machine has.
-    remote.elsewhere(&[("sneaky.md", Some("not sealed"))]);
-    assert_eq!(refused(try_sync_with(dir.path(), &remote, key())).1, CryptoError::NotEncrypted);
+    // A file added on GitHub by hand, plain or a sealed copy of another file, is not one of ours: it is never taken
+    // in, and is left where it is.
+    let copy = remote.stored("a.md");
+    remote.elsewhere(&[("sneaky.md", Some("not sealed")), ("0123456789abcdef0123456789abcdef", Some(std::str::from_utf8(&copy).unwrap()))]);
+    write(dir.path(), "b.md", "b");
+    assert_eq!(sync_sealed(dir.path(), &remote).pushed, 1);
     assert!(read(dir.path(), "sneaky.md").is_none());
+    assert_eq!(paths(&remote.opened()), ["a.md", "b.md"]);
+    assert_eq!(remote.raw()["sneaky.md"], b"not sealed");
 
-    remote.elsewhere(&[("a.md", Some("replaced by plain text"))]);
-    assert_eq!(refused(try_sync_with(dir.path(), &remote, key())).1, CryptoError::NotEncrypted);
+    // Plain text in place of a file this machine has is refused.
+    remote.elsewhere(&[(name("a.md").as_str(), Some("replaced by plain text"))]);
+    assert_eq!(refused(try_sync_with(dir.path(), &remote, key())), ("a.md".to_string(), CryptoError::NotEncrypted));
     assert_eq!(read(dir.path(), "a.md").unwrap(), "a");
+}
+
+#[test]
+fn no_name_from_the_vault_can_be_read_on_github() {
+    let files = [
+        "projects/acquisition-company-x/project.md",
+        "projects/acquisition-company-x/threads/layoffs-q1/thread.md",
+        "projects/acquisition-company-x/threads/layoffs-q1/posts/20260101-0900.md",
+        "projects/acquisition-company-x/deliverables/draft-contract@v0.2.md",
+        "projects/acquisition-company-x/attachments/salary-list.png",
+    ];
+    let a = tempdir().unwrap();
+    for path in files {
+        write(a.path(), path, "x");
+    }
+    let remote = Fake::default();
+    sync_sealed(a.path(), &remote);
+
+    let stored = remote.raw();
+    assert_eq!(stored.len(), files.len() + 1, "a stored file for each, and the manifest");
+    for (name, bytes) in &stored {
+        let hidden = name.len() == 32 && name.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c));
+        assert!(name == MANIFEST || hidden, "{name}");
+        let text = String::from_utf8_lossy(bytes);
+        for word in ["projects", "acquisition", "company", "threads", "layoffs", "posts", "deliverables", "contract", "attachments", "salary", "png"] {
+            assert!(!name.contains(word) && !text.contains(word), "{word} in {name}");
+        }
+    }
+
+    // Another machine with the key gets every path back.
+    let b = tempdir().unwrap();
+    assert_eq!(sync_sealed(b.path(), &remote).pulled, files.len());
+    for path in files {
+        assert_eq!(read(b.path(), path).unwrap(), "x", "{path}");
+    }
+}
+
+#[test]
+fn a_manifest_that_points_outside_the_vault_is_refused() {
+    let remote = Fake::default();
+    remote.elsewhere_sealed(&[("../outside.md", Some("escaped"))]);
+    let dir = tempdir().unwrap();
+    assert_eq!(refused(try_sync_with(dir.path(), &remote, key())), (MANIFEST.to_string(), CryptoError::Corrupt));
+    assert!(!dir.path().parent().unwrap().join("outside.md").exists());
+}
+
+// ---- branches encrypted before names were hidden ----------------------------------------------------
+
+/// A branch as an earlier version left it: each file sealed under its readable path, and no manifest.
+fn readable_names_branch(files: &[(&str, &str)]) -> Fake {
+    let remote = Fake::default();
+    remote.inner.lock().unwrap().commit(files.iter().map(|(path, text)| (path.to_string(), Some(seal(path, text)))));
+    remote
+}
+
+fn says_what_to_do(message: &str) -> bool {
+    message.contains("earlier version") && message.contains("readable") && message.contains("doesn't exist yet") && message.contains("every machine")
+}
+
+#[test]
+fn a_branch_this_vault_encrypted_with_readable_names_is_refused_and_a_new_one_takes_over() {
+    let dir = tempdir().unwrap();
+    write(dir.path(), "a.md", "a");
+    let remote = readable_names_branch(&[("a.md", "a")]);
+    // What the earlier version recorded: encrypted, and nothing about names.
+    let (sha, stored_sha) = (blob_sha(b"a"), blob_sha(&remote.raw()["a.md"]));
+    let id = key().id();
+    let old = format!(r#"{{"repo":"me/notes","branch":"main","head":"commit-0","files":{{"a.md":"{sha}"}},"remote":{{"a.md":"{stored_sha}"}},"encrypted":{id}}}"#);
+    write(dir.path(), ".ledger/sync-state.json", &old);
+    let sent = (remote.raw(), remote.commits());
+
+    // Even with nothing new on either side, which would otherwise not look at GitHub at all.
+    let message = try_sync_with(dir.path(), &remote, key()).unwrap_err().to_string();
+    assert!(says_what_to_do(&message), "{message}");
+    write(dir.path(), "b.md", "b");
+    assert!(says_what_to_do(&try_sync_with(dir.path(), &remote, key()).unwrap_err().to_string()));
+    assert_eq!((remote.raw(), remote.commits()), sent, "nothing is sent");
+    assert_eq!(read(dir.path(), ".ledger/sync-state.json").unwrap(), old, "nothing is recorded");
+
+    // A branch that doesn't exist yet gets the whole vault with its names hidden, and carries on from there.
+    let fresh = Fake::default();
+    assert_eq!(try_sync_sealed_on(dir.path(), "hidden", &fresh).unwrap().pushed, 2);
+    assert_eq!(paths(&fresh.opened()), ["a.md", "b.md"]);
+    assert!(sync::load_state(dir.path()).unwrap().names_hidden);
+    assert_eq!(try_sync_sealed_on(dir.path(), "hidden", &fresh).unwrap(), Outcome::default());
+    assert_eq!((read(dir.path(), "a.md").unwrap(), read(dir.path(), "b.md").unwrap()), ("a".to_string(), "b".to_string()));
+}
+
+#[test]
+fn a_new_machine_takes_nothing_from_a_branch_with_readable_names_and_sends_nothing_to_it() {
+    let remote = readable_names_branch(&[("a.md", "from the old branch")]);
+    let sent = (remote.raw(), remote.commits());
+    let dir = tempdir().unwrap();
+    write(dir.path(), "mine.md", "mine");
+
+    let message = try_sync_with(dir.path(), &remote, key()).unwrap_err().to_string();
+    assert!(says_what_to_do(&message), "{message}");
+    assert!(read(dir.path(), "a.md").is_none());
+    assert_eq!(read(dir.path(), "mine.md").unwrap(), "mine");
+    assert_eq!((remote.raw(), remote.commits()), sent);
+    assert!(sync::load_state(dir.path()).is_none());
 }
 
 #[test]
@@ -920,7 +1060,7 @@ fn a_sealed_remote_is_refused_by_a_machine_without_encryption() {
     // Never synced here, encryption off: the stored text must not be written into the vault as if it were the notes.
     write(plain.path(), "mine.md", "mine");
     let message = try_sync_plain(plain.path(), &remote).unwrap_err().to_string();
-    assert!(message.contains("a.md") && message.contains("encrypted") && message.contains("Turn encryption on"), "{message}");
+    assert!(message.contains("are encrypted") && message.contains("Turn encryption on"), "{message}");
     assert!(read(plain.path(), "a.md").is_none());
     assert_eq!((remote.raw(), remote.commits()), (stored.clone(), 1));
 

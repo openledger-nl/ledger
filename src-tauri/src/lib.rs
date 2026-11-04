@@ -6,6 +6,7 @@ mod commands;
 mod crypto;
 mod db;
 mod deliverables;
+mod devupdates;
 mod encrypted_remote;
 mod error;
 mod feedback;
@@ -15,6 +16,7 @@ mod ids;
 mod keystore;
 mod markdown;
 mod models;
+mod onboarding;
 mod posts;
 mod projects;
 mod prompts;
@@ -53,6 +55,10 @@ mod tests_trello;
 #[cfg(test)]
 mod tests_crypto;
 #[cfg(test)]
+mod tests_devupdates;
+#[cfg(test)]
+mod tests_onboarding;
+#[cfg(test)]
 mod tests_provenance;
 #[cfg(test)]
 mod tests_screenshot;
@@ -80,8 +86,8 @@ pub fn run() {
         screenshot::reveal_main(app);
         screenshot::open_files(app, args.get(1..).unwrap_or_default(), std::path::Path::new(&cwd));
     }));
-    // Looking for and installing new releases (`updates.rs`): in release builds only, so `tauri dev`, debug builds
-    // and sandboxes never look. `updates::BUILT_IN` says the same to the rest of the app.
+    // Looking for and installing new releases (`updates.rs`): the plugin is in release builds only. A development build
+    // follows its git branch instead (`devupdates.rs`), without it. `updates::BUILT_IN` says the same to the rest of the app.
     #[cfg(not(debug_assertions))]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     builder
@@ -109,9 +115,6 @@ pub fn run() {
                 }),
             );
             applog::info("app", format!("Ledger {} started on {} {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH));
-            if std::env::var_os("LEDGER_CONFIG_DIR").is_none() && settings::adopt_old_config(&config_dir, settings::OLD_IDENTIFIER) {
-                applog::info("app", format!("Brought the settings over from the {} folder", settings::OLD_IDENTIFIER));
-            }
             let core = state::Core::open(config_dir.clone(), app.path().document_dir().ok())?;
             let sync = core.sync.clone();
             let core = Arc::new(Mutex::new(core));
@@ -170,6 +173,10 @@ pub fn run() {
             commands::link_prompt_deliverable,
             commands::unlink_prompt_deliverable,
             commands::create_prompt_deliverable,
+            commands::list_deliverable_prompts,
+            commands::suggest_prompt_base,
+            commands::attach_prompt_feedback,
+            commands::detach_prompt_feedback,
             commands::add_feedback,
             commands::set_feedback_status,
             commands::update_feedback,
@@ -268,11 +275,14 @@ pub fn run() {
             claude_code::claude_code_cancel,
             claude_code::claude_code_runs,
             claude_code::claude_code_run,
+            onboarding::onboarding_status,
+            onboarding::skip_onboarding_step,
+            onboarding::finish_onboarding,
+            onboarding::restart_onboarding,
             updates::update_status,
             updates::save_update_settings,
             updates::check_for_updates,
             updates::install_update,
-            updates::simulate_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

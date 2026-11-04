@@ -152,22 +152,24 @@ pub fn delete_post(app: State<App>, project: String, thread: String, id: String)
 
 // ---- prompts ----------------------------------------------------------------------------------------
 
+/// A new prompt, with what it can come with: an existing deliverable it asks changes to, or the name of a new one (blank:
+/// the AI names it), and the feedback it is meant to resolve. It has no title: Claude Code names it, in the background.
 #[tauri::command]
-pub fn create_prompt(
-    app: State<App>,
-    project: String,
-    thread: String,
-    title: String,
-    body: String,
-    template_id: Option<String>,
-    deliverable: Option<String>,
-) -> Result<PromptView> {
-    app.mutate(|c, _| prompts::create_linked(c, &project, &thread, &title, &body, template_id.as_deref(), deliverable.as_deref()))
+pub fn create_prompt(handle: AppHandle, app: State<App>, project: String, thread: String, draft: NewPrompt) -> Result<PromptView> {
+    let prompt = app.mutate(|c, _| prompts::create(c, &project, &thread, &draft))?;
+    crate::claude_code::name_prompt_later(&handle, &project, &thread, &prompt.id);
+    Ok(prompt)
+}
+
+/// What a new prompt's base text starts as, from the template or the feedback it is made from.
+#[tauri::command]
+pub fn suggest_prompt_base(app: State<App>, project: String, spec: BaseSpec) -> Result<String> {
+    app.read(|c, _| prompts::suggest_base(c, &project, &spec))
 }
 
 #[tauri::command]
-pub fn update_prompt(app: State<App>, project: String, thread: String, id: String, title: Option<String>, body: Option<String>) -> Result<PromptView> {
-    app.mutate(|c, _| prompts::update(c, &project, &thread, &id, title.as_deref(), body.as_deref()))
+pub fn update_prompt(app: State<App>, project: String, thread: String, id: String, base: Option<String>, body: Option<String>) -> Result<PromptView> {
+    app.mutate(|c, _| prompts::update(c, &project, &thread, &id, base.as_deref(), body.as_deref()))
 }
 
 #[tauri::command]
@@ -185,6 +187,23 @@ pub fn unlink_prompt_deliverable(app: State<App>, project: String, thread: Strin
     app.mutate(|c, _| prompts::unlink_deliverable(c, &project, &thread, &id, &path))
 }
 
+/// The prompts about a deliverable (given by its live path), as the deliverable's own page shows them.
+#[tauri::command]
+pub fn list_deliverable_prompts(app: State<App>, project: String, path: String) -> Result<Vec<PromptView>> {
+    app.read(|c, _| prompts::linked_to(c, &project, &path))
+}
+
+/// Adds pieces of feedback to a prompt: they are linked, and put in its base text with the version each was given on.
+#[tauri::command]
+pub fn attach_prompt_feedback(app: State<App>, project: String, thread: String, id: String, feedback: Vec<String>) -> Result<PromptView> {
+    app.mutate(|c, _| prompts::attach_feedback(c, &project, &thread, &id, &feedback))
+}
+
+#[tauri::command]
+pub fn detach_prompt_feedback(app: State<App>, project: String, thread: String, id: String, feedback: String) -> Result<PromptView> {
+    app.mutate(|c, _| prompts::detach_feedback(c, &project, &thread, &id, &feedback))
+}
+
 /// Starts a deliverable for the prompt: a new markdown file (from the prompt's template, if it has one) that the
 /// prompt is linked to.
 #[tauri::command]
@@ -200,8 +219,15 @@ pub fn create_prompt_deliverable(app: State<App>, project: String, thread: Strin
 // ---- feedback ---------------------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn add_feedback(app: State<App>, project: String, thread: String, deliverable_path: String, body: String) -> Result<FeedbackView> {
-    app.mutate(|c, _| feedback::add(c, &project, &thread, &deliverable_path, &body))
+pub fn add_feedback(
+    app: State<App>,
+    project: String,
+    thread: String,
+    deliverable_path: String,
+    body: String,
+    quote: Option<Quote>,
+) -> Result<FeedbackView> {
+    app.mutate(|c, _| feedback::add(c, &project, &thread, &deliverable_path, &body, quote.as_ref()))
 }
 
 #[tauri::command]

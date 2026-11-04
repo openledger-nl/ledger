@@ -21,7 +21,7 @@ fn setup() -> (Connection, String, String, String, String) {
     let p = projects::create(&c, "Acme").unwrap().slug;
     let t1 = threads::create(&c, &p, "Kick-off").unwrap().slug;
     let t2 = threads::create(&c, &p, "Review").unwrap().slug;
-    let prompt = prompts::create(&c, &p, &t1, "Write the plan", "Write the plan for the launch.", None).unwrap();
+    let prompt = prompts::create_titled(&c, &p, &t1, "Write the plan", "Write the plan for the launch.", None).unwrap();
     deliverables::create(&c, &p, "Plan", "# Plan\n\nfirst\n").unwrap();
     prompts::link_deliverable(&c, &p, &t1, &prompt.id, "plan.md").unwrap();
     (c, p, t1, t2, prompt.id)
@@ -331,7 +331,7 @@ fn the_side_window_has_a_group_per_thread_with_what_happened_there_in_order() {
     let (c, p, t1, t2, prompt) = setup();
     publish(&c, &p, "# Plan\n\none\n", &PublishChoices::default());
     publish(&c, &p, "# Plan\n\ntwo\n", &choose(|x| x.thread = Some(t2.clone())));
-    feedback::add(&c, &p, &t2, "plan@v0.2.md", "Needs a budget.\n\nAnd dates.").unwrap();
+    feedback::add(&c, &p, &t2, "plan@v0.2.md", "Needs a budget.\n\nAnd dates.", None).unwrap();
     publish(&c, &p, "# Plan\n\nthree\n", &choose(|x| x.thread = Some(t1.clone())));
     run(&c, &p, &t1, &prompt, "run-b", "cancelled", &["plan.md"]);
 

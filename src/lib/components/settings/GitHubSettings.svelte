@@ -8,7 +8,8 @@
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import type { Settings } from '$lib/types';
 
-	let { settings }: { settings: Settings } = $props();
+	/** `bare`: the form alone, for a place that has its own title and words around it (the setup guide). */
+	let { settings, bare = false }: { settings: Settings; bare?: boolean } = $props();
 
 	/** The form's starting values, read once; edits stay local until saved. */
 	function start() {
@@ -73,15 +74,17 @@
 	}
 </script>
 
-<div class="panel">
-	<div class="panel-head">
-		<Switch checked={settings.sync.configured} label="Sync the vault to GitHub" disabled={busy !== null} onchange={toggle} />
-		<h2>Sync to GitHub</h2>
-	</div>
-	<p class="sub" style="margin:0">
-		Keep the vault in a <strong>private</strong> GitHub repository, so it survives this machine and follows you to others. Ledger pulls when it starts,
-		pushes shortly after you make changes, and checks for new changes every few minutes. It refuses to sync to a public repository.
-	</p>
+<div class="panel" class:bare>
+	{#if !bare}
+		<div class="panel-head">
+			<Switch checked={settings.sync.configured} label="Sync the vault to GitHub" disabled={busy !== null} onchange={toggle} />
+			<h2>Sync to GitHub</h2>
+		</div>
+		<p class="sub" style="margin:0">
+			Keep the vault in a <strong>private</strong> GitHub repository, so it survives this machine and follows you to others. Ledger pulls when it starts,
+			pushes shortly after you make changes, and checks for new changes every few minutes. It refuses to sync to a public repository.
+		</p>
+	{/if}
 
 	<SyncWidget embedded />
 
@@ -130,17 +133,19 @@
 		</div>
 	</div>
 
-	<details class="more">
-		<summary><ChevronRight size={14} class="disclosure" />Where these settings are kept</summary>
-		<div class="kv">
-			<dt>Settings</dt>
-			<dd class="mono">{settings.settingsFile}</dd>
-			<dt>Secret</dt>
-			<dd class="mono">{settings.secretsFile}</dd>
-		</div>
-		<div class="hint">
-			Both files stay on this machine: they live in the vault’s <code>.ledger</code> folder, which the vault’s <code>.gitignore</code> lists, so the
-			repository, branch and token are never uploaded.
-		</div>
-	</details>
+	{#if !bare}
+		<details class="more">
+			<summary><ChevronRight size={14} class="disclosure" />Where these settings are kept</summary>
+			<div class="kv">
+				<dt>Settings</dt>
+				<dd class="mono">{settings.settingsFile}</dd>
+				<dt>Secret</dt>
+				<dd class="mono">{settings.secretsFile}</dd>
+			</div>
+			<div class="hint">
+				Both files stay on this machine: they live in the vault’s <code>.ledger</code> folder, which the vault’s <code>.gitignore</code> lists, so the
+				repository, branch and token are never uploaded.
+			</div>
+		</details>
+	{/if}
 </div>

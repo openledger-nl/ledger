@@ -72,15 +72,19 @@ CREATE TABLE prompts (
     id           TEXT PRIMARY KEY,
     project_slug TEXT NOT NULL,
     thread_slug  TEXT NOT NULL,
+    -- The name it is given from what it asks.
     title        TEXT NOT NULL DEFAULT '',
     template_id  TEXT,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL,
-    body         TEXT NOT NULL,
+    -- What is filled in for the person (from a template, or from feedback), and what the person adds.
+    base         TEXT NOT NULL DEFAULT '',
+    body         TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (project_slug, thread_slug) REFERENCES threads(project_slug, slug) ON DELETE CASCADE
 );
 
--- The deliverables a prompt produced, by path relative to the project's deliverables/ folder.
+-- The deliverables a prompt asks for or has produced, by the live path relative to the project's deliverables/ folder
+-- (a prompt belongs to the deliverable, not to one of its versions: the versions know which run made them).
 CREATE TABLE prompt_deliverables (
     prompt_id TEXT NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
     position  INTEGER NOT NULL,
@@ -88,7 +92,8 @@ CREATE TABLE prompt_deliverables (
     PRIMARY KEY (prompt_id, path)
 );
 
--- Feedback lands on a deliverable (a path under deliverables/, possibly a published version).
+-- Feedback lands on a deliverable (a path under deliverables/, possibly a published version): on the whole document,
+-- or on a passage of it, which is kept as the quoted text and the words around it (null for the whole document).
 CREATE TABLE feedback (
     id                  TEXT PRIMARY KEY,
     project_slug        TEXT NOT NULL,
@@ -99,7 +104,19 @@ CREATE TABLE feedback (
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     body                TEXT NOT NULL,
+    quote               TEXT,
+    quote_prefix        TEXT,
+    quote_suffix        TEXT,
     FOREIGN KEY (project_slug, thread_slug) REFERENCES threads(project_slug, slug) ON DELETE CASCADE
+);
+
+-- The pieces of feedback a prompt was written to resolve: kept so a prompt shows what it covers, and a piece of feedback
+-- shows that it is in a prompt already.
+CREATE TABLE prompt_feedback (
+    prompt_id   TEXT NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
+    feedback_id TEXT NOT NULL REFERENCES feedback(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    PRIMARY KEY (prompt_id, feedback_id)
 );
 
 -- What running a prompt with Claude Code did: how it ended, and what it said and did. Kept as runs/<id>.md in the

@@ -21,7 +21,8 @@
 //! Encryption never converts a branch that already holds plain files: their history would stay on GitHub, and it
 //! would be too easy to believe the vault was encrypted when it wasn't. It starts on a branch that doesn't exist
 //! yet (created as a fresh root commit with nothing behind it), or carries on with one that was encrypted from
-//! the start. Anything else is refused, with what to do instead.
+//! the start. Anything else is refused, with what to do instead. The same goes for a branch encrypted by a version
+//! of Ledger that left the files' names readable.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
@@ -124,6 +125,10 @@ pub struct State {
     /// The id of the key the remote's files are encrypted with, once they all are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encrypted: Option<u8>,
+    /// Whether the remote's files are stored under hidden names. `encrypted` without it is a branch encrypted by an
+    /// earlier version, whose readable names are in its history.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub names_hidden: bool,
 }
 
 impl State {
@@ -150,6 +155,9 @@ pub fn fresh_start_needed(repo: &str, branch: &str) -> String {
         "{repo} on {branch} already holds this vault's files unencrypted, and its history would keep them. Encryption starts on a new repository, or on a branch that doesn't exist yet (Ledger creates it with nothing behind it): change the repository or the branch under Sync to GitHub. Nothing was changed."
     )
 }
+
+/// Why a branch encrypted before names were hidden isn't synced any more, and what to do instead.
+pub const READABLE_NAMES: &str = "This branch was encrypted by an earlier version of Ledger, which left the names of files and folders readable on GitHub, and the branch's history keeps them. To hide the names, change the branch under Sync to GitHub to one that doesn't exist yet (or pick a new repository), on every machine: Ledger uploads the vault there with everything encrypted, names included, and nothing in the vault is lost. Once every machine has moved, the old branch can be deleted on GitHub. Nothing was changed.";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Outcome {
@@ -439,6 +447,11 @@ pub fn run(root: &Path, repo: &str, branch: &str, remote: &dyn Remote, applier: 
         if encrypted && state.encrypted.is_none() && state.has_history() {
             return Err(Error::sync(fresh_start_needed(repo, branch)));
         }
+        // Nor can one whose readable names are in its history. Checked here because, with nothing new on either
+        // side, this round would otherwise never look at the remote.
+        if encrypted && state.encrypted.is_some() && !state.names_hidden && state.has_history() {
+            return Err(Error::sync(READABLE_NAMES));
+        }
 
         let ignore = Ignore::load(root);
         let remote_files: BTreeMap<String, String> = match &head {
@@ -454,10 +467,10 @@ pub fn run(root: &Path, repo: &str, branch: &str, remote: &dyn Remote, applier: 
         let wanted: BTreeMap<String, String> = plan.download.iter().chain(&plan.conflicts).map(|(p, s)| (p.clone(), s.clone())).collect();
         let blobs = fetch_all(remote, &wanted)?;
 
-        if !encrypted && let Some(path) = wanted.keys().find(|path| crypto::is_encrypted(&blobs[*path])) {
-            return Err(Error::sync(format!(
-                "{path} on GitHub is encrypted, but encryption is off here. Turn encryption on and import the key (Settings), then sync again. Nothing was changed."
-            )));
+        if !encrypted && wanted.keys().any(|path| crypto::is_encrypted(&blobs[path])) {
+            return Err(Error::sync(
+                "The files on GitHub are encrypted, but encryption is off here. Turn encryption on and import the key (Settings), then sync again. Nothing was changed."
+            ));
         }
 
         // Both sides may have changed a file to the same thing; with encryption that only shows now.
@@ -571,6 +584,7 @@ pub fn run(root: &Path, repo: &str, branch: &str, remote: &dyn Remote, applier: 
         // Once the remote holds only sealed files, this vault's state says so (and with which key).
         if encrypted {
             state.encrypted = key_id;
+            state.names_hidden = true;
         }
         state.files = files;
         state.remote = if state.encrypted.is_some() { shas } else { BTreeMap::new() };
