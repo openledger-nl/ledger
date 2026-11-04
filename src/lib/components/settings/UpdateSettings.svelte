@@ -73,7 +73,7 @@
 
 		<div class="hint">
 			With the switch on, Ledger looks shortly after it starts and every few hours, and tells you when a new version is out. It never installs one until you click
-			<b>Install and restart</b>, and then waits for a sync or a Claude Code run to finish first. With this off, Ledger only looks when you click
+			<b>Install and restart</b>, and then waits for a sync or an AI run to finish first. With this off, Ledger only looks when you click
 			<b>Check for updates</b>. The choice is kept for this computer, in <code>{view.configFile}</code>, not in the vault.
 		</div>
 
@@ -93,7 +93,7 @@
 			<div class="sync-detail">
 				<h3 style="font-size:14px">Development build</h3>
 				<div class="hint">
-					Pretend a release was found, to see the notice and go through installing it. Installing waits for syncs and Claude Code runs like a real
+					Pretend a release was found, to see the notice and go through installing it. Installing waits for syncs and AI runs like a real
 					update, then stops short of installing anything.
 				</div>
 				<div class="row-end" style="justify-content:flex-start">

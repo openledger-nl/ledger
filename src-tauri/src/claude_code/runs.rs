@@ -7,7 +7,7 @@
 //! window what is happening and brings the vault up to date. The tests give both fakes.
 
 use std::ffi::OsString;
-use std::io::{self, BufReader, Read};
+use std::io::{self, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -17,8 +17,9 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
+use super::acp;
 use super::cli::{self, Search};
-use super::config::{self, ClaudeSettings};
+use super::config::{self, ClaudeSettings, Provider};
 use super::prompt::RunRequest;
 use super::records::{self, RunFacts, RunRecord};
 use super::redact::Redactor;
@@ -67,6 +68,7 @@ impl Status {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunView {
+    pub provider: String,
     pub id: String,
     pub project: String,
     pub thread: String,
@@ -146,12 +148,14 @@ struct State {
     linked: Vec<String>,
     vault_reloaded: bool,
     result: Option<ResultInfo>,
+    terminal: bool,
     /// What the run did, in order, and the model it started with: the note about the run is made from these.
     steps: Vec<Step>,
     model: Option<String>,
 }
 
 struct Run {
+    provider: Provider,
     id: String,
     project: String,
     thread: String,
@@ -167,8 +171,9 @@ struct Run {
 }
 
 impl Run {
-    fn new(request: &RunRequest) -> Run {
+    fn new(request: &RunRequest, provider: Provider) -> Run {
         Run {
+            provider,
             id: ids::new_id(),
             project: request.project.clone(),
             thread: request.thread.clone(),
@@ -190,6 +195,7 @@ impl Run {
                 linked: Vec::new(),
                 vault_reloaded: false,
                 result: None,
+                terminal: false,
                 steps: Vec::new(),
                 model: None,
             }),
@@ -198,6 +204,7 @@ impl Run {
 
     fn view_of(&self, state: &State) -> RunView {
         RunView {
+            provider: self.provider.as_str().to_string(),
             id: self.id.clone(),
             project: self.project.clone(),
             thread: self.thread.clone(),
@@ -325,21 +332,31 @@ impl Runs {
         if self.inner.held.load(Ordering::SeqCst) {
             return Err(restarting());
         }
-        let program = cli::resolve(&ctx.settings.cli_path, search)?;
+        cli::validate_adapter(&ctx.settings)?;
+        if ctx.settings.provider == Provider::Prime && request.cwd.to_str().is_none() {
+            return Err(Error::invalid("Prime Agent requires a UTF-8 working directory"));
+        }
+        let program = cli::resolve_for(ctx.settings.provider, &ctx.settings.cli_path, search)?;
         let _ = settings::ensure_gitignore(&ctx.root);
         let guard = if ctx.settings.confine { Some(write_guard(&ctx)?) } else { None };
         let spec = SpawnSpec {
             env: child_env(&program),
             program,
-            args: cli::run_args(&ctx.settings, guard.as_deref()),
+            args: {
+                let mut args = cli::run_args(&ctx.settings, guard.as_deref());
+                if ctx.settings.provider == Provider::Prime {
+                    args.extend([OsString::from("--cwd"), request.cwd.as_os_str().to_owned()]);
+                }
+                args
+            },
             cwd: request.cwd.clone(),
-            stdin: request.text.clone().into_bytes(),
+            stdin: if ctx.settings.provider == Provider::Agy { format!("{}\n", serde_json::json!({"event":"user","message":{"content":request.text}})).into_bytes() } else { request.text.clone().into_bytes() },
         };
 
         // How the deliverables stand before the run, to tell afterwards what it changed and what to publish.
         let baseline = Baseline::capture(&deliverables::deliverables_dir(&ctx.root, &request.project));
 
-        let run = Arc::new(Run::new(&request));
+        let run = Arc::new(Run::new(&request, ctx.settings.provider));
         request.run_id = run.id.clone();
         {
             let mut runs = lock(&self.inner.runs);
@@ -410,7 +427,7 @@ impl Runs {
             self.inner.host.emit(&RunEvent { run: run.view(), chunk: None });
             // Stopping a process tree can take a moment: not on the caller's thread.
             let process = lock(&run.process).clone();
-            if let Some(process) = process {
+            if let Some(process) = process.filter(|_| run.provider != Provider::Prime) {
                 thread::spawn(move || process.kill_tree());
             }
             // Without a process yet, the worker notices the flag as soon as it has started one.
@@ -418,13 +435,22 @@ impl Runs {
         Ok(run.view())
     }
 
-    /// Stops every run, and returns once the processes have been told. For when the app closes.
+    /// Prevent new runs while the app drains its owned sessions for exit.
+    pub fn stop_for_exit(&self) {
+        {
+            let _runs = lock(&self.inner.runs);
+            self.inner.held.store(true, Ordering::SeqCst);
+        }
+        self.cancel_all();
+    }
+
+    /// Stops every run. Prime's worker sends cancel/close asynchronously; callers must keep the app alive until it ends.
     pub fn cancel_all(&self) {
         let runs: Vec<Arc<Run>> = lock(&self.inner.runs).clone();
         for run in runs.iter().filter(|r| r.is_running()) {
             run.cancel.store(true, Ordering::SeqCst);
             let process = lock(&run.process).clone();
-            if let Some(process) = process {
+            if let Some(process) = process.filter(|_| run.provider != Provider::Prime) {
                 process.kill_tree();
             }
         }
@@ -469,10 +495,15 @@ fn execute(inner: Arc<Inner>, run: Arc<Run>, spec: SpawnSpec, request: RunReques
         redactor: Redactor::for_vault(&ctx.root),
     });
 
+    if ctx.settings.provider == Provider::Prime {
+        execute_prime(&inner, &sink, &spec, &request, &ctx, &baseline);
+        return;
+    }
+
     let spawned = match inner.runner.spawn(&spec) {
         Ok(spawned) => spawned,
         Err(e) => {
-            let reason = spawn_failure(&e, &spec);
+            let reason = spawn_failure(&e, &spec).replace("Claude Code", ctx.settings.provider.label());
             sink.push(&format!("✗ {reason}\n"));
             finish(&inner, &sink, &request, &ctx, &baseline, Status::Failed, Some(reason), None);
             return;
@@ -505,10 +536,293 @@ fn execute(inner: Arc<Inner>, run: Arc<Run>, spec: SpawnSpec, request: RunReques
     }
 
     let cancelled = run.cancel.load(Ordering::SeqCst);
-    let result = lock(&run.state).result.clone();
+    let mut result = lock(&run.state).result.clone();
+    if ctx.settings.provider != Provider::Claude && (result.is_none() || !lock(&run.state).terminal) {
+        result = Some(ResultInfo { is_error: true, text: "The harness exited without a recognized final response. Check its version and output format.".to_string(), ..ResultInfo::default() });
+        lock(&run.state).result = result.clone();
+    }
     let (status, message, code) = outcome(cancelled, &exit, result.as_ref(), ctx.settings.confine && run.unknown_option.load(Ordering::SeqCst));
+    let message = message.map(|m| m.replace("Claude Code", ctx.settings.provider.label()));
     sink.push(&render::summary(result.as_ref(), run.started.elapsed().as_secs()));
     finish(&inner, &sink, &request, &ctx, &baseline, status, message, code);
+}
+
+/// ACP completes a prompt while its facade is still running. Close the owned session before reaping it.
+fn execute_prime(inner: &Inner, sink: &Arc<Sink>, spec: &SpawnSpec, request: &RunRequest, ctx: &RunContext, baseline: &Baseline) {
+    // Prime's daemon operations can each take 30 seconds. EOF also performs owned-session cleanup.
+    const CLEANUP_GRACE: Duration = Duration::from_secs(35);
+    const CANCEL_GRACE: Duration = Duration::from_secs(3);
+    let interactive = match inner.runner.spawn_interactive(spec) {
+        Ok(value) => value,
+        Err(e) => {
+            let reason = spawn_failure(&e, spec).replace("Claude Code", "Prime Agent");
+            sink.push(&format!("✗ {reason}\n"));
+            finish(inner, sink, request, ctx, baseline, Status::Failed, Some(reason), None);
+            return;
+        }
+    };
+    let runner::InteractiveSpawned { spawned, stdin } = interactive;
+    let input = AcpInput::start(stdin);
+    let process = spawned.process;
+    *lock(&sink.run.process) = Some(process.clone());
+    let (out_tx, out_rx) = mpsc::sync_channel(64);
+    let reader = thread::Builder::new().name("prime-acp-output".into()).spawn(move || {
+        let mut reader = BufReader::new(spawned.stdout);
+        let mut line = Vec::new();
+        loop {
+            let item = match runner::read_line(&mut reader, &mut line, MAX_LINE_BYTES + 1) {
+                Ok(true) if line.len() <= MAX_LINE_BYTES => Ok(String::from_utf8_lossy(&line).into_owned()),
+                Ok(true) => Err("Prime Agent ACP frame exceeded the size limit".to_string()),
+                Ok(false) => break,
+                Err(e) => Err(format!("Couldn't read Prime Agent ACP output: {e}")),
+            };
+            if out_tx.send(item).is_err() { break; }
+        }
+    });
+    let stderr_sink = sink.clone();
+    let stderr_reader = thread::Builder::new().name("prime-acp-stderr".into()).spawn(move || read_stream(spawned.stderr, false, &stderr_sink));
+    let (exit_tx, exit_rx) = mpsc::channel();
+    let waiter = process.clone();
+    thread::spawn(move || { let _ = exit_tx.send(waiter.wait()); });
+
+    let mut client = acp::Client::new(spec.cwd.to_str().expect("Prime cwd validated before launch").to_owned(), request.text.clone());
+    let mut failure = None;
+    let mut input = input;
+    let mut result = None;
+    let mut cancelling_at = None;
+    let mut cancel_sent = false;
+    let startup = Instant::now();
+    if reader.is_err() || stderr_reader.is_err() || input.is_err() {
+        failure = Some("Couldn't start Prime Agent I/O workers".to_string());
+    } else if let Err(e) = input.as_mut().map_err(|e| io::Error::other(e.to_string())).and_then(|input| input.send(&client.initialize())) {
+        failure = Some(format!("Couldn't initialize Prime Agent ACP: {e}"));
+    }
+    while failure.is_none() && result.is_none() {
+        if let Err(e) = input.as_mut().expect("input started").check() {
+            failure = Some(format!("Couldn't write to Prime Agent ACP: {e}"));
+            break;
+        }
+        if sink.run.cancel.load(Ordering::SeqCst) {
+            let at = *cancelling_at.get_or_insert_with(Instant::now);
+            if let Some(cancel) = client.cancel() {
+                if !cancel_sent {
+                    if let Err(e) = input.as_mut().map_err(|e| io::Error::other(e.to_string())).and_then(|input| input.send(&cancel)) { failure = Some(format!("Couldn't cancel Prime Agent: {e}")); break; }
+                    cancel_sent = true;
+                }
+            }
+            if at.elapsed() >= CANCEL_GRACE { break; }
+        }
+        if client.session_id.is_none() && startup.elapsed() >= Duration::from_secs(35) {
+            failure = Some("Prime Agent ACP initialization timed out".into());
+            break;
+        }
+        match out_rx.recv_timeout(Duration::from_millis(50)) {
+            Ok(Ok(line)) => match client.receive(&line) {
+                Ok(action) => {
+                    apply_rendered(sink, action.rendered);
+                    // Never start a new prompt after Cancel was pressed during initialization.
+                    if let Some(send) = action.send {
+                        if !(sink.run.cancel.load(Ordering::SeqCst) && send["method"] == "session/prompt") {
+                            if let Err(e) = input.as_mut().map_err(|e| io::Error::other(e.to_string())).and_then(|input| input.send(&send)) { failure = Some(format!("Couldn't write to Prime Agent ACP: {e}")); }
+                        }
+                    }
+                    result = action.result;
+                }
+                Err(e) => failure = Some(e),
+            },
+            Ok(Err(e)) => failure = Some(e),
+            Err(mpsc::RecvTimeoutError::Disconnected) => failure = Some("Prime Agent exited before completing its ACP prompt".into()),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+    }
+
+    let mut cleanup_error = None;
+    if let Some(close) = client.close() {
+        if let Err(e) = input.as_mut().map_err(|e| io::Error::other(e.to_string())).and_then(|input| input.send(&close)) {
+            cleanup_error = Some(format!("Couldn't close Prime Agent session: {e}"));
+        } else {
+            let deadline = Instant::now() + CLEANUP_GRACE;
+            loop {
+                if let Err(e) = input.as_mut().expect("input started").check() {
+                    cleanup_error = Some(format!("Prime Agent session cleanup is unconfirmed: {e}"));
+                    break;
+                }
+                if Instant::now() >= deadline {
+                    cleanup_error = Some("Prime Agent session cleanup timed out; closing its input".into());
+                    break;
+                }
+                match out_rx.recv_timeout(Duration::from_millis(50)) {
+                    Ok(Ok(line)) => match client.receive(&line) {
+                        Ok(action) if action.closed => break,
+                        Ok(action) => {
+                            apply_rendered(sink, action.rendered);
+                            if let Some(send) = action.send {
+                                if let Err(e) = input.as_mut().expect("input started").send(&send) {
+                                    cleanup_error = Some(format!("Prime Agent session cleanup is unconfirmed: {e}"));
+                                    break;
+                                }
+                            }
+                        }
+                        Err(e) => { cleanup_error = Some(e); break; }
+                    },
+                    Ok(Err(e)) => { cleanup_error = Some(e); break; }
+                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(_) => { cleanup_error = Some("Prime Agent did not acknowledge session cleanup; closing its input".into()); break; }
+                }
+            }
+        }
+    }
+    // EOF is scoped to this fresh client-owned session; never shut down the shared Prime daemon.
+    drop(input);
+    drop(out_rx);
+    let exit = match exit_rx.recv_timeout(CLEANUP_GRACE) {
+        Ok(exit) => exit,
+        Err(_) => {
+            process.kill_tree();
+            cleanup_error = Some("Prime Agent did not exit after session cleanup; stopped its process tree. Check Prime Agent for remaining work.".into());
+            exit_rx.recv_timeout(Duration::from_secs(5)).unwrap_or_else(|_| Err(io::Error::other("Prime Agent did not stop")))
+        }
+    };
+    let cleanup_warning = cleanup_error.map(|e| format!("{e}. Session cleanup is unconfirmed; check Prime Agent for remaining work."));
+    if let Some(e) = &cleanup_warning {
+        sink.push(&format!("✗ {e}\n"));
+        failure.get_or_insert_with(|| e.clone());
+    }
+    let result = failure.map(|text| ResultInfo { is_error:true, text, ..ResultInfo::default() }).or(result);
+    {
+        let mut state = lock(&sink.run.state);
+        state.terminal = true;
+        state.result = result.clone();
+    }
+    let (status, mut message, code) = outcome(sink.run.cancel.load(Ordering::SeqCst), &exit, result.as_ref(), false);
+    if status == Status::Cancelled {
+        if let Some(warning) = cleanup_warning {
+            message = Some(format!("Stopped at your request. {warning}"));
+        }
+    }
+    sink.push(&render::summary(result.as_ref(), sink.run.started.elapsed().as_secs()));
+    finish(inner, sink, request, ctx, baseline, status, message.map(|m| m.replace("Claude Code", "Prime Agent")), code);
+}
+
+/// A pipe write can block indefinitely if the facade stops reading. Only this worker owns stdin;
+/// the supervisor keeps draining output, checking cancellation, and enforcing write deadlines.
+struct AcpInput {
+    tx: mpsc::SyncSender<Vec<u8>>,
+    done: mpsc::Receiver<io::Result<()>>,
+    pending: std::collections::VecDeque<Instant>,
+    stop: Arc<AtomicBool>,
+}
+
+impl AcpInput {
+    const CAPACITY: usize = 8;
+    const WRITE_GRACE: Duration = Duration::from_secs(3);
+
+    fn start(mut stdin: Box<dyn Write + Send>) -> io::Result<Self> {
+        let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(Self::CAPACITY);
+        let (done_tx, done) = mpsc::channel();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopping = stop.clone();
+        thread::Builder::new().name("prime-acp-input".into()).spawn(move || {
+            while let Ok(frame) = rx.recv() {
+                if stopping.load(Ordering::SeqCst) { break; }
+                let result = stdin.write_all(&frame).and_then(|()| stdin.flush());
+                let failed = result.is_err();
+                if done_tx.send(result).is_err() || failed { break; }
+            }
+            // Dropping stdin sends EOF, invoking the facade's owned-session cleanup.
+        })?;
+        Ok(Self { tx, done, pending: Default::default(), stop })
+    }
+
+    fn send(&mut self, frame: &serde_json::Value) -> io::Result<()> {
+        self.check()?;
+        if self.pending.len() >= Self::CAPACITY {
+            return Err(io::Error::other("Prime Agent ACP input queue is full"));
+        }
+        let mut bytes = serde_json::to_vec(frame)?;
+        if bytes.len() > MAX_LINE_BYTES {
+            return Err(io::Error::other("Prime Agent ACP input frame exceeded the size limit"));
+        }
+        bytes.push(b'\n');
+        self.tx.try_send(bytes).map_err(|e| io::Error::other(format!("Prime Agent ACP input unavailable: {e}")))?;
+        self.pending.push_back(Instant::now());
+        Ok(())
+    }
+
+    fn check(&mut self) -> io::Result<()> {
+        while !self.pending.is_empty() {
+            match self.done.try_recv() {
+                Ok(result) => { self.pending.pop_front(); result?; }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => return Err(io::Error::other("Prime Agent ACP input closed")),
+            }
+        }
+        if self.pending.front().is_some_and(|at| at.elapsed() >= Self::WRITE_GRACE) {
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "Prime Agent ACP input write timed out"));
+        }
+        Ok(())
+    }
+}
+
+impl Drop for AcpInput {
+    fn drop(&mut self) {
+        // Do not deliver queued prompt work after cancellation or a transport failure.
+        self.stop.store(true, Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+mod acp_input_tests {
+    use super::*;
+
+    struct BlockedPipe {
+        entered: mpsc::Sender<()>,
+        release: mpsc::Receiver<()>,
+    }
+
+    impl Write for BlockedPipe {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            let _ = self.entered.send(());
+            self.release.recv().map_err(|_| io::Error::other("test pipe closed"))?;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    }
+
+    #[test]
+    fn blocked_acp_input_does_not_block_supervision_and_is_bounded() {
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let mut input = AcpInput::start(Box::new(BlockedPipe { entered: entered_tx, release: release_rx })).unwrap();
+        let frame = serde_json::json!({"method":"initialize"});
+        input.send(&frame).unwrap();
+        entered_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        for _ in 1..AcpInput::CAPACITY { input.send(&frame).unwrap(); }
+        assert!(input.send(&frame).unwrap_err().to_string().contains("queue is full"));
+        input.pending[0] = Instant::now() - AcpInput::WRITE_GRACE;
+        assert_eq!(input.check().unwrap_err().kind(), io::ErrorKind::TimedOut);
+        drop(input);
+        release_tx.send(()).unwrap();
+        // Once unblocked, the worker must discard the queued frames, not start another prompt.
+        assert!(entered_rx.recv_timeout(Duration::from_secs(1)).is_err());
+    }
+
+    #[test]
+    fn acp_input_rejects_oversized_frames() {
+        let mut input = AcpInput::start(Box::new(io::sink())).unwrap();
+        let frame = serde_json::json!({"text":"x".repeat(MAX_LINE_BYTES)});
+        assert!(input.send(&frame).unwrap_err().to_string().contains("size limit"));
+        assert!(input.pending.is_empty());
+    }
+}
+
+fn apply_rendered(sink: &Sink, rendered: render::Rendered) {
+    {
+        let mut state = lock(&sink.run.state);
+        let room = MAX_STEPS_KEPT.saturating_sub(state.steps.len());
+        state.steps.extend(rendered.steps.into_iter().take(room));
+    }
+    sink.push(&rendered.text);
 }
 
 /// Reads one stream to its end, a line at a time, into the run's output.
@@ -518,9 +832,10 @@ fn read_stream(stream: Box<dyn Read + Send>, is_stdout: bool, sink: &Sink) {
     while let Ok(true) = runner::read_line(&mut reader, &mut line, MAX_LINE_BYTES) {
         let text = String::from_utf8_lossy(&line).into_owned();
         if is_stdout {
-            let rendered = render::render_line(&text);
+            let rendered = render::render_for(sink.run.provider, &text);
             {
                 let mut state = lock(&sink.run.state);
+                state.terminal |= rendered.terminal;
                 if let Some(result) = rendered.result {
                     state.result = Some(result);
                 }
@@ -609,6 +924,7 @@ fn finish(inner: &Inner, sink: &Sink, request: &RunRequest, ctx: &RunContext, ba
         records::build(
             request,
             &RunFacts {
+                provider: ctx.settings.provider.as_str(),
                 id: &run.id,
                 status: status.as_str(),
                 message: message.as_deref(),

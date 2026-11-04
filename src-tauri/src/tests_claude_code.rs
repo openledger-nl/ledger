@@ -1,6 +1,6 @@
 //! Running a prompt with Claude Code: the settings, the command line, finding the program, what is sent and where,
 //! the runs with a fake program (streaming, failing, cancelling, limits), the notes kept about them in the thread,
-//! secrets, and a few runs of real processes. Nothing here starts the real `claude`: the real-process tests start this test binary itself.
+//! secrets, and real processes. Default tests start this binary; the ignored smoke test explicitly opts into a real CLI.
 
 use std::collections::BTreeSet;
 use std::ffi::OsString;
@@ -439,7 +439,7 @@ fn the_command_line_is_a_fixed_set_of_flags_and_the_chosen_values() {
     let plain = ClaudeSettings { confine: false, ..Default::default() };
     assert_eq!(cli::run_args(&plain, None), os(&["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"]));
 
-    let all = ClaudeSettings { permission_mode: PermissionMode::Plan, model: "opus".into(), confine: true, cli_path: String::new(), auto_run: true };
+    let all = ClaudeSettings { permission_mode: PermissionMode::Plan, model: "opus".into(), confine: true, cli_path: String::new(), auto_run: true, ..Default::default() };
     assert_eq!(
         cli::run_args(&all, Some(Path::new("/vault/.ledger/runs/claude-guard.json"))),
         os(&[
@@ -466,7 +466,7 @@ fn no_combination_of_settings_can_skip_the_permission_checks() {
     for mode in [PermissionMode::AcceptEdits, PermissionMode::Plan, PermissionMode::DontAsk] {
         for model in ["", "sonnet"] {
             for confine in [false, true] {
-                let settings = ClaudeSettings { permission_mode: mode, model: model.into(), confine, cli_path: String::new(), auto_run: false };
+                let settings = ClaudeSettings { permission_mode: mode, model: model.into(), confine, cli_path: String::new(), auto_run: false, ..Default::default() };
                 let args = cli::run_args(&settings, confine.then(|| Path::new("guard.json")));
                 for arg in &args {
                     let arg = arg.to_string_lossy();
@@ -1060,6 +1060,7 @@ fn step(name: &str, detail: &str) -> Step {
 
 fn facts<'a>(status: &'a str, result: Option<&'a ResultInfo>, steps: &'a [Step], files: &'a [String]) -> RunFacts<'a> {
     RunFacts {
+        provider: "claude",
         id: "r1",
         status,
         message: None,
@@ -1080,6 +1081,7 @@ fn note_file(f: &Fixture, id: &str) -> PathBuf {
 
 fn sample_note(f: &Fixture, id: &str, prompt_id: &str) -> RunRecord {
     RunRecord {
+        provider: "claude".into(),
         id: id.into(),
         project: f.project.clone(),
         thread: f.thread.clone(),
@@ -1620,6 +1622,7 @@ fn what_a_stopped_run_left_in_the_file_is_kept_as_that_runs_when_the_next_run_st
     records::insert(
         &f.core.conn,
         &RunRecord {
+            provider: "claude".into(),
             id: "run-stopped".into(),
             project: f.project.clone(),
             thread: f.thread.clone(),
@@ -1830,6 +1833,26 @@ fn helper_process() {
             println!("<<{input}>>");
         }
         Ok("sleep") => thread::sleep(Duration::from_secs(120)),
+        #[cfg(unix)]
+        Ok("ignore-term") => {
+            unsafe extern "C" {
+                fn signal(signal: i32, handler: usize) -> usize;
+            }
+            // SAFETY: SIGTERM = 15 and SIG_IGN = 1 on our Unix targets; no callback or memory is accessed.
+            unsafe { signal(15, 1); }
+            fs::write(std::env::var(PIDFILE_ENV).unwrap(), std::process::id().to_string()).unwrap();
+            println!("ready");
+            io::stdout().flush().unwrap();
+            thread::sleep(Duration::from_secs(120));
+        }
+        #[cfg(unix)]
+        Ok("stubborn-tree") => {
+            let mut child = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "tests_claude_code::helper_process", "--nocapture"])
+                .env(HELPER_ENV, "ignore-term")
+                .spawn().unwrap();
+            let _ = child.wait();
+        }
         Ok("tree") => {
             let mut command = Command::new(std::env::current_exe().unwrap());
             command.args(["--exact", "tests_claude_code::helper_process", "--nocapture"]).env(HELPER_ENV, "sleep");
@@ -1915,6 +1938,44 @@ fn cancelling_a_real_process_stops_the_processes_it_started_too() {
     spawned.process.kill_tree(); // once it is over, stopping it again does nothing
 }
 
+#[cfg(unix)]
+#[test]
+fn cancellation_kills_a_term_resistant_descendant_after_its_leader_exits() {
+    let dir = tempdir().unwrap();
+    let pidfile = dir.path().join("child.pid");
+    let mut spec = helper_spec("stubborn-tree", "", dir.path());
+    spec.env.push((PIDFILE_ENV.into(), pidfile.clone().into()));
+    let spawned = OsRunner.spawn(&spec).unwrap();
+    let mut stdout = BufReader::new(spawned.stdout);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        assert!(stdout.read_line(&mut line).unwrap() > 0, "the descendant ended before it was ready");
+        if line.trim() == "ready" {
+            break;
+        }
+    }
+    let descendant: u32 = fs::read_to_string(pidfile).unwrap().parse().unwrap();
+    assert!(alive(descendant));
+
+    spawned.process.kill_tree();
+    let process = spawned.process.clone();
+    let (exit_tx, exit_rx) = mpsc::channel();
+    thread::spawn(move || { let _ = exit_tx.send(process.wait()); });
+    let (eof_tx, eof_rx) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = io::copy(&mut stdout, &mut io::sink());
+        let _ = eof_tx.send(());
+    });
+    let exit = exit_rx.recv_timeout(Duration::from_secs(10)).expect("cancellation finishes after its grace period").unwrap();
+    assert!(!exit.success(), "{exit:?}");
+    // The resistant descendant inherits stdout and never closes it. EOF proves it stopped, even on systems
+    // where the orphan remains a zombie briefly (and kill(pid, 0) would still report it as alive).
+    eof_rx.recv_timeout(Duration::from_secs(5)).expect("the resistant descendant was killed and released stdout");
+    assert_eq!(spawned.process.wait().unwrap(), exit);
+    spawned.process.kill_tree(); // the reaped leader's group must never be signalled again
+}
+
 #[test]
 fn a_program_that_isnt_there_is_a_start_error_not_a_hang() {
     let dir = tempdir().unwrap();
@@ -1973,4 +2034,345 @@ fn a_script_standing_in_for_claude_is_started_directly_and_gets_the_prompt() {
     spawned.stdout.read_to_string(&mut out).unwrap();
     assert!(spawned.process.wait().unwrap().success());
     assert!(out.contains("ARGS:-p --output-format stream-json --verbose --permission-mode acceptEdits") && out.contains(HOSTILE), "{out}");
+}
+
+#[test]
+fn harness_settings_keep_old_defaults_and_round_trip_provider() {
+    use crate::claude_code::config::Provider;
+    let dir = tempdir().unwrap();
+    assert_eq!(config::load(dir.path()).provider, Provider::Claude);
+    let settings = ClaudeSettings { provider: Provider::Codex, effort: "high".into(), confine: false, ..Default::default() };
+    config::save(dir.path(), &settings).unwrap();
+    assert_eq!(config::load(dir.path()), settings);
+}
+
+#[test]
+fn harness_permissions_never_silently_drop_guards() {
+    use crate::claude_code::config::Provider;
+    for provider in [Provider::Codex, Provider::Agy, Provider::Prime] {
+        let settings = ClaudeSettings { provider, ..Default::default() };
+        assert!(cli::validate_adapter(&settings).is_err());
+    }
+    let mut prime = ClaudeSettings { provider: Provider::Prime, confine: false, ..Default::default() };
+    assert!(cli::validate_adapter(&prime).is_err());
+    prime.permission_mode = PermissionMode::Trusted;
+    assert!(cli::validate_adapter(&prime).is_ok());
+    assert!(cli::run_args(&prime, None).iter().any(|a| a == "acp"));
+    let agy = ClaudeSettings { provider: Provider::Agy, confine: false, permission_mode: PermissionMode::DontAsk, ..Default::default() };
+    assert!(cli::validate_adapter(&agy).is_err());
+}
+
+#[test]
+fn codex_adapter_uses_sandbox_and_stdin_not_permission_bypass() {
+    use crate::claude_code::config::Provider;
+    let mut settings = ClaudeSettings { provider: Provider::Codex, confine: false, ..Default::default() };
+    let args = cli::run_args(&settings, None);
+    assert_eq!(args, os(&["exec", "--json", "--skip-git-repo-check", "--sandbox", "workspace-write", "-"]));
+    settings.permission_mode = PermissionMode::Plan;
+    assert!(cli::run_args(&settings, None).iter().any(|a| a == "read-only"));
+}
+
+#[test]
+fn provider_output_records_answers_and_exit_zero_errors() {
+    use crate::claude_code::config::Provider;
+    let codex = render::render_for(Provider::Codex, r#"{"type":"item.completed","item":{"type":"agent_message","text":"Done"}}"#);
+    assert_eq!(codex.result.unwrap().text, "Done");
+    let agy = render::render_for(Provider::Agy, r#"{"event":"result","result":{"status":"SUCCESS","response":"Done"}}"#);
+    assert!(!agy.result.unwrap().is_error);
+    let agy_error = render::render_for(Provider::Agy, r#"{"event":"result","result":{"status":"WAITING","response":"Approval required"}}"#);
+    assert!(agy_error.result.unwrap().is_error);
+    let result = render::render_for(Provider::Codex, r#"{"type":"turn.failed","error":{"message":"Quota exhausted"}}"#).result.unwrap();
+    assert!(result.is_error);
+    assert_eq!(runs::outcome(false, &Ok(Exit { code: Some(0), signal: None }), Some(&result), false).0, Status::Failed);
+}
+
+#[test]
+fn nonclaude_run_provider_survives_vault_round_trip() {
+    let mut f = Fixture::new();
+    let mut note = sample_note(&f, "codex-run", &f.prompt.id);
+    note.provider = "codex".into();
+    records::insert(&f.core.conn, &note).unwrap();
+    f.persist();
+    assert!(fs::read_to_string(note_file(&f, "codex-run")).unwrap().contains("provider: codex"));
+    f.core.reload().unwrap();
+    assert_eq!(records::for_prompt(&f.core.conn, &f.project, &f.thread, &f.prompt.id).unwrap()[0].provider, "codex");
+}
+
+#[test]
+fn native_runs_require_terminal_success_and_keep_provider_and_stdin() {
+    use crate::claude_code::config::Provider;
+    let cases: &[(Provider, &[&str], Status)] = &[
+        (Provider::Codex, &[r#"{"type":"item.completed","item":{"type":"agent_message","text":"Done"}}"#], Status::Failed),
+        (Provider::Codex, &[r#"{"type":"item.completed","item":{"type":"agent_message","text":"Done"}}"#, r#"{"type":"turn.completed"}"#], Status::Finished),
+        (Provider::Agy, &[r#"{"event":"init","init":{}}"#], Status::Failed),
+        (Provider::Agy, &[r#"{"event":"result","result":{"status":"SUCCESS","response":"Done"}}"#], Status::Finished),
+    ];
+    for (provider, output, expected) in cases {
+        let f = Fixture::new();
+        let rig = Rig::with(FakeRunner::scripted(output, &[], 0));
+        let cli_path = rig._cli_dir.path().join(cli::candidate_names(cfg!(windows))[0]).display().to_string();
+        let settings = ClaudeSettings { provider: *provider, cli_path, confine: false, permission_mode: if *provider == Provider::Prime { PermissionMode::Trusted } else { PermissionMode::AcceptEdits }, ..Default::default() };
+        let run = rig.start_with(&f, &f.prompt.id, settings).unwrap();
+        rig.wait_for(&run.id, *expected);
+        assert_eq!(run.provider, provider.as_str());
+        assert_eq!(lock(&rig.host.vault_calls)[0].1, *expected == Status::Finished);
+        assert_eq!(lock(&rig.host.records)[0].provider, provider.as_str());
+        let stdin = String::from_utf8(rig.runner.spec(0).stdin).unwrap();
+        if *provider == Provider::Agy {
+            let frame: serde_json::Value = serde_json::from_str(&stdin).unwrap();
+            assert_eq!(frame["event"], "user");
+            assert_eq!(frame["message"]["content"], f.request_for(&f.prompt.id).unwrap().text);
+        } else { assert_eq!(stdin, f.request_for(&f.prompt.id).unwrap().text); }
+    }
+}
+
+
+#[cfg(unix)]
+#[test]
+fn prime_rejects_a_non_utf8_working_directory_before_spawning() {
+    use crate::claude_code::config::Provider;
+    use std::os::unix::ffi::OsStringExt;
+
+    let f = Fixture::new();
+    let rig = Rig::new();
+    let mut request = f.request();
+    request.cwd.push(OsString::from_vec(b"project-\xff".to_vec()));
+    fs::create_dir_all(&request.cwd).unwrap();
+    let settings = ClaudeSettings {
+        provider: Provider::Prime,
+        permission_mode: PermissionMode::Trusted,
+        confine: false,
+        ..Default::default()
+    };
+    let error = rig.runs.start(request, f.context(settings), &rig.search).unwrap_err();
+    assert!(error.to_string().contains("UTF-8 working directory"), "{error}");
+    assert_eq!(rig.runner.spawned(), 0);
+}
+
+#[test]
+fn windows_prime_discovery_chooses_cmd_instead_of_the_posix_launcher() {
+    use crate::claude_code::config::Provider;
+    let dir = tempdir().unwrap();
+    let posix = dir.path().join("prime-agent");
+    let cmd = dir.path().join("prime-agent.cmd");
+    for path in [&posix, &cmd] {
+        fs::write(path, "test launcher").unwrap();
+        make_executable(path);
+    }
+    let search = Search { path_var: Some(std::env::join_paths([dir.path()]).unwrap()), fallback_dirs: vec![], windows: true };
+    for configured in ["", "prime-agent", dir.path().to_str().unwrap()] {
+        assert_eq!(cli::resolve_for(Provider::Prime, configured, &search).unwrap(), cmd);
+    }
+}
+
+// Explicitly opt in: LEDGER_SMOKE_PROVIDER=claude|codex|agy|prime and LEDGER_SMOKE_CLI=<absolute executable>.
+// Optional LEDGER_SMOKE_MODEL selects a configured model. These tests use existing CLI credentials and may cost money.
+// Only a new temporary vault is sent to the CLI. Prime requires explicit Trusted mode; it has no native sandbox.
+struct SmokeHost(Mutex<Core>);
+
+impl Host for SmokeHost {
+    fn emit(&self, _event: &RunEvent) {}
+    fn vault_after_run(&self, request: &RunRequest, changes: &[Change], link: bool) -> VaultOutcome {
+        finish::refresh_vault(&mut lock(&self.0), request, changes, link)
+    }
+    fn keep_record(&self, record: &RunRecord) -> std::result::Result<(), String> {
+        finish::keep_record(&mut lock(&self.0), record).map_err(|e| e.to_string())
+    }
+}
+
+#[derive(Default)]
+struct SmokeRunner {
+    process: Mutex<Option<Arc<dyn Process>>>,
+}
+
+impl Runner for SmokeRunner {
+    fn spawn(&self, spec: &SpawnSpec) -> io::Result<Spawned> {
+        let spawned = OsRunner.spawn(spec)?;
+        *lock(&self.process) = Some(spawned.process.clone());
+        Ok(spawned)
+    }
+
+    fn spawn_interactive(&self, spec: &SpawnSpec) -> io::Result<runner::InteractiveSpawned> {
+        let interactive = OsRunner.spawn_interactive(spec)?;
+        *lock(&self.process) = Some(interactive.spawned.process.clone());
+        Ok(interactive)
+    }
+}
+
+fn smoke_wait(runs: &Runs, id: &str, timeout: Duration) -> RunSnapshot {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let snapshot = runs.snapshot(id).unwrap();
+        if snapshot.run.status != Status::Running {
+            return snapshot;
+        }
+        if Instant::now() >= deadline {
+            runs.cancel(id).unwrap();
+            let grace = Instant::now() + Duration::from_secs(30);
+            while runs.snapshot(id).unwrap().run.status == Status::Running && Instant::now() < grace {
+                thread::sleep(Duration::from_millis(50));
+            }
+            panic!("real CLI run timed out: {}", runs.snapshot(id).unwrap().output);
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+#[ignore = "requires explicit LEDGER_SMOKE_PROVIDER and LEDGER_SMOKE_CLI; uses authenticated real CLI"]
+fn opted_in_real_harness_publishes_in_a_temporary_vault() {
+    real_harness_smoke(false);
+}
+
+#[test]
+#[ignore = "requires explicit LEDGER_SMOKE_PROVIDER and LEDGER_SMOKE_CLI; starts and cancels a real CLI"]
+fn opted_in_real_harness_cancels_in_a_temporary_vault() {
+    real_harness_smoke(true);
+}
+
+fn real_harness_smoke(cancel_only: bool) {
+    use crate::claude_code::config::Provider;
+    let provider = Provider::parse(&std::env::var("LEDGER_SMOKE_PROVIDER").expect("set LEDGER_SMOKE_PROVIDER")).expect("known provider");
+    let cli_path = std::env::var("LEDGER_SMOKE_CLI").expect("set LEDGER_SMOKE_CLI to an absolute executable path");
+    assert!(Path::new(&cli_path).is_absolute() && Path::new(&cli_path).is_file());
+    let settings = ClaudeSettings {
+        provider, cli_path, model: std::env::var("LEDGER_SMOKE_MODEL").unwrap_or_default(),
+        permission_mode: if provider == Provider::Prime { PermissionMode::Trusted } else { PermissionMode::AcceptEdits },
+        confine: provider == Provider::Claude, ..Default::default()
+    };
+    let mut f = Fixture::with_body("Write exactly LEDGER_SMOKE_OK followed by a newline to deliverables/smoke.md using your file writing tool (or a short local Python command if required). Do not read any files, use network tools, or change any other file. Then answer Done.");
+    let request = f.request();
+    let cancelled_id = prompts::create(&f.core.conn, &f.project, &f.thread, "Cancel smoke", "Do not read or write any files or run commands. Think about prime numbers until interrupted.", None).unwrap().id;
+    f.persist();
+    let cancel_request = f.request_for(&cancelled_id).unwrap();
+    let context = f.context(settings);
+    let Fixture { _dir, _config, core, .. } = f;
+    let host = Arc::new(SmokeHost(Mutex::new(core)));
+    let runner = Arc::new(SmokeRunner::default());
+    let runs = Runs::new(runner.clone(), host.clone());
+    if !cancel_only {
+        let run = runs.start(request.clone(), context.clone(), &Search::host()).unwrap();
+        let done = smoke_wait(&runs, &run.id, Duration::from_secs(180));
+        assert_eq!(done.run.status, Status::Finished, "{}", done.output);
+        assert_eq!(done.run.provider, provider.as_str());
+        assert_eq!(done.run.linked, ["smoke@v0.1.md"], "{}", done.output);
+        assert!(done.run.vault_reloaded);
+        assert_eq!(fs::read_to_string(request.cwd.join("deliverables/smoke.md")).unwrap().trim(), "LEDGER_SMOKE_OK");
+        {
+            let core = lock(&host.0);
+            let prompt = prompts::get(&core.conn, &request.project, &request.thread, &request.prompt_id).unwrap();
+            assert_eq!(prompt.deliverables[0].path, "smoke@v0.1.md");
+            assert_eq!(prompt.runs[0].provider, provider.as_str());
+            assert_eq!(prompt.runs[0].status, "finished");
+        }
+        return;
+    }
+    let cancelled = runs.start(cancel_request.clone(), context, &Search::host()).unwrap();
+    wait_until("the real cancellation process to spawn", || lock(&runner.process).is_some() || runs.snapshot(&cancelled.id).unwrap().run.status != Status::Running);
+    let process = lock(&runner.process).clone().expect("a real process was started");
+    assert_eq!(runs.snapshot(&cancelled.id).unwrap().run.status, Status::Running);
+    runs.cancel(&cancelled.id).unwrap();
+    let stopped = smoke_wait(&runs, &cancelled.id, Duration::from_secs(if provider == Provider::Prime { 90 } else { 30 }));
+    assert_eq!(stopped.run.status, Status::Cancelled, "{}", stopped.output);
+    assert!(stopped.run.linked.is_empty());
+    let exit = process.wait().unwrap();
+    if provider != Provider::Prime {
+        assert!(!exit.success(), "the real CLI was stopped");
+    }
+    // Prime can exit cleanly after acknowledging protocol cancellation and closing its session.
+    let core = lock(&host.0);
+    let prompt = prompts::get(&core.conn, &cancel_request.project, &cancel_request.thread, &cancel_request.prompt_id).unwrap();
+    assert_eq!(prompt.runs[0].provider, provider.as_str());
+    assert_eq!(prompt.runs[0].status, "cancelled");
+}
+
+
+struct AcpTestInput {
+    pending: Vec<u8>,
+    frames: Arc<Mutex<Vec<serde_json::Value>>>,
+    process: Arc<Handle>,
+}
+
+impl Write for AcpTestInput {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.pending.extend_from_slice(bytes);
+        while let Some(end) = self.pending.iter().position(|b| *b == b'\n') {
+            let line: Vec<_> = self.pending.drain(..=end).collect();
+            let frame: serde_json::Value = serde_json::from_slice(&line)?;
+            lock(&self.frames).push(frame.clone());
+            let id = frame["id"].clone();
+            let result = match frame["method"].as_str() {
+                Some("initialize") => serde_json::json!({"protocolVersion":1}),
+                Some("session/new") => serde_json::json!({"sessionId":"test-session"}),
+                Some("session/prompt") => {
+                    self.process.stdout(r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"test-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Done"}}}}"#);
+                    serde_json::json!({"stopReason":"end_turn"})
+                }
+                Some("session/close") => serde_json::json!({}),
+                _ => continue,
+            };
+            self.process.stdout(&serde_json::json!({"jsonrpc":"2.0","id":id,"result":result}).to_string());
+        }
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+}
+
+impl Drop for AcpTestInput {
+    fn drop(&mut self) { self.process.exit(0); }
+}
+
+#[derive(Default)]
+struct AcpTestRunner {
+    fake: FakeRunner,
+    frames: Arc<Mutex<Vec<serde_json::Value>>>,
+}
+
+impl Runner for AcpTestRunner {
+    fn spawn(&self, _spec: &SpawnSpec) -> io::Result<Spawned> {
+        Err(io::Error::other("ACP must keep stdin open"))
+    }
+    fn spawn_interactive(&self, spec: &SpawnSpec) -> io::Result<runner::InteractiveSpawned> {
+        let spawned = self.fake.spawn(spec)?;
+        let process = self.fake.handle(0);
+        Ok(runner::InteractiveSpawned { spawned, stdin: Box::new(AcpTestInput { pending: vec![], frames: self.frames.clone(), process }) })
+    }
+}
+
+#[test]
+fn prime_acp_finishes_on_prompt_response_then_closes_owned_session() {
+    use crate::claude_code::config::Provider;
+    let f = Fixture::new();
+    let runner = Arc::new(AcpTestRunner::default());
+    let host = Arc::new(FakeHost::default());
+    let runs = Runs::new(runner.clone(), host.clone());
+    let (cli_dir, search) = fake_cli();
+    let settings = ClaudeSettings {
+        provider: Provider::Prime,
+        cli_path: cli_dir.path().join(cli::candidate_names(cfg!(windows))[0]).display().to_string(),
+        permission_mode: PermissionMode::Trusted, confine: false, ..Default::default()
+    };
+    let run = runs.start(f.request(), f.context(settings), &search).unwrap();
+    wait_until("ACP session cleanup", || runs.snapshot(&run.id).unwrap().run.status != Status::Running);
+    let done = runs.snapshot(&run.id).unwrap();
+    assert_eq!(done.run.status, Status::Finished, "{}", done.output);
+    assert_eq!(done.run.provider, "prime");
+    assert!(done.output.contains("Done"));
+    let methods: Vec<_> = lock(&runner.frames).iter().filter_map(|v| v["method"].as_str().map(str::to_string)).collect();
+    assert_eq!(methods, ["initialize", "session/new", "session/prompt", "session/close"]);
+    assert!(!runner.fake.handle(0).killed(), "normal ACP completion uses session close and EOF");
+    assert!(lock(&host.vault_calls)[0].1);
+    assert!(lock(&host.records)[0].body.contains("Done"));
+}
+
+#[test]
+fn stopping_for_exit_cancels_runs_and_rejects_new_prompts() {
+    let f = Fixture::new();
+    let rig = Rig::new();
+    let active = rig.start(&f).unwrap();
+    let process = rig.runner.handle(0);
+    rig.runs.stop_for_exit();
+    rig.wait_for(&active.id, Status::Cancelled);
+    assert!(process.killed());
+    assert!(rig.start(&f).is_err());
 }

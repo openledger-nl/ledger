@@ -106,6 +106,7 @@ CREATE TABLE feedback (
 -- thread, so the history reads without the app. `prompt_id` is deliberately not a foreign key: deleting a prompt
 -- leaves the record of what ran.
 CREATE TABLE claude_runs (
+    provider        TEXT NOT NULL DEFAULT 'claude',
     id              TEXT PRIMARY KEY,
     project_slug    TEXT NOT NULL,
     thread_slug     TEXT NOT NULL,

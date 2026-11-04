@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { harnessLabel } from '$lib/harness';
 	import { onDestroy, untrack } from 'svelte';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import CodeXml from '@lucide/svelte/icons/code-xml';
@@ -152,7 +153,7 @@
 	let publishBusy = $state(false);
 	const preview = $derived({ minor: nextVersion(doc.versions, 'minor'), major: nextVersion(doc.versions, 'major') });
 
-	// What the person says about the change. Claude Code runs started here are recorded as they happen; the box is for AI
+	// What the person says about the change. AI runs started here are recorded as they happen; the box is for AI
 	// used anywhere else, and starts ticked when a run is known to have changed this file without being published.
 	let thread = $state('');
 	let aiMade = $state(false);
@@ -451,7 +452,7 @@
 			</label>
 			<span class="hint">
 				{#if stopped}
-					Claude Code’s run of “{stopped.promptTitle}” changed this file{stopped.status === 'finished' ? '' : ` and was ${stopped.status}`}, and no version holds
+					{harnessLabel(stopped.provider)}’s run of “{stopped.promptTitle}” changed this file{stopped.status === 'finished' ? '' : ` and was ${stopped.status}`}, and no version holds
 					its changes, so this starts ticked. Untick it only if you rewrote them yourself.
 				{:else}
 					Leave it empty for what you wrote yourself. Runs started from Ledger are recorded automatically; tick this for AI used elsewhere (a chat, an editor assistant, a paste).

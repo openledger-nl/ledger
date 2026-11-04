@@ -25,7 +25,9 @@ pnpm run check   # Svelte + TypeScript
 pnpm test        # Rust tests
 ```
 
-CI runs both on every pull request, with the commits check below, and a pull request is merged only when they pass.
+CI runs the frontend check once and the Rust tests on Windows, Linux and macOS on every pull request, with the
+commits check below. A pull request is merged only when they pass. Live harness tests stay opt-in and require
+local authentication; CI never invokes a real model.
 On your first pull request here, the checks wait until a maintainer lets them run.
 
 ## Commits
@@ -94,7 +96,7 @@ repo (`build: move to Node 26`).
 |---|---|
 | The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `dashboard` (the home page and its contribution graph) |
 | Data and sync | `vault`, `sync`, `crypto`, `settings` |
-| Integrations | `screenshots`, `trello`, `claude` (runs with Claude Code) |
+| Integrations | `screenshots`, `trello`, `claude` (runs with Claude Code), `agents` (shared AI harness integration) |
 | Across the app | `ui` (shared components, layout, icons), `brand` (logo, tokens, colours), `logs` (the error log, debug captures, reporting a problem) |
 | Reserved | `release`: only CI's own `chore(release)` commits; never use it yourself |
 

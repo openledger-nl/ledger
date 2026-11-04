@@ -1,4 +1,4 @@
-//! How a published version came to be: who made the change (a person who typed it, a Claude Code run, or AI the person
+//! How a published version came to be: who made the change (a person who typed it, an AI harness run, or AI the person
 //! says they used elsewhere), the thread it is filed under, the prompt and run behind it, and the AI-use label
 //! (MMM, https://mmmlabel.tech) declared for the product at that version.
 //!
@@ -55,7 +55,7 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 pub enum Cause {
     /// Published from the page.
     Manual,
-    /// A Claude Code run published what it wrote.
+    /// An AI harness run published what it wrote.
     Run,
     /// Edits that no version held, published just before the prompt `running` (its id) was run.
     Held { running: String },
@@ -75,7 +75,7 @@ pub struct Origin {
 }
 
 impl Origin {
-    /// A Claude Code run published what it wrote in `thread`.
+    /// An AI harness run published what it wrote in `thread`.
     pub fn run(thread: &str, prompt: &str, run: Option<&str>) -> Origin {
         Origin {
             cause: Cause::Run,
@@ -398,6 +398,7 @@ pub fn resolve(conn: &Connection, project: &str, base: &str) -> Result<Vec<Resol
 #[serde(rename_all = "camelCase")]
 pub struct StoppedRun {
     pub id: String,
+    pub provider: String,
     pub prompt_id: String,
     pub prompt_title: String,
     pub thread_slug: String,
@@ -409,17 +410,17 @@ pub fn stopped_run(conn: &Connection, project: &str, base: &str) -> Result<Optio
     let newest = resolve(conn, project, base)?.into_iter().map(|v| v.at).max();
     let runs = query_all(
         conn,
-        "SELECT r.id, r.prompt_id, r.thread_slug, r.status, r.finished_at FROM claude_runs r
+        "SELECT r.id, r.prompt_id, r.thread_slug, r.status, r.finished_at, r.provider FROM claude_runs r
          JOIN claude_run_files f ON f.run_id = r.id
          WHERE r.project_slug = ?1 AND f.path = ?2 ORDER BY r.finished_at DESC, r.rowid DESC",
         [project, base],
-        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?)),
+        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?)),
     )?;
-    let Some((id, prompt_id, thread_slug, status, finished_at)) = runs.into_iter().find(|run| newest.as_ref().is_none_or(|at| run.4 > *at)) else {
+    let Some((id, prompt_id, thread_slug, status, finished_at, provider)) = runs.into_iter().find(|run| newest.as_ref().is_none_or(|at| run.4 > *at)) else {
         return Ok(None);
     };
     let prompt_title = prompts::display_title_of(conn, project, &prompt_id)?.unwrap_or_else(|| "a deleted prompt".to_string());
-    Ok(Some(StoppedRun { id, prompt_id, prompt_title, thread_slug, status, finished_at }))
+    Ok(Some(StoppedRun { id, provider, prompt_id, prompt_title, thread_slug, status, finished_at }))
 }
 
 // ---- changing a record by hand ----------------------------------------------------------------------
@@ -438,7 +439,7 @@ pub fn update_record(conn: &Connection, project: &str, base: &str, version: &str
                 return Err(Error::invalid("A version is made by a person (human) or by AI (ai)"));
             }
             if current.run.is_some() && author != AI {
-                return Err(Error::invalid("Claude Code made this version, which Ledger saw happen. That can't be changed here."));
+                return Err(Error::invalid("An AI harness made this version, which Ledger saw happen. That can't be changed here."));
             }
             Some(author)
         }
@@ -494,6 +495,7 @@ pub struct PromptRef {
 #[serde(rename_all = "camelCase")]
 pub struct RunSummary {
     pub id: String,
+    pub provider: String,
     pub prompt_id: String,
     pub prompt_title: String,
     pub thread_slug: String,
@@ -701,7 +703,7 @@ pub fn for_deliverable(conn: &Connection, project: &str, base: &str) -> Result<P
     let mut runs: BTreeMap<String, RunSummary> = BTreeMap::new();
     for run in query_all(
         conn,
-        "SELECT id, prompt_id, thread_slug, status, model, permission_mode, started_at, finished_at, seconds, turns
+        "SELECT id, prompt_id, thread_slug, status, model, permission_mode, started_at, finished_at, seconds, turns, provider
          FROM claude_runs WHERE project_slug = ?1 ORDER BY started_at, rowid",
         [project],
         |r| {
@@ -717,6 +719,7 @@ pub fn for_deliverable(conn: &Connection, project: &str, base: &str) -> Result<P
                 finished_at: r.get(7)?,
                 seconds: r.get(8)?,
                 turns: r.get(9)?,
+                provider: r.get(10)?,
             })
         },
     )? {

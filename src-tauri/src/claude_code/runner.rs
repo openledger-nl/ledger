@@ -70,8 +70,17 @@ pub struct Spawned {
     pub process: Arc<dyn Process>,
 }
 
+pub struct InteractiveSpawned {
+    pub spawned: Spawned,
+    pub stdin: Box<dyn Write + Send>,
+}
+
 pub trait Runner: Send + Sync {
     fn spawn(&self, spec: &SpawnSpec) -> io::Result<Spawned>;
+
+    fn spawn_interactive(&self, _spec: &SpawnSpec) -> io::Result<InteractiveSpawned> {
+        Err(io::Error::new(io::ErrorKind::Unsupported, "interactive input is not supported by this runner"))
+    }
 }
 
 pub trait Process: Send + Sync {
@@ -91,6 +100,20 @@ pub struct OsRunner;
 
 impl Runner for OsRunner {
     fn spawn(&self, spec: &SpawnSpec) -> io::Result<Spawned> {
+        let InteractiveSpawned { spawned, mut stdin } = self.spawn_interactive(spec)?;
+        let data = spec.stdin.clone();
+        let writer = thread::Builder::new().name("claude-stdin".into()).spawn(move || {
+            let _ = stdin.write_all(&data);
+        });
+        if let Err(e) = writer {
+            spawned.process.kill_tree();
+            let _ = spawned.process.wait();
+            return Err(e);
+        }
+        Ok(spawned)
+    }
+
+    fn spawn_interactive(&self, spec: &SpawnSpec) -> io::Result<InteractiveSpawned> {
         let mut command = Command::new(&spec.program);
         command.args(&spec.args).current_dir(&spec.cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         for (name, value) in &spec.env {
@@ -100,22 +123,13 @@ impl Runner for OsRunner {
         lead_own_group(&mut command);
 
         let mut child = command.spawn()?;
-        // A thread writes the prompt, so a program that starts talking before it has read everything can't deadlock.
-        if let Some(mut stdin) = child.stdin.take() {
-            let data = spec.stdin.clone();
-            let writer = thread::Builder::new().name("claude-stdin".into()).spawn(move || {
-                // A program that quits early closes the pipe: nothing more to do. Dropping `stdin` sends EOF.
-                let _ = stdin.write_all(&data);
-            });
-            if let Err(e) = writer {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(e);
-            }
-        }
+        let stdin = child.stdin.take().ok_or_else(|| io::Error::other("no standard input"))?;
         let stdout = child.stdout.take().ok_or_else(|| io::Error::other("no standard output"))?;
         let stderr = child.stderr.take().ok_or_else(|| io::Error::other("no standard error"))?;
-        Ok(Spawned { stdout: Box::new(stdout), stderr: Box::new(stderr), process: Arc::new(OsProcess::new(child)) })
+        Ok(InteractiveSpawned {
+            spawned: Spawned { stdout: Box::new(stdout), stderr: Box::new(stderr), process: Arc::new(OsProcess::new(child)) },
+            stdin: Box::new(stdin),
+        })
     }
 }
 
@@ -149,26 +163,23 @@ const GRACE: Duration = Duration::from_secs(3);
 
 struct OsProcess {
     pid: u32,
-    /// Waiting and killing both take this lock, and test whether the process has already been reaped under it, so a
-    /// kill never reaches a process id that has since been handed to something else.
-    child: Mutex<Child>,
-    asked_to_stop: Mutex<Option<Instant>>,
-    killed: AtomicBool,
+    /// Keep the child and its cancellation state under one lock. On Unix an unreaped leader reserves its PID
+    /// (and therefore our process-group ID), even if SIGTERM stops it before its descendants.
+    state: Mutex<ProcessState>,
+}
+
+struct ProcessState {
+    child: Child,
+    exit: Option<ExitStatus>,
+    asked_to_stop: Option<Instant>,
+    killed: bool,
 }
 
 impl OsProcess {
     fn new(child: Child) -> OsProcess {
-        OsProcess { pid: child.id(), child: Mutex::new(child), asked_to_stop: Mutex::new(None), killed: AtomicBool::new(false) }
-    }
-
-    /// A polite request that was ignored for too long becomes a kill (macOS and Linux; Windows kills at once).
-    fn escalate_if_due(&self) {
-        let due = lock(&self.asked_to_stop).is_some_and(|at| at.elapsed() >= GRACE);
-        if due && !self.killed.swap(true, Ordering::SeqCst) {
-            let mut child = lock(&self.child);
-            if matches!(child.try_wait(), Ok(None)) {
-                stop_tree(self.pid, &mut child, true);
-            }
+        OsProcess {
+            pid: child.id(),
+            state: Mutex::new(ProcessState { child, exit: None, asked_to_stop: None, killed: false }),
         }
     }
 }
@@ -177,24 +188,45 @@ impl Process for OsProcess {
     fn wait(&self) -> io::Result<Exit> {
         // Polling (rather than a blocking wait) keeps the lock free for `kill_tree`.
         loop {
-            if let Some(status) = lock(&self.child).try_wait()? {
-                return Ok(status.into());
+            {
+                let mut state = lock(&self.state);
+                if let Some(status) = state.exit {
+                    return Ok(status.into());
+                }
+                let stopping = state.asked_to_stop.is_some();
+                if state.asked_to_stop.is_some_and(|at| at.elapsed() >= GRACE) && !state.killed {
+                    stop_tree(self.pid, &mut state.child, true);
+                    state.killed = true;
+                }
+                // Do not reap the Unix leader until the final group signal. Otherwise the leader can exit on
+                // SIGTERM, leave resistant descendants behind, and release the group ID for reuse.
+                if !(cfg!(unix) && stopping && !state.killed) {
+                    if let Some(status) = state.child.try_wait()? {
+                        state.exit = Some(status);
+                        return Ok(status.into());
+                    }
+                }
             }
-            self.escalate_if_due();
             thread::sleep(Duration::from_millis(25));
         }
     }
 
     fn kill_tree(&self) {
-        let mut child = lock(&self.child);
-        if !matches!(child.try_wait(), Ok(None)) {
+        let mut state = lock(&self.state);
+        if state.exit.is_some() || state.asked_to_stop.is_some() {
             return;
         }
-        let mut asked = lock(&self.asked_to_stop);
-        if asked.is_none() {
-            *asked = Some(Instant::now());
-            stop_tree(self.pid, &mut child, cfg!(windows));
+        #[cfg(not(unix))]
+        match state.child.try_wait() {
+            Ok(None) => {}
+            Ok(Some(status)) => {
+                state.exit = Some(status);
+                return;
+            }
+            Err(_) => return,
         }
+        state.asked_to_stop = Some(Instant::now());
+        stop_tree(self.pid, &mut state.child, cfg!(windows));
     }
 }
 

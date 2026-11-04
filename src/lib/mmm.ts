@@ -3,6 +3,7 @@
 // from almost all of it to none. Ledger records who made each change; the level is the person's to declare.
 // Kept free of Svelte and Tauri imports so it can be exercised on its own.
 
+import { harnessLabel } from './harness';
 import type { MmmLevel, ProvenanceVersion } from './types';
 
 export interface Mmm {
@@ -57,9 +58,9 @@ export const MMM: readonly Mmm[] = [
 
 export const mmmInfo = (level: string | null | undefined): Mmm | undefined => MMM.find((m) => m.level === level);
 
-/** Who made a version, in words: Claude Code when Ledger saw a run do it, "AI" when the person said so, "You" when they typed it. */
+/** Who made a version, in words: the harness when Ledger saw a run do it, "AI" when the person said so, "You" when they typed it. */
 export function authorLabel(v: Pick<ProvenanceVersion, 'by' | 'run'>): string {
-	if (v.by === 'ai') return v.run ? 'Claude Code' : 'AI, as declared';
+	if (v.by === 'ai') return v.run ? harnessLabel(v.run.provider) : 'AI, as declared';
 	if (v.by === 'human') return 'You';
 	return 'Origin not recorded';
 }

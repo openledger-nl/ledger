@@ -9,7 +9,7 @@ import type { RunsChoice, UpdateInfo, UpdateProgress } from './types';
 /**
  * - `idle`: the notice offers *Install and restart* and *Later*.
  * - `working`: downloading (with progress), checking the signature, installing.
- * - `ask`: Claude Code is still running prompts; wait for them or stop them?
+ * - `ask`: AI harnesses are still running prompts; wait for them or stop them?
  * - `waiting`: downloaded; installs as soon as what is still going is over.
  * - `simulated`: a development build's pretend update went through every step.
  * - `failed`: said why, and nothing was installed.

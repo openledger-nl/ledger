@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::json;
 
-use super::config::ClaudeSettings;
+use super::config::{ClaudeSettings, PermissionMode, Provider};
 use crate::error::{Error, Result};
 use crate::settings::LEDGER_DIR;
 
@@ -92,12 +92,19 @@ pub fn not_found() -> Error {
 
 /// The program to run: the path from Settings if there is one, else `claude` from the PATH, else from the usual
 /// install folders.
+#[cfg(test)]
 pub fn resolve(configured: &str, search: &Search) -> Result<PathBuf> {
+    resolve_for(Provider::Claude, configured, search)
+}
+
+pub fn resolve_for(provider: Provider, configured: &str, search: &Search) -> Result<PathBuf> {
+    let names = if provider == Provider::Claude { default_names(search.windows) } else { with_extensions(provider.program(), search.windows) };
+    let missing = || if provider == Provider::Claude { not_found() } else { Error::not_found(format!("{} was not found. Install {} or enter its full executable path in AI harness settings.", provider.label(), provider.program())) };
     let configured = configured.trim();
     if configured.is_empty() {
         let mut dirs = search.path_dirs();
         dirs.extend(search.fallback_dirs.iter().cloned());
-        return find_in(&dirs, &default_names(search.windows)).ok_or_else(not_found);
+        return find_in(&dirs, &names).ok_or_else(missing);
     }
 
     let as_path = Path::new(configured);
@@ -113,8 +120,8 @@ pub fn resolve(configured: &str, search: &Search) -> Result<PathBuf> {
     }
     if as_path.is_dir() {
         // The folder it is installed in.
-        return find_in(&[as_path.to_path_buf()], &default_names(search.windows)).ok_or_else(|| {
-            Error::not_found(format!("There is no claude program in {configured} (the path set under Settings, Claude Code)."))
+        return find_in(&[as_path.to_path_buf()], &names).ok_or_else(|| {
+            Error::not_found(format!("There is no {} program in {configured} (the path set under AI harness settings).", provider.program()))
         });
     }
     for name in with_extensions(configured, search.windows) {
@@ -128,12 +135,11 @@ pub fn resolve(configured: &str, search: &Search) -> Result<PathBuf> {
 
 /// `name` as given, and on Windows, with the extensions a program can have when none was typed.
 fn with_extensions(name: &str, windows: bool) -> Vec<String> {
-    let mut names = vec![name.to_string()];
     if windows && Path::new(name).extension().is_none() {
-        names.push(format!("{name}.exe"));
-        names.push(format!("{name}.cmd"));
+        vec![format!("{name}.exe"), format!("{name}.cmd")]
+    } else {
+        vec![name.to_string()]
     }
-    names
 }
 
 // ---- the command line -------------------------------------------------------------------------------
@@ -145,13 +151,54 @@ fn with_extensions(name: &str, windows: bool) -> Vec<String> {
 /// (the project folder's own `.claude/settings*.json`, which could hold hooks, are not read: the vault is synced
 /// from elsewhere, and a hook there would run with the user's rights) and `--strict-mcp-config` (with no
 /// `--mcp-config` it means no MCP servers at all, so a `.mcp.json` in the vault can't start a program either).
+pub fn validate_adapter(settings: &ClaudeSettings) -> Result<()> {
+    if settings.provider != Provider::Claude && settings.confine {
+        return Err(Error::invalid("The extra Claude guard rails are not available for this harness. Review its native permissions and explicitly turn off the extra guard rails before running."));
+    }
+    if settings.provider == Provider::Agy && settings.permission_mode == PermissionMode::DontAsk {
+        return Err(Error::invalid("AGY does not offer the dontAsk permission mode. Choose acceptEdits or plan."));
+    }
+    if settings.provider == Provider::Prime && settings.permission_mode != PermissionMode::Trusted {
+        return Err(Error::invalid("Prime Agent does not offer Ledger's read-only modes. Its native tools can run commands and edit files; use another harness for read-only runs."));
+    }
+    if settings.provider != Provider::Prime && settings.permission_mode == PermissionMode::Trusted { return Err(Error::invalid("Full-user access mode is only supported by Prime Agent")); }
+    let allowed = match settings.provider {
+        Provider::Claude => matches!(settings.effort.as_str(), "" | "low" | "medium" | "high" | "xhigh" | "max"),
+        Provider::Codex => matches!(settings.effort.as_str(), "" | "minimal" | "low" | "medium" | "high" | "xhigh"),
+        Provider::Agy => matches!(settings.effort.as_str(), "" | "low" | "medium" | "high" | "xhigh" | "max"),
+        Provider::Prime => super::config::valid_effort(&settings.effort),
+    };
+    if !allowed { return Err(Error::invalid("That effort level is not supported by this harness")); }
+    Ok(())
+}
+
 pub fn run_args(settings: &ClaudeSettings, guard_file: Option<&Path>) -> Vec<OsString> {
+    if settings.provider != Provider::Claude {
+        let raw: Vec<&str> = match settings.provider {
+            Provider::Codex => vec!["exec", "--json", "--skip-git-repo-check", "--sandbox", if settings.permission_mode == PermissionMode::AcceptEdits { "workspace-write" } else { "read-only" }, "-"],
+            Provider::Agy => vec!["--input-format", "stream-json", "--output-format", "stream-json", "--mode", if settings.permission_mode == PermissionMode::Plan { "plan" } else { "accept-edits" }],
+            Provider::Prime => vec!["--mode", "acp"],
+            Provider::Claude => unreachable!(),
+        };
+        let mut args: Vec<OsString> = raw.into_iter().map(OsString::from).collect();
+        if !settings.model.is_empty() { args.extend([OsString::from("--model"), settings.model.clone().into()]); }
+        if !settings.effort.is_empty() {
+            match settings.provider {
+                Provider::Codex => args.extend([OsString::from("-c"), format!("model_reasoning_effort=\"{}\"", settings.effort).into()]),
+                Provider::Agy => args.extend([OsString::from("--effort"), settings.effort.clone().into()]),
+                Provider::Prime => args.extend([OsString::from("--thinking"), settings.effort.clone().into()]),
+                Provider::Claude => unreachable!(),
+            }
+        }
+        return args;
+    }
     let mut args: Vec<OsString> = ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode"].map(OsString::from).into();
     args.push(settings.permission_mode.as_str().into());
     if !settings.model.is_empty() {
         args.push("--model".into());
         args.push(settings.model.as_str().into());
     }
+    if !settings.effort.is_empty() { args.extend([OsString::from("--effort"), settings.effort.clone().into()]); }
     if let Some(file) = guard_file {
         args.push("--setting-sources".into());
         args.push("user".into());

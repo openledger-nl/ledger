@@ -85,7 +85,7 @@
 		{:else if updates.phase === 'ask'}
 			<div class="un-status">
 				<span>
-					Claude Code is still running {quoted(updates.runs)}. Restarting stops {updates.runs.length === 1 ? 'that run' : 'those runs'}.
+					AI harnesses are still running {quoted(updates.runs)}. Restarting stops {updates.runs.length === 1 ? 'that run' : 'those runs'}.
 				</span>
 				<div class="un-foot">
 					<button class="btn primary" onclick={() => installUpdate('wait')}>Wait, then install</button>

@@ -1,4 +1,4 @@
-# Typecheck and tests, on every push and pull request. Kept short: two jobs in parallel, both cached.
+# Typecheck once and test Rust on every supported desktop OS. Live inference stays opt-in.
 name: CI
 
 on:
@@ -26,11 +26,16 @@ jobs:
       - run: pnpm run check
 
   test:
-    name: Tests (Rust)
-    runs-on: ubuntu-latest
+    name: Tests (Rust, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Libraries Tauri links against on Linux
+        if: runner.os == 'Linux'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2

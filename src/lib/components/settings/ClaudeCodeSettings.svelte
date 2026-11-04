@@ -1,11 +1,12 @@
 <script lang="ts">
-	// The settings screen's panel for running prompts with Claude Code. Its settings live in the vault's
+	// The settings screen's panel for running prompts with an AI harness. Its settings live in the vault's
 	// .ledger/claude-code.json (never synced), apart from the rest of the settings.
 	import { onMount } from 'svelte';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { claudeCodeApi } from '$lib/api';
+	import { harnesses, harnessLabel } from '$lib/harness';
 	import { attempt, toast } from '$lib/ui.svelte';
-	import type { ClaudeCodeCheck, ClaudeCodeSettings, ClaudePermissionMode } from '$lib/types';
+	import type { ClaudeCodeCheck, ClaudeCodeSettings, ClaudePermissionMode, HarnessProvider } from '$lib/types';
 
 	const modes: { id: ClaudePermissionMode; label: string; hint: string }[] = [
 		{
@@ -27,6 +28,10 @@
 
 	let saved = $state<ClaudeCodeSettings | null>(null);
 	let cliPath = $state('');
+	let provider = $state<HarnessProvider>('claude');
+	let effort = $state('');
+	const harness = $derived(harnesses.find((h) => h.id === provider)!);
+	const efforts = $derived(provider === 'claude' ? ['low', 'medium', 'high', 'xhigh', 'max'] : provider === 'codex' ? ['minimal', 'low', 'medium', 'high', 'xhigh'] : provider === 'agy' ? ['low', 'medium', 'high', 'xhigh', 'max'] : ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 	let mode = $state<ClaudePermissionMode>('acceptEdits');
 	let model = $state('');
 	let confine = $state(true);
@@ -36,11 +41,13 @@
 	let error = $state<string | null>(null);
 
 	const changed = $derived(
-		saved !== null && (cliPath.trim() !== saved.cliPath || mode !== saved.permissionMode || model.trim() !== saved.model || confine !== saved.confine || autoRun !== saved.autoRun)
+		saved !== null && (provider !== saved.provider || effort !== saved.effort || cliPath.trim() !== saved.cliPath || mode !== saved.permissionMode || model.trim() !== saved.model || confine !== saved.confine || autoRun !== saved.autoRun)
 	);
 
 	function show(settings: ClaudeCodeSettings) {
 		saved = settings;
+		provider = settings.provider;
+		effort = settings.effort;
 		cliPath = settings.cliPath;
 		mode = settings.permissionMode;
 		model = settings.model;
@@ -54,7 +61,7 @@
 	});
 
 	async function browse() {
-		const chosen = await attempt(() => open({ multiple: false, directory: false, title: 'Find the claude program' }));
+		const chosen = await attempt(() => open({ multiple: false, directory: false, title: `Find the ${harness.program} program` }));
 		if (typeof chosen === 'string') {
 			cliPath = chosen;
 			checked = null;
@@ -65,7 +72,7 @@
 		busy = 'check';
 		checked = null;
 		try {
-			checked = await claudeCodeApi.check(cliPath);
+			checked = await claudeCodeApi.check(cliPath, provider);
 		} catch (e) {
 			checked = { ok: false, version: '', path: null, message: e instanceof Error ? e.message : String(e) };
 		}
@@ -76,8 +83,8 @@
 		busy = 'save';
 		error = null;
 		try {
-			show(await claudeCodeApi.saveSettings(cliPath, mode, model, confine, autoRun));
-			toast('Claude Code settings saved');
+			show(await claudeCodeApi.saveSettings(cliPath, mode, model, confine, autoRun, provider, effort));
+			toast('AI harness settings saved');
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		}
@@ -86,23 +93,28 @@
 </script>
 
 <div class="panel">
-	<h2>Claude Code</h2>
+	<h2>AI harness</h2>
 	<p class="sub" style="margin:0">
-		Every prompt has a <b>Run in Claude Code</b> button. It starts the <code>claude</code> program on this machine, in that project’s folder, with the
-		prompt, and the deliverable it writes lands in the project’s deliverables, where it is published as a version and linked to the prompt. You see what will
-			be sent before anything starts, and a run can be
-		cancelled while it works. When a run is over, a note about it (how it ended, what it said, which tools it used) is kept in the prompt’s
-			thread, in a <code>runs</code> folder next to the posts, so it is part of the vault: it syncs with the rest, and any secrets are taken out first.
+		Run prompts with an installed CLI in the project’s folder. The harness uses its own authentication, model access and billing;
+		Ledger does not supply inference. Review the prompt and command before starting. Deliverables it writes are published and linked to the prompt,
+		and a run record is kept in the thread’s <code>runs</code> folder and synced with the vault.
 	</p>
 
 	<label class="field">
-		The claude program
+		Harness
+		<select bind:value={provider} onchange={() => { cliPath = ''; model = ''; effort = ''; checked = null; confine = true; if (mode === 'trusted') mode = 'acceptEdits'; }}>
+			{#each harnesses as h (h.id)}<option value={h.id}>{h.label}</option>{/each}
+		</select>
+		<span class="hint">Changing harness clears the executable, model and effort fields and restores the guard-rail requirement. Save to use it for new runs; existing records keep their original harness.</span>
+	</label>
+	<label class="field">
+		The {harness.program} program
 		<div class="form-row" style="flex-wrap:nowrap">
-			<input class="mono" bind:value={cliPath} oninput={() => (checked = null)} placeholder="Blank: find claude on the PATH" spellcheck="false" autocomplete="off" />
+			<input class="mono" bind:value={cliPath} oninput={() => (checked = null)} placeholder={`Blank: find ${harness.program} on the PATH`} spellcheck="false" autocomplete="off" />
 			<button class="btn" onclick={browse}>Browse…</button>
 		</div>
 	</label>
-	{#if saved}
+	{#if saved && provider === saved.provider && cliPath.trim() === saved.cliPath}
 		<div class="hint">
 			{#if saved.resolvedPath}
 				With the saved setting, Ledger runs <span class="mono">{saved.resolvedPath}</span>
@@ -112,22 +124,39 @@
 		</div>
 	{/if}
 
+	{#if provider !== 'prime'}
 	<div class="field">
 		What it may do
-		<div class="seg" role="group" aria-label="What Claude Code may do" style="align-self:flex-start">
+		<div class="seg" role="group" aria-label="What the AI harness may do" style="align-self:flex-start">
 			{#each modes as m (m.id)}
-				<button class:on={mode === m.id} aria-pressed={mode === m.id} onclick={() => (mode = m.id)}>{m.label}</button>
+				<button class:on={mode === m.id} aria-pressed={mode === m.id} disabled={provider === 'agy' && m.id === 'dontAsk'} onclick={() => (mode = m.id)}>{m.label}</button>
 			{/each}
 		</div>
-		<span class="hint">{modes.find((m) => m.id === mode)?.hint}</span>
+		<span class="hint">
+			{#if provider === 'claude'}{modes.find((m) => m.id === mode)?.hint}
+			{:else if provider === 'codex'}Edit files requests Codex’s workspace-write sandbox. Plan only and Read only both use its read-only sandbox; they do not enforce a planning workflow. On native Windows, Codex requires a configured Windows sandbox; otherwise it may remain read-only.
+			{:else}AGY uses its accept-edits or plan policy. Read only is not supported. Unapproved actions may be refused without failing the run.{/if}
+		</span>
 	</div>
+
+	{/if}
 
 	<label class="field" style="max-width:320px">
 		Model
-		<input bind:value={model} placeholder="Blank: the default of Claude Code" spellcheck="false" autocomplete="off" />
-		<span class="hint">A name or alias Claude Code accepts, such as <code>sonnet</code> or <code>opus</code>.</span>
+		<input bind:value={model} placeholder={`Blank: the default of ${harnessLabel(provider)}`} spellcheck="false" autocomplete="off" />
+		<span class="hint">A model name accepted by {harnessLabel(provider)} and available to your account.</span>
 	</label>
 
+	<label class="field" style="max-width:320px">
+		Reasoning effort
+		<select bind:value={effort}>
+			<option value="">Harness default</option>
+			{#each efforts as level (level)}<option value={level}>{level}</option>{/each}
+		</select>
+		<span class="hint">Passed to the selected CLI. Support can depend on its version and model.</span>
+	</label>
+
+	{#if provider === 'claude'}
 	<label class="check">
 		<input type="checkbox" bind:checked={confine} /> Extra guard rails (recommended)
 	</label>
@@ -139,12 +168,34 @@
 		off. There is no setting that skips Claude Code’s permission checks.
 	</div>
 
+	{:else if provider === 'prime'}
+	<label class="check">
+		<input type="checkbox" checked={!confine && mode === 'trusted'} onchange={(e) => { confine = !e.currentTarget.checked; mode = e.currentTarget.checked ? 'trusted' : 'acceptEdits'; }} />
+		Allow Prime Agent native tool access with my user permissions
+	</label>
+	<div class="hint">Ledger starts Prime Agent with <code>--mode acp</code> and sends prompts through the Agent Client Protocol.</div>
+	<div class="notice bad">
+		Prime Agent is not sandboxed. It can execute model-generated Python and commands with your user permissions,
+		including access outside the project. Ledger cannot enforce file-only, read-only or plan-only permissions for it.
+		Runs are blocked until you explicitly allow this access. The Trusted mode grants native tool access, not file-only access.
+	</div>
+	{:else}
+	<label class="check">
+		<input type="checkbox" bind:checked={confine} /> Require Claude Code’s extra guard rails
+	</label>
+	<div class="notice info">
+		{harnessLabel(provider)} cannot use Claude Code’s extra guard rails. Runs are blocked while this requirement is checked.
+		Uncheck it only if you accept this harness’s different permissions and sandbox. A project working folder is not a security boundary;
+		your CLI configuration may allow access to other files, hooks, tools or network services.
+	</div>
+	{/if}
+
 	<label class="check">
 		<input type="checkbox" bind:checked={autoRun} /> Run a prompt as soon as it is created
 	</label>
 	<div class="hint">
-		Off by default. When it is on, saving a new prompt starts it in Claude Code at once, so you don’t press <b>Run in Claude Code</b> and don’t see the
-		confirmation of what will be sent first. It runs with the permissions chosen above and uses your Claude allowance, and it starts before any guiding
+		Off by default. When it is on, saving a new prompt starts it in the selected harness at once, so you don’t press <b>Run with AI harness</b> and don’t see the
+		confirmation of what will be sent first. It runs with the permissions chosen above and uses your harness account and allowance, and it starts before any guiding
 		questions from a template are answered. You can still cancel it from the prompt’s card, and a prompt you already have still needs the button.
 	</div>
 

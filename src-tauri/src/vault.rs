@@ -414,13 +414,13 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
     })? {
         run_files.entry(run).or_default().push(path);
     }
-    type RunRow = (String, String, String, String, String, String, String, String, String, i64, Option<i64>, String);
-    for (id, project, thread, prompt, status, model, mode, started_at, finished_at, seconds, turns, body) in query_all::<RunRow, _>(
+    type RunRow = (String, String, String, String, String, String, String, String, String, i64, Option<i64>, String, String);
+    for (id, project, thread, prompt, status, model, mode, started_at, finished_at, seconds, turns, body, provider) in query_all::<RunRow, _>(
         conn,
-        "SELECT id, project_slug, thread_slug, prompt_id, status, model, permission_mode, started_at, finished_at, seconds, turns, body
+        "SELECT id, project_slug, thread_slug, prompt_id, status, model, permission_mode, started_at, finished_at, seconds, turns, body, provider
          FROM claude_runs",
         [],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?, r.get(12)?)),
     )? {
         let mut meta = Mapping::new();
         frontmatter::set(&mut meta, "id", id.clone());
@@ -428,6 +428,7 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         frontmatter::set(&mut meta, "status", status);
         frontmatter::set_opt(&mut meta, "model", Some(&model));
         frontmatter::set_opt(&mut meta, "permissionMode", Some(&mode));
+        frontmatter::set(&mut meta, "provider", provider);
         frontmatter::set(&mut meta, "startedAt", started_at);
         frontmatter::set(&mut meta, "finishedAt", finished_at);
         frontmatter::set(&mut meta, "seconds", seconds);
@@ -838,7 +839,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
     let mut feedback: Vec<FeedbackItem> = vec![];
     let mut uploads: Vec<(String, String, String, String, i64, String, String)> = vec![];
     // id, thread, prompt, status, model, permission mode, started, finished, seconds, turns, deliverables, body
-    type RunItem = (String, String, String, String, String, String, String, String, i64, Option<i64>, Vec<String>, String);
+    type RunItem = (String, String, String, String, String, String, String, String, i64, Option<i64>, Vec<String>, String, String);
     let mut runs: Vec<RunItem> = vec![];
     for slug in &slugs {
         for stem in source.stems(&format!("{}/prompts", thread_dir(project, slug))) {
@@ -918,6 +919,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
                 meta.text("turns").and_then(|s| s.parse().ok()),
                 meta.list("deliverables"),
                 body,
+                meta.text("provider").unwrap_or_else(|| "claude".to_string()),
             ));
         }
     }
@@ -950,11 +952,11 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
         )?;
     }
     runs.sort_by(|a, b| (&a.6, &a.0).cmp(&(&b.6, &b.0)));
-    for (id, thread, prompt, status, model, mode, started_at, finished_at, seconds, turns, deliverables, body) in runs {
+    for (id, thread, prompt, status, model, mode, started_at, finished_at, seconds, turns, deliverables, body, provider) in runs {
         conn.execute(
-            "INSERT OR IGNORE INTO claude_runs (id, project_slug, thread_slug, prompt_id, status, model, permission_mode, started_at, finished_at, seconds, turns, body)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            params![id, project, thread, prompt, status, model, mode, started_at, finished_at, seconds, turns, body],
+            "INSERT OR IGNORE INTO claude_runs (id, project_slug, thread_slug, prompt_id, status, model, permission_mode, started_at, finished_at, seconds, turns, body, provider)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![id, project, thread, prompt, status, model, mode, started_at, finished_at, seconds, turns, body, provider],
         )?;
         for (position, path) in deliverables.iter().enumerate() {
             conn.execute("INSERT OR IGNORE INTO claude_run_files (run_id, position, path) VALUES (?1, ?2, ?3)", params![id, position as i64, path])?;

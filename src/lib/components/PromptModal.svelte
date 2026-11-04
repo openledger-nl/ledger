@@ -30,7 +30,7 @@
 	let templateId = $state('');
 	let templates = $state<Template[]>([]);
 	let saving = $state(false);
-	// Whether saving a new prompt starts it in Claude Code by itself (a setting).
+	// Whether saving a new prompt starts it in the selected AI harness by itself (a setting).
 	let autoRun = $state(false);
 
 	// What the prompt asks for: a new deliverable, or changes to one that is already in the project.
@@ -149,7 +149,7 @@
 
 	{#snippet footer()}
 		<span class="spacer-h"></span>
-		{#if !prompt && autoRun}<span class="hint">Claude Code starts on it as soon as it is created</span>{/if}
+		{#if !prompt && autoRun}<span class="hint">The selected AI harness starts on it as soon as it is created</span>{/if}
 		<span class="hint">Ctrl+Enter saves</span>
 		<button class="btn ghost" onclick={onclose}>Cancel</button>
 		<button class="btn primary" onclick={save} disabled={saving || !title.trim() || (kind === 'existing' && !chosen)}>{prompt ? 'Save' : 'Create prompt'}</button>

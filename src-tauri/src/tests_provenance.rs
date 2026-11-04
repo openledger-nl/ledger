@@ -50,6 +50,7 @@ fn run(c: &Connection, p: &str, thread: &str, prompt: &str, id: &str, status: &s
         c,
         &RunRecord {
             id: id.into(),
+            provider: "claude".into(),
             project: p.into(),
             thread: thread.into(),
             prompt_id: prompt.into(),
@@ -288,7 +289,7 @@ fn marking_a_version_writes_a_record_that_keeps_what_was_known_of_it() {
     assert_eq!(provenance::resolve(&c, &p, "plan.md").unwrap()[0].mmm, None, "an empty label removes it");
 
     // What Ledger saw a run do is not the person's to change; the rest is.
-    assert_eq!(message(mark("0.1", Some("human"), None).unwrap_err()), "Claude Code made this version, which Ledger saw happen. That can't be changed here.");
+    assert_eq!(message(mark("0.1", Some("human"), None).unwrap_err()), "An AI harness made this version, which Ledger saw happen. That can't be changed here.");
     mark("0.2", Some("ai"), None).unwrap();
     assert_eq!(provenance::resolve(&c, &p, "plan.md").unwrap()[1].author, "ai");
     assert_eq!(message(mark("0.2", Some("robot"), None).unwrap_err()), "A version is made by a person (human) or by AI (ai)");
@@ -442,4 +443,19 @@ fn files_that_are_not_markdown_are_hashed_from_their_bytes() {
     let known = &provenance::resolve(&c, &p, "chart.png").unwrap()[0];
     assert_eq!(known.sha256.as_deref(), Some(provenance::sha256_hex(&[1, 2, 3]).as_str()));
     assert_eq!(provenance::sha256_hex(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+}
+
+#[test]
+fn provenance_keeps_the_harness_of_a_run() {
+    let (c, p, t1, _, prompt) = setup();
+    run(&c, &p, &t1, &prompt, "codex-run", "cancelled", &["plan.md"]);
+    c.execute("UPDATE claude_runs SET provider = 'codex' WHERE id = 'codex-run'", []).unwrap();
+    let stopped = provenance::stopped_run(&c, &p, "plan.md").unwrap().unwrap();
+    assert_eq!(stopped.provider, "codex");
+    let panel = provenance::for_deliverable(&c, &p, "plan.md").unwrap();
+    let recorded = panel.groups.iter().flat_map(|g| &g.entries).find_map(|entry| match entry {
+        Entry::Run(entry) => Some(&entry.run),
+        _ => None,
+    }).unwrap();
+    assert_eq!(recorded.provider, "codex");
 }
