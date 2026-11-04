@@ -818,6 +818,8 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 .sem-card-title h3 { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sem-meta { display: flex; gap: 4px 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
 .sem-meta b { color: var(--ink); font-weight: 600; }
+.sem-section { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.sem-section select { font-size: 12.5px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card-2); max-width: 340px; }
 /* The rows share one set of columns (a subgrid), so the dates line up and their column is as wide as the longest. */
 .sem-sprints { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 22px minmax(0, 160px) max-content minmax(0, 1fr) auto; column-gap: 12px; }
 .sem-sprints li { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
@@ -842,6 +844,9 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 /* ---------- semesters: the editor ---------- */
 .sem-dates { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
 .sem-length { display: flex; align-items: center; gap: 8px; padding-bottom: 4px; }
+.sem-section { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
+.sem-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.sem-section-head h3 { font-size: 14px; }
 .sem-weeks { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--card-2); }
 .sem-weeks .step { background: none; border: 0; padding: 6px 8px; color: var(--muted); display: inline-flex; }
 .sem-weeks .step:hover:not(:disabled) { color: var(--accent); }
@@ -865,6 +870,8 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 .sprint-x:hover { background: var(--red-soft); color: var(--red); }
 .sprint-span { grid-area: span; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .vac-note { color: var(--amber); }
+.sem-section-tools { display: flex; align-items: center; gap: 12px; }
+.sem-section-tools .link { display: inline-flex; align-items: center; gap: 4px; }
 .sem-weeks .lbl { font-size: 12px; color: var(--muted); padding-left: 10px; }
 .sem-weeks.small .step { padding: 4px 6px; }
 .sem-weeks.small .weeks { min-width: 44px; font-size: 12px; }

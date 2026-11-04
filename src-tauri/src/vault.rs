@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! templates/<id>.md                              a vault-wide template
-//! semesters/<id>.md                              a semester and its sprints
+//! semesters/<id>.md                              a semester and its sprints, and the Portflow section it is
 //! projects/<project>/project.md                  a project: name, board columns
 //! projects/<project>/README.md                   the project's reading guide
 //! projects/<project>/threads/<thread>/thread.md  a thread
@@ -20,7 +20,8 @@
 //! projects/<project>/attachments/…               files uploaded into threads, screenshots included
 //! projects/<project>/evidence/<slug>.md          an evidence item for Portflow (see `portflow_vault`)
 //! projects/<project>/portflow/<semester>.md      a linked Portflow collection, as Portflow shows it
-//! portflow/outcomes/<id>-<slug>.md, people.md    learning outcomes and people, mirrored from Portflow
+//! portflow/outcomes/<id>-<slug>.md, people.md,   learning outcomes, people and sections, mirrored from Portflow
+//! portflow/sections.md
 //! .ledger/                                       settings and secrets (see `settings`); never pushed
 //! ```
 //!
@@ -485,6 +486,9 @@ fn export_templates(conn: &Connection, files: &mut BTreeMap<String, String>) -> 
 }
 
 fn export_semesters(conn: &Connection, files: &mut BTreeMap<String, String>) -> Result<()> {
+    // Which Portflow section each semester is: kept whether or not Portflow is switched on.
+    let mut sections: HashMap<String, i64> =
+        query_all(conn, "SELECT semester_id, section_id FROM semester_sections", [], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?.into_iter().collect();
     for semester in semesters::list(conn)? {
         let mut meta = Mapping::new();
         frontmatter::set(&mut meta, "name", semester.name);
@@ -517,6 +521,12 @@ fn export_semesters(conn: &Connection, files: &mut BTreeMap<String, String>) -> 
             .collect();
         if !vacations.is_empty() {
             frontmatter::set(&mut meta, "vacations", Value::Sequence(vacations));
+        }
+        if let Some(section) = sections.remove(&semester.id) {
+            frontmatter::set(&mut meta, "portflowSection", Value::Number(section.into()));
+        }
+        if let Some(gamma) = crate::portflow_gamma::export_goals(conn, &semester.id)? {
+            frontmatter::set(&mut meta, "gamma", Value::Mapping(gamma));
         }
         frontmatter::set(&mut meta, "createdAt", semester.created_at);
         frontmatter::set(&mut meta, "updatedAt", semester.updated_at);
@@ -799,6 +809,13 @@ fn import_semesters(conn: &Connection, source: &Source) -> Result<()> {
         let created_at = meta.text("createdAt").unwrap_or_else(|| source.stamp(&rel));
         let updated_at = meta.text("updatedAt").unwrap_or_else(|| created_at.clone());
         semesters::insert(conn, &id, &checked, &created_at, &updated_at)?;
+        let section = meta.text("portflowSection").and_then(|s| s.trim().parse::<i64>().ok());
+        if let Some(section) = section {
+            conn.execute("INSERT OR IGNORE INTO semester_sections (semester_id, section_id) VALUES (?1, ?2)", params![id, section])?;
+        }
+        if let Some(Value::Mapping(gamma)) = meta.get("gamma") {
+            crate::portflow_gamma::import_goals(conn, &id, gamma)?;
+        }
     }
     Ok(())
 }

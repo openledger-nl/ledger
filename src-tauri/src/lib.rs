@@ -46,6 +46,7 @@ mod trello_sync;
 mod portflow;
 mod portflow_api;
 mod portflow_auth;
+mod portflow_gamma;
 mod portflow_config;
 mod portflow_html;
 mod portflow_store;
@@ -272,12 +273,16 @@ pub fn run() {
             portflow::portflow_link_collection,
             portflow::portflow_import_collection,
             portflow::portflow_open,
-            portflow::portflow_outcomes,
             portflow::portflow_people,
             portflow::portflow_project,
             portflow::portflow_thread_evidence,
             portflow::portflow_place_evidence,
             portflow::portflow_recent_feedback,
+            portflow::portflow_gamma,
+            portflow::portflow_sections,
+            portflow::portflow_link_section,
+            portflow::portflow_set_intended,
+            portflow::portflow_evidence_choices,
             // ---- end Portflow ----
             commands::set_vault_path,
             commands::reload_vault,

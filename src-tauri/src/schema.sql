@@ -309,7 +309,44 @@ CREATE TABLE project_collections (
     PRIMARY KEY (project_slug, semester_id)
 );
 
+-- Which Portflow section (a semester in the portfolio) a semester is. Kept in semesters/<id>.md as `portflowSection`,
+-- whether or not Portflow is switched on. A section is one semester's at most.
+CREATE TABLE semester_sections (
+    semester_id TEXT PRIMARY KEY REFERENCES semesters(id) ON DELETE CASCADE,
+    section_id  INTEGER NOT NULL UNIQUE
+);
+
+-- Gamma: what the student aims for in a semester (`gamma:` in semesters/<id>.md, kept whether or not Portflow is on).
+-- `kind` 'layer': a whole row of the matrix (`key` U, S, O, H or I) at `level`; 'goal': a goal measured in levels only
+-- (`key` its nickname, or its name: "PS").
+CREATE TABLE semester_targets (
+    semester_id TEXT NOT NULL REFERENCES semesters(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL,
+    key         TEXT NOT NULL,
+    level       INTEGER NOT NULL,
+    PRIMARY KEY (semester_id, kind, key)
+);
+
+-- The semester's overview in Gamma: the learning plan (an evidence item, by project and slug) and the study guide (a link).
+CREATE TABLE semester_plans (
+    semester_id   TEXT PRIMARY KEY REFERENCES semesters(id) ON DELETE CASCADE,
+    plan_project  TEXT,
+    plan_evidence TEXT,
+    study_guide   TEXT
+);
+
 -- Everything below is only filled in while Portflow is switched on: its files are not read otherwise.
+
+-- The portfolio's sections (portflow/sections.md), mirrored from Portflow. `import_id` is the template import that made
+-- it; the goals of that semester carry the same one.
+CREATE TABLE portflow_sections (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    position    INTEGER NOT NULL DEFAULT 0,
+    import_id   INTEGER,
+    template    TEXT NOT NULL DEFAULT '',
+    imported_at TEXT
+);
 
 -- The learning outcomes, mirrored from Portflow (portflow/outcomes/<id>-<slug>.md). Never made or edited in Ledger.
 CREATE TABLE outcomes (

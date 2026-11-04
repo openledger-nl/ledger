@@ -6,13 +6,37 @@
 	import { page } from '$app/state';
 	import SemesterModal from '$lib/components/SemesterModal.svelte';
 	import SprintTimeline from '$lib/components/SprintTimeline.svelte';
+	import { portflowApi } from '$lib/api';
+	import { portflow } from '$lib/portflow.svelte';
+	import { attempt } from '$lib/ui.svelte';
 	import { currentSprint, length, nj26Draft, phaseOf, spanLabel, today, workDays } from '$lib/semesters';
-	import type { Semester, SemesterDraft } from '$lib/types';
+	import type { PortflowSection, Semester, SemesterDraft } from '$lib/types';
 
 	// The semesters the dashboard's contribution graph follows: a list, and a + that adds one from a preset or from scratch.
 	// They are loaded by the settings layout, so they stay current when one is saved.
 
 	const semesters = $derived(page.data.semesters as Semester[]);
+
+	// Which Portflow section (a semester in the portfolio) each semester is: only while Portflow is on.
+	let sections = $state<PortflowSection[]>([]);
+	$effect(() => {
+		void portflow.status?.lastSyncAt;
+		if (!portflow.enabled) {
+			sections = [];
+			return;
+		}
+		let stale = false;
+		portflowApi.sections().then(
+			(all) => !stale && (sections = all),
+			() => {}
+		);
+		return () => (stale = true);
+	});
+	const sectionOf = (semester: string) => sections.find((x) => x.semester === semester)?.id ?? null;
+	async function linkSection(semester: string, value: string) {
+		const all = await attempt(() => portflowApi.linkSection(semester, value ? Number(value) : null));
+		if (all) sections = all;
+	}
 
 	/** The editor: undefined when closed; otherwise the semester it changes, or null for a new one (from `preset`, if given). */
 	let editor = $state<{ semester: Semester | null; preset?: SemesterDraft } | undefined>(undefined);
@@ -127,6 +151,18 @@
 						<span><b>Week {p.week}</b> of {p.weeks}{#if at >= 0} · <b>{s.sprints[at].name}</b>{/if}</span>
 					{/if}
 				</div>
+
+				{#if portflow.enabled && sections.length}
+					<label class="sem-section">
+						Portflow section
+						<select value={sectionOf(s.id) ?? ''} onchange={(e) => linkSection(s.id, e.currentTarget.value)}>
+							<option value="">None</option>
+							{#each sections as x (x.id)}
+								<option value={x.id}>{x.name}{x.semester && x.semester !== s.id ? ` (now ${x.semesterName ?? x.semester})` : ''}</option>
+							{/each}
+						</select>
+					</label>
+				{/if}
 
 				<SprintTimeline start={s.start} end={s.end} sprints={s.sprints} vacations={s.vacations} />
 

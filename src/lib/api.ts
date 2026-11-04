@@ -281,7 +281,10 @@ export const trelloApi = {
 
 import type {
 	Evidence,
-	Outcome,
+	EvidenceChoice,
+	Gamma,
+	GammaGoals,
+	PortflowSection,
 	PortflowCollectionChoice,
 	PortflowFeedback,
 	PortflowImported,
@@ -310,7 +313,6 @@ export const portflowApi = {
 	/** A new project from a collection, linked for `semester`; `threads`: a thread per evidence item. */
 	importCollection: (collection: number, semester: string, name: string | null, threads: boolean) =>
 		call<PortflowImported>('portflow_import_collection', { collection, semester, name, threads }),
-	outcomes: () => call<Outcome[]>('portflow_outcomes'),
 	people: () => call<PortflowPerson[]>('portflow_people'),
 	project: (project: string) => call<ProjectPortflow>('portflow_project', { project }),
 	threadEvidence: (project: string, thread: string) => call<Evidence[]>('portflow_thread_evidence', { project, thread }),
@@ -319,7 +321,15 @@ export const portflowApi = {
 		call<Evidence[]>('portflow_place_evidence', { project, evidence, thread, newThread }),
 	/** Opens Portflow in the default browser, through Canvas (Portflow can't be opened at one item from outside). */
 	open: () => call<void>('portflow_open'),
-	recentFeedback: (limit = 8) => call<PortflowFeedback[]>('portflow_recent_feedback', { limit })
+	recentFeedback: (limit = 8) => call<PortflowFeedback[]>('portflow_recent_feedback', { limit }),
+	/** The HBO-i matrix of a semester (null: the current one), from the vault's mirror: no request goes to Portflow. */
+	gamma: (semester: string | null = null) => call<Gamma>('portflow_gamma', { semester }),
+	sections: () => call<PortflowSection[]>('portflow_sections'),
+	/** `section` null: the semester is no section. */
+	linkSection: (semester: string, section: number | null) => call<PortflowSection[]>('portflow_link_section', { semester, section }),
+	/** Replaces a semester's intended development; answers with its matrix. */
+	setIntended: (semester: string, goals: GammaGoals) => call<Gamma>('portflow_set_intended', { semester, goals }),
+	evidenceChoices: () => call<EvidenceChoice[]>('portflow_evidence_choices')
 };
 
 // ---- Updating Ledger from inside the app (see src-tauri/src/updates.rs) -----------------------------

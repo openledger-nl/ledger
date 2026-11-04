@@ -929,28 +929,6 @@ export interface EvidenceRef {
 	thread: string | null;
 }
 
-export interface SubOutcome {
-	id: number;
-	name: string;
-	nickname: string;
-	descriptionHtml: string;
-	evidence: EvidenceRef[];
-}
-
-export interface Outcome {
-	id: number;
-	name: string;
-	nickname: string;
-	goalSet: string;
-	status: string;
-	explanationHtml: string;
-	removed: boolean;
-	subOutcomes: SubOutcome[];
-	evidence: EvidenceRef[];
-	feedbackCount: number;
-	feedbackFrom: string[];
-}
-
 export interface PortflowPerson {
 	id: number;
 	name: string;
@@ -1030,4 +1008,117 @@ export interface PortflowImported {
 	projectName: string;
 	evidence: number;
 	threads: number;
+}
+
+// ---- Portflow: semesters, sections and Gamma, the competence matrix (see portflow_gamma.rs) ------
+
+/** A section of the Portflow portfolio: one semester. */
+export interface PortflowSection {
+	id: number;
+	name: string;
+	template: string;
+	importedAt: string | null;
+	/** The Ledger semester it is. */
+	semester: string | null;
+	semesterName: string | null;
+}
+
+export interface GammaSemester {
+	id: string;
+	name: string;
+	start: string;
+	end: string;
+	section: number | null;
+	sectionName: string | null;
+	current: boolean;
+}
+
+/** One sub-goal: one level of an activity in a layer ("Analysis-U2"), or of a goal like PS ("PS-2"). */
+export interface GammaLevel {
+	id: number;
+	name: string;
+	level: number;
+	evidenceCount: number;
+	evidence: EvidenceRef[];
+	feedbackCount: number;
+	descriptionHtml: string;
+	/** The same, as markdown: what a thread or deliverable started from this level quotes. */
+	description: string;
+}
+
+export interface GammaCell {
+	/** U, S, O, H or I. */
+	layer: string;
+	/** The goal that is this cell's activity. */
+	outcome: number;
+	evidenceCount: number;
+	feedbackCount: number;
+	/** The highest level that has evidence. */
+	level: number | null;
+	levels: GammaLevel[];
+	/** The level aimed for (its row's), and whether evidence reaches it. */
+	target: number | null;
+	reached: boolean;
+}
+
+export interface GammaSkill {
+	outcome: number;
+	/** What intended development calls it: its nickname, or its name ("PS"). */
+	key: string;
+	name: string;
+	nickname: string;
+	evidenceCount: number;
+	level: number | null;
+	levels: GammaLevel[];
+	target: number | null;
+	reached: boolean;
+}
+
+/** A semester's intended development: a level per layer (a whole row) and per level-only goal, and its overview. */
+export interface GammaGoals {
+	layers: Record<string, number>;
+	goals: Record<string, number>;
+	/** The learning plan, an evidence item: "<project>/<evidence slug>". */
+	learningPlan: string | null;
+	studyGuide: string | null;
+}
+
+export interface GammaPlan {
+	project: string;
+	projectName: string;
+	evidence: string;
+	name: string;
+	thread: string | null;
+	version: number | null;
+	deliveredAt: string | null;
+}
+
+export interface EvidenceChoice {
+	id: string;
+	name: string;
+	projectName: string;
+}
+
+export interface Gamma {
+	semesters: GammaSemester[];
+	semester: string | null;
+	section: number | null;
+	sectionName: string | null;
+	goalSet: string;
+	/** False when the semester has no section yet: then the newest goal set is shown. */
+	scoped: boolean;
+	columns: { outcome: number; name: string }[];
+	rows: { layer: string; name: string; target: number | null }[];
+	cells: GammaCell[];
+	skills: GammaSkill[];
+	maxLevel: number;
+	evidenceCount: number;
+	cellsWithEvidence: number;
+	cellsTotal: number;
+	goals: GammaGoals;
+	targetsTotal: number;
+	targetsReached: number;
+	plan: GammaPlan | null;
+	/** The projects linked to a collection in this semester. */
+	linkedProjects: string[];
 }
