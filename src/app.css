@@ -804,6 +804,8 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 	position: absolute; top: 0; bottom: 0; border: 0; padding: 0; margin: 0; display: flex; align-items: center; justify-content: center;
 	background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 700; box-shadow: inset -2px 0 0 var(--card);
 }
+/* The label stays readable over a vacation's hatching. */
+.tl-sprint span { position: relative; z-index: 1; padding: 0 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-sprint.past { background: color-mix(in srgb, var(--accent) 28%, var(--card-2)); color: var(--ink); }
 .tl-sprint.current { background: var(--accent); color: var(--accent-ink); }
 .tl-today { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--ink); border-radius: 1px; pointer-events: none; }
@@ -816,12 +818,13 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 .sem-card-title h3 { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sem-meta { display: flex; gap: 4px 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
 .sem-meta b { color: var(--ink); font-weight: 600; }
-.sem-sprints { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.sem-sprints li { display: grid; grid-template-columns: 22px minmax(0, 160px) 170px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+/* The rows share one set of columns (a subgrid), so the dates line up and their column is as wide as the longest. */
+.sem-sprints { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 22px minmax(0, 160px) max-content minmax(0, 1fr) auto; column-gap: 12px; }
+.sem-sprints li { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
 .sem-sprints li:last-child { border-bottom: 0; }
 .sem-sprints .n { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 .sem-sprints .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sem-sprints .when { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.sem-sprints .when { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sem-sprints .goal { color: var(--muted); font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sem-sprints li.past .name, .sem-sprints li.past .when { color: var(--faint); }
 .sem-sprints li.current { background: var(--accent-soft); border-radius: 8px; border-bottom-color: transparent; }
@@ -839,9 +842,6 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 /* ---------- semesters: the editor ---------- */
 .sem-dates { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
 .sem-length { display: flex; align-items: center; gap: 8px; padding-bottom: 4px; }
-.sem-section { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
-.sem-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
-.sem-section-head h3 { font-size: 14px; }
 .sem-weeks { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--card-2); }
 .sem-weeks .step { background: none; border: 0; padding: 6px 8px; color: var(--muted); display: inline-flex; }
 .sem-weeks .step:hover:not(:disabled) { color: var(--accent); }
@@ -865,8 +865,6 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 .sprint-x:hover { background: var(--red-soft); color: var(--red); }
 .sprint-span { grid-area: span; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .vac-note { color: var(--amber); }
-.sem-section-tools { display: flex; align-items: center; gap: 12px; }
-.sem-section-tools .link { display: inline-flex; align-items: center; gap: 4px; }
 .sem-weeks .lbl { font-size: 12px; color: var(--muted); padding-left: 10px; }
 .sem-weeks.small .step { padding: 4px 6px; }
 .sem-weeks.small .weeks { min-width: 44px; font-size: 12px; }
@@ -888,5 +886,5 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 	.vac-row > .date-input { grid-column: 2; }
 	.sem-sprints li { grid-template-columns: 22px 1fr auto; }
 	.sem-sprints .goal { display: none; }
-	.sem-sprints .when { grid-column: 2; }
+	.sem-sprints .when { grid-column: 2; white-space: normal; }
 }
