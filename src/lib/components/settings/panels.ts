@@ -62,7 +62,7 @@ export const panels: Panel[] = [
 	{ id: 'encryption', group: 'sync', title: 'Encryption', keywords: 'encrypt key recovery aes secret import export generate', component: EncryptionSettings },
 	{ id: 'trello', group: 'sync', title: 'Sync with Trello', keywords: 'trello cards board tasks stories api key token person', component: TrelloSettings },
 	{ id: 'screenshots', group: 'tools', title: 'Screenshots', keywords: 'screenshot hotkey shortcut flameshot capture picture tool command print', component: ScreenshotSettings },
-	{ id: 'claude', group: 'tools', title: 'Claude Code', keywords: 'claude ai prompt run model permission guard rails cli program auto edit plan read', component: ClaudeCodeSettings },
+	{ id: 'claude', group: 'tools', title: 'AI harness', keywords: 'claude codex prime agent agy ai harness prompt run model permission guard rails cli program auto edit plan read', component: ClaudeCodeSettings },
 	{ id: 'about', group: 'about', title: 'About Ledger', keywords: 'about version info project source code releases changelog machine paths config build', component: AboutSettings },
 	{ id: 'updates', group: 'about', title: 'Updates', keywords: 'update updates upgrade new version release install check automatic', component: UpdateSettings },
 	{ id: 'yell', group: 'logs', title: 'Yell at the app', keywords: 'yell report bug issue error github ai prompt copy problem broken', component: YellSettings },

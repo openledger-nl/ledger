@@ -210,7 +210,7 @@ export const api = {
 	discardScreenshot: () => call<void>('discard_screenshot')
 };
 
-// ---- Run a prompt with Claude Code (a block of its own; see src-tauri/src/claude_code) ---------------
+// ---- Run a prompt with an AI harness (a block of its own; see src-tauri/src/claude_code) ---------------
 
 import type {
 	ClaudeCodeCheck,
@@ -222,10 +222,10 @@ import type {
 
 export const claudeCodeApi = {
 	settings: () => call<ClaudeCodeSettings>('claude_code_settings'),
-	saveSettings: (cliPath: string, permissionMode: string, model: string, confine: boolean, autoRun: boolean) =>
-		call<ClaudeCodeSettings>('save_claude_code_settings', { cliPath, permissionMode, model, confine, autoRun }),
-	/** Runs `claude --version` with the path as typed (blank: look on the PATH). Doesn't save anything. */
-	check: (cliPath: string) => call<ClaudeCodeCheck>('check_claude_code', { cliPath }),
+	saveSettings: (cliPath: string, permissionMode: string, model: string, confine: boolean, autoRun: boolean, provider: string, effort: string) =>
+		call<ClaudeCodeSettings>('save_claude_code_settings', { cliPath, permissionMode, model, confine, autoRun, provider, effort }),
+	/** Checks the selected executable without starting inference or saving settings. */
+	check: (cliPath: string, provider: string) => call<ClaudeCodeCheck>('check_claude_code', { cliPath, provider }),
 	/** Everything a run would send and where, for the confirmation. */
 	preview: (project: string, thread: string, id: string) => call<ClaudeRunPreview>('claude_code_preview', { project, thread, id }),
 	/** `confirmed` is the prompt text from the preview: if the prompt changed since, nothing starts. */

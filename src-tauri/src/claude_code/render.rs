@@ -26,6 +26,7 @@ pub struct Step {
 
 #[derive(Debug, Default)]
 pub struct Rendered {
+    pub terminal: bool,
     pub text: String,
     pub result: Option<ResultInfo>,
     pub steps: Vec<Step>,
@@ -119,7 +120,7 @@ pub fn render_line(line: &str) -> Rendered {
         }
         _ => {}
     }
-    Rendered { text: out, result, steps, model: started_with }
+    Rendered { terminal: result.is_some(), text: out, result, steps, model: started_with }
 }
 
 fn content_blocks(message: &Value) -> Vec<&Value> {
@@ -170,5 +171,86 @@ pub fn summary(result: Option<&ResultInfo>, seconds: u64) -> String {
         }
     }
     out.push_str(&format!("— {}\n", parts.join(" · ")));
+    out
+}
+
+/// Provider-native event envelopes. Tool output is deliberately not copied into records.
+pub fn render_for(provider: super::config::Provider, line: &str) -> Rendered {
+    use super::config::Provider;
+    if provider == Provider::Claude { return render_line(line); }
+    let Ok(v) = serde_json::from_str::<Value>(line) else {
+        return Rendered { text: format!("{line}\n"), ..Rendered::default() };
+    };
+    let mut out = Rendered::default();
+    let string = |v: &Value, key: &str| v.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+    match provider {
+        Provider::Codex => match v.get("type").and_then(Value::as_str).unwrap_or_default() {
+            "item.completed" => {
+                let item = &v["item"];
+                match item["type"].as_str().unwrap_or_default() {
+                    "agent_message" => {
+                        let text = string(item, "text");
+                        out.text = format!("{text}\n");
+                        out.result = Some(ResultInfo { text, ..ResultInfo::default() });
+                    }
+                    "command_execution" | "file_change" | "mcp_tool_call" | "web_search" => {
+                        let name = string(item, "type");
+                        let detail = item.get("command").or_else(|| item.get("query")).and_then(Value::as_str).unwrap_or_default();
+                        out.text = format!("→ {name} {}\n", shorten(detail, 120));
+                        out.steps.push(Step { name, detail: shorten(detail, 120), failed: item["status"] == "failed" });
+                    }
+                    _ => {}
+                }
+            }
+            "turn.completed" => { out.terminal = true; }
+            "turn.failed" | "error" => {
+                out.terminal = true;
+                let text = v.pointer("/error/message").or_else(|| v.get("message")).and_then(Value::as_str).unwrap_or("Codex reported an error").to_string();
+                out.result = Some(ResultInfo { is_error: true, text, ..ResultInfo::default() });
+            }
+            _ => {}
+        },
+        Provider::Agy => match v["event"].as_str().unwrap_or_default() {
+            "step_update" => {
+                let step = &v["step_update"];
+                if step["step_type"] == "agent_response" { out.text = string(step, "text_delta"); }
+                if let Some(tool) = step.get("tool_info") {
+                    let name = string(tool, "name");
+                    out.text.push_str(&format!("→ {name}\n"));
+                    out.steps.push(Step { name, detail: String::new(), failed: tool.get("error").is_some_and(|e| !e.is_null()) });
+                }
+            }
+            "result" => {
+                out.terminal = true;
+                let result = &v["result"];
+                let is_error = result["status"] != "SUCCESS";
+                let text = if is_error { result.get("error").and_then(Value::as_str).unwrap_or("AGY did not complete successfully").to_string() } else { string(result, "response") };
+                out.result = Some(ResultInfo { is_error, text, ..ResultInfo::default() });
+            }
+            _ => {}
+        },
+        Provider::Prime => match v["type"].as_str().unwrap_or_default() {
+            "agent_end" => { out.terminal = true; }
+            "message_end" if v["message"]["role"] == "assistant" && v["message"]["stopReason"] == "toolUse" => {
+                out.result = Some(ResultInfo { is_error: true, text: "Prime Agent ended before completing its tool calls.".to_string(), ..ResultInfo::default() });
+            }
+            "message_end" if v["message"]["role"] == "assistant" => {
+                let message = &v["message"];
+                let text = message["content"].as_array().map(|parts| parts.iter().filter(|p| p["type"] == "text").filter_map(|p| p["text"].as_str()).collect::<Vec<_>>().join("\n")).unwrap_or_default();
+                let error = string(message, "errorMessage");
+                let is_error = !error.is_empty() || !matches!(message["stopReason"].as_str(), Some("stop" | "length"));
+                out.text = if text.is_empty() { String::new() } else { format!("{text}\n") };
+                out.model = message.get("model").and_then(Value::as_str).map(str::to_string);
+                out.result = Some(ResultInfo { is_error, text: if is_error && !error.is_empty() { error } else { text }, ..ResultInfo::default() });
+            }
+            "tool_execution_start" => {
+                let name = string(&v, "toolName");
+                out.text = format!("→ {name}\n");
+                out.steps.push(Step { name, detail: String::new(), failed: false });
+            }
+            _ => {}
+        },
+        Provider::Claude => unreachable!(),
+    }
     out
 }

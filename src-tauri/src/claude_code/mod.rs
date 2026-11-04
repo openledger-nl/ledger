@@ -33,7 +33,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, Window, WindowEvent};
 
 use self::cli::Search;
-use self::config::ClaudeSettings;
+use self::config::{ClaudeSettings, Provider};
 use self::prompt::RunRequest;
 use self::records::RunRecord;
 use self::runner::{OsRunner, Runner, SpawnSpec};
@@ -136,6 +136,8 @@ pub fn release_hold(app: &AppHandle) {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeSettingsView {
+    pub provider: String,
+    pub effort: String,
     pub cli_path: String,
     pub permission_mode: String,
     pub model: String,
@@ -152,11 +154,13 @@ pub struct ClaudeSettingsView {
 
 fn settings_view(root: &Path) -> ClaudeSettingsView {
     let settings = config::load(root);
-    let (resolved_path, problem) = match cli::resolve(&settings.cli_path, &Search::host()) {
+    let (resolved_path, problem) = match cli::resolve_for(settings.provider, &settings.cli_path, &Search::host()) {
         Ok(path) => (Some(path.display().to_string()), None),
         Err(e) => (None, Some(e.to_string())),
     };
     ClaudeSettingsView {
+        provider: settings.provider.as_str().to_string(),
+        effort: settings.effort,
         cli_path: settings.cli_path,
         permission_mode: settings.permission_mode.as_str().to_string(),
         model: settings.model,
@@ -182,9 +186,15 @@ pub fn save_claude_code_settings(
     model: String,
     confine: bool,
     auto_run: bool,
+    provider: Option<String>,
+    effort: Option<String>,
 ) -> Result<ClaudeSettingsView> {
     let root = vault_root(&app);
-    config::save(&root, &ClaudeSettings::validated(&cli_path, &permission_mode, &model, confine, auto_run)?)?;
+    let mut settings = ClaudeSettings::validated(&cli_path, &permission_mode, &model, confine, auto_run)?;
+    settings.provider = Provider::parse(provider.as_deref().unwrap_or("claude")).ok_or_else(|| Error::invalid("Unknown AI harness"))?;
+    settings.effort = effort.unwrap_or_default();
+    if !config::valid_effort(&settings.effort) { return Err(Error::invalid("Unknown effort level")); }
+    config::save(&root, &settings)?;
     Ok(settings_view(&root))
 }
 
@@ -199,9 +209,14 @@ pub struct ClaudeCheck {
 }
 
 /// Runs `claude --version`, with the path as typed on screen (blank: look for it on the PATH).
+#[cfg(test)]
 pub fn check_with(runner: &dyn Runner, cli_path: &str, search: &Search, cwd: &Path, timeout: Duration) -> ClaudeCheck {
+    check_provider_with(runner, Provider::Claude, cli_path, search, cwd, timeout)
+}
+
+pub fn check_provider_with(runner: &dyn Runner, provider: Provider, cli_path: &str, search: &Search, cwd: &Path, timeout: Duration) -> ClaudeCheck {
     let fail = |path: Option<String>, message: String| ClaudeCheck { ok: false, version: String::new(), path, message };
-    let program = match cli::resolve(cli_path, search) {
+    let program = match cli::resolve_for(provider, cli_path, search) {
         Ok(program) => program,
         Err(e) => return fail(None, e.to_string()),
     };
@@ -210,10 +225,10 @@ pub fn check_with(runner: &dyn Runner, cli_path: &str, search: &Search, cwd: &Pa
     let first_line = |text: &str| text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or_default().to_string();
     match runner::capture(runner, &spec, timeout) {
         Err(e) => fail(Some(shown.clone()), format!("{shown} couldn't be started: {e}")),
-        Ok(out) if out.timed_out => fail(Some(shown), format!("claude --version didn't answer within {} seconds", timeout.as_secs())),
+        Ok(out) if out.timed_out => fail(Some(shown), format!("{} --version didn't answer within {} seconds", provider.program(), timeout.as_secs())),
         Ok(out) if out.exit.success() => {
             let version = first_line(&out.stdout);
-            ClaudeCheck { ok: true, message: format!("Found Claude Code: {version}"), version, path: Some(shown) }
+            ClaudeCheck { ok: true, message: format!("Found {}: {version}", provider.label()), version, path: Some(shown) }
         }
         Ok(out) => {
             let detail = first_line(if out.stderr.trim().is_empty() { &out.stdout } else { &out.stderr });
@@ -224,9 +239,10 @@ pub fn check_with(runner: &dyn Runner, cli_path: &str, search: &Search, cwd: &Pa
 
 /// Runs `claude --version` to see that the program works.
 #[tauri::command]
-pub async fn check_claude_code(app: State<'_, App>, cli_path: String) -> Result<ClaudeCheck> {
+pub async fn check_claude_code(app: State<'_, App>, cli_path: String, provider: Option<String>) -> Result<ClaudeCheck> {
     let root = vault_root(&app);
-    tauri::async_runtime::spawn_blocking(move || check_with(&OsRunner, &cli_path, &Search::host(), &root, Duration::from_secs(15)))
+    let provider = Provider::parse(provider.as_deref().unwrap_or("claude")).ok_or_else(|| Error::invalid("Unknown AI harness"))?;
+    tauri::async_runtime::spawn_blocking(move || check_provider_with(&OsRunner, provider, &cli_path, &Search::host(), &root, Duration::from_secs(15)))
         .await
         .map_err(|e| Error::invalid(format!("The check stopped unexpectedly: {e}")))
 }
@@ -237,11 +253,13 @@ pub async fn check_claude_code(app: State<'_, App>, cli_path: String) -> Result<
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunPreview {
+    pub provider: String,
+    pub effort: String,
     /// Where it runs.
     pub folder: String,
     /// The command line, for reading: it is never run through a shell.
     pub command: String,
-    /// The text sent on standard input, exactly.
+    /// The logical prompt; AGY wraps this in its NDJSON user-message envelope on standard input.
     pub prompt: String,
     /// The settings file given with `--settings`, when the guard rails are on.
     pub guard: Option<String>,
@@ -261,19 +279,21 @@ pub fn claude_code_preview(app: AppHandle, project: String, thread: String, id: 
     let (root, request) = prepare_request(&app, &project, &thread, &id)?;
     let settings = config::load(&root);
     let guard_file = config::guard_path(&root);
-    let (program, problem) = match cli::resolve(&settings.cli_path, &Search::host()) {
+    let (program, problem) = match cli::resolve_for(settings.provider, &settings.cli_path, &Search::host()) {
         Ok(program) => (program, None),
-        Err(e) => (PathBuf::from("claude"), Some(e.to_string())),
+        Err(e) => (PathBuf::from(settings.provider.program()), Some(e.to_string())),
     };
     let args = cli::run_args(&settings, settings.confine.then_some(guard_file.as_path()));
     Ok(RunPreview {
+        provider: settings.provider.as_str().to_string(),
+        effort: settings.effort.clone(),
         folder: request.cwd.display().to_string(),
         command: cli::display_command(&program, &args),
         prompt: request.text,
-        guard: settings.confine.then(|| cli::guard_settings(&root)),
+        guard: (settings.confine && settings.provider == Provider::Claude).then(|| cli::guard_settings(&root)),
         permission_mode: settings.permission_mode.as_str().to_string(),
-        model: settings.model,
-        problem,
+        model: settings.model.clone(),
+        problem: cli::validate_adapter(&settings).err().map(|e| e.to_string()).or(problem),
     })
 }
 

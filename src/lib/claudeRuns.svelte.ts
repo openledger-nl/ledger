@@ -1,10 +1,11 @@
-// What this window knows about the runs of prompts with Claude Code. The backend keeps the runs going whatever
+// What this window knows about the runs of prompts with AI harnesses. The backend keeps the runs going whatever
 // screen is open; this keeps what the window has heard about them, for as long as the window lives, so a run is
 // still on its prompt when you come back to it. It starts listening the first time a screen asks for it.
 
 import { listen } from '@tauri-apps/api/event';
 import { claudeCodeApi } from './api';
 import { toast } from './ui.svelte';
+import { harnessLabel } from './harness';
 import type { ClaudeRun, ClaudeRunEvent, Prompt } from './types';
 
 export interface TrackedRun {
@@ -47,11 +48,11 @@ function announce(known: TrackedRun | undefined, run: ClaudeRun) {
 	const title = `“${run.promptTitle || 'prompt'}”`;
 	if (run.status === 'finished') {
 		const added = run.linked.length;
-		toast(`Claude Code finished ${title}${added ? `: ${added} version${added === 1 ? '' : 's'} published and linked to the prompt` : ''}`);
+		toast(`${harnessLabel(run.provider)} finished ${title}${added ? `: ${added} version${added === 1 ? '' : 's'} published and linked to the prompt` : ''}`);
 	} else if (run.status === 'cancelled') {
-		toast(`Stopped the Claude Code run for ${title}`);
+		toast(`Stopped the ${harnessLabel(run.provider)} run for ${title}`);
 	} else {
-		toast(`The Claude Code run for ${title} failed${run.message ? `: ${run.message}` : ''}`, true);
+		toast(`The ${harnessLabel(run.provider)} run for ${title} failed${run.message ? `: ${run.message}` : ''}`, true);
 	}
 }
 
@@ -109,9 +110,9 @@ export async function autoRunNewPrompt(project: string, thread: string, prompt: 
 	try {
 		const shown = await claudeCodeApi.preview(project, thread, prompt.id);
 		trackRun(await claudeCodeApi.start(project, thread, prompt.id, shown.prompt));
-		toast(`Started ${title} in Claude Code`);
+		toast(`Started ${title} in ${harnessLabel(settings.provider)}`);
 	} catch (e) {
-		toast(`${title} was created, but Claude Code didn’t start: ${e instanceof Error ? e.message : String(e)}`, true);
+		toast(`${title} was created, but ${harnessLabel(settings.provider)} didn’t start: ${e instanceof Error ? e.message : String(e)}`, true);
 	}
 }
 

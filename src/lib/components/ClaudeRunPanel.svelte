@@ -1,10 +1,11 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	// "Run in Claude Code" for one prompt: the button, a confirmation that shows exactly what will be sent, and
+	// "Run with AI harness" for one prompt: the button, a confirmation that shows exactly what will be sent, and
 	// the live state of the latest run (status, output, cancel). The run itself lives in the backend, so it goes
 	// on when this card is not on screen; the state it reports is kept in `claudeRuns`.
 	import { untrack } from 'svelte';
 	import { claudeCodeApi } from '$lib/api';
+	import { harnessLabel } from '$lib/harness';
 	import { ensureClaudeRuns, latestRunFor, trackRun } from '$lib/claudeRuns.svelte';
 	import { time } from '$lib/format';
 	import { attempt } from '$lib/ui.svelte';
@@ -61,7 +62,8 @@
 		acceptEdits:
 			'It can read this project and create or edit files in its folder. Other commands and network access are refused, because nothing can approve them while it runs.',
 		plan: 'Plan only: it reads the project and answers with a plan. Nothing is changed.',
-		dontAsk: 'Read only: it reads the project. Anything that would need approval, such as every edit, is refused.'
+		dontAsk: 'Read only: it reads the project. Anything that would need approval, such as every edit, is refused.',
+		trusted: 'Trusted: native tool access with your user permissions.'
 	};
 
 	const labels = { running: 'Running', finished: 'Finished', failed: 'Failed', cancelled: 'Cancelled' } as const;
@@ -101,9 +103,9 @@
 
 <div class="claude">
 	<div class="claude-row">
-		<button class="link accent" onclick={ask} disabled={asking || running}>Run in Claude Code…</button>
+		<button class="link accent" onclick={ask} disabled={asking || running}>Run with AI harness…</button>
 		{#if run}
-			<span class="state"><span class="dot {dots[run.status]}"></span>{run.cancelling ? 'Cancelling…' : labels[run.status]}</span>
+			<span class="state"><span class="dot {dots[run.status]}"></span>{harnessLabel(run.provider)} · {run.cancelling ? 'Cancelling…' : labels[run.status]}</span>
 			<span class="hint">{elapsed}{run.exitCode !== null && run.status !== 'finished' ? ` · exit code ${run.exitCode}` : ''}</span>
 			{#if running}
 				<button class="link danger" onclick={cancel} disabled={run.cancelling}>Cancel</button>
@@ -134,7 +136,7 @@
 				{#each history as past (past.id)}
 					<details class="past">
 						<summary>
-							<ChevronRight size={14} class="disclosure" /><span class="dot {dots[past.status]}"></span>{labels[past.status]}
+							<ChevronRight size={14} class="disclosure" /><span class="dot {dots[past.status]}"></span>{harnessLabel(past.provider)} · {labels[past.status]}
 							<span class="hint">
 								{time(past.startedAt)} · {clock(past.seconds)}{past.turns ? ` · ${past.turns} turn${past.turns === 1 ? '' : 's'}` : ''}{past.model
 									? ` · ${past.model}`
@@ -153,17 +155,28 @@
 
 {#if preview}
 	{@const shown = preview}
-	<Modal title="Run in Claude Code" wide onclose={() => (preview = null)}>
+	<Modal title={`Run in ${harnessLabel(shown.provider)}`} wide onclose={() => (preview = null)}>
 		<p style="margin:0;color:var(--muted)">
-			Claude Code runs on this machine in the project’s folder, and writes what it makes into <code>deliverables/</code> there:
+			{harnessLabel(shown.provider)} runs on this machine in the project’s folder, and writes what it makes into <code>deliverables/</code> there:
 		</p>
 		<div class="mono folder">{shown.folder}</div>
 
 		<div class="notice info">
-			{modeNotes[shown.permissionMode]}
-			{shown.guard
-				? 'The extra guard rails are on: it is told not to read or write outside this folder, nor to touch the vault’s .ledger folder or any .env file, and neither the folder’s own Claude settings nor any MCP servers are used.'
-				: 'The extra guard rails are off.'}
+			{#if shown.provider === 'claude'}
+				{modeNotes[shown.permissionMode]}
+				{shown.guard
+					? 'The extra guard rails are on: it is told not to read or write outside this folder, nor to touch the vault’s .ledger folder or any .env file, and neither the folder’s own Claude settings nor any MCP servers are used.'
+					: 'The extra guard rails are off.'}
+			{:else if shown.provider === 'prime'}
+				Prime Agent has native tool access with your user permissions. It is not sandboxed and can execute Python and commands,
+				including access outside this project. Ledger does not enforce file-only, read-only or plan-only access for Prime Agent.
+			{:else}
+				Requested mode: {shown.permissionMode === 'acceptEdits' ? 'Edit files' : shown.permissionMode === 'plan' ? 'Plan only' : 'Read only'}.
+				Permissions and sandbox behavior depend on {harnessLabel(shown.provider)}. Review the exact command below.
+				Claude Code’s extra guard rails do not apply. A working folder alone does not prevent access to other files.
+			{/if}
+			{#if shown.model} Model: {shown.model}.{/if}
+			{#if shown.effort} Reasoning effort: {shown.effort}.{/if}
 		</div>
 		<div class="notice info">
 			When it finishes, each deliverable it wrote is published as a version and that version is linked to this prompt: the first version for a new
@@ -176,7 +189,7 @@
 
 		<details open>
 			<summary><ChevronRight size={14} class="disclosure" />What will be sent</summary>
-			<div class="hint" style="margin:6px 0">This text goes to Claude Code on its standard input, exactly as shown.</div>
+			<div class="hint" style="margin:6px 0">This is the prompt sent to {harnessLabel(shown.provider)}. {shown.provider === 'agy' ? 'AGY receives it inside a JSON message on standard input.' : 'It is sent on standard input.'}</div>
 			<pre class="mono sent">{shown.prompt}</pre>
 		</details>
 		<details>
@@ -196,7 +209,7 @@
 		{#snippet footer()}
 			<span class="spacer-h"></span>
 			<button class="btn ghost" onclick={() => (preview = null)}>Cancel</button>
-			<button class="btn primary" onclick={start} disabled={starting || !!shown.problem} data-autofocus>Run in Claude Code</button>
+			<button class="btn primary" onclick={start} disabled={starting || !!shown.problem} data-autofocus>Run in {harnessLabel(shown.provider)}</button>
 		{/snippet}
 	</Modal>
 {/if}

@@ -48,7 +48,7 @@ repo (`build: move to Node 26`).
 |---|---|
 | The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `dashboard` (the home page and its contribution graph) |
 | Data and sync | `vault`, `sync`, `crypto`, `settings` |
-| Integrations | `screenshots`, `trello`, `claude` (runs with Claude Code) |
+| Integrations | `screenshots`, `trello`, `claude` (runs with Claude Code), `agents` (shared AI harness integration) |
 | Across the app | `ui` (shared components, layout, icons), `brand` (logo, tokens, colours), `updates` (installing new releases from inside the app) |
 | Reserved | `release`: only CI's own `chore(release)` commits; never use it yourself |
 

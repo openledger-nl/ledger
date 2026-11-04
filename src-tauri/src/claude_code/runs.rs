@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 use super::cli::{self, Search};
-use super::config::{self, ClaudeSettings};
+use super::config::{self, ClaudeSettings, Provider};
 use super::prompt::RunRequest;
 use super::records::{self, RunFacts, RunRecord};
 use super::redact::Redactor;
@@ -67,6 +67,7 @@ impl Status {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunView {
+    pub provider: String,
     pub id: String,
     pub project: String,
     pub thread: String,
@@ -146,12 +147,14 @@ struct State {
     linked: Vec<String>,
     vault_reloaded: bool,
     result: Option<ResultInfo>,
+    terminal: bool,
     /// What the run did, in order, and the model it started with: the note about the run is made from these.
     steps: Vec<Step>,
     model: Option<String>,
 }
 
 struct Run {
+    provider: Provider,
     id: String,
     project: String,
     thread: String,
@@ -167,8 +170,9 @@ struct Run {
 }
 
 impl Run {
-    fn new(request: &RunRequest) -> Run {
+    fn new(request: &RunRequest, provider: Provider) -> Run {
         Run {
+            provider,
             id: ids::new_id(),
             project: request.project.clone(),
             thread: request.thread.clone(),
@@ -190,6 +194,7 @@ impl Run {
                 linked: Vec::new(),
                 vault_reloaded: false,
                 result: None,
+                terminal: false,
                 steps: Vec::new(),
                 model: None,
             }),
@@ -198,6 +203,7 @@ impl Run {
 
     fn view_of(&self, state: &State) -> RunView {
         RunView {
+            provider: self.provider.as_str().to_string(),
             id: self.id.clone(),
             project: self.project.clone(),
             thread: self.thread.clone(),
@@ -325,7 +331,8 @@ impl Runs {
         if self.inner.held.load(Ordering::SeqCst) {
             return Err(restarting());
         }
-        let program = cli::resolve(&ctx.settings.cli_path, search)?;
+        cli::validate_adapter(&ctx.settings)?;
+        let program = cli::resolve_for(ctx.settings.provider, &ctx.settings.cli_path, search)?;
         let _ = settings::ensure_gitignore(&ctx.root);
         let guard = if ctx.settings.confine { Some(write_guard(&ctx)?) } else { None };
         let spec = SpawnSpec {
@@ -333,13 +340,13 @@ impl Runs {
             program,
             args: cli::run_args(&ctx.settings, guard.as_deref()),
             cwd: request.cwd.clone(),
-            stdin: request.text.clone().into_bytes(),
+            stdin: if ctx.settings.provider == Provider::Agy { format!("{}\n", serde_json::json!({"event":"user","message":{"content":request.text}})).into_bytes() } else { request.text.clone().into_bytes() },
         };
 
         // How the deliverables stand before the run, to tell afterwards what it changed and what to publish.
         let baseline = Baseline::capture(&deliverables::deliverables_dir(&ctx.root, &request.project));
 
-        let run = Arc::new(Run::new(&request));
+        let run = Arc::new(Run::new(&request, ctx.settings.provider));
         request.run_id = run.id.clone();
         {
             let mut runs = lock(&self.inner.runs);
@@ -472,7 +479,7 @@ fn execute(inner: Arc<Inner>, run: Arc<Run>, spec: SpawnSpec, request: RunReques
     let spawned = match inner.runner.spawn(&spec) {
         Ok(spawned) => spawned,
         Err(e) => {
-            let reason = spawn_failure(&e, &spec);
+            let reason = spawn_failure(&e, &spec).replace("Claude Code", ctx.settings.provider.label());
             sink.push(&format!("✗ {reason}\n"));
             finish(&inner, &sink, &request, &ctx, &baseline, Status::Failed, Some(reason), None);
             return;
@@ -505,8 +512,13 @@ fn execute(inner: Arc<Inner>, run: Arc<Run>, spec: SpawnSpec, request: RunReques
     }
 
     let cancelled = run.cancel.load(Ordering::SeqCst);
-    let result = lock(&run.state).result.clone();
+    let mut result = lock(&run.state).result.clone();
+    if ctx.settings.provider != Provider::Claude && (result.is_none() || !lock(&run.state).terminal) {
+        result = Some(ResultInfo { is_error: true, text: "The harness exited without a recognized final response. Check its version and output format.".to_string(), ..ResultInfo::default() });
+        lock(&run.state).result = result.clone();
+    }
     let (status, message, code) = outcome(cancelled, &exit, result.as_ref(), ctx.settings.confine && run.unknown_option.load(Ordering::SeqCst));
+    let message = message.map(|m| m.replace("Claude Code", ctx.settings.provider.label()));
     sink.push(&render::summary(result.as_ref(), run.started.elapsed().as_secs()));
     finish(&inner, &sink, &request, &ctx, &baseline, status, message, code);
 }
@@ -518,9 +530,10 @@ fn read_stream(stream: Box<dyn Read + Send>, is_stdout: bool, sink: &Sink) {
     while let Ok(true) = runner::read_line(&mut reader, &mut line, MAX_LINE_BYTES) {
         let text = String::from_utf8_lossy(&line).into_owned();
         if is_stdout {
-            let rendered = render::render_line(&text);
+            let rendered = render::render_for(sink.run.provider, &text);
             {
                 let mut state = lock(&sink.run.state);
+                state.terminal |= rendered.terminal;
                 if let Some(result) = rendered.result {
                     state.result = Some(result);
                 }
@@ -609,6 +622,7 @@ fn finish(inner: &Inner, sink: &Sink, request: &RunRequest, ctx: &RunContext, ba
         records::build(
             request,
             &RunFacts {
+                provider: ctx.settings.provider.as_str(),
                 id: &run.id,
                 status: status.as_str(),
                 message: message.as_deref(),

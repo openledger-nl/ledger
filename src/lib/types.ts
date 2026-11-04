@@ -79,7 +79,7 @@ export interface Prompt {
 	createdAt: string;
 	updatedAt: string;
 	deliverables: PromptDeliverable[];
-	/** The times it was run with Claude Code, newest first. */
+	/** The times it was run with an AI harness, newest first. */
 	runs: ClaudeRunRecord[];
 }
 
@@ -246,6 +246,7 @@ export interface PromptRef {
 }
 
 export interface RunSummary {
+	provider: HarnessProvider;
 	id: string;
 	promptId: string;
 	promptTitle: string;
@@ -295,6 +296,7 @@ export interface ProvenanceGroup {
 
 /** A run that changed the live file and is in no version. */
 export interface StoppedRun {
+	provider: HarnessProvider;
 	id: string;
 	promptId: string;
 	promptTitle: string;
@@ -552,13 +554,17 @@ export interface TaskUpdate {
 
 export type Bump = 'minor' | 'major';
 
-// ---- Run a prompt with Claude Code (a block of its own; see src-tauri/src/claude_code) ---------------
+// ---- Run a prompt with an AI harness (a block of its own; see src-tauri/src/claude_code) ---------------
 
-/** What Claude Code may do on its own. There is deliberately no mode that skips the permission checks. */
-export type ClaudePermissionMode = 'acceptEdits' | 'plan' | 'dontAsk';
+/** Legacy mode IDs; support and enforcement differ by harness. Prime requires explicit trusted access. */
+export type ClaudePermissionMode = 'acceptEdits' | 'plan' | 'dontAsk' | 'trusted';
+
+export type HarnessProvider = 'claude' | 'codex' | 'agy' | 'prime';
 
 export interface ClaudeCodeSettings {
-	/** Empty means "find claude on the PATH". */
+	provider: HarnessProvider;
+	effort: string;
+	/** Empty means find the selected harness program on PATH. */
 	cliPath: string;
 	permissionMode: ClaudePermissionMode;
 	/** Empty means the CLI's own default. */
@@ -583,6 +589,8 @@ export interface ClaudeCodeCheck {
 }
 
 export interface ClaudeRunPreview {
+	provider: HarnessProvider;
+	effort: string;
 	/** Where it runs. */
 	folder: string;
 	/** For reading only; it is never run through a shell. */
@@ -600,6 +608,7 @@ export interface ClaudeRunPreview {
 export type ClaudeRunStatus = 'running' | 'finished' | 'failed' | 'cancelled';
 
 export interface ClaudeRun {
+	provider: HarnessProvider;
 	id: string;
 	project: string;
 	thread: string;
@@ -622,6 +631,7 @@ export interface ClaudeRun {
 
 /** The note kept in the thread (`runs/<id>.md`) about a run of a prompt that is over. */
 export interface ClaudeRunRecord {
+	provider: HarnessProvider;
 	/** The id of the run, as it was while it ran. */
 	id: string;
 	promptId: string;
@@ -786,7 +796,7 @@ export interface UpdateCheck {
 	message: string;
 }
 
-/** What to do about Claude Code runs that a restart would stop: ask, wait for them, or stop them. */
+/** What to do about AI runs that a restart would stop: ask, wait for them, or stop them. */
 export type RunsChoice = 'ask' | 'wait' | 'stop';
 
 /** Where installing got to when it couldn't restart (yet). A real install that goes through ends in a restart. */

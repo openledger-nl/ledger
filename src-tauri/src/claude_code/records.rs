@@ -23,6 +23,7 @@ const MAX_FILES: usize = 20;
 /// What is kept of a run. `status` is "finished", "failed" or "cancelled".
 #[derive(Debug, Clone, PartialEq)]
 pub struct RunRecord {
+    pub provider: String,
     pub id: String,
     pub project: String,
     pub thread: String,
@@ -44,6 +45,7 @@ pub struct RunRecord {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunRecordView {
+    pub provider: String,
     pub id: String,
     pub prompt_id: String,
     pub status: String,
@@ -59,6 +61,7 @@ pub struct RunRecordView {
 
 /// What the run itself knows once it is over.
 pub struct RunFacts<'a> {
+    pub provider: &'a str,
     pub id: &'a str,
     pub status: &'a str,
     /// Why it failed or stopped, in a sentence.
@@ -77,6 +80,7 @@ pub struct RunFacts<'a> {
 pub fn build(request: &RunRequest, facts: &RunFacts, redactor: &Redactor) -> RunRecord {
     let cwd = request.cwd.display().to_string();
     RunRecord {
+        provider: facts.provider.to_string(),
         id: facts.id.to_string(),
         project: request.project.clone(),
         thread: request.thread.clone(),
@@ -99,10 +103,10 @@ fn body(cwd: &str, facts: &RunFacts) -> String {
     let mut out = match facts.status {
         "finished" => match answer {
             Some(text) => without_folder(&shorten(text, MAX_ANSWER_CHARS), cwd),
-            None => "Claude Code finished without a closing message.".to_string(),
+            None => format!("{} finished without a closing message.", super::config::Provider::parse(facts.provider).map(|p| p.label()).unwrap_or("The AI harness")),
         },
         "cancelled" => facts.message.unwrap_or("Stopped at your request").to_string(),
-        _ => format!("Failed: {}", facts.message.unwrap_or("Claude Code reported an error")),
+        _ => format!("Failed: {}", facts.message.unwrap_or("The AI harness reported an error")),
     };
     out.push('\n');
 
@@ -174,8 +178,8 @@ fn shorten(text: &str, max: usize) -> String {
 pub fn insert(conn: &Connection, record: &RunRecord) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute(
-        "INSERT OR REPLACE INTO claude_runs (id, project_slug, thread_slug, prompt_id, status, model, permission_mode, started_at, finished_at, seconds, turns, body)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT OR REPLACE INTO claude_runs (id, project_slug, thread_slug, prompt_id, status, model, permission_mode, started_at, finished_at, seconds, turns, body, provider)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             record.id,
             record.project,
@@ -188,7 +192,8 @@ pub fn insert(conn: &Connection, record: &RunRecord) -> Result<()> {
             record.finished_at,
             record.seconds as i64,
             record.turns.map(|t| t as i64),
-            record.body
+            record.body,
+            record.provider
         ],
     )?;
     for (position, path) in record.files.iter().enumerate() {
@@ -202,12 +207,13 @@ pub fn insert(conn: &Connection, record: &RunRecord) -> Result<()> {
 pub fn for_prompt(conn: &Connection, project: &str, thread: &str, prompt_id: &str) -> Result<Vec<RunRecordView>> {
     let mut views = query_all(
         conn,
-        "SELECT id, prompt_id, status, model, permission_mode, started_at, finished_at, seconds, turns, body
+        "SELECT id, prompt_id, status, model, permission_mode, started_at, finished_at, seconds, turns, body, provider
          FROM claude_runs WHERE project_slug = ?1 AND thread_slug = ?2 AND prompt_id = ?3 ORDER BY started_at DESC, rowid DESC",
         [project, thread, prompt_id],
         |r| {
             let body: String = r.get(9)?;
             Ok(RunRecordView {
+                provider: r.get(10)?,
                 id: r.get(0)?,
                 prompt_id: r.get(1)?,
                 status: r.get(2)?,

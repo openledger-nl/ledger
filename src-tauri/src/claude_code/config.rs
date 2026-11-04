@@ -16,9 +16,8 @@ use crate::settings::{self, LEDGER_DIR};
 pub const SETTINGS_FILE: &str = "claude-code.json";
 pub const GUARD_FILE: &str = "claude-guard.json";
 
-/// How much Claude Code may do on its own. Only modes that can't skip permission checks are offered: there is
-/// deliberately no way to choose `bypassPermissions` (`--dangerously-skip-permissions`), from here or from a
-/// hand-edited settings file.
+/// Native permission choice. Claude never receives bypass flags. Prime requires the separate Trusted opt-in;
+/// the adapter rejects modes a provider cannot enforce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PermissionMode {
     /// Reads the project and creates or edits files inside it. This is the mode that can write a deliverable.
@@ -28,6 +27,8 @@ pub enum PermissionMode {
     Plan,
     /// Reads the project; anything that would need approval (all edits, other commands, the network) is refused.
     DontAsk,
+    /// Explicit opt-in to a harness without a permission sandbox.
+    Trusted,
 }
 
 impl PermissionMode {
@@ -37,6 +38,7 @@ impl PermissionMode {
             PermissionMode::AcceptEdits => "acceptEdits",
             PermissionMode::Plan => "plan",
             PermissionMode::DontAsk => "dontAsk",
+            PermissionMode::Trusted => "trusted",
         }
     }
 
@@ -45,14 +47,42 @@ impl PermissionMode {
             "acceptEdits" => Some(PermissionMode::AcceptEdits),
             "plan" => Some(PermissionMode::Plan),
             "dontAsk" => Some(PermissionMode::DontAsk),
+            "trusted" => Some(PermissionMode::Trusted),
             _ => None,
         }
     }
 }
 
+/// The executable protocol, independent of the model served by it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Provider {
+    #[default]
+    Claude,
+    Codex,
+    Agy,
+    Prime,
+}
+
+impl Provider {
+    pub fn as_str(self) -> &'static str {
+        match self { Self::Claude => "claude", Self::Codex => "codex", Self::Agy => "agy", Self::Prime => "prime" }
+    }
+    pub fn program(self) -> &'static str {
+        match self { Self::Prime => "prime-agent", _ => self.as_str() }
+    }
+    pub fn label(self) -> &'static str {
+        match self { Self::Claude => "Claude Code", Self::Codex => "Codex", Self::Agy => "AGY", Self::Prime => "Prime Agent" }
+    }
+    pub fn parse(text: &str) -> Option<Self> {
+        match text { "claude" => Some(Self::Claude), "codex" => Some(Self::Codex), "agy" => Some(Self::Agy), "prime" => Some(Self::Prime), _ => None }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClaudeSettings {
-    /// The program to run; empty means "find `claude` on the PATH".
+    pub provider: Provider,
+    pub effort: String,
+    /// The program to run; empty means find the selected provider on the PATH.
     pub cli_path: String,
     pub permission_mode: PermissionMode,
     /// A model name or alias for `--model`; empty means whatever the CLI defaults to.
@@ -67,7 +97,7 @@ pub struct ClaudeSettings {
 
 impl Default for ClaudeSettings {
     fn default() -> Self {
-        ClaudeSettings { cli_path: String::new(), permission_mode: PermissionMode::default(), model: String::new(), confine: true, auto_run: false }
+        ClaudeSettings { provider: Provider::default(), effort: String::new(), cli_path: String::new(), permission_mode: PermissionMode::default(), model: String::new(), confine: true, auto_run: false }
     }
 }
 
@@ -91,11 +121,13 @@ impl ClaudeSettings {
                 "That doesn't look like a model name. Use letters, digits and . _ : - / [ ] only, for example sonnet, opus or claude-sonnet-4-5",
             ));
         }
-        Ok(ClaudeSettings { cli_path: clean_path(cli_path)?, permission_mode: mode, model: model.to_string(), confine, auto_run })
+        Ok(ClaudeSettings { provider: Provider::default(), effort: String::new(), cli_path: clean_path(cli_path)?, permission_mode: mode, model: model.to_string(), confine, auto_run })
     }
 
     fn to_json(&self) -> Value {
         json!({
+            "provider": self.provider.as_str(),
+            "effort": self.effort,
             "cliPath": self.cli_path,
             "permissionMode": self.permission_mode.as_str(),
             "model": self.model,
@@ -107,6 +139,10 @@ impl ClaudeSettings {
 
 /// A model name as the CLI takes it: an alias (`sonnet`, `opus[1m]`) or a full id. Starting with a letter or digit
 /// keeps it from ever being read as another option.
+pub fn valid_effort(effort: &str) -> bool {
+    matches!(effort, "" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max")
+}
+
 pub fn valid_model(model: &str) -> bool {
     let mut chars = model.chars();
     model.len() <= 100
@@ -135,6 +171,8 @@ pub fn load(root: &Path) -> ClaudeSettings {
     };
     let text = |key: &str| value.get(key).and_then(Value::as_str);
     ClaudeSettings {
+        provider: text("provider").and_then(Provider::parse).unwrap_or_default(),
+        effort: text("effort").filter(|e| valid_effort(e)).unwrap_or_default().to_string(),
         cli_path: text("cliPath").and_then(|p| clean_path(p).ok()).unwrap_or(defaults.cli_path),
         permission_mode: text("permissionMode").and_then(PermissionMode::parse).unwrap_or(defaults.permission_mode),
         model: text("model").map(str::trim).filter(|m| valid_model(m)).map(str::to_string).unwrap_or(defaults.model),

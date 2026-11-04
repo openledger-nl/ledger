@@ -26,7 +26,7 @@
 		thread: ['thread', 'threads'],
 		upload: ['upload', 'uploads'],
 		version: ['published version', 'published versions'],
-		run: ['Claude Code run', 'Claude Code runs'],
+		run: ['AI run', 'AI runs'],
 		story: ['story', 'stories'],
 		task: ['task', 'tasks']
 	};

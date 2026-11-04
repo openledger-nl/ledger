@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api } from '$lib/api';
+	import { harnessLabel } from '$lib/harness';
 	import { deliverableUrl, formatSize, threadUrl } from '$lib/actions';
 	import { ago, date, dateTime, dayKey, plural } from '$lib/format';
 	import { MMM, authorLabel, sizeChange } from '$lib/mmm';
@@ -65,7 +66,7 @@
 		· {summary.ai} made with AI · {summary.human} by you{summary.unrecorded ? ` · ${summary.unrecorded} not recorded` : ''}
 	</div>
 	<div class="pv-hint">
-		Claude Code runs started here are recorded as they happen. AI used elsewhere is only as complete as the box you tick when you publish.
+		AI runs started here are recorded as they happen. AI used elsewhere is only as complete as the box you tick when you publish.
 	</div>
 </div>
 
@@ -76,7 +77,7 @@
 		<span class="pv-meta">the live file changed {ago(provenance.draft.modified)}</span>
 		{#if provenance.draft.stoppedRun}
 			<div class="pv-warn">
-				Claude Code’s run of “{provenance.draft.stoppedRun.promptTitle}” changed this file{provenance.draft.stoppedRun.status === 'finished'
+				{harnessLabel(provenance.draft.stoppedRun.provider)}’s run of “{provenance.draft.stoppedRun.promptTitle}” changed this file{provenance.draft.stoppedRun.status === 'finished'
 					? ''
 					: ` and was ${provenance.draft.stoppedRun.status}`}, and no version holds it yet. Publishing starts with “made with AI” ticked.
 			</div>
@@ -120,9 +121,9 @@
 					</div>
 				{:else if e.kind === 'run'}
 					<div class="pv-row">
-						<span class="glyph" title="Claude Code run"><Play size={13} /></span>
+						<span class="glyph" title={`${harnessLabel(e.provider)} run`}><Play size={13} /></span>
 						<span>
-							Claude Code run{e.status === 'finished' ? '' : `, ${e.status}`}
+							{harnessLabel(e.provider)} run{e.status === 'finished' ? '' : `, ${e.status}`}
 							· {e.model || 'default model'} · {e.seconds < 60 ? `${e.seconds} s` : `${Math.floor(e.seconds / 60)} min ${e.seconds % 60} s`}
 							{e.version ? (e.status === 'finished' ? `· published v${e.version}` : `· its changes went into v${e.version}`) : '· published nothing'}
 						</span>
@@ -187,6 +188,8 @@
 								{#if e.run}
 									<dt>Run</dt>
 									<dd class="mono">{e.run.id}</dd>
+									<dt>Harness</dt>
+									<dd>{harnessLabel(e.run.provider)}</dd>
 									<dt>Model</dt>
 									<dd>{e.run.model || 'default'}</dd>
 									<dt>Mode</dt>
