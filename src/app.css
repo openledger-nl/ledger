@@ -631,6 +631,18 @@ details.more p { margin: 0; }
 .doc-body > .page { min-width: 0; }
 .side-window { width: 380px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; overscroll-behavior: contain; padding: 16px 18px 28px; display: flex; flex-direction: column; gap: 14px; }
 .side-scrim { display: none; }
+/* Feedback on a passage: the passage lit up in the document (a highlight in the rendered page, a mark in the editor), and the
+   comment icon that follows a selection. */
+::highlight(fb-open) { background-color: color-mix(in srgb, var(--amber) 34%, transparent); }
+::highlight(fb-resolved) { background-color: color-mix(in srgb, var(--green) 24%, transparent); }
+::highlight(fb-new) { background-color: color-mix(in srgb, var(--accent) 36%, transparent); }
+.fb-mark { border-radius: 2px; }
+.fb-mark.fb-open { background-color: color-mix(in srgb, var(--amber) 34%, transparent); cursor: pointer; }
+.fb-mark.fb-resolved { background-color: color-mix(in srgb, var(--green) 24%, transparent); cursor: pointer; }
+.fb-mark.fb-new { background-color: color-mix(in srgb, var(--accent) 36%, transparent); }
+.sel-comment { position: fixed; z-index: 50; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--shadow-toast); animation: dd-in 0.12s ease-out; }
+.sel-comment:hover:not(:disabled) { filter: brightness(1.1); }
+.sel-comment:disabled { background: var(--card-2); color: var(--faint); cursor: default; }
 /* The prompt dialog: the base prompt is folded away until it is wanted; a prompt's card keeps it folded too. */
 .base-field { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--card); }
 .base-field > summary { cursor: pointer; font-size: 13px; font-weight: 500; }

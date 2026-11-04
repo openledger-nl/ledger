@@ -31,6 +31,7 @@ import {
 } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { locate, plain, type Mark } from '$lib/anchors';
 import { isVaultSrc, isWebSrc, type ImageLoad } from '$lib/vaultImages';
 
 type SyntaxNode = ReturnType<typeof syntaxTree>['topNode'];
@@ -490,6 +491,61 @@ export function setSourceMode(view: EditorView, source: boolean) {
 	view.dispatch({ effects: [mode.reconfigure(modeExtension(source)), focusChanged.of(view.hasFocus)] });
 }
 
+// ---- marks ---------------------------------------------------------------------------------------
+// Passages of the text that something is said about (feedback on a selection): lit up in both modes. They are found by
+// their words each time the text or the list changes, so they follow the text as it is edited.
+
+const setMarks = StateEffect.define<Mark[]>();
+
+interface Located {
+	id: string;
+	from: number;
+	to: number;
+}
+
+function locateMarks(state: EditorState, marks: Mark[]): { located: Located[]; decorations: DecorationSet } {
+	if (!marks.length) return { located: [], decorations: Decoration.none };
+	const text = plain(state.doc.toString(), true);
+	const located: Located[] = [];
+	const found: Range<Decoration>[] = [];
+	for (const mark of marks) {
+		const at = locate(text, mark.anchor);
+		if (!at) continue;
+		located.push({ id: mark.id, ...at });
+		found.push(Decoration.mark({ class: `fb-mark fb-${mark.tone}`, attributes: { 'data-fb': mark.id } }).range(at.from, at.to));
+	}
+	return { located, decorations: Decoration.set(found, true) };
+}
+
+const markField = StateField.define<{ marks: Mark[]; located: Located[]; decorations: DecorationSet }>({
+	create: () => ({ marks: [], located: [], decorations: Decoration.none }),
+	update(value, tr) {
+		let marks = value.marks;
+		let stale = tr.docChanged;
+		for (const effect of tr.effects) {
+			if (effect.is(setMarks)) {
+				marks = effect.value;
+				stale = true;
+			}
+		}
+		return stale ? { marks, ...locateMarks(tr.state, marks) } : value;
+	},
+	provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
+});
+
+/** Sets the passages to light up (replacing the ones lit before). */
+export function showMarks(view: EditorView, marks: Mark[]) {
+	view.dispatch({ effects: setMarks.of(marks) });
+}
+
+/** Scrolls the passage of mark `id` into view, and selects its start; false when it is not in the text. */
+export function revealMark(view: EditorView, id: string): boolean {
+	const at = view.state.field(markField).located.find((m) => m.id === id);
+	if (!at) return false;
+	view.dispatch({ selection: { anchor: at.from }, effects: EditorView.scrollIntoView(at.from, { y: 'center' }) });
+	return true;
+}
+
 // ---- keys ----------------------------------------------------------------------------------------
 
 /** Wraps each selection in `mark`, or unwraps it when it already is; with nothing selected, the cursor lands inside a pair. */
@@ -549,6 +605,8 @@ export interface MarkdownEditorOptions {
 	/** Escape: returns whether it was handled, so an unhandled one still reaches a modal. */
 	cancel: () => boolean;
 	changed: (update: ViewUpdate) => void;
+	/** A click on a lit-up passage (not the end of a selection): the id of its mark. */
+	markClicked?: (id: string) => void;
 }
 
 export function markdownEditor(options: MarkdownEditorOptions): Extension {
@@ -575,6 +633,14 @@ export function markdownEditor(options: MarkdownEditorOptions): Extension {
 		syntaxHighlighting(highlight),
 		mode.of(modeExtension(options.source)),
 		tables,
+		markField,
+		EditorView.domEventHandlers({
+			click: (event, view) => {
+				const id = (event.target as HTMLElement | null)?.closest?.<HTMLElement>('[data-fb]')?.dataset.fb;
+				if (id && view.state.selection.main.empty) options.markClicked?.(id);
+				return false;
+			}
+		}),
 		EditorView.focusChangeEffect.of((_, focusing) => focusChanged.of(focusing)),
 		options.loadImage ? imageLoad.of(options.loadImage) : [],
 		keymap.of([...defaultKeymap, ...historyKeymap]),
