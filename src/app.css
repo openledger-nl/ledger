@@ -171,6 +171,7 @@ details[open] > summary .disclosure { transform: rotate(90deg); }
 @keyframes pulse { 50% { opacity: 0.35; } }
 .spacer { flex: 1; min-height: 20px; }
 .sync-box { background: var(--side-well); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.sync-box + .nav-item { margin-top: 6px; }
 .sync-line { display: flex; align-items: center; gap: 8px; color: var(--side-ink); font-size: 12px; font-weight: 500; }
 .sync-line .sync-when { color: var(--side-muted); font-weight: 400; white-space: nowrap; }
 .sync-sub { font-size: 11px; color: var(--side-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
