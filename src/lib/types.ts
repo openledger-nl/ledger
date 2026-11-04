@@ -548,6 +548,14 @@ export interface Settings {
 	encryption: EncryptionStatus;
 }
 
+/** The guide on the home page for a new client (see onboarding.rs). */
+export interface OnboardingStatus {
+	/** The guide is on the home page. */
+	active: boolean;
+	/** The steps that were put off: only "semester" and "sync" can be. */
+	skipped: string[];
+}
+
 /** A dragged rectangle, in the capture's own pixels. */
 export interface Region {
 	x: number;

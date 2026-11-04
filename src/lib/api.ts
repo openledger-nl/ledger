@@ -16,6 +16,7 @@ import type {
 	ProjectSummary,
 	ProjectView,
 	NewPromptInput,
+	OnboardingStatus,
 	Prompt,
 	Provenance,
 	PublishChoices,
@@ -190,6 +191,11 @@ export const api = {
 	testSync: (repo: string, branch: string, token: string | null) => call<string>('test_sync', { repo, branch, token }),
 	syncNow: () => call<void>('sync_now'),
 	setVaultPath: (path: string, copy: boolean) => call<Settings>('set_vault_path', { path, copy }),
+	// the guide for a new client
+	onboardingStatus: () => call<OnboardingStatus>('onboarding_status'),
+	skipOnboardingStep: (step: 'semester' | 'sync') => call<OnboardingStatus>('skip_onboarding_step', { step }),
+	finishOnboarding: () => call<OnboardingStatus>('finish_onboarding'),
+	restartOnboarding: () => call<OnboardingStatus>('restart_onboarding'),
 	reloadVault: () => call<void>('reload_vault'),
 	checkVaultChanges: () => call<boolean>('check_vault_changes'),
 

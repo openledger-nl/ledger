@@ -250,6 +250,45 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 .empty-state { margin: auto; max-width: 460px; text-align: center; color: var(--muted); padding: 24px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .empty-state h1 { color: var(--ink); font-size: 22px; }
 .empty-state p { margin: 0; }
+
+/* ---------- the setup guide on the home page: choose how to start, then four steps ---------- */
+.onb { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+.onb h2 { font-size: 18px; }
+.onb .sub { color: var(--muted); font-size: 13px; margin: 0; }
+.onb-welcome { padding: 28px 28px 30px; }
+.onb-welcome h2 { font-size: 22px; }
+.onb-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.onb-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--card-2); color: var(--ink); font: inherit; cursor: pointer; }
+.onb-choice:hover:not(:disabled) { border-color: var(--accent); }
+.onb-choice:disabled { opacity: 0.6; cursor: default; }
+.onb-choice.primary { border-color: var(--accent); background: var(--accent-soft); }
+.onb-choice-icon { display: inline-flex; color: var(--accent); }
+.onb-choice-sub { font-size: 12.5px; color: var(--muted); }
+.onb-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.onb-meta { display: flex; align-items: center; gap: 12px; }
+.onb-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.onb-step { display: flex; gap: 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid transparent; color: var(--muted); }
+.onb-step.current { background: var(--card-2); border-color: var(--line); color: var(--ink); }
+.onb-mark { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--muted); }
+.onb-step.current .onb-mark { border-color: var(--accent); color: var(--accent); }
+.onb-step.done .onb-mark { background: var(--green-soft); border-color: transparent; color: var(--green); }
+.onb-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.onb-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; font-weight: 600; min-height: 24px; }
+.onb-step.done .onb-title { color: var(--ink); }
+.onb-summary { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.onb-body { display: flex; flex-direction: column; gap: 12px; padding: 4px 0 6px; font-size: 13px; color: var(--muted); }
+.onb-body p { margin: 0; }
+.onb-body strong { color: var(--ink); }
+.onb-form { display: flex; flex-direction: column; gap: 10px; max-width: 460px; }
+.onb-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.onb-done { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 12px; background: var(--green-soft); color: var(--green); font-size: 13.5px; font-weight: 600; }
+.onb-done .btn { margin-left: auto; }
+.onb-import { display: flex; flex-direction: column; gap: 12px; }
+.onb-back { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; }
+.onb-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--card-2); align-self: flex-start; flex-wrap: wrap; }
+.onb-tabs button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500; padding: 5px 12px; border-radius: 8px; cursor: pointer; }
+.onb-tabs button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 12%, transparent); }
+.panel.bare { background: none; border: 0; padding: 0; }
 .header-wrap { padding: 18px 32px 0; background: var(--panel); border-bottom: 1px solid var(--line); flex-shrink: 0; }
 .header-wrap.flat { padding-bottom: 16px; }
 .header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }

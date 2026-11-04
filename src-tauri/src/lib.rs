@@ -15,6 +15,7 @@ mod ids;
 mod keystore;
 mod markdown;
 mod models;
+mod onboarding;
 mod posts;
 mod projects;
 mod prompts;
@@ -52,6 +53,8 @@ mod tests_claude_code;
 mod tests_trello;
 #[cfg(test)]
 mod tests_crypto;
+#[cfg(test)]
+mod tests_onboarding;
 #[cfg(test)]
 mod tests_provenance;
 #[cfg(test)]
@@ -269,6 +272,10 @@ pub fn run() {
             claude_code::claude_code_cancel,
             claude_code::claude_code_runs,
             claude_code::claude_code_run,
+            onboarding::onboarding_status,
+            onboarding::skip_onboarding_step,
+            onboarding::finish_onboarding,
+            onboarding::restart_onboarding,
             updates::update_status,
             updates::save_update_settings,
             updates::check_for_updates,

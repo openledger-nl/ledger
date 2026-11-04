@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Where the vault lives on this machine: the folder, switching to another, and reloading it from disk.
 	import { open } from '@tauri-apps/plugin-dialog';
+	import { goto } from '$app/navigation';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { api } from '$lib/api';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
@@ -37,6 +38,13 @@
 		await refresh();
 	}
 
+	/** The home page's setup guide, from the start. */
+	async function showGuide() {
+		if (!(await attempt(() => api.restartOnboarding()))) return;
+		await refresh();
+		await goto('/');
+	}
+
 	async function reload() {
 		if ((await attempt(() => api.reloadVault())) !== undefined) {
 			toast('Reloaded from disk');
@@ -69,7 +77,10 @@
 			<button class="btn primary" onclick={useFolder} disabled={busy}>Use this folder</button>
 		</div>
 	{/if}
-	<div><button class="btn small" onclick={reload}>Reload from disk</button></div>
+	<div class="form-row">
+		<button class="btn small" onclick={reload}>Reload from disk</button>
+		<button class="btn small" onclick={showGuide} title="Bring back the guide that helps a new client set up">Show the setup guide again</button>
+	</div>
 
 	<details class="more">
 		<summary><ChevronRight size={14} class="disclosure" />What is in the folder</summary>

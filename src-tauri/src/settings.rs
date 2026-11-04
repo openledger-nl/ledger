@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
+use crate::onboarding::OnboardingConfig;
 
 pub const LEDGER_DIR: &str = ".ledger";
 const KEY_TOKEN: &str = "GITHUB_TOKEN";
@@ -42,6 +43,9 @@ pub struct AppConfig {
     /// The most the app's log may take on disk; unset means `applog::DEFAULT_MAX_BYTES`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log_max_bytes: Option<u64>,
+    /// The guide on the home page for a new client (see `onboarding`). Per machine, like the choice to look for updates.
+    #[serde(deserialize_with = "lenient")]
+    pub onboarding: OnboardingConfig,
 }
 
 fn lenient<'de, D: serde::Deserializer<'de>, T: serde::de::DeserializeOwned + Default>(deserializer: D) -> std::result::Result<T, D::Error> {
