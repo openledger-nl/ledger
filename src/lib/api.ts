@@ -11,6 +11,7 @@ import type {
 	DeliverableSummary,
 	EncryptionStatus,
 	Feedback,
+	FeedbackFrom,
 	Post,
 	ProjectSummary,
 	ProjectView,
@@ -103,10 +104,14 @@ export const api = {
 		call<Prompt>('create_prompt_deliverable', { project, thread, id, name }),
 
 	// feedback
-	addFeedback: (project: string, thread: string, deliverablePath: string, body: string) =>
-		call<Feedback>('add_feedback', { project, thread, deliverablePath, body }),
-	setFeedbackStatus: (project: string, thread: string, id: string, status: 'open' | 'resolved') =>
-		call<Feedback>('set_feedback_status', { project, thread, id, status }),
+	addFeedback: (project: string, thread: string, deliverablePath: string, body: string, from: FeedbackFrom | null = null) =>
+		call<Feedback>('add_feedback', { project, thread, deliverablePath, body, from }),
+	/** Who gave the feedback; not for feedback from Portflow, which says so itself. */
+	setFeedbackFrom: (project: string, thread: string, id: string, from: FeedbackFrom) =>
+		call<Feedback>('set_feedback_from', { project, thread, id, from }),
+	/** One piece of feedback; with `all`, it and every reply to it. */
+	setFeedbackStatus: (project: string, thread: string, id: string, status: 'open' | 'resolved', all = false) =>
+		call<Feedback>('set_feedback_status', { project, thread, id, status, all }),
 	updateFeedback: (project: string, thread: string, id: string, body: string) =>
 		call<Feedback>('update_feedback', { project, thread, id, body }),
 	deleteFeedback: (project: string, thread: string, id: string) => call<void>('delete_feedback', { project, thread, id }),
@@ -269,6 +274,52 @@ export const trelloApi = {
 	/** Gives an item that stopped syncing a new card on the next sync (the old card is left alone). */
 	trelloRelinkItem: (project: string, kind: 'task' | 'story', id: string) =>
 		call<TrelloView>('trello_relink_item', { project, kind, id })
+};
+
+// ---- Portflow (feat/portflow-integration) ------------------------------------------------------------
+// Everything but `get`, `status` and `setEnabled` answers "Portflow is switched off" while it is off.
+
+import type {
+	Evidence,
+	Outcome,
+	PortflowCollectionChoice,
+	PortflowFeedback,
+	PortflowImported,
+	PortflowPerson,
+	PortflowStatus,
+	PortflowView,
+	ProjectPortflow
+} from './types';
+
+export const portflowApi = {
+	get: () => call<PortflowView>('portflow_get'),
+	status: () => call<PortflowStatus>('portflow_status'),
+	/** Off stops everything Portflow does; with `forget`, the sign-in window's cookies go too. */
+	setEnabled: (enabled: boolean, forget = false) => call<PortflowView>('portflow_set_enabled', { enabled, forget }),
+	/** Blank means the default (Fontys ICT's Canvas). */
+	setLaunchUrl: (url: string) => call<PortflowView>('portflow_set_launch_url', { url }),
+	/** Opens the sign-in window and resolves once Portflow handed over its session. */
+	signIn: () => call<PortflowView>('portflow_sign_in'),
+	signOut: (forget = false) => call<PortflowView>('portflow_sign_out', { forget }),
+	syncNow: () => call<void>('portflow_sync_now'),
+	/** The portfolio's collections, asked from Portflow. */
+	collections: () => call<PortflowCollectionChoice[]>('portflow_collections'),
+	/** `collection` null unlinks the project for that semester. */
+	linkCollection: (project: string, semester: string, collection: number | null) =>
+		call<PortflowView>('portflow_link_collection', { project, semester, collection }),
+	/** A new project from a collection, linked for `semester`; `threads`: a thread per evidence item. */
+	importCollection: (collection: number, semester: string, name: string | null, threads: boolean) =>
+		call<PortflowImported>('portflow_import_collection', { collection, semester, name, threads }),
+	outcomes: () => call<Outcome[]>('portflow_outcomes'),
+	people: () => call<PortflowPerson[]>('portflow_people'),
+	project: (project: string) => call<ProjectPortflow>('portflow_project', { project }),
+	threadEvidence: (project: string, thread: string) => call<Evidence[]>('portflow_thread_evidence', { project, thread }),
+	/** Into an existing thread, a new one (`newThread`, its title), or out of any (both null). */
+	placeEvidence: (project: string, evidence: string, thread: string | null, newThread: string | null = null) =>
+		call<Evidence[]>('portflow_place_evidence', { project, evidence, thread, newThread }),
+	/** Opens Portflow in the default browser, through Canvas (Portflow can't be opened at one item from outside). */
+	open: () => call<void>('portflow_open'),
+	recentFeedback: (limit = 8) => call<PortflowFeedback[]>('portflow_recent_feedback', { limit })
 };
 
 // ---- Updating Ledger from inside the app (see src-tauri/src/updates.rs) -----------------------------

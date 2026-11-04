@@ -6,6 +6,7 @@
 	import { newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl } from '$lib/actions';
 	import ContributionGraph from '$lib/components/ContributionGraph.svelte';
 	import ProjectLatest from '$lib/components/ProjectLatest.svelte';
+	import PortflowFeedbackWidget from '$lib/components/PortflowFeedbackWidget.svelte';
 	import SyncWidget from '$lib/components/SyncWidget.svelte';
 	import { ago, LOCALE, newest, plural, stamp } from '$lib/format';
 	import { dashboard, isPinned, togglePin } from '$lib/dashboard.svelte';
@@ -114,6 +115,7 @@
 			{#if dashboard.showActivity}
 				<ContributionGraph events={data.activity} projects={data.projects} semesters={data.semesters} />
 			{/if}
+			<PortflowFeedbackWidget version={data} />
 			{#if pinned.length}
 				<section class="proj-group" aria-label="Pinned projects">
 					<h2 class="proj-group-head"><Pin size={13} />Pinned</h2>

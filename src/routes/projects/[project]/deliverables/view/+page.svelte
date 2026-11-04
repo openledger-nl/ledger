@@ -322,7 +322,13 @@
 			</div>
 		{/if}
 
-		{#if !doc.exists && !snapshot}
+		{#if !doc.exists && !snapshot && doc.versions.length}
+			{@const newest = doc.versions[doc.versions.length - 1]}
+			<div class="notice">
+				There is no working copy of this file, only its published versions.
+				<a href={deliverableUrl(project, snapshotPath(doc.basePath, newest))}>Open version {newest}</a>
+			</div>
+		{:else if !doc.exists && !snapshot}
 			<div class="notice">The file is not in the project’s deliverables folder (any more).</div>
 		{:else if isMarkdown && snapshot}
 			<div class="doc-view"><Markdown html={doc.html ?? ''} {images} /></div>

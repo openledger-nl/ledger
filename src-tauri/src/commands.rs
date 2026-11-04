@@ -200,13 +200,23 @@ pub fn create_prompt_deliverable(app: State<App>, project: String, thread: Strin
 // ---- feedback ---------------------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn add_feedback(app: State<App>, project: String, thread: String, deliverable_path: String, body: String) -> Result<FeedbackView> {
-    app.mutate(|c, _| feedback::add(c, &project, &thread, &deliverable_path, &body))
+pub fn add_feedback(app: State<App>, project: String, thread: String, deliverable_path: String, body: String, from: Option<FeedbackFrom>) -> Result<FeedbackView> {
+    app.mutate(|c, _| feedback::add_from(c, &project, &thread, &deliverable_path, &body, &from.unwrap_or_default()))
 }
 
 #[tauri::command]
-pub fn set_feedback_status(app: State<App>, project: String, thread: String, id: String, status: String) -> Result<FeedbackView> {
-    app.mutate(|c, _| feedback::set_status(c, &project, &thread, &id, &status))
+pub fn set_feedback_from(app: State<App>, project: String, thread: String, id: String, from: FeedbackFrom) -> Result<FeedbackView> {
+    app.mutate(|c, _| feedback::update_from(c, &project, &thread, &id, &from))
+}
+
+#[tauri::command]
+/// One piece of feedback, or (`all`) it and every reply to it.
+pub fn set_feedback_status(app: State<App>, project: String, thread: String, id: String, status: String, all: Option<bool>) -> Result<FeedbackView> {
+    if all.unwrap_or(false) {
+        app.mutate(|c, _| feedback::set_status_all(c, &project, &thread, &id, &status))
+    } else {
+        app.mutate(|c, _| feedback::set_status(c, &project, &thread, &id, &status))
+    }
 }
 
 #[tauri::command]

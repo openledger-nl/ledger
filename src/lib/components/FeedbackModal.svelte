@@ -5,8 +5,9 @@
 	import { orderVersions } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { attempt, refresh } from '$lib/ui.svelte';
-	import type { DeliverableSummary } from '$lib/types';
+	import type { DeliverableSummary, FeedbackFrom } from '$lib/types';
 	import MarkdownEditor from './MarkdownEditor.svelte';
+	import PersonPicker from './PersonPicker.svelte';
 	import Modal from './Modal.svelte';
 
 	/** Feedback lands on a deliverable — its current file, or any version that was published. */
@@ -19,6 +20,7 @@
 	let loaded = $state(false);
 	let target = $state(start());
 	let body = $state('');
+	let from = $state<FeedbackFrom>({ name: null, portflowUser: null, role: null, given: null });
 	let saving = $state(false);
 
 	const options = $derived(
@@ -36,7 +38,7 @@
 
 	async function save() {
 		saving = true;
-		const saved = await attempt(() => api.addFeedback(project, thread, target, body));
+		const saved = await attempt(() => api.addFeedback(project, thread, target, body, from.name ? from : null));
 		saving = false;
 		if (!saved) return;
 		await refresh();
@@ -60,8 +62,9 @@
 				{#each options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
 			</select>
 		</label>
+		<PersonPicker bind:value={from} />
 		<div class="field">
-			Your feedback
+			The feedback
 			<MarkdownEditor bind:value={body} rows={8} label="Your feedback" placeholder="What works, what doesn’t, what to change. Markdown works." />
 		</div>
 	{/if}

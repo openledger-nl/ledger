@@ -119,6 +119,29 @@ pub struct FeedbackView {
     pub html: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Who gave it, as a name; with their Portflow id and role when they are someone in Portflow.
+    pub from: Option<String>,
+    pub from_user: Option<i64>,
+    pub from_role: Option<String>,
+    /// How it was given: "in person", "portflow", "email" or "other".
+    pub given: Option<String>,
+    /// Pulled from Portflow: the comment, the feedback it answers, its kind, and the evidence item and version it is on.
+    pub portflow_comment: Option<i64>,
+    pub reply_to: Option<String>,
+    pub comment_type: Option<String>,
+    pub evidence: Option<String>,
+    pub evidence_version: Option<i64>,
+}
+
+/// Who gave a piece of feedback, as typed or picked when noting it.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FeedbackFrom {
+    pub name: Option<String>,
+    /// Picked from the people the portfolio is shared with in Portflow.
+    pub portflow_user: Option<i64>,
+    pub role: Option<String>,
+    pub given: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

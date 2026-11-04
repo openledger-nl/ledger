@@ -103,6 +103,28 @@ export interface Feedback {
 	html: string;
 	createdAt: string;
 	updatedAt: string;
+	/** Who gave it; with their Portflow id and role when they are someone in Portflow. */
+	from: string | null;
+	fromUser: number | null;
+	fromRole: string | null;
+	/** How it was given: "in person", "portflow", "email" or "other". */
+	given: string | null;
+	/** Set on feedback pulled from Portflow: it can't be edited in Ledger. */
+	portflowComment: number | null;
+	/** The feedback this answers (a reply in Portflow). */
+	replyTo: string | null;
+	commentType: string | null;
+	/** The evidence item (its slug) and the version it is on. */
+	evidence: string | null;
+	evidenceVersion: number | null;
+}
+
+/** Who gave a piece of feedback, as typed or picked. */
+export interface FeedbackFrom {
+	name: string | null;
+	portflowUser: number | null;
+	role: string | null;
+	given: string | null;
 }
 
 export interface Upload {
@@ -833,4 +855,175 @@ export interface CaptureStatus {
 	active: boolean;
 	startedAt: string | null;
 	events: number;
+}
+
+// ---- Portflow (feat/portflow-integration) ---------------------------------------------------------------
+
+export interface PortflowReport {
+	outcomes: number;
+	people: number;
+	collections: number;
+	evidence: number;
+	newVersions: number;
+	/** Files of those versions that are only in Portflow (uploaded there; not copied). */
+	inPortflowOnly: number;
+	newFeedback: number;
+	unplaced: number;
+	filesTouched: number;
+	notes: string[];
+}
+
+export interface PortflowStatus {
+	state: 'off' | 'signed-out' | 'idle' | 'syncing' | 'error';
+	signedIn: boolean;
+	expiresAt: number | null;
+	lastSyncAt: string | null;
+	lastError: string | null;
+	summary: string | null;
+	report: PortflowReport | null;
+}
+
+export interface PortflowLink {
+	project: string;
+	projectName: string;
+	semester: string;
+	semesterName: string | null;
+	collection: number;
+	collectionName: string | null;
+}
+
+export interface PortflowView {
+	enabled: boolean;
+	launchUrl: string;
+	defaultLaunchUrl: string;
+	write: boolean;
+	writes: { id: string; label: string; on: boolean }[];
+	writesAvailable: boolean;
+	portfolio: { id: number; userId: number; userName: string } | null;
+	status: PortflowStatus;
+	links: PortflowLink[];
+	outcomes: number;
+	people: number;
+	unplaced: number;
+}
+
+export interface PortflowCollectionChoice {
+	id: number;
+	name: string;
+	subtitle: string;
+	section: string;
+	evidenceCount: number;
+	linkedProject: string | null;
+	linkedSemester: string | null;
+}
+
+export interface EvidenceRef {
+	project: string;
+	projectName: string;
+	slug: string;
+	name: string;
+	thread: string | null;
+}
+
+export interface SubOutcome {
+	id: number;
+	name: string;
+	nickname: string;
+	descriptionHtml: string;
+	evidence: EvidenceRef[];
+}
+
+export interface Outcome {
+	id: number;
+	name: string;
+	nickname: string;
+	goalSet: string;
+	status: string;
+	explanationHtml: string;
+	removed: boolean;
+	subOutcomes: SubOutcome[];
+	evidence: EvidenceRef[];
+	feedbackCount: number;
+	feedbackFrom: string[];
+}
+
+export interface PortflowPerson {
+	id: number;
+	name: string;
+	role: string;
+	shared: string;
+	until: string | null;
+	active: boolean;
+}
+
+export interface OutcomeRef {
+	id: number;
+	name: string;
+}
+
+export interface PortflowCollection {
+	semester: string;
+	semesterName: string | null;
+	collection: number;
+	name: string;
+	subtitle: string;
+	section: string;
+	color: string;
+	descriptionHtml: string;
+	outcomes: OutcomeRef[];
+}
+
+export interface EvidenceVersion {
+	number: number;
+	portflowVersion: number | null;
+	kind: string;
+	createdAt: string;
+	descriptionHtml: string;
+	/** `path`: the Ledger deliverable, when the version came from Ledger; otherwise it is opened in Portflow. */
+	files: { name: string; path: string | null }[];
+	inLedger: boolean;
+	portflowUrl: string | null;
+}
+
+export interface Evidence {
+	project: string;
+	slug: string;
+	name: string;
+	thread: string | null;
+	threadTitle: string | null;
+	portflowId: number | null;
+	kind: string;
+	descriptionHtml: string;
+	files: { path: string; name: string; exists: boolean }[];
+	outcomes: OutcomeRef[];
+	versions: EvidenceVersion[];
+	feedbackCount: number;
+	openFeedback: number;
+	/** Its page in Portflow (the latest version). */
+	portflowUrl: string | null;
+}
+
+export interface ProjectPortflow {
+	collections: PortflowCollection[];
+	evidence: Evidence[];
+}
+
+export interface PortflowFeedback {
+	project: string;
+	projectName: string;
+	thread: string;
+	id: string;
+	from: string | null;
+	fromRole: string | null;
+	evidence: string | null;
+	evidenceName: string | null;
+	createdAt: string;
+	excerpt: string;
+}
+
+export interface PortflowImported {
+	project: string;
+	projectName: string;
+	evidence: number;
+	threads: number;
 }

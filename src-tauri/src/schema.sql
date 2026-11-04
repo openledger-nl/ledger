@@ -99,8 +99,22 @@ CREATE TABLE feedback (
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     body                TEXT NOT NULL,
+    -- Who gave it: a name, and when they are someone in Portflow, their Portflow id and role there. `given` says how
+    -- it was given: 'in person', 'portflow', 'email' or 'other'. Kept whether or not Portflow is switched on.
+    from_name           TEXT,
+    from_user           INTEGER,
+    from_role           TEXT,
+    given               TEXT,
+    -- Feedback pulled from Portflow: the comment it is, the comment it answers, and the evidence item (its slug in
+    -- the project) and version it is on. Such feedback may have no deliverable (deliverable_path '').
+    portflow_comment    INTEGER,
+    reply_to            TEXT,
+    comment_type        TEXT,
+    evidence            TEXT,
+    evidence_version    INTEGER,
     FOREIGN KEY (project_slug, thread_slug) REFERENCES threads(project_slug, slug) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX feedback_by_comment ON feedback (portflow_comment) WHERE portflow_comment IS NOT NULL;
 
 -- What running a prompt with Claude Code did: how it ended, and what it said and did. Kept as runs/<id>.md in the
 -- thread, so the history reads without the app. `prompt_id` is deliberately not a foreign key: deleting a prompt
@@ -283,4 +297,155 @@ CREATE TABLE vacations (
     start_date  TEXT NOT NULL,
     end_date    TEXT NOT NULL,
     PRIMARY KEY (semester_id, position)
+);
+
+-- ---- Portflow (see portflow.rs) ----------------------------------------------------------------------------------
+-- Which Portflow collection a project is in, per semester (one collection per project per semester). Kept in
+-- project.md as `portflowCollections`, whether or not Portflow is switched on.
+CREATE TABLE project_collections (
+    project_slug  TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    semester_id   TEXT NOT NULL,
+    collection_id INTEGER NOT NULL,
+    PRIMARY KEY (project_slug, semester_id)
+);
+
+-- Everything below is only filled in while Portflow is switched on: its files are not read otherwise.
+
+-- The learning outcomes, mirrored from Portflow (portflow/outcomes/<id>-<slug>.md). Never made or edited in Ledger.
+CREATE TABLE outcomes (
+    id            INTEGER PRIMARY KEY,
+    name          TEXT NOT NULL,
+    nickname      TEXT NOT NULL DEFAULT '',
+    position      INTEGER NOT NULL DEFAULT 0,
+    goal_set_id   INTEGER,
+    goal_set      TEXT NOT NULL DEFAULT '',
+    -- The template import it came with, shared with its section (see portflow_sections).
+    import_id     INTEGER,
+    status        TEXT NOT NULL DEFAULT '',
+    -- Markdown, converted from Portflow's HTML.
+    explanation   TEXT NOT NULL DEFAULT '',
+    -- Gone from Portflow: kept so that links to it keep a name.
+    removed       INTEGER NOT NULL DEFAULT 0,
+    -- When it last changed here (not written to the file, so an unchanged sync writes nothing).
+    synced_at     TEXT NOT NULL
+);
+
+CREATE TABLE sub_outcomes (
+    id          INTEGER PRIMARY KEY,
+    outcome_id  INTEGER NOT NULL REFERENCES outcomes(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    nickname    TEXT NOT NULL DEFAULT '',
+    position    INTEGER NOT NULL DEFAULT 0,
+    description TEXT NOT NULL DEFAULT '',
+    -- How many evidence items in the whole portfolio count for it, as Portflow counts them.
+    evidence_count INTEGER NOT NULL DEFAULT 0
+);
+
+-- The people the portfolio is shared with (portflow/people.md): who can be tagged on feedback.
+CREATE TABLE portflow_people (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    role       TEXT NOT NULL DEFAULT '',
+    share_type TEXT NOT NULL DEFAULT '',
+    expires    TEXT,
+    position   INTEGER NOT NULL DEFAULT 0
+);
+
+-- A linked collection as Portflow last showed it (projects/<p>/portflow/<semester-id>.md).
+CREATE TABLE collection_mirrors (
+    project_slug  TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    semester_id   TEXT NOT NULL,
+    collection_id INTEGER NOT NULL,
+    name          TEXT NOT NULL,
+    subtitle      TEXT NOT NULL DEFAULT '',
+    section       TEXT NOT NULL DEFAULT '',
+    color         TEXT NOT NULL DEFAULT '',
+    -- Markdown, converted from Portflow's HTML.
+    description   TEXT NOT NULL DEFAULT '',
+    synced_at     TEXT NOT NULL,
+    PRIMARY KEY (project_slug, semester_id)
+);
+
+CREATE TABLE collection_outcomes (
+    project_slug TEXT NOT NULL,
+    semester_id  TEXT NOT NULL,
+    outcome_id   INTEGER NOT NULL,
+    position     INTEGER NOT NULL,
+    PRIMARY KEY (project_slug, semester_id, outcome_id),
+    FOREIGN KEY (project_slug, semester_id) REFERENCES collection_mirrors(project_slug, semester_id) ON DELETE CASCADE
+);
+
+-- An evidence item (projects/<p>/evidence/<slug>.md): what is handed in, as one or more files delivered and versioned
+-- together. It belongs to at most one thread (where its feedback lands); a thread can hold several.
+CREATE TABLE evidence (
+    project_slug  TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    slug          TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    -- Deliberately not a foreign key: deleting a thread leaves the evidence item, unplaced.
+    thread_slug   TEXT,
+    portflow_id   INTEGER,
+    -- file, free_text, url, video, lms_submission or badge.
+    kind          TEXT NOT NULL DEFAULT 'file',
+    description   TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    PRIMARY KEY (project_slug, slug)
+);
+CREATE UNIQUE INDEX evidence_by_portflow ON evidence (portflow_id) WHERE portflow_id IS NOT NULL;
+
+-- The evidence item's files, by their path under deliverables/ (without a version). A file is in one item at most.
+CREATE TABLE evidence_files (
+    project_slug  TEXT NOT NULL,
+    evidence_slug TEXT NOT NULL,
+    position      INTEGER NOT NULL,
+    path          TEXT NOT NULL,
+    PRIMARY KEY (project_slug, path),
+    FOREIGN KEY (project_slug, evidence_slug) REFERENCES evidence(project_slug, slug) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- The collections (per semester) the evidence item is shown in.
+CREATE TABLE evidence_collections (
+    project_slug  TEXT NOT NULL,
+    evidence_slug TEXT NOT NULL,
+    semester_id   TEXT NOT NULL,
+    collection_id INTEGER NOT NULL,
+    PRIMARY KEY (project_slug, evidence_slug, semester_id),
+    FOREIGN KEY (project_slug, evidence_slug) REFERENCES evidence(project_slug, slug) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- The learning outcomes (goals and sub-goals, by their Portflow id) the evidence item counts for.
+CREATE TABLE evidence_outcomes (
+    project_slug  TEXT NOT NULL,
+    evidence_slug TEXT NOT NULL,
+    outcome_id    INTEGER NOT NULL,
+    PRIMARY KEY (project_slug, evidence_slug, outcome_id),
+    FOREIGN KEY (project_slug, evidence_slug) REFERENCES evidence(project_slug, slug) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- Portflow version N of an evidence item is major N of each of its files.
+CREATE TABLE evidence_versions (
+    project_slug     TEXT NOT NULL,
+    evidence_slug    TEXT NOT NULL,
+    number           INTEGER NOT NULL,
+    portflow_version INTEGER,
+    kind             TEXT NOT NULL DEFAULT 'file',
+    -- Markdown: the changelog that went with it.
+    description      TEXT NOT NULL DEFAULT '',
+    created_at       TEXT NOT NULL,
+    PRIMARY KEY (project_slug, evidence_slug, number),
+    FOREIGN KEY (project_slug, evidence_slug) REFERENCES evidence(project_slug, slug) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- The files of each version, by Portflow's name. Ledger doesn't copy Portflow's files: a version that came from Ledger
+-- points at the deliverable it is (a published "<name>@vN.0.<ext>", `path`); one uploaded in Portflow has no `path`
+-- and is opened in Portflow.
+CREATE TABLE evidence_version_files (
+    project_slug  TEXT NOT NULL,
+    evidence_slug TEXT NOT NULL,
+    number        INTEGER NOT NULL,
+    name          TEXT NOT NULL,
+    portflow_file INTEGER,
+    path          TEXT,
+    PRIMARY KEY (project_slug, evidence_slug, number, name),
+    FOREIGN KEY (project_slug, evidence_slug, number) REFERENCES evidence_versions(project_slug, evidence_slug, number) ON DELETE CASCADE ON UPDATE CASCADE
 );

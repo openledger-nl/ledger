@@ -211,15 +211,43 @@ pub fn list(conn: &Connection, project: &str) -> Result<Vec<DeliverableSummary>>
 
 /// A deliverable, or — if `path` is a "<name>@v1.0.<ext>" snapshot — that published version.
 pub fn get(conn: &Connection, project: &str, path: &str) -> Result<DeliverableView> {
-    let (size, modified, body): (i64, String, Option<String>) = query_opt(
+    let row: Option<(i64, String, Option<String>)> = query_opt(
         conn,
         "SELECT size, modified, body FROM deliverables WHERE project_slug = ?1 AND path = ?2",
         [project, path],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-    )?
-    .ok_or_else(|| Error::not_found("Deliverable not found"))?;
-
+    )?;
     let (base, version) = split_version(path);
+    let Some((size, modified, body)) = row else {
+        // A file whose live copy is gone (or never was here) but that has published versions is still a deliverable.
+        let versions = versions_of(conn, project, &base)?;
+        let Some(newest) = versions.last() else { return Err(Error::not_found("Deliverable not found")) };
+        if version.is_some() {
+            return Err(Error::not_found("Deliverable not found"));
+        }
+        let modified: String = conn.query_row(
+            "SELECT modified FROM deliverables WHERE project_slug = ?1 AND path = ?2",
+            [project, &snapshot_path(&base, newest)],
+            |r| r.get(0),
+        )?;
+        return Ok(DeliverableView {
+            path: path.to_string(),
+            name: file_name(&base).to_string(),
+            kind: kind_of(&base).to_string(),
+            editable: false,
+            versions,
+            exists: false,
+            prompts: prompts::producing(conn, project, &base)?,
+            feedback: feedback::list_for_deliverable(conn, project, &base)?,
+            base_path: base,
+            version: None,
+            size: 0,
+            modified,
+            body: None,
+            html: None,
+        });
+    };
+
     let html = body.as_ref().map(|text| markdown::render(&frontmatter::parse(text).map_or_else(|| text.clone(), |p| p.body)));
     Ok(DeliverableView {
         path: path.to_string(),

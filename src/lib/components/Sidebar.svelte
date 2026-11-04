@@ -5,6 +5,7 @@
 	import House from '@lucide/svelte/icons/house';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Settings from '@lucide/svelte/icons/settings';
+	import Target from '@lucide/svelte/icons/target';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -14,6 +15,7 @@
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { drawer, sync } from '$lib/ui.svelte';
+	import { portflow } from '$lib/portflow.svelte';
 	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
 	import Wordmark from '$lib/components/Wordmark.svelte';
 
@@ -148,6 +150,9 @@
 	</form>
 
 	<a class="nav-item" class:active={path === '/'} href="/"><span class="nav-ico"><House size={16} /></span>Home</a>
+	{#if portflow.enabled}
+		<a class="nav-item" class:active={on('/outcomes')} href="/outcomes"><span class="nav-ico"><Target size={16} /></span>Learning outcomes</a>
+	{/if}
 	<a class="nav-item" class:active={on('/settings')} href="/settings"><span class="nav-ico"><Settings size={16} /></span>Settings</a>
 
 	{#if latestThreads.length || latestDeliverables.length}

@@ -18,6 +18,7 @@ import EncryptionSettings from './EncryptionSettings.svelte';
 import GitHubSettings from './GitHubSettings.svelte';
 import LogSettings from './LogSettings.svelte';
 import OrderSettings from './OrderSettings.svelte';
+import PortflowSettings from './PortflowSettings.svelte';
 import ScreenshotSettings from './ScreenshotSettings.svelte';
 import SemesterSettings from './SemesterSettings.svelte';
 import TemplateSettings from './TemplateSettings.svelte';
@@ -60,6 +61,7 @@ export const panels: Panel[] = [
 	{ id: 'vault', group: 'sync', title: 'Vault', keywords: 'folder location path obsidian markdown reload disk files switch', component: VaultSettings },
 	{ id: 'github', group: 'sync', title: 'Sync to GitHub', keywords: 'repository repo branch access token private push pull status sync now', component: GitHubSettings },
 	{ id: 'encryption', group: 'sync', title: 'Encryption', keywords: 'encrypt key recovery aes secret import export generate', component: EncryptionSettings },
+	{ id: 'portflow', group: 'sync', title: 'Portflow', keywords: 'portflow fontys portfolio canvas drieam feedback coach teacher learning outcomes evidence collection semester sign in', component: PortflowSettings },
 	{ id: 'trello', group: 'sync', title: 'Sync with Trello', keywords: 'trello cards board tasks stories api key token person', component: TrelloSettings },
 	{ id: 'screenshots', group: 'tools', title: 'Screenshots', keywords: 'screenshot hotkey shortcut flameshot capture picture tool command print', component: ScreenshotSettings },
 	{ id: 'claude', group: 'tools', title: 'Claude Code', keywords: 'claude ai prompt run model permission guard rails cli program auto edit plan read', component: ClaudeCodeSettings },
