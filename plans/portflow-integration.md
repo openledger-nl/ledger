@@ -154,8 +154,9 @@ session that results.
    - a Tauri command allowed only for the remote origin `https://portfolio.drieam.app` (capability `remote.urls`), with
      nothing else exposed to that origin;
    - or a navigation to a sentinel URL that the window's navigation handler catches and cancels.
-4. The window closes. Rust keeps the token **in memory only** (it lives 8 hours; there is nothing to gain from writing
-   it down). It knows the expiry from the JWT's `exp`.
+4. The window closes. Rust keeps the token where the Trello key is: the vault's `.ledger/.env` (`PORTFLOW_SESSION`),
+   on this machine only, gitignored and never synced, so a restart within its 8 hours needs no sign-in. Signing out,
+   switching Portflow off, or a 401 clears it. It knows the expiry from the JWT's `exp`.
 5. **Refreshing**: shortly before `exp`, or on any 401, Ledger repeats the launch in a hidden window. While the Canvas
    session lasts that needs no input. When it has ended, the sync pauses and Ledger shows "Sign in to Portflow again"
    (like the GitHub sync shows a bad token), and the student signs in again in the visible window.
@@ -184,7 +185,7 @@ is, it replaces section 2 and nothing else changes, because everything else talk
 Portflow is **off by default**. Settings → Portflow then shows one thing: the switch, with a line on what the feature
 does. Switched off means fully off, in the UI and in what runs:
 
-- **UI**: no Outcomes page, no evidence cards in threads, no "Deliver" in the publish dialog, no Portflow section on the
+- **UI**: no Gamma page, no evidence cards in threads, no "Deliver" in the publish dialog, no Portflow section on the
   project overview or beside a deliverable, no person picker fed from Portflow (the "from" field takes a typed name), no
   Portflow card on the dashboard, no Portflow status in the explorer's footer, no Portflow results in search. The
   screens look exactly as they do today. The frontend asks one flag (`portflow.enabled`) and renders none of it.
@@ -198,7 +199,7 @@ does. Switched off means fully off, in the UI and in what runs:
   Feedback keeps its "from" name, shown as plain text.
 - **Publishing** works as today, with no majors reserved. Switching back on checks the numbers: a major you made while
   it was off that isn't in Portflow is shown, and nothing is written until you have decided what to do with it.
-- **Switching off** stops the worker, drops the token from memory and closes any Portflow window. **Sign out and forget**
+- **Switching off** stops the worker, drops the token (from memory and `.ledger/.env`) and closes any Portflow window. **Sign out and forget**
   (also offered when switching off) deletes the login window's cookies and data folder too, so the next switch-on
   starts with a fresh Fontys login.
 - The switch is kept in `.ledger/portflow.json`, so it is per machine and never synced: switching it on at home doesn't
@@ -253,7 +254,7 @@ note it as feedback, as today, and say **who gave it**:
   `fromRole` (teacher, student, …), plus how it was given (`given: in person | portflow | email | other`) and when.
   Feedback pulled from Portflow fills these in itself, from the comment's author.
 - **What it gives you**: per person, all the feedback they gave you; per learning outcome, who gave feedback on it. The
-  feedback card shows the person, and the Outcomes page and the deliverable's Produced by window show it too.
+  feedback card shows the person, and Gamma and the deliverable's Produced by window show it too.
 - **With "Ask to confirm feedback" on** (read and write), Ledger can also post that feedback to Portflow on the evidence
   version, as your comment ("Feedback from <teacher> on 12-11-2026: …"), and ask that teacher to confirm it through
   Portflow's comment validation. When they confirm (or decline), the next sync shows it on the feedback in Ledger.
@@ -339,17 +340,21 @@ number, so the two can't drift.
   changelog in Ledger too.
 - **The publish dialog guards the rule.** For a file in a linked evidence item, "major" and a custom version whose major
   isn't the current one are replaced by Deliver; a minor is always allowed.
-- **A version made in Portflow** (uploaded in the browser) comes in as major N+1 of the evidence's files, with
-  Portflow's description as its changelog and `producedBy: portflow`. Ledger's minors on top of vN stay where they are
-  (they are drafts after vN). The live file only takes the new version when it has no unpublished edits; otherwise
-  Ledger keeps your edits, puts Portflow's file in `.ledger/conflicts/`, and says so.
+- **Ledger never copies Portflow's files** (decided 2026-11-04: pulling everything would swamp the vault). A version
+  is recorded with its number, description and file names. If Ledger published that major itself (the same file name
+  at vN.0), the version links to those deliverables and opens in Ledger. A version uploaded in Portflow by hand stays
+  there: Ledger shows its file names and **Open in Portflow**, which opens Portflow through Canvas in the default
+  browser and says which item to go to. A direct address
+  (`portfolio.drieam.app/portfolio/collections/<c>/evidence/<e>/versions/<v>`) doesn't work outside Canvas's launch,
+  not even with Portflow open in another tab (tried 2026-11-04). A major published in Ledger later is linked on the
+  next sync.
+- **Feedback from Portflow starts open**, the student's own comments included; only the student resolves it, each
+  reply (an expert's answer under a request) on its own. The open-feedback counts leave the student's own comments out.
 - **Read only** can't upload, so Deliver says where to upload it in Portflow (it opens the evidence there and shows the
   files in your file manager). The next sync finds Portflow's new version, checks it against your latest minors by
   checksum, and records it as major N+1: matching files get vN+1.0 as the same bytes, others come in as Portflow's.
-- **Linking an existing evidence item** (like the project plan with five versions) imports Portflow's versions under
-  their own numbers (v1.0 … v5.0), downloading the files. Version 1 here is a `free_text` placeholder with no file, and
-  is recorded but has no file in Ledger. If your Ledger files already have majors, Ledger compares them by checksum
-  first: matches are linked, and anything that doesn't line up is shown to you before anything is written.
+- **Linking an existing evidence item** (like the project plan with five versions) records Portflow's versions under
+  their own numbers (v1 … v5) without their files; those open in Portflow. Version 1 here is a `free_text` placeholder.
 - **v0.x** is "not yet delivered": a new evidence item's files publish minors on v0 until the first delivery makes v1.0.
 - **Version types**: `file` → the files themselves; `free_text` → a markdown file in the evidence; `url` → a markdown file
   with the link; `video`, `lms_submission`, `badge` → recorded, opened in Portflow.
@@ -365,7 +370,7 @@ Ledger links:
 - So the mirror is files, `portflow/outcomes/<goal-id>-<slug>.md`, synced to GitHub with the rest. The links are in
   the evidence items (`outcomes:`). With both in the vault, links work offline, on every machine, and in a run.
 - At startup they are read into new tables in `schema.sql` (`outcomes`, `sub_outcomes`, `evidence`, `evidence_files`,
-  `evidence_outcomes`, `evidence_versions`), so the Outcomes page and "which evidence counts for Analysis-S1?" are
+  `evidence_outcomes`, `evidence_versions`), so Gamma and "which evidence counts for Analysis-S1?" are
   quick queries, the same as the rest of Ledger.
 - Only what is about talking to Portflow stays out of the vault, in `.ledger/portflow-sync.json`: etags, the last
   agreed hashes, the time of the last refresh.
@@ -429,12 +434,12 @@ src-tauri/src/
   portflow_api.rs      the Portflow trait and its reqwest implementation: typed, lenient models (#[serde(default)],
                        unknown fields ignored), pagination, etags (If-None-Match), 401 → SessionExpired, polite pacing,
                        and the access gate every request passes (read only / which writes are allowed)
-  portflow_auth.rs     the sign-in window, picking up the session, the hidden refresh, the token in memory
+  portflow_auth.rs     the sign-in window, picking up the session, the hidden refresh, the token in .ledger/.env
   portflow_config.rs   .ledger/portflow.json and .ledger/portflow-sync.json
   portflow_html.rs     HTML ⇄ markdown, mentions ⇄ links
   evidence.rs          evidence items: files, thread, outcomes, the major ↔ Portflow version map; Deliver; a store like
                        the others (works signed out and offline; off with the feature)
-  outcomes.rs          the outcomes mirror: read from portflow/outcomes/, queried for the Outcomes page
+  outcomes.rs          the outcomes mirror: read from portflow/outcomes/, queried for Gamma
   schema.sql           + outcomes, sub_outcomes, evidence, evidence_files, evidence_outcomes, evidence_versions
   vault.rs             + the new files (lenient import, canonical export), the mirror refused for edits
   portflow_ledger.rs   the vault side, behind a trait (like trello_ledger.rs), never holding the vault lock over a request
@@ -446,8 +451,8 @@ src/lib/
   components/settings/PortflowSettings.svelte    sign in / out, status, portfolio, access (read only / read and
                                                  write, with a switch per write), link projects to collections
   components/PersonPicker.svelte                 who gave the feedback: the people with access, or a typed name
-  routes/outcomes/                               learning outcomes: per goal its sub-goals, status, linked
-                                                 deliverables and feedback; filter by semester (goal set)
+  routes/gamma/                                  Gamma: the HBO-i matrix of a semester (activities × layers, evidence
+                                                 and highest level per cell, PS/PL beside it), per sub-goal its evidence
   components/EvidenceCard.svelte                 in a thread: the evidence item's files, outcomes, versions (majors
                                                  with their Portflow status, minors since), Deliver, Ask for feedback
   FeedbackCard (existing)                        who gave it, role, "from Portflow", on which evidence and version, reply box
@@ -488,14 +493,34 @@ outcomes mirror are part of the Portflow feature, so they use it too.
       `portflow_auth.rs`; settings screen with sign-in, status and access.
 - [ ] People with access (`portflow/people.md`); the person picker on feedback; `from` / `fromRole` / `given` on
       feedback, filled in for feedback pulled from Portflow.
-- [ ] Sections ↔ semesters (match or create); learning outcomes mirror (`portflow/outcomes/`), goal set per semester,
-      the Outcomes page.
+- [x] Sections ↔ semesters: `portflow/sections.md` mirrors them; a new section is linked once to the semester its
+      template import falls in (or that starts within a month after it), as `portflowSection` in `semesters/<id>.md`;
+      after that the link is changed by hand under Settings → Semesters. A section and its goals share the import id,
+      which tells one semester's outcomes from another's.
+- [x] Learning outcomes mirror (`portflow/outcomes/`), goal set per semester. Shown in Gamma (below), which replaced the
+      separate Outcomes page (2026-11-04).
+- [x] **Gamma** (`/gamma`, `portflow_gamma.rs`): the HBO-i competence matrix of a semester (the current one by default),
+      read from the mirror only, so it opens without a request. Activities across, layers down; a sub-goal
+      "Analysis-U2" is Analysis × User Interaction at level 2. A cell counts the evidence for its sub-goals (Portflow's
+      `evidence_count`, or the items linked in Ledger when those are more) and is shaded by the highest level with
+      evidence; level-only goals (PS, PL) stand beside it. Rebuilt from what Fontys's Epsilon tool shows from Canvas
+      rubric results; this semester's assessment is in Portflow, so Gamma reads Portflow. Growth scores from progress
+      reviews (`goals/{g}/growth`) are not read yet: there were none to see the shape of (2026-11-04).
+- [x] **Intended development** (Gamma → "Intended development"): per semester, the level aimed for per layer (a whole
+      row) and per level-only goal (PS, PL), with the semester's overview: its learning plan (an evidence item,
+      delivered in Portflow) and its study guide (a link). Kept in `semesters/<id>.md` under `gamma:` whether or not
+      Portflow is on. Gamma keeps the whole grid, marks the rows aimed for (dims the rest), says per cell whether it got
+      there, and shows only the intended level's description (the other levels fold away).
+- [x] From a level in Gamma's detail: **Start a thread** (its first post says which level it aims at and quotes what
+      the level asks) or **New deliverable** (a markdown file starting the same way), in a project linked to the
+      semester by default.
+- [ ] Later, maybe: push intended development into the study plan in Portflow (complex; not started).
 - [ ] Link a project to a collection per semester; mirror each one's description (read-only in this phase) and its
       outcomes.
 - [ ] Evidence items in Ledger (`evidence.rs`, the vault file, the tables, the card in a thread): files, thread,
       outcomes. Works signed out and offline.
-- [ ] Link Portflow evidence to evidence items (match by name, confirm by hand), in the thread you pick; pull its
-      versions as majors (download the files while the signed URL is fresh), checksums against existing majors.
+- [ ] Link Portflow evidence to evidence items (match by name, confirm by hand), in the thread you pick; record its
+      versions (no files copied; those uploaded in Portflow open there, those published in Ledger are linked).
 - [ ] The publish dialog's rule: minors only for files of a linked evidence item; Deliver in read-only mode (upload by
       hand, matched on the next sync).
 - [ ] Comments → feedback on the evidence item at its version, replies as posts, in the evidence's thread; new
@@ -532,7 +557,7 @@ outcomes mirror are part of the Portflow feature, so they use it too.
 | The API is internal and undocumented; Drieam can change it any day | Lenient parsing; contract tests on fixtures; a change shows up as "Portflow changed; sync paused" instead of corrupt files; never delete in the vault because of a missing field. |
 | Using the student's own session by program may be against the AUP | Read it first (phase 0), ask Fontys; keep traffic low and human-paced; only the student's own portfolio. |
 | The token lives 8 hours; the Canvas session ends sooner or later | Silent refresh; a clear "sign in again" state; the sync pauses, nothing is lost. |
-| Signed S3 URLs expire after 30 minutes | Ask for the preview/download URL right before downloading. |
+| Signed S3 URLs expire after 30 minutes | Not needed while Ledger copies nothing; for uploads (phase 2), ask right before. |
 | HTML round trips change text and cause endless pushes | Normalise before comparing; round-trip tests on real descriptions. |
 | A bug or a sync round writes to Portflow when it shouldn't | Read only is the default; one gate checks every request against the access setting; tests prove that read only sends no write. |
 | A version uploaded twice (retry after a timeout) | Before uploading, list the versions and match by file checksum and description; record the Portflow version id in `versions/<id>.md` as soon as it exists. |
