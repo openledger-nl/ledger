@@ -580,6 +580,13 @@ fn a_version_published_in_ledger_is_linked_to_its_deliverables_not_copied() {
     let view = m.read(|c| crate::deliverables::get(c, "speed-edit", "project-plan/plan.pdf")).unwrap();
     assert!(!view.exists);
     assert_eq!(view.versions, ["2.0"]);
+
+    // It is dated by when that version went to Portflow, not by when its file was last touched (synced, checked out).
+    let list = m.read(|c| crate::deliverables::list(c, "speed-edit")).unwrap();
+    let plan = list.iter().find(|d| d.path == "project-plan/plan.pdf").unwrap();
+    let delivered = plan.delivered.as_ref().unwrap();
+    assert_eq!((delivered.number, delivered.at.as_str()), (2, "2026-10-02T10:00:00Z"));
+    assert_eq!(plan.latest_at.as_deref(), Some("2026-10-02T10:00:00Z"));
 }
 
 #[test]
