@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 use crate::error::Error;
-use crate::models::{Bump, Criterion, SemesterDraft, Sprint, StoryDraft, StoryUpdate, TaskUpdate, Vacation};
+use crate::models::{Bump, Criterion, Quote, SemesterDraft, Sprint, StoryDraft, StoryUpdate, TaskUpdate, Vacation};
 use crate::posts::AddOptions;
 use crate::{activity, board, db, deliverables, semesters, feedback, markdown, posts, projects, prompts, search, stories, templates, threads, uploads};
 
@@ -410,13 +410,13 @@ fn feedback_lands_on_a_deliverable_or_one_of_its_versions() {
     deliverables::create(&c, &p, "Plan", "").unwrap();
     deliverables::publish(&c, dir.path(), &p, "plan.md", Bump::Major, None).unwrap();
 
-    let live = feedback::add(&c, &p, &t, "plan.md", "  Needs a timeline.  ").unwrap();
+    let live = feedback::add(&c, &p, &t, "plan.md", "  Needs a timeline.  ", None).unwrap();
     assert_eq!((live.body.as_str(), live.status.as_str(), live.deliverable_version.clone()), ("Needs a timeline.", "open", None));
-    let on_version = feedback::add(&c, &p, &other_thread, "plan@v1.0.md", "The v1 summary is vague.").unwrap();
+    let on_version = feedback::add(&c, &p, &other_thread, "plan@v1.0.md", "The v1 summary is vague.", None).unwrap();
     assert_eq!(on_version.deliverable_version.as_deref(), Some("1.0"));
 
-    assert_eq!(message(feedback::add(&c, &p, &t, "ghost.md", "x").unwrap_err()), "Deliverable not found");
-    assert_eq!(message(feedback::add(&c, &p, &t, "plan.md", "  ").unwrap_err()), "Write the feedback first");
+    assert_eq!(message(feedback::add(&c, &p, &t, "ghost.md", "x", None).unwrap_err()), "Deliverable not found");
+    assert_eq!(message(feedback::add(&c, &p, &t, "plan.md", "  ", None).unwrap_err()), "Write the feedback first");
 
     // Both pieces of feedback belong to the deliverable, whichever thread they were written in.
     let all = feedback::list_for_deliverable(&c, &p, "plan.md").unwrap();
@@ -430,6 +430,59 @@ fn feedback_lands_on_a_deliverable_or_one_of_its_versions() {
     assert_eq!(feedback::update(&c, &p, &t, &live.id, "Needs a timeline and owners.").unwrap().body, "Needs a timeline and owners.");
     feedback::delete(&c, &p, &t, &live.id).unwrap();
     assert!(feedback::list_for_thread(&c, &p, &t).unwrap().is_empty());
+}
+
+#[test]
+fn feedback_can_be_on_a_passage_instead_of_the_whole_document() {
+    let c = conn();
+    let (p, t) = setup(&c);
+    deliverables::create(&c, &p, "Plan", "# Plan
+
+Ship it in March.
+").unwrap();
+
+    let quote = Quote { text: "  Ship it in March.  ".into(), prefix: "Plan ".into(), suffix: "x".repeat(300) };
+    let on_text = feedback::add(&c, &p, &t, "plan.md", "Why March?", Some(&quote)).unwrap();
+    assert_eq!(on_text.quote.as_deref(), Some("Ship it in March."), "the passage is kept trimmed");
+    assert_eq!(on_text.quote_prefix.as_deref(), Some("Plan "));
+    assert_eq!(on_text.quote_suffix.as_ref().map(|s| s.chars().count()), Some(120), "the words around it are cut to what is of use");
+
+    let whole = feedback::add(&c, &p, &t, "plan.md", "Needs a summary.", None).unwrap();
+    assert_eq!((whole.quote, whole.quote_prefix, whole.quote_suffix), (None, None, None));
+    let bare = feedback::add(&c, &p, &t, "plan.md", "Is it?", Some(&Quote { text: "March".into(), ..Default::default() })).unwrap();
+    assert_eq!((bare.quote.as_deref(), bare.quote_prefix, bare.quote_suffix), (Some("March"), None, None), "no context is no column");
+
+    let blank = Quote { text: "  ".into(), ..Default::default() };
+    assert_eq!(message(feedback::add(&c, &p, &t, "plan.md", "x", Some(&blank)).unwrap_err()), "Select the text to comment on");
+    let long = Quote { text: "a".repeat(feedback::MAX_QUOTE + 1), ..Default::default() };
+    assert!(message(feedback::add(&c, &p, &t, "plan.md", "x", Some(&long)).unwrap_err()).starts_with("Select a shorter passage"));
+
+    // It comes back out with the rest of the deliverable's feedback, oldest first.
+    let listed = feedback::list_for_deliverable(&c, &p, "plan.md").unwrap();
+    assert_eq!(listed.iter().map(|f| f.quote.as_deref()).collect::<Vec<_>>(), [Some("Ship it in March."), None, Some("March")]);
+}
+
+#[test]
+fn feedback_on_the_live_file_is_given_on_the_version_published_after_it() {
+    let c = conn();
+    let dir = tempdir().unwrap();
+    let (p, t) = setup(&c);
+    deliverables::create(&c, &p, "Plan", "# Plan\n").unwrap();
+
+    let early = feedback::add(&c, &p, &t, "plan.md", "Before any version.", None).unwrap();
+    assert_eq!(early.given_on, None, "nothing has been published since");
+    deliverables::publish(&c, dir.path(), &p, "plan.md", Bump::Major, None).unwrap();
+    let late = feedback::add(&c, &p, &t, "plan.md", "After v1.0.", None).unwrap();
+    let on_version = feedback::add(&c, &p, &t, "plan@v1.0.md", "On the frozen one.", None).unwrap();
+    assert_eq!(late.given_on, None, "still the live file, as it stands");
+    deliverables::publish(&c, dir.path(), &p, "plan.md", Bump::Minor, None).unwrap();
+
+    let all = feedback::list_for_deliverable(&c, &p, "plan.md").unwrap();
+    let given = |id: &str| all.iter().find(|f| f.id == id).unwrap().given_on.clone();
+    assert_eq!(given(&early.id).as_deref(), Some("1.0"), "given on what v1.0 froze");
+    assert_eq!(given(&late.id).as_deref(), Some("1.1"));
+    assert_eq!(given(&on_version.id).as_deref(), Some("1.0"), "feedback on a version stays on it");
+    assert_eq!(feedback::list_for_thread(&c, &p, &t).unwrap().iter().filter(|f| f.given_on.is_some()).count(), 3, "the thread's own list says so too");
 }
 
 // ---- uploads ----------------------------------------------------------------------------------------
@@ -739,7 +792,7 @@ fn activity_counts_what_you_made_and_not_what_the_app_wrote_for_you() {
     prompts::create(&c, &p, &t, "Memo", "Write it", None).unwrap();
     let memo = deliverables::create(&c, &p, "Memo", "Draft").unwrap();
     deliverables::publish(&c, dir.path(), &p, &memo.path, Bump::Major, None).unwrap(); // also posts a "version published" note
-    feedback::add(&c, &p, &t, &memo.path, "Needs numbers").unwrap();
+    feedback::add(&c, &p, &t, &memo.path, "Needs numbers", None).unwrap();
     stories::create(&c, &p, story("MM01", "Sign in")).unwrap();
     board::create_task(&c, &other, "Elsewhere", "", None, None).unwrap();
 
@@ -771,7 +824,7 @@ fn search_spans_posts_prompts_feedback_and_deliverables_across_projects() {
     prompts::create(&c, &p, &t, "Pricing memo", "Write the memo", None).unwrap();
     let memo = deliverables::create(&c, &p, "Memo", "Details about pricing tiers").unwrap();
     deliverables::publish(&c, dir.path(), &p, &memo.path, Bump::Major, None).unwrap();
-    feedback::add(&c, &p, &t, &memo.path, "pricing tiers need numbers").unwrap();
+    feedback::add(&c, &p, &t, &memo.path, "pricing tiers need numbers", None).unwrap();
 
     let hits = search::search(&c, "  pricing ").unwrap();
     let kinds: Vec<_> = hits.iter().map(|h| h.kind.as_str()).collect();

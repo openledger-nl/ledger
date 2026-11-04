@@ -331,7 +331,7 @@ fn the_side_window_has_a_group_per_thread_with_what_happened_there_in_order() {
     let (c, p, t1, t2, prompt) = setup();
     publish(&c, &p, "# Plan\n\none\n", &PublishChoices::default());
     publish(&c, &p, "# Plan\n\ntwo\n", &choose(|x| x.thread = Some(t2.clone())));
-    feedback::add(&c, &p, &t2, "plan@v0.2.md", "Needs a budget.\n\nAnd dates.").unwrap();
+    feedback::add(&c, &p, &t2, "plan@v0.2.md", "Needs a budget.\n\nAnd dates.", None).unwrap();
     publish(&c, &p, "# Plan\n\nthree\n", &choose(|x| x.thread = Some(t1.clone())));
     run(&c, &p, &t1, &prompt, "run-b", "cancelled", &["plan.md"]);
 

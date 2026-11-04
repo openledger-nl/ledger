@@ -88,7 +88,8 @@ CREATE TABLE prompt_deliverables (
     PRIMARY KEY (prompt_id, path)
 );
 
--- Feedback lands on a deliverable (a path under deliverables/, possibly a published version).
+-- Feedback lands on a deliverable (a path under deliverables/, possibly a published version): on the whole document,
+-- or on a passage of it, which is kept as the quoted text and the words around it (null for the whole document).
 CREATE TABLE feedback (
     id                  TEXT PRIMARY KEY,
     project_slug        TEXT NOT NULL,
@@ -99,6 +100,9 @@ CREATE TABLE feedback (
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     body                TEXT NOT NULL,
+    quote               TEXT,
+    quote_prefix        TEXT,
+    quote_suffix        TEXT,
     FOREIGN KEY (project_slug, thread_slug) REFERENCES threads(project_slug, slug) ON DELETE CASCADE
 );
 

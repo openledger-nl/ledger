@@ -200,8 +200,15 @@ pub fn create_prompt_deliverable(app: State<App>, project: String, thread: Strin
 // ---- feedback ---------------------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn add_feedback(app: State<App>, project: String, thread: String, deliverable_path: String, body: String) -> Result<FeedbackView> {
-    app.mutate(|c, _| feedback::add(c, &project, &thread, &deliverable_path, &body))
+pub fn add_feedback(
+    app: State<App>,
+    project: String,
+    thread: String,
+    deliverable_path: String,
+    body: String,
+    quote: Option<Quote>,
+) -> Result<FeedbackView> {
+    app.mutate(|c, _| feedback::add(c, &project, &thread, &deliverable_path, &body, quote.as_ref()))
 }
 
 #[tauri::command]

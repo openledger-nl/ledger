@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 use crate::frontmatter::{self, MetaExt};
-use crate::models::{Bump, Criterion, SemesterDraft, StoryDraft, TaskUpdate};
+use crate::models::{Bump, Criterion, Quote, SemesterDraft, StoryDraft, TaskUpdate};
 use crate::posts::AddOptions;
 use crate::provenance::{self, Origin};
 use crate::settings::{self, SyncEnv};
@@ -67,7 +67,9 @@ fn populate(conn: &Connection, root: &Path) -> (String, String) {
     let plan = deliverables::create(conn, &project, "Call summary", "# Call summary\n\nAna wants SSO.\n").unwrap();
     prompts::link_deliverable(conn, &project, &alpha, &prompt.id, &plan.path).unwrap();
     deliverables::publish(conn, root, &project, &plan.path, Bump::Major, None).unwrap();
-    feedback::add(conn, &project, &beta, &plan.path, "Add the date of the call.").unwrap();
+    feedback::add(conn, &project, &beta, &plan.path, "Add the date of the call.", None).unwrap();
+    let quote = Quote { text: "Ana wants SSO: really?".into(), prefix: "Call summary ".into(), suffix: " and more".into() };
+    feedback::add(conn, &project, &beta, &plan.path, "Which SSO?", Some(&quote)).unwrap();
 
     uploads::add_bytes(conn, root, &project, &alpha, "site plan.png", b"\x89PNG....", "The site plan").unwrap();
 
@@ -150,9 +152,15 @@ fn the_vault_has_the_agreed_folder_structure() {
 
     // Feedback lives in the thread it was written in and names the deliverable.
     let beta = format!("{project}/threads/beta/feedback");
-    let feedback_file = names(root, &beta);
-    let text = read(root, &format!("{beta}/{}", feedback_file[0]));
-    assert!(text.contains("deliverable: call-summary.md") && text.contains("status: open") && text.ends_with("Add the date of the call.\n"), "{text}");
+    let feedback_files = names(root, &beta);
+    assert_eq!(feedback_files.len(), 2);
+    let texts: Vec<String> = feedback_files.iter().map(|f| read(root, &format!("{beta}/{f}"))).collect();
+    let text = texts.iter().find(|x| x.ends_with("Add the date of the call.\n")).unwrap();
+    assert!(text.contains("deliverable: call-summary.md") && text.contains("status: open") && !text.contains("quote"), "{text}");
+    // On a passage, it keeps the passage and the words around it; nothing else changes.
+    let quoted = texts.iter().find(|x| x.ends_with("Which SSO?\n")).unwrap();
+    assert!(quoted.contains("quote: 'Ana wants SSO: really?'") || quoted.contains("quote: \"Ana wants SSO: really?\""), "{quoted}");
+    assert!(quoted.contains("quotePrefix:") && quoted.contains("quoteSuffix:"), "{quoted}");
 
     // An upload: a manifest in the thread, the file itself in the project's attachments.
     let manifest_name = &names(root, &format!("{thread}/uploads"))[0];

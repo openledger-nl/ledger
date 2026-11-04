@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { Anchor } from './anchors';
 import { capture, captureDebug, logError } from './log.svelte';
 import type {
 	ActivityEvent,
@@ -103,8 +104,9 @@ export const api = {
 		call<Prompt>('create_prompt_deliverable', { project, thread, id, name }),
 
 	// feedback
-	addFeedback: (project: string, thread: string, deliverablePath: string, body: string) =>
-		call<Feedback>('add_feedback', { project, thread, deliverablePath, body }),
+	/** On the whole document, or on the passage `quote` when given. */
+	addFeedback: (project: string, thread: string, deliverablePath: string, body: string, quote: Anchor | null = null) =>
+		call<Feedback>('add_feedback', { project, thread, deliverablePath, body, quote }),
 	setFeedbackStatus: (project: string, thread: string, id: string, status: 'open' | 'resolved') =>
 		call<Feedback>('set_feedback_status', { project, thread, id, status }),
 	updateFeedback: (project: string, thread: string, id: string, body: string) =>

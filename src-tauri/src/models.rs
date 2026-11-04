@@ -119,6 +119,27 @@ pub struct FeedbackView {
     pub html: String,
     pub created_at: String,
     pub updated_at: String,
+    /// The passage this is about, as plain text, when it is not about the whole document; with the words just before
+    /// and after it (see [`Quote`]).
+    pub quote: Option<String>,
+    pub quote_prefix: Option<String>,
+    pub quote_suffix: Option<String>,
+    /// The version it was given on: the one it names, or for feedback on the live file the first version published after
+    /// it was written (what that version froze). `None` while no version has been published since.
+    pub given_on: Option<String>,
+}
+
+/// The passage feedback is about: what was selected, as plain text (marks gone, white space collapsed), and a few words
+/// before and after it, which tell apart a phrase that occurs more than once. The page finds the passage again by these,
+/// so the feedback keeps its place while the document changes around it.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Quote {
+    pub text: String,
+    #[serde(default)]
+    pub prefix: String,
+    #[serde(default)]
+    pub suffix: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

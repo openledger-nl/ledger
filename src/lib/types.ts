@@ -103,6 +103,14 @@ export interface Feedback {
 	html: string;
 	createdAt: string;
 	updatedAt: string;
+	/** The passage it is about, as plain text, with the words just before and after it (see anchors.ts); null when it is
+	 *  about the whole document. */
+	quote: string | null;
+	quotePrefix: string | null;
+	quoteSuffix: string | null;
+	/** The version it was given on: the one it names, or for feedback on the live file the first version published after it
+	 *  was written (what that version froze); null while none has been published since. */
+	givenOn: string | null;
 }
 
 export interface Upload {

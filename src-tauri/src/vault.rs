@@ -375,18 +375,22 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         files.insert(entity_file(&project, &thread, "prompts", &id), frontmatter::render(&meta, &body));
     }
 
-    type FeedbackRow = (String, String, String, String, Option<String>, String, String, String, String);
-    for (id, project, thread, path, version, status, created_at, updated_at, body) in query_all::<FeedbackRow, _>(
+    type FeedbackRow = (String, String, String, String, Option<String>, String, String, String, String, Option<String>, Option<String>, Option<String>);
+    for (id, project, thread, path, version, status, created_at, updated_at, body, quote, prefix, suffix) in query_all::<FeedbackRow, _>(
         conn,
-        "SELECT id, project_slug, thread_slug, deliverable_path, deliverable_version, status, created_at, updated_at, body FROM feedback",
+        "SELECT id, project_slug, thread_slug, deliverable_path, deliverable_version, status, created_at, updated_at, body,
+                quote, quote_prefix, quote_suffix FROM feedback",
         [],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?)),
     )? {
         let mut meta = Mapping::new();
         frontmatter::set(&mut meta, "id", id.clone());
         frontmatter::set(&mut meta, "deliverable", path);
         frontmatter::set_opt(&mut meta, "version", version.as_deref());
         frontmatter::set(&mut meta, "status", status);
+        frontmatter::set_opt(&mut meta, "quote", quote.as_deref());
+        frontmatter::set_opt(&mut meta, "quotePrefix", prefix.as_deref());
+        frontmatter::set_opt(&mut meta, "quoteSuffix", suffix.as_deref());
         frontmatter::set(&mut meta, "createdAt", created_at);
         frontmatter::set(&mut meta, "updatedAt", updated_at);
         files.insert(entity_file(&project, &thread, "feedback", &id), frontmatter::render(&meta, &body));
@@ -833,7 +837,8 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
     }
 
     type PromptItem = (String, String, String, Option<String>, Vec<String>, String, String, String);
-    type FeedbackItem = (String, String, String, Option<String>, String, String, String, String);
+    // id, thread, deliverable, version, status, created, updated, body, then the quoted passage with its context
+    type FeedbackItem = (String, String, String, Option<String>, String, String, String, String, Option<String>, Option<String>, Option<String>);
     let mut prompts: Vec<PromptItem> = vec![];
     let mut feedback: Vec<FeedbackItem> = vec![];
     let mut uploads: Vec<(String, String, String, String, i64, String, String)> = vec![];
@@ -877,6 +882,9 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
                 created_at.clone(),
                 meta.text("updatedAt").unwrap_or(created_at),
                 body,
+                meta.text("quote"),
+                meta.text("quotePrefix"),
+                meta.text("quoteSuffix"),
             ));
         }
         for stem in source.stems(&format!("{}/uploads", thread_dir(project, slug))) {
@@ -934,11 +942,12 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
         }
     }
     feedback.sort_by(|a, b| (&a.5, &a.0).cmp(&(&b.5, &b.0)));
-    for (id, thread, path, version, status, created_at, updated_at, body) in feedback {
+    for (id, thread, path, version, status, created_at, updated_at, body, quote, prefix, suffix) in feedback {
         conn.execute(
-            "INSERT OR IGNORE INTO feedback (id, project_slug, thread_slug, deliverable_path, deliverable_version, status, created_at, updated_at, body)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![id, project, thread, path, version, status, created_at, updated_at, body],
+            "INSERT OR IGNORE INTO feedback (id, project_slug, thread_slug, deliverable_path, deliverable_version, status, created_at, updated_at, body,
+                                             quote, quote_prefix, quote_suffix)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![id, project, thread, path, version, status, created_at, updated_at, body, quote, prefix, suffix],
         )?;
     }
     uploads.sort_by(|a, b| (&a.5, &a.0).cmp(&(&b.5, &b.0)));
