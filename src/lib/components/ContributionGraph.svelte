@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Wrench from '@lucide/svelte/icons/wrench';
 	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import { dayKey, LOCALE, plural } from '$lib/format';
 	import { nearestSemester, parseDay } from '$lib/semesters';
@@ -206,7 +205,6 @@
 		<div class="contrib-filters">
 			<Dropdown bind:value={project} options={projectOptions} label="Project" align="end" />
 			<Dropdown bind:value={period} options={periodOptions} label="Period" align="end" />
-			<a class="btn small" href="/settings/semesters" title="Set up the semesters this graph follows"><Wrench size={14} />Semesters</a>
 		</div>
 	</div>
 
