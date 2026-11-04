@@ -2,9 +2,10 @@
 	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api } from '$lib/api';
+	import { api, portflowApi } from '$lib/api';
 	import { projectUrl, threadUrl } from '$lib/actions';
 	import Composer from '$lib/components/Composer.svelte';
+	import EvidenceCard from '$lib/components/EvidenceCard.svelte';
 	import FeedbackCard from '$lib/components/FeedbackCard.svelte';
 	import FeedbackModal from '$lib/components/FeedbackModal.svelte';
 	import Modal from '$lib/components/Modal.svelte';
@@ -17,8 +18,9 @@
 	import { date, dayKey, dayLabel, plural } from '$lib/format';
 	import { orderFlow } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
+	import { portflow } from '$lib/portflow.svelte';
 	import { attempt, confirmDialog, promptDialog, refresh } from '$lib/ui.svelte';
-	import type { Feedback, Post, Prompt, Story, Upload } from '$lib/types';
+	import type { Evidence, Feedback, Post, Prompt, Story, Upload } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -31,6 +33,40 @@
 	const byId = $derived(Object.fromEntries(posts.map((p) => [p.id, p])));
 	const siblings = $derived((data.projects.find((p) => p.slug === project)?.threads ?? []).filter((t) => t.slug !== slug));
 	const linked = $derived(new Set(thread.linkedThreads.map((t) => t.slug)));
+
+	// The thread's evidence items, with Portflow on: loaded again with the page's data.
+	let evidence = $state<Evidence[]>([]);
+	$effect(() => {
+		const [p, t] = [project, slug];
+		void data;
+		if (!portflow.enabled) {
+			evidence = [];
+			return;
+		}
+		let stale = false;
+		portflowApi.threadEvidence(p, t).then(
+			(items) => !stale && (evidence = items),
+			() => !stale && (evidence = [])
+		);
+		return () => (stale = true);
+	});
+	const evidenceNames = $derived(Object.fromEntries(evidence.map((e) => [e.slug, e.name])));
+	/** What a piece of feedback is on in Portflow, to say where to go there. */
+	function portflowItemOf(f: Feedback): string | null {
+		const item = evidence.find((e) => e.slug === f.evidence);
+		if (!item?.portflowId) return null;
+		return `“${item.name}”${f.evidenceVersion ? `, version ${f.evidenceVersion}` : ''}`;
+	}
+
+	/** Replies to feedback (from Portflow) are shown inside the feedback they answer, not on their own. */
+	const feedbackReplies = $derived.by(() => {
+		const ids = new Set(thread.feedback.map((f) => f.id));
+		const replies = new Map<string, Feedback[]>();
+		for (const f of thread.feedback) {
+			if (f.replyTo && ids.has(f.replyTo)) replies.set(f.replyTo, [...(replies.get(f.replyTo) ?? []), f]);
+		}
+		return replies;
+	});
 
 	/**
 	 * Any reply chain rooted at a guiding question is pulled out of the chronological flow and shown inside
@@ -68,7 +104,9 @@
 		const entries: Entry[] = [
 			...posts.filter((p) => !structure.embedded.has(p.id)).map((post): Entry => ({ kind: 'post', key: `p-${post.id}`, at: post.createdAt, post })),
 			...thread.prompts.map((prompt): Entry => ({ kind: 'prompt', key: `pr-${prompt.id}`, at: prompt.createdAt, prompt })),
-			...thread.feedback.map((feedback): Entry => ({ kind: 'feedback', key: `f-${feedback.id}`, at: feedback.createdAt, feedback })),
+			...thread.feedback
+				.filter((f) => !(f.replyTo && thread.feedback.some((other) => other.id === f.replyTo)))
+				.map((feedback): Entry => ({ kind: 'feedback', key: `f-${feedback.id}`, at: feedback.createdAt, feedback })),
 			...thread.uploads.map((upload): Entry => ({ kind: 'upload', key: `u-${upload.id}`, at: upload.uploadedAt, upload }))
 		];
 		entries.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
@@ -226,6 +264,11 @@
 
 <div class="thread" bind:this={scroller}>
 	<div class="thread-inner">
+		{#if evidence.length}
+			<div class="evidence-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+				{#each evidence as item (item.slug)}<EvidenceCard evidence={item} />{/each}
+			</div>
+		{/if}
 		{#each flow as item (item.entry.key)}
 			{#if item.newDay}<div class="divider">{dayLabel(item.day)}</div>{/if}
 			{@const e = item.entry}
@@ -252,7 +295,14 @@
 			{:else if e.kind === 'prompt'}
 				<PromptCard {project} thread={slug} prompt={e.prompt} onedit={(prompt) => (promptModal = { prompt })} />
 			{:else if e.kind === 'feedback'}
-				<FeedbackCard {project} thread={slug} feedback={e.feedback} />
+				<FeedbackCard
+					{project}
+					thread={slug}
+					feedback={e.feedback}
+					replies={feedbackReplies.get(e.feedback.id) ?? []}
+					evidenceName={e.feedback.evidence ? (evidenceNames[e.feedback.evidence] ?? null) : null}
+					portflowItem={e.feedback.portflowComment !== null ? portflowItemOf(e.feedback) : null}
+				/>
 			{:else}
 				<UploadCard {project} thread={slug} upload={e.upload} />
 			{/if}

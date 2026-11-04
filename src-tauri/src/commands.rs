@@ -232,13 +232,24 @@ pub fn add_feedback(
     deliverable_path: String,
     body: String,
     quote: Option<Quote>,
+    from: Option<FeedbackFrom>,
 ) -> Result<FeedbackView> {
-    app.mutate(|c, _| feedback::add(c, &project, &thread, &deliverable_path, &body, quote.as_ref()))
+    app.mutate(|c, _| feedback::add_with(c, &project, &thread, &deliverable_path, &body, quote.as_ref(), &from.unwrap_or_default()))
 }
 
 #[tauri::command]
-pub fn set_feedback_status(app: State<App>, project: String, thread: String, id: String, status: String) -> Result<FeedbackView> {
-    app.mutate(|c, _| feedback::set_status(c, &project, &thread, &id, &status))
+pub fn set_feedback_from(app: State<App>, project: String, thread: String, id: String, from: FeedbackFrom) -> Result<FeedbackView> {
+    app.mutate(|c, _| feedback::update_from(c, &project, &thread, &id, &from))
+}
+
+#[tauri::command]
+/// One piece of feedback, or (`all`) it and every reply to it.
+pub fn set_feedback_status(app: State<App>, project: String, thread: String, id: String, status: String, all: Option<bool>) -> Result<FeedbackView> {
+    if all.unwrap_or(false) {
+        app.mutate(|c, _| feedback::set_status_all(c, &project, &thread, &id, &status))
+    } else {
+        app.mutate(|c, _| feedback::set_status(c, &project, &thread, &id, &status))
+    }
 }
 
 #[tauri::command]

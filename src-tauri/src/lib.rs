@@ -45,6 +45,17 @@ mod trello_ledger;
 mod trello_sync;
 // ---- end Trello sync ----
 
+// ---- Portflow (feat/portflow-integration) ----
+mod portflow;
+mod portflow_api;
+mod portflow_auth;
+mod portflow_config;
+mod portflow_html;
+mod portflow_store;
+mod portflow_sync;
+mod portflow_vault;
+// ---- end Portflow ----
+
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -59,6 +70,8 @@ mod tests_crypto;
 mod tests_devupdates;
 #[cfg(test)]
 mod tests_onboarding;
+#[cfg(test)]
+mod tests_portflow;
 #[cfg(test)]
 mod tests_provenance;
 #[cfg(test)]
@@ -120,6 +133,7 @@ pub fn run() {
             let sync = core.sync.clone();
             let core = Arc::new(Mutex::new(core));
             let trello_core = core.clone(); // for the Trello sync (feat/trello-sync), started below
+            let portflow_core = core.clone(); // for Portflow (feat/portflow-integration), started below
 
             let handle = app.handle().clone();
             let syncer = syncer::spawn(
@@ -136,6 +150,7 @@ pub fn run() {
 
             app.manage(state::App::new(core, syncer, screenshot::Screenshots::new()));
             trello::start_app(app.handle(), trello_core); // feat/trello-sync: its own worker, needs the App state above
+            portflow::start_app(app.handle(), portflow_core); // feat/portflow-integration: runs only while switched on
             // Looks for new releases now and then (release builds only); it asks the syncs above whether they are busy.
             updates::start(app.handle(), config_dir);
             screenshot::register_saved(app.handle());
@@ -255,8 +270,28 @@ pub fn run() {
             trello::trello_sync_now,
             trello::trello_relink_item,
             // ---- end Trello sync ----
+            // ---- Portflow (feat/portflow-integration) ----
+            portflow::portflow_get,
+            portflow::portflow_status,
+            portflow::portflow_set_enabled,
+            portflow::portflow_set_launch_url,
+            portflow::portflow_sign_in,
+            portflow::portflow_sign_out,
+            portflow::portflow_sync_now,
+            portflow::portflow_collections,
+            portflow::portflow_link_collection,
+            portflow::portflow_import_collection,
+            portflow::portflow_open,
+            portflow::portflow_outcomes,
+            portflow::portflow_people,
+            portflow::portflow_project,
+            portflow::portflow_thread_evidence,
+            portflow::portflow_place_evidence,
+            portflow::portflow_recent_feedback,
+            // ---- end Portflow ----
             commands::set_vault_path,
             commands::reload_vault,
+            commands::set_feedback_from,
             commands::check_vault_changes,
             commands::save_screenshot_hotkey,
             commands::save_screenshot_tool,

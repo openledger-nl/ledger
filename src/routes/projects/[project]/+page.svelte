@@ -5,6 +5,7 @@
 	import Markdown from '$lib/components/Markdown.svelte';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import ProjectLatest from '$lib/components/ProjectLatest.svelte';
+	import ProjectPortflow from '$lib/components/ProjectPortflow.svelte';
 	import { attempt, refresh } from '$lib/ui.svelte';
 	import type { PageData } from './$types';
 
@@ -47,6 +48,8 @@
 				</footer>
 			</section>
 		{/if}
+
+		<ProjectPortflow project={project.slug} threads={summary?.threads ?? []} version={data} />
 
 		<section class="panel">
 			<div class="header-top">

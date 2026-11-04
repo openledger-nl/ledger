@@ -7,6 +7,7 @@
 	import ContributionGraph from '$lib/components/ContributionGraph.svelte';
 	import ProjectLatest from '$lib/components/ProjectLatest.svelte';
 	import Onboarding from '$lib/components/Onboarding.svelte';
+	import PortflowFeedbackWidget from '$lib/components/PortflowFeedbackWidget.svelte';
 	import SyncWidget from '$lib/components/SyncWidget.svelte';
 	import { ago, LOCALE, newest, plural, stamp } from '$lib/format';
 	import { dashboard, isPinned, togglePin } from '$lib/dashboard.svelte';
@@ -151,6 +152,7 @@
 				{/if}
 				<SyncWidget />
 			{/if}
+			<PortflowFeedbackWidget version={data} />
 		</div>
 	</div>
 {/if}

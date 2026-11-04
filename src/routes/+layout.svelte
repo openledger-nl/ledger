@@ -13,6 +13,7 @@
 	import UpdateNotice from '$lib/components/UpdateNotice.svelte';
 	import { drawer, initTheme, startBackendEvents } from '$lib/ui.svelte';
 	import { startUpdates } from '$lib/updates.svelte';
+	import { startPortflow } from '$lib/portflow.svelte';
 	import { captureDebug, startLogEvents } from '$lib/log.svelte';
 	import Wordmark from '$lib/components/Wordmark.svelte';
 	import type { LayoutData } from './$types';
@@ -33,7 +34,9 @@
 		const stopLog = startLogEvents();
 		const stopEvents = startBackendEvents();
 		const stopUpdates = startUpdates();
+		const stopPortflow = startPortflow();
 		return () => {
+			stopPortflow();
 			stopLog();
 			stopEvents();
 			stopUpdates();
