@@ -802,6 +802,7 @@ export interface TrelloMapping {
 
 /** A release newer than this one, as the notice shows it. */
 export interface UpdateInfo {
+	kind: 'release';
 	version: string;
 	currentVersion: string;
 	/** When it was published (ISO), if the release says. */
@@ -812,20 +813,48 @@ export interface UpdateInfo {
 	notesHtml: string;
 	/** The "Breaking changes" section, rendered, shown apart. */
 	breakingHtml: string | null;
-	/** A development build's pretend update: installing it installs nothing. */
-	simulated: boolean;
 }
+
+/** One of the new commits on the branch a development build follows. */
+export interface BranchCommit {
+	hash: string;
+	subject: string;
+	/** The first line marks it as breaking (`feat!:`). */
+	breaking: boolean;
+}
+
+/** Commits the branch a development build follows has and its checkout lacks (see devupdates.rs). */
+export interface BranchUpdate {
+	kind: 'branch';
+	branch: string;
+	/** What it follows, as `origin/main`. */
+	upstream: string;
+	/** Where the checkout is now (short), and the commit the update goes to (full). */
+	head: string;
+	target: string;
+	/** All the commits it lacks; the newest are listed, `more` is how many are left out. */
+	behind: number;
+	commits: BranchCommit[];
+	more: number;
+	/** Files have changes that aren't committed. They are kept, and the update stops if it would touch them. */
+	dirty: boolean;
+}
+
+/** What there is to install: a release, or new commits on a development build's branch. */
+export type Announced = UpdateInfo | BranchUpdate;
 
 /** Settings → About. */
 export interface UpdateView {
 	currentVersion: string;
 	/** Look by itself shortly after starting and every few hours. */
 	automatic: boolean;
-	/** Why this build doesn't look for updates (a development build, or no updater key yet). */
+	/** Why this build can't look for anything newer (a debug build `tauri dev` didn't start, or no updater key yet). */
 	unavailable: string | null;
-	/** A development build, which can simulate an update. */
+	/** A development build, which follows its git branch instead of the releases. */
 	devBuild: boolean;
-	available: UpdateInfo | null;
+	/** The branch it follows, as `origin/main`, once a look has found it. */
+	following: string | null;
+	available: Announced | null;
 	/** When a check last worked (ISO). */
 	checkedAt: string | null;
 	/** Where the choice is kept: the app's config, on this machine only. */
@@ -833,18 +862,21 @@ export interface UpdateView {
 }
 
 export interface UpdateCheck {
-	available: UpdateInfo | null;
+	available: Announced | null;
 	message: string;
 }
 
 /** What to do about Claude Code runs that a restart would stop: ask, wait for them, or stop them. */
 export type RunsChoice = 'ask' | 'wait' | 'stop';
 
-/** Where installing got to when it couldn't restart (yet). A real install that goes through ends in a restart. */
+/**
+ * Where installing got to when it couldn't restart (yet). A release that installs ends in a restart; commits brought into
+ * a development build end in `applied`: the toolchain is rebuilding when `rebuild` says so, or the window reloads.
+ */
 export type InstallStep =
 	| { state: 'wait'; waitingFor: string[] }
 	| { state: 'ask'; runs: string[] }
-	| { state: 'simulated'; version: string };
+	| { state: 'applied'; commits: number; head: string; rebuild: boolean };
 
 /** The `update-progress` event. */
 export interface UpdateProgress {

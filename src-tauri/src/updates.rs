@@ -1,21 +1,23 @@
-//! Updating Ledger from inside the app: looking for a new release, showing what changed, and installing it once a
-//! restart would cut nothing off.
+//! Updating Ledger from inside the app: looking for something newer, showing what changed, and bringing it in once a
+//! restart would cut nothing off. Nothing is installed or pulled until the person says yes.
 //!
-//! * **Release builds only.** The updater plugin is registered in release builds alone (`lib.rs`), so `tauri dev`,
-//!   debug builds and sandboxes never ask anyone for an update. A debug build can simulate one instead
-//!   ([`simulate_update`]): the notice shows, and installing goes through every step but installs nothing.
-//! * **Where from.** `plugins.updater` in `tauri.conf.json`: the `latest.json` of the newest published GitHub release,
-//!   and the public key the installers must be signed with. The release workflow publishes a release only once the
-//!   installers and signatures of every platform are on it. A build without a real key never looks.
-//! * **When.** Shortly after starting and every few hours, unless that is turned off under Settings → About (a choice
-//!   for this machine, kept in the app's `config.json`; see `settings.rs`), and never while a sync runs. A check that
-//!   fails (offline, or no release with installers yet) says nothing, except when asked for under Settings.
+//! * **Releases, in a release build.** The updater plugin is registered in release builds alone (`lib.rs`), and looks
+//!   at `plugins.updater` in `tauri.conf.json`: the `latest.json` of the newest published GitHub release, and the
+//!   public key the installers must be signed with. The release workflow publishes a release only once the installers
+//!   and signatures of every platform are on it. A build without a real key never looks.
+//! * **The branch, in a development build.** `tauri dev` follows the git branch it runs from instead (`devupdates`):
+//!   when the branch's upstream has commits the checkout lacks, the window asks, and a yes fast-forwards to them. The
+//!   development toolchain rebuilds and restarts the app, or the window reloads, as the commits require.
+//! * **When.** Shortly after starting and every few hours (every few minutes for a branch), unless that is turned off
+//!   under Settings → About (a choice for this machine, kept in the app's `config.json`; see `settings.rs`), and never
+//!   while a sync runs. A check that fails (offline, or no release with installers yet) says nothing, except when asked
+//!   for under Settings.
 //! * **Installing** restarts Ledger, so it waits until that cuts nothing off: a GitHub or Trello sync round finishes,
 //!   and Claude Code runs end, or are stopped if the person says so ([`readiness`]). The last look is taken on the
 //!   main thread with the vault locked, and the restart happens right there, so nothing can start or be written in
 //!   between. Every change is in the vault's files by then (`App::mutate` writes through), and what isn't on GitHub
-//!   yet is pushed by the sync Ledger starts with. The signature is checked before anything is installed: an update
-//!   that doesn't match the key is refused, and the notice says why.
+//!   yet is pushed by the sync Ledger starts with. A release's signature is checked before anything is installed: an
+//!   update that doesn't match the key is refused, and the notice says why.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -29,19 +31,23 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 
+use crate::claude_code::runner::OsRunner;
+use crate::devupdates::{self, BranchUpdate, Looked, RepoGit};
 use crate::error::{Error, Result};
 use crate::state::App;
 use crate::trello::TrelloSyncer;
 use crate::{claude_code, ids, markdown, settings};
 
-/// Whether this build has the updater at all: release builds do, debug builds (`tauri dev`, the sandbox) don't.
-/// `lib.rs` registers the plugin on the same condition.
+/// Whether this build looks for releases: release builds do, debug builds (`tauri dev`, the sandbox) follow a branch
+/// instead. `lib.rs` registers the updater plugin on the same condition.
 pub const BUILT_IN: bool = cfg!(not(debug_assertions));
 
 /// How soon after starting the first look is taken (the window and the first sync go first), how often after that,
 /// and how long to wait when a sync is running at the time.
 pub const FIRST_CHECK: Duration = Duration::from_secs(20);
 pub const EVERY: Duration = Duration::from_secs(4 * 60 * 60);
+/// A development build looks at its branch this often: asking the remote is cheap, and commits arrive all day.
+pub const DEV_EVERY: Duration = Duration::from_secs(5 * 60);
 pub const SYNC_WAIT: Duration = Duration::from_secs(60);
 /// The scheduler wakes this often to see whether a check is due: by the clock, so a computer that slept still checks.
 const TICK: Duration = Duration::from_secs(60);
@@ -51,7 +57,8 @@ pub const EVENT_AVAILABLE: &str = "update-available";
 pub const EVENT_PROGRESS: &str = "update-progress";
 
 const NO_KEY: &str = "This build has no updater key yet, so it doesn't look for updates. Install a release of Ledger to get them.";
-const DEV_BUILD: &str = "This is a development build: it never looks for updates.";
+const NOT_DEV_SERVER: &str = "This is a debug build that isn't served by the dev server (as `tauri build --debug` makes it), so nothing rebuilds it when the branch moves. Run `pnpm run tauri dev` to follow a branch.";
+const NO_CHECKOUT: &str = "This development build can't find the git checkout it was made from, so it has no branch to follow.";
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -218,11 +225,17 @@ pub struct UpdateInfo {
     pub notes_html: String,
     /// The "Breaking changes" section as HTML, shown apart.
     pub breaking_html: Option<String>,
-    /// A development build's pretend update: installing it goes through every step but installs nothing.
-    pub simulated: bool,
 }
 
-pub fn update_info(version: &str, current_version: &str, date: Option<&str>, notes: Option<&str>, simulated: bool) -> UpdateInfo {
+/// What the window is told is there to install: a release, or new commits on the branch a development build follows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Announced {
+    Release(UpdateInfo),
+    Branch(BranchUpdate),
+}
+
+pub fn update_info(version: &str, current_version: &str, date: Option<&str>, notes: Option<&str>) -> UpdateInfo {
     let notes = split_notes(notes.unwrap_or_default());
     UpdateInfo {
         version: version.trim_start_matches('v').to_string(),
@@ -231,7 +244,6 @@ pub fn update_info(version: &str, current_version: &str, date: Option<&str>, not
         major: is_major(current_version, version),
         notes_html: markdown::render(&notes.rest),
         breaking_html: notes.breaking.as_deref().map(markdown::render),
-        simulated,
     }
 }
 
@@ -292,14 +304,15 @@ pub fn install_failure(e: &tauri_plugin_updater::Error) -> String {
 enum Found {
     /// What the last check found, and its download once it has been downloaded and its signature checked.
     Real { update: Box<tauri_plugin_updater::Update>, info: UpdateInfo, bytes: Option<Vec<u8>> },
-    /// A development build's pretend update.
-    Simulated { info: UpdateInfo, downloaded: bool },
+    /// The commits a development build's branch has that its checkout lacks. There is nothing to download.
+    Branch(BranchUpdate),
 }
 
 impl Found {
-    fn info(&self) -> &UpdateInfo {
+    fn announced(&self) -> Announced {
         match self {
-            Found::Real { info, .. } | Found::Simulated { info, .. } => info,
+            Found::Real { info, .. } => Announced::Release(info.clone()),
+            Found::Branch(update) => Announced::Branch(update.clone()),
         }
     }
 }
@@ -309,12 +322,14 @@ pub struct Updates {
     found: Mutex<Option<Found>>,
     /// When a check last worked, as ISO text.
     checked_at: Mutex<Option<String>>,
+    /// The branch a development build follows, as `origin/main`, once a look has found it.
+    following: Mutex<Option<String>>,
     downloading: AtomicBool,
 }
 
-/// Sets up the state, and in a release build that can check, the scheduler.
+/// Sets up the state, and in a build that can look for something (a release build with a key, `tauri dev`), the scheduler.
 pub fn start(app: &AppHandle, config_dir: PathBuf) {
-    app.manage(Updates { config_dir: config_dir.clone(), found: Mutex::new(None), checked_at: Mutex::new(None), downloading: AtomicBool::new(false) });
+    app.manage(Updates { config_dir: config_dir.clone(), found: Mutex::new(None), checked_at: Mutex::new(None), following: Mutex::new(None), downloading: AtomicBool::new(false) });
     if unavailable(app).is_some() {
         return;
     }
@@ -322,10 +337,16 @@ pub fn start(app: &AppHandle, config_dir: PathBuf) {
     let _ = thread::Builder::new().name("update-check".into()).spawn(move || scheduler(app, config_dir));
 }
 
-/// Why this build doesn't look for updates, if it doesn't.
+/// Why this build can't look for anything newer, if it can't.
 fn unavailable(app: &AppHandle) -> Option<&'static str> {
     if !BUILT_IN {
-        return Some(DEV_BUILD);
+        return if !tauri::is_dev() {
+            Some(NOT_DEV_SERVER)
+        } else if devupdates::checkout().is_none() {
+            Some(NO_CHECKOUT)
+        } else {
+            None
+        };
     }
     let pubkey = app.config().plugins.0.get("updater").and_then(|c| c.get("pubkey")).and_then(|k| k.as_str());
     key_problem(pubkey)
@@ -341,14 +362,15 @@ fn scheduler(app: AppHandle, config_dir: PathBuf) {
         }
         let automatic = settings::load_config(&config_dir).updates.automatic;
         let activity = activity(&app);
+        let every = if BUILT_IN { EVERY } else { DEV_EVERY };
         due = SystemTime::now()
             + match when_due(automatic, activity.github_syncing || activity.trello_syncing) {
-                Due::Skip => EVERY,
+                Due::Skip => every,
                 Due::AfterSync => SYNC_WAIT,
                 Due::Check => {
                     // Quietly: offline, or no release with installers yet, is nothing to bother anyone with.
                     let _ = tauri::async_runtime::block_on(check(&app));
-                    EVERY
+                    every
                 }
             };
     }
@@ -361,21 +383,33 @@ fn activity(app: &AppHandle) -> Activity {
     Activity { github_syncing: github.state == "syncing", github_pending: github.pending, trello_syncing, runs: claude_code::running(app) }
 }
 
-/// Asks the release server whether there is a newer version, and tells the window when there is.
-async fn check(app: &AppHandle) -> Result<Option<UpdateInfo>> {
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckResult {
+    pub available: Option<Announced>,
+    pub message: String,
+}
+
+/// Looks for something newer, and tells the window when there is: a release, or new commits on the followed branch.
+async fn check(app: &AppHandle) -> Result<CheckResult> {
     if let Some(reason) = unavailable(app) {
         return Err(Error::update(reason));
     }
+    if BUILT_IN { check_release(app).await } else { check_branch(app).await }
+}
+
+/// Asks the release server whether there is a newer version.
+async fn check_release(app: &AppHandle) -> Result<CheckResult> {
     let updater = app.updater().map_err(|e| Error::update(format!("The updater couldn't start: {e}")))?;
     let found = updater.check().await.map_err(|e| Error::update(check_failure(&e)))?;
     let updates = app.state::<Updates>();
     *lock(&updates.checked_at) = Some(ids::now());
     let Some(update) = found else {
         *lock(&updates.found) = None;
-        return Ok(None);
+        return Ok(CheckResult { available: None, message: format!("You have the newest version, Ledger {}.", app.package_info().version) });
     };
     let date = update.raw_json.get("pub_date").and_then(|d| d.as_str());
-    let info = update_info(&update.version, &update.current_version, date, update.body.as_deref(), false);
+    let info = update_info(&update.version, &update.current_version, date, update.body.as_deref());
     {
         let mut found = lock(&updates.found);
         // The same release again keeps what was already downloaded; a release that changed (another file, another
@@ -386,8 +420,48 @@ async fn check(app: &AppHandle) -> Result<Option<UpdateInfo>> {
             *found = Some(Found::Real { update: Box::new(update), info: info.clone(), bytes: None });
         }
     }
-    let _ = app.emit(EVENT_AVAILABLE, &info);
-    Ok(Some(info))
+    let announced = Announced::Release(info.clone());
+    let _ = app.emit(EVENT_AVAILABLE, &announced);
+    Ok(CheckResult { message: format!("Ledger {} is available.", info.version), available: Some(announced) })
+}
+
+/// Asks the remote what is new on the branch this build follows (git does the talking, so it runs off the async threads).
+async fn check_branch(app: &AppHandle) -> Result<CheckResult> {
+    let root = devupdates::checkout().ok_or_else(|| Error::update(NO_CHECKOUT))?;
+    let looked = tauri::async_runtime::spawn_blocking(move || devupdates::look(&RepoGit { root, runner: &OsRunner }, true))
+        .await
+        .map_err(|e| Error::update(format!("Looking at the branch stopped unexpectedly: {e}")))??;
+    let updates = app.state::<Updates>();
+    *lock(&updates.checked_at) = Some(ids::now());
+    *lock(&updates.following) = match &looked {
+        Looked::NotFollowing(_) => None,
+        Looked::UpToDate { upstream, .. } | Looked::Diverged { upstream, .. } => Some(upstream.clone()),
+        Looked::Behind(update) => Some(update.upstream.clone()),
+    };
+    let message = devupdates::describe(&looked);
+    let Looked::Behind(update) = looked else {
+        // Nothing to bring in (any more): what was announced before no longer stands.
+        let mut found = lock(&updates.found);
+        if matches!(&*found, Some(Found::Branch(_))) {
+            *found = None;
+        }
+        return Ok(CheckResult { available: None, message });
+    };
+    let announced = Announced::Branch(update.clone());
+    let new = {
+        let mut found = lock(&updates.found);
+        let same = matches!(&*found, Some(Found::Branch(old)) if old.target == update.target && old.head == update.head);
+        if !same {
+            *found = Some(Found::Branch(update));
+        }
+        !same
+    };
+    // Said once per set of commits: with a look every few minutes, a "Not now" would otherwise be asked again at the next one.
+    // (Settings shows what a look found by itself, so a look from there never depends on this.)
+    if new {
+        let _ = app.emit(EVENT_AVAILABLE, &announced);
+    }
+    Ok(CheckResult { message, available: Some(announced) })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -402,22 +476,18 @@ async fn ensure_downloaded(app: &AppHandle) -> Result<()> {
     let updates = app.state::<Updates>();
     let update = match &*lock(&updates.found) {
         None => return Err(Error::update("There is no update to install. Look for updates under Settings → About.")),
-        Some(Found::Real { bytes: Some(_), .. } | Found::Simulated { downloaded: true, .. }) => return Ok(()),
-        Some(Found::Real { update, .. }) => Some((**update).clone()),
-        Some(Found::Simulated { .. }) => None,
+        // Commits aren't downloaded: they are already in the checkout's git, from the last look.
+        Some(Found::Branch(_) | Found::Real { bytes: Some(_), .. }) => return Ok(()),
+        Some(Found::Real { update, .. }) => (**update).clone(),
     };
     if updates.downloading.swap(true, Ordering::SeqCst) {
         return Err(Error::update("The update is already being downloaded"));
     }
-    let result = match &update {
-        Some(update) => download(app, update).await,
-        None => simulate_download(app).await,
-    };
+    let result = download(app, &update).await;
     updates.downloading.store(false, Ordering::SeqCst);
     let bytes = result?;
-    match (&mut *lock(&updates.found), update) {
-        (Some(Found::Real { info, bytes: slot, .. }), Some(update)) if info.version == update.version => *slot = Some(bytes),
-        (Some(Found::Simulated { downloaded, .. }), None) => *downloaded = true,
+    match &mut *lock(&updates.found) {
+        Some(Found::Real { info, bytes: slot, .. }) if info.version == update.version => *slot = Some(bytes),
         // A newer check replaced the update meanwhile: the next try downloads that one.
         _ => return Err(Error::update("A newer update was found meanwhile. Try again to install that one.")),
     }
@@ -443,21 +513,6 @@ async fn download(app: &AppHandle, update: &tauri_plugin_updater::Update) -> Res
         .map_err(|e| Error::update(install_failure(&e)))
 }
 
-/// A pretend download, for a development build: the progress the window shows, over about a second and a half.
-async fn simulate_download(app: &AppHandle) -> Result<Vec<u8>> {
-    let app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let total = 24 * 1024 * 1024;
-        for step in 1..=12u64 {
-            thread::sleep(Duration::from_millis(120));
-            let _ = app.emit(EVENT_PROGRESS, Progress { downloaded: total * step / 12, total: Some(total) });
-        }
-    })
-    .await
-    .map_err(|e| Error::update(format!("The download stopped unexpectedly: {e}")))?;
-    Ok(Vec::new())
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum InstallStep {
@@ -465,8 +520,9 @@ pub enum InstallStep {
     Wait { waiting_for: Vec<String> },
     /// Claude Code is running these prompts: wait for them, or stop them?
     Ask { runs: Vec<String> },
-    /// A development build's pretend update went through every step; a real one would have restarted here.
-    Simulated { version: String },
+    /// A development build brought the commits in. The toolchain is rebuilding when `rebuild` says so, and restarts the
+    /// app when it is done; otherwise the window reloads itself.
+    Applied { commits: usize, head: String, rebuild: bool },
 }
 
 /// The step to report when Ledger can't restart yet; `None` when it can.
@@ -479,9 +535,10 @@ fn not_yet(readiness: Readiness) -> Option<InstallStep> {
 }
 
 /// The last look and the install, on the main thread. The vault stays locked from here on, so a change being written
-/// finishes first and nothing is written after; no Claude Code run can start either. A real update ends with the
+/// finishes first and nothing is written after; no Claude Code run can start either. A release ends with the
 /// restart: on Windows the installer has already taken over (and starts Ledger again when it is done), on macOS and
-/// Linux the new version is in place and is started here.
+/// Linux the new version is in place and is started here. New commits on a development build's branch end with the
+/// fast-forward: restarting is the toolchain's job (see `devupdates`), so the hold is let go and the window told.
 fn install_on_main_thread(app: &AppHandle, choice: RunsChoice) -> Result<InstallStep> {
     let state = app.state::<App>();
     let _vault = state.lock();
@@ -499,9 +556,16 @@ fn install_on_main_thread(app: &AppHandle, choice: RunsChoice) -> Result<Install
     let found = lock(&updates.found);
     let installed = match &*found {
         Some(Found::Real { update, bytes: Some(bytes), .. }) => update.install(bytes).map_err(|e| Error::update(install_failure(&e))),
-        Some(Found::Simulated { info, .. }) => {
+        Some(Found::Branch(update)) => {
+            let applied = match devupdates::checkout() {
+                Some(root) => devupdates::apply(&RepoGit { root, runner: &OsRunner }, update),
+                None => Err(Error::update(NO_CHECKOUT)),
+            };
+            drop(found);
             claude_code::release_hold(app);
-            return Ok(InstallStep::Simulated { version: info.version.clone() });
+            let applied = applied?;
+            *lock(&updates.found) = None;
+            return Ok(InstallStep::Applied { commits: applied.commits, head: applied.head, rebuild: applied.rebuild });
         }
         _ => Err(Error::update("The update isn't downloaded yet. Try again.")),
     };
@@ -520,11 +584,13 @@ pub struct UpdateView {
     pub current_version: String,
     /// Look by itself shortly after starting and every few hours.
     pub automatic: bool,
-    /// Why this build doesn't look for updates, if it doesn't.
+    /// Why this build can't look for anything newer, if it can't.
     pub unavailable: Option<String>,
-    /// A development build, which can simulate an update.
+    /// A development build, which follows its git branch instead of the releases.
     pub dev_build: bool,
-    pub available: Option<UpdateInfo>,
+    /// The branch it follows, as `origin/main`, once a look has found it.
+    pub following: Option<String>,
+    pub available: Option<Announced>,
     pub checked_at: Option<String>,
     /// Where the choice is kept.
     pub config_file: String,
@@ -537,7 +603,8 @@ fn view(app: &AppHandle) -> UpdateView {
         automatic: settings::load_config(&updates.config_dir).updates.automatic,
         unavailable: unavailable(app).map(str::to_string),
         dev_build: !BUILT_IN,
-        available: lock(&updates.found).as_ref().map(|f| f.info().clone()),
+        following: lock(&updates.following).clone(),
+        available: lock(&updates.found).as_ref().map(Found::announced),
         checked_at: lock(&updates.checked_at).clone(),
         config_file: updates.config_dir.join("config.json").display().to_string(),
     }
@@ -554,26 +621,10 @@ pub fn save_update_settings(app: AppHandle, automatic: bool) -> Result<UpdateVie
     Ok(view(&app))
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CheckResult {
-    pub available: Option<UpdateInfo>,
-    pub message: String,
-}
-
 /// Looks for an update now, whether or not automatic checks are on; what went wrong is said.
 #[tauri::command]
 pub async fn check_for_updates(app: AppHandle) -> Result<CheckResult> {
-    if !BUILT_IN {
-        let available = lock(&app.state::<Updates>().found).as_ref().map(|f| f.info().clone());
-        return Ok(CheckResult { available, message: format!("{DEV_BUILD} Simulate one below to see how an update looks.") });
-    }
-    let available = check(&app).await?;
-    let message = match &available {
-        Some(info) => format!("Ledger {} is available.", info.version),
-        None => format!("You have the newest version, Ledger {}.", app.package_info().version),
-    };
-    Ok(CheckResult { available, message })
+    check(&app).await
 }
 
 /// Installs the update and restarts, once that cuts nothing off. Called again while the answer is to wait; the
@@ -602,34 +653,4 @@ pub async fn install_update(app: AppHandle, choice: RunsChoice) -> Result<Instal
         .await
         .map_err(|e| Error::update(format!("The update stopped unexpectedly: {e}")))?
         .map_err(|_| Error::update("The update stopped unexpectedly"))?
-}
-
-/// The next version a simulated update pretends to be.
-pub fn simulated_version(current: &str, major: bool) -> String {
-    let mut parts = current.trim_start_matches('v').split(['-', '+']).next().unwrap_or_default().split('.').map(|p| p.parse::<u64>().unwrap_or(0));
-    let (x, y) = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
-    if major { format!("{}.0.0", x + 1) } else { format!("{x}.{}.0", y + 1) }
-}
-
-/// Release notes for a simulated update, written like the release script writes them.
-pub fn simulated_notes(major: bool) -> String {
-    let breaking = "### Breaking changes\n\n- **sync:** re-enter your GitHub token under Settings → Sync to GitHub: it is now kept per vault ([a1b2c3d](https://github.com/openledger-nl/ledger/commits))\n\n";
-    format!(
-        "{}### Features\n\n- **board:** drag cards between columns ([d4e5f6a](https://github.com/openledger-nl/ledger/commits))\n- **updates:** install new releases from inside the app ([b7c8d9e](https://github.com/openledger-nl/ledger/commits))\n\n### Fixes\n\n- **search:** find words with accents when typed without them ([f0a1b2c](https://github.com/openledger-nl/ledger/commits))",
-        if major { breaking } else { "" }
-    )
-}
-
-/// Development builds only: pretend a release was found, so the notice and installing can be tried in a sandbox.
-#[tauri::command]
-pub fn simulate_update(app: AppHandle, major: bool) -> Result<UpdateInfo> {
-    if BUILT_IN {
-        return Err(Error::update("Only a development build can simulate an update"));
-    }
-    let current = app.package_info().version.to_string();
-    let notes = simulated_notes(major);
-    let info = update_info(&simulated_version(&current, major), &current, Some(&ids::now()), Some(&notes), true);
-    *lock(&app.state::<Updates>().found) = Some(Found::Simulated { info: info.clone(), downloaded: false });
-    let _ = app.emit(EVENT_AVAILABLE, &info);
-    Ok(info)
 }

@@ -582,6 +582,12 @@ details.more p { margin: 0; }
 .un-notes { font-size: 13px; }
 .un-notes .md h3, .un-breaking .md h3 { font-size: 12px; font-weight: 700; color: var(--muted); margin: 0.9em 0 0.3em; }
 .un-foot { display: flex; gap: 8px; flex-wrap: wrap; }
+.un-branch { display: flex; flex-direction: column; gap: 12px; font-size: 13.5px; }
+.un-branch p { margin: 0; }
+.un-branch p .lucide-icon { vertical-align: -2px; color: var(--accent); }
+.un-commits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; overscroll-behavior: contain; font-size: 13px; }
+.un-commits li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.un-commits code { color: var(--muted); flex-shrink: 0; }
 .un-status { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--muted); }
 .un-status .dot { display: inline-block; margin-right: 4px; }
 .un-progress { height: 6px; border-radius: 999px; background: var(--card-2); overflow: hidden; }
