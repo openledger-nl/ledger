@@ -54,6 +54,17 @@ export function ago(iso: string): string {
 	return date(iso);
 }
 
+/** The moment a deliverable is dated by: when its version went to Portflow, else when its newest version was published,
+ *  else when the file last changed (a file's time also changes when it is synced or checked out, so it comes last). */
+export function deliverableTime(d: { modified: string; latestAt?: string | null; delivered?: { number: number; at: string } | null }): {
+	at: string;
+	title: string;
+} {
+	if (d.delivered) return { at: d.delivered.at, title: `v${d.delivered.number} delivered to Portflow ${ago(d.delivered.at)}` };
+	if (d.latestAt) return { at: d.latestAt, title: `Newest version published ${ago(d.latestAt)}` };
+	return { at: d.modified, title: `Changed ${ago(d.modified)}` };
+}
+
 /** A timestamp as milliseconds, for comparing; 0 when it isn't one. */
 export const stamp = (iso: string) => new Date(iso).getTime() || 0;
 

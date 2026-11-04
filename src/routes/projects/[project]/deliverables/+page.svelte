@@ -3,7 +3,7 @@
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
 	import { api } from '$lib/api';
 	import { deliverableUrl, formatSize, snapshotPath } from '$lib/actions';
-	import { ago, plural } from '$lib/format';
+	import { ago, deliverableTime, plural } from '$lib/format';
 	import { attempt, refresh } from '$lib/ui.svelte';
 	import type { PageData } from './$types';
 
@@ -89,13 +89,14 @@
 								{:else}
 									<span class="badge draft">Draft</span>
 								{/if}
+								{#if d.delivered}<span class="badge accent" title={deliverableTime(d).title}>v{d.delivered.number} in Portflow</span>{/if}
 								{#if d.mmm}<MmmBadge level={d.mmm} />{/if}
 								{#if !d.exists}<span class="badge">live file removed</span>{/if}
 								{#if d.openFeedback}<span class="badge draft">{d.openFeedback} open</span>{/if}
 							</span>
 							<span class="doc-space">{plural(d.promptCount, 'prompt')}</span>
 							<span class="badge type">{KIND[d.kind]} · {formatSize(d.size)}</span>
-							<span class="doc-date">{d.exists ? ago(d.modified) : ''}</span>
+							<span class="doc-date" title={deliverableTime(d).title}>{d.exists || d.latestAt ? ago(deliverableTime(d).at) : ''}</span>
 						</a>
 					{:else}
 						<div class="hint">Nothing matches “{filter}”.</div>

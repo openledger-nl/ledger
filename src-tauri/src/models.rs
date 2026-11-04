@@ -197,6 +197,18 @@ pub struct DeliverableSummary {
     pub open_feedback: i64,
     /// The AI-use (MMM) label of the newest version that has one.
     pub mmm: Option<String>,
+    /// When the newest published version was made (its record's time; the file's otherwise).
+    pub latest_at: Option<String>,
+    /// The newest version of the evidence item it is in that is in Portflow, and when it was delivered there.
+    pub delivered: Option<Delivered>,
+}
+
+/// A version delivered to Portflow: its number (Ledger's major) and when Portflow got it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Delivered {
+    pub number: i64,
+    pub at: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

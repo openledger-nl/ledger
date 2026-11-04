@@ -227,6 +227,10 @@ export interface DeliverableSummary {
 	openFeedback: number;
 	/** The AI-use label of the newest version that has one. */
 	mmm: MmmLevel | null;
+	/** When the newest published version was made. */
+	latestAt: string | null;
+	/** The newest version of its evidence item that is in Portflow (Portflow on only), and when it was delivered there. */
+	delivered: { number: number; at: string } | null;
 }
 
 export interface DeliverablePrompt {

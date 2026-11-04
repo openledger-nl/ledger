@@ -11,7 +11,7 @@
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
 	import { deliverableTarget, deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
-	import { ago, newest } from '$lib/format';
+	import { ago, deliverableTime, newest } from '$lib/format';
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { drawer, sync } from '$lib/ui.svelte';
@@ -98,7 +98,7 @@
 		newest(projects.flatMap((project) => project.threads.map((thread) => ({ thread, project }))), (x) => x.thread.lastActivity).slice(0, LATEST)
 	);
 	const latestDeliverables = $derived(
-		newest(projects.flatMap((project) => (deliverables[project.slug] ?? []).map((d) => ({ d, project }))), (x) => x.d.modified).slice(0, LATEST)
+		newest(projects.flatMap((project) => (deliverables[project.slug] ?? []).map((d) => ({ d, project }))), (x) => deliverableTime(x.d).at).slice(0, LATEST)
 	);
 
 	// Reflect an open search in the box, so refining it is one edit away.

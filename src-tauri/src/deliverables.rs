@@ -12,7 +12,7 @@ use rusqlite::{Connection, params};
 
 use crate::db::{query_all, query_opt};
 use crate::error::{Error, Result};
-use crate::models::{Bump, DeliverableSummary, DeliverableView, PublishChoices};
+use crate::models::{Bump, Delivered, DeliverableSummary, DeliverableView, PublishChoices};
 use crate::posts::{self, AddOptions};
 use crate::provenance::{self, Origin};
 use crate::{feedback, frontmatter, ids, markdown, projects, prompts, uploads};
@@ -182,6 +182,31 @@ pub fn list(conn: &Connection, project: &str) -> Result<Vec<DeliverableSummary>>
         }
     }
 
+    // When each published version was made, from its record (a file's time changes when it is synced or checked out).
+    let made: HashMap<(String, String), String> = query_all::<(String, String, String), _>(
+        conn,
+        "SELECT deliverable_path, version, created_at FROM version_records WHERE project_slug = ?1",
+        [project],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?
+    .into_iter()
+    .map(|(path, version, at)| ((path, version), at))
+    .collect();
+    // The newest version in Portflow of the evidence item each file is in (none while Portflow is off: no evidence then).
+    let mut delivered: HashMap<String, Delivered> = HashMap::new();
+    for (path, number, at) in query_all::<(String, i64, String), _>(
+        conn,
+        "SELECT f.path, v.number, v.created_at FROM evidence_files f
+         JOIN evidence_versions v ON v.project_slug = f.project_slug AND v.evidence_slug = f.evidence_slug
+         WHERE f.project_slug = ?1 AND v.portflow_version IS NOT NULL",
+        [project],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )? {
+        if delivered.get(&path).is_none_or(|d| number > d.number) {
+            delivered.insert(path, Delivered { number, at });
+        }
+    }
+
     let mut out: Vec<DeliverableSummary> = groups
         .into_iter()
         .map(|(base, mut group)| {
@@ -201,6 +226,8 @@ pub fn list(conn: &Connection, project: &str) -> Result<Vec<DeliverableSummary>>
                 prompt_count: prompt_counts.get(&base).copied().unwrap_or(0),
                 open_feedback: open_feedback.get(&base).copied().unwrap_or(0),
                 mmm: labels.get(&base).map(|(_, level)| level.clone()),
+                latest_at: group.snapshots.last().map(|s| made.get(&(base.clone(), s.2.clone())).cloned().unwrap_or_else(|| s.4.clone())),
+                delivered: delivered.remove(&base),
                 path: base,
             }
         })
