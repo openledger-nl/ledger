@@ -1833,6 +1833,26 @@ fn helper_process() {
             println!("<<{input}>>");
         }
         Ok("sleep") => thread::sleep(Duration::from_secs(120)),
+        #[cfg(unix)]
+        Ok("ignore-term") => {
+            unsafe extern "C" {
+                fn signal(signal: i32, handler: usize) -> usize;
+            }
+            // SAFETY: SIGTERM = 15 and SIG_IGN = 1 on our Unix targets; no callback or memory is accessed.
+            unsafe { signal(15, 1); }
+            fs::write(std::env::var(PIDFILE_ENV).unwrap(), std::process::id().to_string()).unwrap();
+            println!("ready");
+            io::stdout().flush().unwrap();
+            thread::sleep(Duration::from_secs(120));
+        }
+        #[cfg(unix)]
+        Ok("stubborn-tree") => {
+            let mut child = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "tests_claude_code::helper_process", "--nocapture"])
+                .env(HELPER_ENV, "ignore-term")
+                .spawn().unwrap();
+            let _ = child.wait();
+        }
         Ok("tree") => {
             let mut command = Command::new(std::env::current_exe().unwrap());
             command.args(["--exact", "tests_claude_code::helper_process", "--nocapture"]).env(HELPER_ENV, "sleep");
@@ -1916,6 +1936,44 @@ fn cancelling_a_real_process_stops_the_processes_it_started_too() {
     assert!(!exit.success(), "{exit:?}");
     wait_until("the grandchild to be gone", || !alive(child));
     spawned.process.kill_tree(); // once it is over, stopping it again does nothing
+}
+
+#[cfg(unix)]
+#[test]
+fn cancellation_kills_a_term_resistant_descendant_after_its_leader_exits() {
+    let dir = tempdir().unwrap();
+    let pidfile = dir.path().join("child.pid");
+    let mut spec = helper_spec("stubborn-tree", "", dir.path());
+    spec.env.push((PIDFILE_ENV.into(), pidfile.clone().into()));
+    let spawned = OsRunner.spawn(&spec).unwrap();
+    let mut stdout = BufReader::new(spawned.stdout);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        assert!(stdout.read_line(&mut line).unwrap() > 0, "the descendant ended before it was ready");
+        if line.trim() == "ready" {
+            break;
+        }
+    }
+    let descendant: u32 = fs::read_to_string(pidfile).unwrap().parse().unwrap();
+    assert!(alive(descendant));
+
+    spawned.process.kill_tree();
+    let process = spawned.process.clone();
+    let (exit_tx, exit_rx) = mpsc::channel();
+    thread::spawn(move || { let _ = exit_tx.send(process.wait()); });
+    let (eof_tx, eof_rx) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = io::copy(&mut stdout, &mut io::sink());
+        let _ = eof_tx.send(());
+    });
+    let exit = exit_rx.recv_timeout(Duration::from_secs(10)).expect("cancellation finishes after its grace period").unwrap();
+    assert!(!exit.success(), "{exit:?}");
+    // The resistant descendant inherits stdout and never closes it. EOF proves it stopped, even on systems
+    // where the orphan remains a zombie briefly (and kill(pid, 0) would still report it as alive).
+    eof_rx.recv_timeout(Duration::from_secs(5)).expect("the resistant descendant was killed and released stdout");
+    assert_eq!(spawned.process.wait().unwrap(), exit);
+    spawned.process.kill_tree(); // the reaped leader's group must never be signalled again
 }
 
 #[test]
@@ -2068,6 +2126,28 @@ fn native_runs_require_terminal_success_and_keep_provider_and_stdin() {
     }
 }
 
+
+#[cfg(unix)]
+#[test]
+fn prime_rejects_a_non_utf8_working_directory_before_spawning() {
+    use crate::claude_code::config::Provider;
+    use std::os::unix::ffi::OsStringExt;
+
+    let f = Fixture::new();
+    let rig = Rig::new();
+    let mut request = f.request();
+    request.cwd.push(OsString::from_vec(b"project-\xff".to_vec()));
+    fs::create_dir_all(&request.cwd).unwrap();
+    let settings = ClaudeSettings {
+        provider: Provider::Prime,
+        permission_mode: PermissionMode::Trusted,
+        confine: false,
+        ..Default::default()
+    };
+    let error = rig.runs.start(request, f.context(settings), &rig.search).unwrap_err();
+    assert!(error.to_string().contains("UTF-8 working directory"), "{error}");
+    assert_eq!(rig.runner.spawned(), 0);
+}
 
 #[test]
 fn windows_prime_discovery_chooses_cmd_instead_of_the_posix_launcher() {
