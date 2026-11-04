@@ -13,6 +13,7 @@
 	import { ago, newest } from '$lib/format';
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
+	import { sidebar } from '$lib/sidebar.svelte';
 	import { drawer, sync } from '$lib/ui.svelte';
 	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
 	import Wordmark from '$lib/components/Wordmark.svelte';
@@ -152,7 +153,7 @@
 
 	<a class="nav-item" class:active={path === '/'} href="/"><span class="nav-ico"><House size={16} /></span>Home</a>
 
-	{#if latestThreads.length || latestDeliverables.length}
+	{#if sidebar.view !== 'projects' && (latestThreads.length || latestDeliverables.length)}
 		<div class="section-head"><span>Latest</span></div>
 		<nav class="space-list" aria-label="Latest">
 			{#if latestThreads.length}
@@ -188,64 +189,66 @@
 		</nav>
 	{/if}
 
-	<div class="section-head">
-		<span>Projects</span>
-		<button class="icon-btn" title="New project" aria-label="New project" onclick={newProjectFlow}><Plus size={16} /></button>
-	</div>
-	<nav class="space-list">
-		{#each projects as p (p.slug)}
-			{@const unfolded = open === p.slug}
-			<div class="folder-row" class:active={on(projectUrl(p.slug)) && !inThread && viewing === null}>
-				<button
-					class="folder-toggle"
-					aria-label={unfolded ? `Fold ${p.name}` : `Unfold ${p.name}`}
-					aria-expanded={unfolded}
-					onclick={() => toggle(p.slug)}
-				>
-					{#if unfolded}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
-				</button>
-				<a class="folder-link" href={projectUrl(p.slug)} onclick={(e) => choose(e, p.slug)}>
-					<span class="name">{p.name}</span>
-					<span class="count">{p.threads.length || ''}</span>
-				</a>
-			</div>
-			{#if unfolded}
-				<div class="folder-children">
-					<a class="tree-label" class:active={path === `${projectUrl(p.slug)}/threads`} href="{projectUrl(p.slug)}/threads">
-						Threads<span class="count">{p.threads.length || ''}</span>
+	{#if sidebar.view !== 'latest'}
+		<div class="section-head">
+			<span>Projects</span>
+			<button class="icon-btn" title="New project" aria-label="New project" onclick={newProjectFlow}><Plus size={16} /></button>
+		</div>
+		<nav class="space-list">
+			{#each projects as p (p.slug)}
+				{@const unfolded = open === p.slug}
+				<div class="folder-row" class:active={on(projectUrl(p.slug)) && !inThread && viewing === null}>
+					<button
+						class="folder-toggle"
+						aria-label={unfolded ? `Fold ${p.name}` : `Unfold ${p.name}`}
+						aria-expanded={unfolded}
+						onclick={() => toggle(p.slug)}
+					>
+						{#if unfolded}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+					</button>
+					<a class="folder-link" href={projectUrl(p.slug)} onclick={(e) => choose(e, p.slug)}>
+						<span class="name">{p.name}</span>
+						<span class="count">{p.threads.length || ''}</span>
 					</a>
-					{#each orderThreads(p.threads, listOrder.order) as t (t.slug)}
-						<a class="tree-item" class:active={path === threadUrl(p.slug, t.slug)} href={threadUrl(p.slug, t.slug)}>
-							<span class="dot"></span>
-							<span class="name">{t.title}</span>
-							<span class="count">{t.postCount || ''}</span>
+				</div>
+				{#if unfolded}
+					<div class="folder-children">
+						<a class="tree-label" class:active={path === `${projectUrl(p.slug)}/threads`} href="{projectUrl(p.slug)}/threads">
+							Threads<span class="count">{p.threads.length || ''}</span>
 						</a>
-					{:else}
-						<div class="space-empty">No threads yet</div>
-					{/each}
-					<button class="tree-item add" onclick={() => newThreadFlow(p.slug)}><Plus size={14} />New thread</button>
-
-					<a class="tree-label" class:active={path === `${projectUrl(p.slug)}/deliverables`} href="{projectUrl(p.slug)}/deliverables">
-						Deliverables<span class="count">{p.deliverableCount || ''}</span>
-					</a>
-					{#if deliverables[p.slug]}
-						{#each byPath(deliverables[p.slug]) as d (d.path)}
-							{@const target = deliverableTarget(d)}
-							<a class="tree-item" class:active={viewing === target || viewing === d.path} href={deliverableUrl(p.slug, target)} title={d.path}>
-								<span class="file"><FileText size={13} /></span>
-								<span class="name">{d.name}</span>
+						{#each orderThreads(p.threads, listOrder.order) as t (t.slug)}
+							<a class="tree-item" class:active={path === threadUrl(p.slug, t.slug)} href={threadUrl(p.slug, t.slug)}>
+								<span class="dot"></span>
+								<span class="name">{t.title}</span>
+								<span class="count">{t.postCount || ''}</span>
 							</a>
 						{:else}
-							<div class="space-empty">No deliverables yet</div>
+							<div class="space-empty">No threads yet</div>
 						{/each}
-					{/if}
-					<button class="tree-item add" onclick={() => newDeliverableFlow(p.slug)}><Plus size={14} />New deliverable</button>
-				</div>
-			{/if}
-		{:else}
-			<div class="space-empty">No projects yet</div>
-		{/each}
-	</nav>
+						<button class="tree-item add" onclick={() => newThreadFlow(p.slug)}><Plus size={14} />New thread</button>
+
+						<a class="tree-label" class:active={path === `${projectUrl(p.slug)}/deliverables`} href="{projectUrl(p.slug)}/deliverables">
+							Deliverables<span class="count">{p.deliverableCount || ''}</span>
+						</a>
+						{#if deliverables[p.slug]}
+							{#each byPath(deliverables[p.slug]) as d (d.path)}
+								{@const target = deliverableTarget(d)}
+								<a class="tree-item" class:active={viewing === target || viewing === d.path} href={deliverableUrl(p.slug, target)} title={d.path}>
+									<span class="file"><FileText size={13} /></span>
+									<span class="name">{d.name}</span>
+								</a>
+							{:else}
+								<div class="space-empty">No deliverables yet</div>
+							{/each}
+						{/if}
+						<button class="tree-item add" onclick={() => newDeliverableFlow(p.slug)}><Plus size={14} />New deliverable</button>
+					</div>
+				{/if}
+			{:else}
+				<div class="space-empty">No projects yet</div>
+			{/each}
+		</nav>
+	{/if}
 
 	<div class="spacer"></div>
 

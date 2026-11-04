@@ -20,6 +20,7 @@ import LogSettings from './LogSettings.svelte';
 import OrderSettings from './OrderSettings.svelte';
 import ScreenshotSettings from './ScreenshotSettings.svelte';
 import SemesterSettings from './SemesterSettings.svelte';
+import SidebarSettings from './SidebarSettings.svelte';
 import TemplateSettings from './TemplateSettings.svelte';
 import ThemeSettings from './ThemeSettings.svelte';
 import TrelloSettings from './TrelloSettings.svelte';
@@ -57,6 +58,7 @@ export const panels: Panel[] = [
 	{ id: 'templates', group: 'templates', title: 'Templates', keywords: 'template prompt guiding questions skeleton deliverable shared every project global', component: TemplateSettings },
 	{ id: 'theme', group: 'visual', title: 'Theme', keywords: 'colours colors dark light night appearance look accent', component: ThemeSettings },
 	{ id: 'order', group: 'visual', title: 'Order', keywords: 'sort newest oldest first lists posts threads feedback versions', component: OrderSettings },
+	{ id: 'sidebar', group: 'visual', title: 'Sidebar', keywords: 'sidebar left bar side panel latest recent projects tree navigation show hide customise customize', component: SidebarSettings },
 	{ id: 'vault', group: 'sync', title: 'Vault', keywords: 'folder location path obsidian markdown reload disk files switch', component: VaultSettings },
 	{ id: 'github', group: 'sync', title: 'Sync to GitHub', keywords: 'repository repo branch access token private push pull status sync now', component: GitHubSettings },
 	{ id: 'encryption', group: 'sync', title: 'Encryption', keywords: 'encrypt key recovery aes secret import export generate', component: EncryptionSettings },
