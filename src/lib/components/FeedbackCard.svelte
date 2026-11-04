@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
-	import { baseName, deliverableUrl, feedbackPromptDraft, threadUrl } from '$lib/actions';
+	import { baseName, deliverableUrl, liveDeliverable, threadUrl } from '$lib/actions';
 	import { time } from '$lib/format';
 	import { attempt, confirmDialog, refresh } from '$lib/ui.svelte';
 	import type { Feedback } from '$lib/types';
@@ -92,7 +92,8 @@
 		{project}
 		{thread}
 		prompt={null}
-		draft={feedbackPromptDraft(feedback)}
+		deliverable={liveDeliverable(feedback.deliverablePath, feedback.deliverableVersion)}
+		feedback={[feedback.id]}
 		onsaved={onDeliverable ? (saved) => goto(`${threadUrl(project, thread)}?item=pr-${saved.id}`) : undefined}
 		onclose={() => (prompting = false)}
 	/>

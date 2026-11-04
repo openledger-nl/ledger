@@ -64,8 +64,11 @@ export interface Post {
 }
 
 export interface PromptDeliverable {
+	/** The live path: a prompt belongs to the deliverable, not to one of its versions. */
 	path: string;
 	exists: boolean;
+	/** The versions published so far, oldest first. */
+	versions: string[];
 }
 
 export interface Prompt {
@@ -74,13 +77,34 @@ export interface Prompt {
 	title: string;
 	templateId: string | null;
 	templateName: string | null;
+	/** What is filled in for the person, from a template or from feedback; they can edit it. */
+	base: string;
+	baseHtml: string;
+	/** What the person adds, in their own words. */
 	body: string;
 	html: string;
 	createdAt: string;
 	updatedAt: string;
 	deliverables: PromptDeliverable[];
+	/** The pieces of feedback (ids) it was written to resolve. */
+	feedback: string[];
 	/** The times it was run with Claude Code, newest first. */
 	runs: ClaudeRunRecord[];
+}
+
+/** What a new prompt is made of. It has no title: Claude Code names it from what it asks. */
+export interface NewPromptInput {
+	/** Filled in from the template or the feedback (`suggestPromptBase`), edited or not. */
+	base: string;
+	/** What the person adds. */
+	body: string;
+	templateId: string | null;
+	/** An existing deliverable the prompt asks changes to. */
+	deliverable: string | null;
+	/** The name of a new deliverable to start for it; null leaves the naming to whatever produces it. */
+	newDeliverable: string | null;
+	/** The pieces of feedback (ids) it is meant to resolve. */
+	feedback: string[];
 }
 
 /** What the New prompt dialog starts from when it is opened for something other than a blank prompt. */
@@ -89,6 +113,8 @@ export interface PromptDraft {
 	body: string;
 	/** An existing deliverable the prompt asks for changes to, by its live path; null leaves the choice at "a new deliverable". */
 	deliverable: string | null;
+	/** The pieces of feedback (ids) the prompt is written to resolve. */
+	feedback?: string[];
 	/** Said at the top of the dialog: where the draft came from. */
 	note: string;
 }

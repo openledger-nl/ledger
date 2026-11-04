@@ -57,6 +57,36 @@ fn fill_given_on(conn: &Connection, project: &str, items: &mut [FeedbackView]) -
     Ok(())
 }
 
+/// The feedback with this id in the project.
+pub fn find(conn: &Connection, project: &str, id: &str) -> Result<FeedbackView> {
+    let mut item = query_opt(conn, &format!("SELECT {COLUMNS} FROM feedback WHERE project_slug = ?1 AND id = ?2"), [project, id], from_row)?
+        .ok_or_else(|| Error::not_found("Feedback not found"))?;
+    fill_given_on(conn, project, std::slice::from_mut(&mut item))?;
+    Ok(item)
+}
+
+/// A piece of feedback as a prompt says it: which version it was given on (and where that version is, so it can be read),
+/// the thread it was written in, the passage it is about, and what was said.
+pub fn block(conn: &Connection, project: &str, item: &FeedbackView) -> Result<String> {
+    let live = deliverables::split_version(&item.deliverable_path).0;
+    let on = match &item.given_on {
+        Some(version) => format!("v{version} (deliverables/{})", deliverables::snapshot_path(&live, version)),
+        None => format!("the live file (deliverables/{live}), as it stands"),
+    };
+    let thread = query_opt(conn, "SELECT title FROM threads WHERE project_slug = ?1 AND slug = ?2", [project, item.thread_slug.as_str()], |r| r.get::<_, String>(0))?;
+    let from = thread.map(|t| format!(", from the thread “{t}”")).unwrap_or_default();
+    let passage = item.quote.as_ref().map(|q| format!("\n\n> {q}")).unwrap_or_default();
+    Ok(format!("### On {on}{from}{passage}\n\n{}", item.body.trim()))
+}
+
+/// Feedback with this id must be in the project.
+pub fn require(conn: &Connection, project: &str, id: &str) -> Result<()> {
+    match query_opt(conn, "SELECT 1 FROM feedback WHERE project_slug = ?1 AND id = ?2", [project, id], |r| r.get::<_, i64>(0))? {
+        Some(_) => Ok(()),
+        None => Err(Error::not_found("Feedback not found")),
+    }
+}
+
 /// Oldest first.
 pub fn list_for_thread(conn: &Connection, project: &str, thread: &str) -> Result<Vec<FeedbackView>> {
     let mut items = query_all(

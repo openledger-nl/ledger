@@ -281,7 +281,8 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 .meta { display: flex; gap: 8px; align-items: baseline; font-size: 12px; }
 .meta .time { font-weight: 600; }
 .meta .file { color: var(--faint); }
-.actions { display: flex; gap: 14px; }
+.actions { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.actions .link { white-space: nowrap; }
 .quote {
 	display: flex; flex-direction: column; gap: 2px; background: var(--accent-soft); border-left: 3px solid var(--accent);
 	border-radius: 6px; padding: 6px 10px; cursor: pointer; text-align: left; border-top: 0; border-right: 0; border-bottom: 0; color: inherit;
@@ -290,6 +291,9 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 .quote .qtext { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quote.gone { cursor: default; background: var(--card-2); border-left-color: var(--line); }
 .quote.gone .qhead { color: var(--faint); font-style: italic; }
+/* A prompt on a deliverable's page: a long one is clamped, and the feedback it covers sits in chips. */
+.pc-body.clamped { max-height: 9.5em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.chip .chip-go { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; max-width: 22em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qcard { border: 0; background: var(--accent-soft); }
 .qlabel { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
 .answer { background: var(--card); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
@@ -627,6 +631,23 @@ details.more p { margin: 0; }
 .doc-body > .page { min-width: 0; }
 .side-window { width: 380px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; overscroll-behavior: contain; padding: 16px 18px 28px; display: flex; flex-direction: column; gap: 14px; }
 .side-scrim { display: none; }
+/* The prompt dialog: the base prompt is folded away until it is wanted; a prompt's card keeps it folded too. */
+.base-field { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--card); }
+.base-field > summary { cursor: pointer; font-size: 13px; font-weight: 500; }
+.base-field > summary .hint { margin-left: 6px; font-weight: 400; }
+.pick-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pc-base { font-size: 12.5px; color: var(--muted); }
+.pc-base > summary { cursor: pointer; font-size: 12px; color: var(--faint); }
+.pc-base[open] > summary { margin-bottom: 6px; }
+.link.more { display: inline-flex; align-items: center; padding: 0 2px; }
+.pick-list { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; }
+.pick-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); cursor: pointer; }
+.pick-row:hover { border-color: var(--accent); }
+.pick-row input { margin-top: 3px; accent-color: var(--accent); }
+.pick-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pick-head { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.pick-quote { font-size: 12px; font-style: italic; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-body { font-size: 13px; overflow-wrap: anywhere; }
 .rule { border: 0; border-top: 1px solid var(--line); margin: 2px 0; width: 100%; }
 .note-from { font-size: 12.5px; margin-top: 2px; }
 

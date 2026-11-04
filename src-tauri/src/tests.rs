@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 use crate::error::Error;
-use crate::models::{Bump, Criterion, Quote, SemesterDraft, Sprint, StoryDraft, StoryUpdate, TaskUpdate, Vacation};
+use crate::models::{BaseSpec, Bump, Criterion, NewPrompt, Quote, SemesterDraft, Sprint, StoryDraft, StoryUpdate, TaskUpdate, Vacation};
 use crate::posts::AddOptions;
 use crate::{activity, board, db, deliverables, semesters, feedback, markdown, posts, projects, prompts, search, stories, templates, threads, uploads};
 
@@ -161,7 +161,7 @@ fn a_thread_summary_counts_everything_in_it_and_orders_by_latest_activity() {
     let (p, quiet) = setup(&c);
     let busy = threads::create(&c, &p, "Busy").unwrap().slug;
     posts::add(&c, &p, &busy, "one", AddOptions::default()).unwrap();
-    prompts::create(&c, &p, &busy, "", "write the thing", None).unwrap();
+    prompts::create_titled(&c, &p, &busy, "", "write the thing", None).unwrap();
 
     let list = threads::list(&c, &p).unwrap();
     assert_eq!((list[0].slug.as_str(), list[0].post_count, list[0].prompt_count), (busy.as_str(), 1, 1));
@@ -236,7 +236,7 @@ fn a_prompt_from_a_template_seeds_its_questions_once_and_comes_after_them() {
     let (p, t) = setup(&c);
     templates::create(&c, "", "Interview", "", &["Who?".into(), "Why?".into()], "# Interview\n").unwrap();
 
-    let prompt = prompts::create(&c, &p, &t, "Summary of the call", "  Write up the call with Ana.  ", Some("interview")).unwrap();
+    let prompt = prompts::create_titled(&c, &p, &t, "Summary of the call", "  Write up the call with Ana.  ", Some("interview")).unwrap();
     assert_eq!((prompt.body.as_str(), prompt.template_name.as_deref()), ("Write up the call with Ana.", Some("Interview")));
 
     let seeded = posts::list(&c, &p, &t).unwrap();
@@ -249,12 +249,15 @@ fn a_prompt_from_a_template_seeds_its_questions_once_and_comes_after_them() {
     templates::update(&c, "", "interview", None, None, Some(&["Something else?".into()]), None).unwrap();
     assert_eq!(posts::list(&c, &p, &t).unwrap().len(), 2);
 
-    assert_eq!(message(prompts::create(&c, &p, &t, "", "   ", None).unwrap_err()), "Say what you want delivered");
-    assert_eq!(message(prompts::create(&c, &p, &t, "", "x", Some("nope")).unwrap_err()), "Template not found");
+    assert_eq!(message(prompts::create_titled(&c, &p, &t, "", "   ", None).unwrap_err()), "Say what you want delivered");
+    assert_eq!(message(prompts::create_titled(&c, &p, &t, "", "x", Some("nope")).unwrap_err()), "Template not found");
     assert_eq!(posts::list(&c, &p, &t).unwrap().len(), 2, "a refused prompt seeds nothing");
 
-    let renamed = prompts::update(&c, &p, &t, &prompt.id, Some("Call summary"), Some("Write it shorter.")).unwrap();
-    assert_eq!((renamed.title.as_str(), renamed.body.as_str()), ("Call summary", "Write it shorter."));
+    let edited = prompts::update(&c, &p, &t, &prompt.id, None, Some("Write it shorter.")).unwrap();
+    assert_eq!((edited.title.as_str(), edited.body.as_str()), ("Summary of the call", "Write it shorter."), "editing what it asks doesn't rename it");
+    assert_eq!(message(prompts::update(&c, &p, &t, &prompt.id, Some(" "), Some(" ")).unwrap_err()), "Say what you want delivered");
+    prompts::set_title(&c, &p, &t, &prompt.id, "  Call\nnotes  ").unwrap();
+    assert_eq!(prompts::get(&c, &p, &t, &prompt.id).unwrap().title, "Call notes", "a name is one line");
     prompts::delete(&c, &p, &t, &prompt.id).unwrap();
     assert!(prompts::list(&c, &p, &t).unwrap().is_empty());
 }
@@ -265,22 +268,26 @@ fn a_prompt_can_be_made_for_an_existing_deliverable_or_for_a_new_one() {
     let (p, t) = setup(&c);
     deliverables::create(&c, &p, "Pricing brief", "# Pricing brief\n\nDraft.\n").unwrap();
 
-    // For an existing deliverable: it is linked, the way "Link existing" would.
-    let revise = prompts::create_linked(&c, &p, &t, "Revise it", "Tighten the pricing brief.", None, Some("pricing-brief.md")).unwrap();
+    let draft = |body: &str, deliverable: Option<&str>| NewPrompt { body: body.into(), deliverable: deliverable.map(str::to_string), ..Default::default() };
+
+    // For an existing deliverable: it is linked, the way "Link existing" would. It has no title to write: it is called by
+    // the start of what it asks, until it is named.
+    let revise = prompts::create(&c, &p, &t, &draft("Tighten the pricing brief.", Some("pricing-brief.md"))).unwrap();
+    assert_eq!(revise.title, "Tighten the pricing brief.");
     assert_eq!(revise.deliverables.iter().map(|d| (d.path.as_str(), d.exists)).collect::<Vec<_>>(), [("pricing-brief.md", true)]);
     assert_eq!(prompts::get(&c, &p, &t, &revise.id).unwrap().deliverables.len(), 1);
 
     // For a new one: nothing is linked until something is produced. A blank choice is the same as none.
     for none in [None, Some(""), Some("  ")] {
-        let fresh = prompts::create_linked(&c, &p, &t, "Another", "Write a new brief.", None, none).unwrap();
+        let fresh = prompts::create(&c, &p, &t, &draft("Write a new brief.", none)).unwrap();
         assert!(fresh.deliverables.is_empty(), "{none:?}");
     }
 
     // One that isn't there is refused before anything is written.
     let before = prompts::list(&c, &p, &t).unwrap().len();
-    assert_eq!(message(prompts::create_linked(&c, &p, &t, "", "x", None, Some("nope.md")).unwrap_err()), "Deliverable not found");
+    assert_eq!(message(prompts::create(&c, &p, &t, &draft("x", Some("nope.md"))).unwrap_err()), "Deliverable not found");
     assert_eq!(prompts::list(&c, &p, &t).unwrap().len(), before, "no prompt is left half made");
-    assert_eq!(message(prompts::create_linked(&c, &p, &t, "", "   ", None, Some("pricing-brief.md")).unwrap_err()), "Say what you want delivered");
+    assert_eq!(message(prompts::create(&c, &p, &t, &draft("   ", Some("pricing-brief.md"))).unwrap_err()), "Say what you want delivered");
 }
 
 // ---- deliverables -----------------------------------------------------------------------------------
@@ -316,7 +323,7 @@ fn a_prompts_deliverable_is_edited_published_and_announced_in_its_thread() {
     let c = conn();
     let dir = tempdir().unwrap();
     let (p, t) = setup(&c);
-    let prompt = prompts::create(&c, &p, &t, "", "write the plan", None).unwrap();
+    let prompt = prompts::create_titled(&c, &p, &t, "", "write the plan", None).unwrap();
 
     // The deliverable is a file; the prompt keeps the link.
     let made = deliverables::create(&c, &p, "Launch Plan", "").unwrap();
@@ -386,7 +393,7 @@ fn deliverables_can_be_started_from_a_prompts_template() {
     let c = conn();
     let (p, t) = setup(&c);
     templates::create(&c, "", "Brief", "", &[], "# Brief\n\n## Goal\n").unwrap();
-    let prompt = prompts::create(&c, &p, &t, "", "write the brief", Some("brief")).unwrap();
+    let prompt = prompts::create_titled(&c, &p, &t, "", "write the brief", Some("brief")).unwrap();
 
     let skeleton = templates::find(&c, &p, prompt.template_id.as_deref().unwrap()).unwrap().body;
     let made = deliverables::create(&c, &p, "Brief", &skeleton).unwrap();
@@ -483,6 +490,90 @@ fn feedback_on_the_live_file_is_given_on_the_version_published_after_it() {
     assert_eq!(given(&late.id).as_deref(), Some("1.1"));
     assert_eq!(given(&on_version.id).as_deref(), Some("1.0"), "feedback on a version stays on it");
     assert_eq!(feedback::list_for_thread(&c, &p, &t).unwrap().iter().filter(|f| f.given_on.is_some()).count(), 3, "the thread's own list says so too");
+}
+
+#[test]
+fn a_prompt_can_cover_several_pieces_of_feedback_and_start_a_named_deliverable() {
+    let c = conn();
+    let dir = tempdir().unwrap();
+    let (p, t) = setup(&c);
+    deliverables::create(&c, &p, "Plan", "# Plan\n\nText.\n").unwrap();
+    deliverables::publish(&c, dir.path(), &p, "plan.md", Bump::Major, None).unwrap();
+    let a = feedback::add(&c, &p, &t, "plan.md", "First point.", None).unwrap();
+    let b = feedback::add(&c, &p, &t, "plan@v1.0.md", "Second point.", None).unwrap();
+
+    // Two pieces of feedback in one prompt, which is about the deliverable whichever of its paths it is given by.
+    let draft = NewPrompt { body: "Fix both.".into(), deliverable: Some("plan@v1.0.md".into()), feedback: vec![a.id.clone(), b.id.clone()], ..Default::default() };
+    let prompt = prompts::create(&c, &p, &t, &draft).unwrap();
+    let linked: Vec<(&str, Vec<String>)> = prompt.deliverables.iter().map(|d| (d.path.as_str(), d.versions.clone())).collect();
+    assert_eq!(linked, [("plan.md", vec!["1.0".to_string()])], "linked to the file, which knows its versions");
+    assert_eq!(prompt.feedback, [a.id.clone(), b.id.clone()]);
+    assert_eq!(prompts::linked_to(&c, &p, "plan@v1.0.md").unwrap().len(), 1);
+
+    // More can be added, once each, and taken out again.
+    assert_eq!(prompts::attach_feedback(&c, &p, &t, &prompt.id, std::slice::from_ref(&b.id)).unwrap().feedback.len(), 2);
+    assert_eq!(prompts::detach_feedback(&c, &p, &t, &prompt.id, &a.id).unwrap().feedback, [b.id.clone()]);
+    assert_eq!(message(prompts::attach_feedback(&c, &p, &t, &prompt.id, &["nope".to_string()]).unwrap_err()), "Feedback not found");
+    // Deleting feedback takes it out of the prompt.
+    feedback::delete(&c, &p, &t, &b.id).unwrap();
+    assert!(prompts::get(&c, &p, &t, &prompt.id).unwrap().feedback.is_empty());
+
+    // A name starts a new file for the prompt; blank leaves the naming to whatever produces it.
+    let named = NewPrompt { body: "Write it.".into(), new_deliverable: Some("  Pricing brief.md ".into()), ..Default::default() };
+    let made = prompts::create(&c, &p, &t, &named).unwrap();
+    assert_eq!(made.deliverables.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(), ["pricing-brief.md"]);
+    assert!(deliverables::exists(&c, &p, "pricing-brief.md").unwrap());
+    let blank = NewPrompt { body: "Write it.".into(), new_deliverable: Some("   ".into()), ..Default::default() };
+    assert!(prompts::create(&c, &p, &t, &blank).unwrap().deliverables.is_empty());
+
+    // Nothing is made when something is wrong.
+    let before = prompts::list(&c, &p, &t).unwrap().len();
+    let both = NewPrompt { body: "x".into(), deliverable: Some("plan.md".into()), new_deliverable: Some("other".into()), ..Default::default() };
+    assert!(prompts::create(&c, &p, &t, &both).is_err());
+    let ghost = NewPrompt { body: "x".into(), feedback: vec!["nope".into()], ..Default::default() };
+    assert_eq!(message(prompts::create(&c, &p, &t, &ghost).unwrap_err()), "Feedback not found");
+    assert_eq!(prompts::list(&c, &p, &t).unwrap().len(), before);
+    assert_eq!(deliverables::list(&c, &p).unwrap().len(), 2, "no deliverable was started for a prompt that wasn't made");
+
+    // A version can't be what a prompt is linked to: asked for, it is the file that is.
+    let linked = prompts::link_deliverable(&c, &p, &t, &made.id, "plan@v1.0.md").unwrap();
+    assert_eq!(linked.deliverables.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(), ["pricing-brief.md", "plan.md"]);
+}
+
+#[test]
+fn feedback_goes_into_a_prompts_base_with_the_version_it_was_given_on() {
+    let c = conn();
+    let dir = tempdir().unwrap();
+    let (p, t) = setup(&c);
+    deliverables::create(&c, &p, "Plan", "# Plan\n").unwrap();
+    let passage = Quote { text: "Plan".into(), ..Default::default() };
+    let early = feedback::add(&c, &p, &t, "plan.md", "Tighten this.", Some(&passage)).unwrap();
+    deliverables::publish(&c, dir.path(), &p, "plan.md", Bump::Major, None).unwrap();
+    let late = feedback::add(&c, &p, &t, "plan.md", "Add owners.", None).unwrap();
+
+    // What a new prompt's base is filled in with: each piece says which version it was given on, and where that version is.
+    let spec = BaseSpec { template_id: None, feedback: vec![early.id.clone(), late.id.clone()] };
+    let base = prompts::suggest_base(&c, &p, &spec).unwrap();
+    assert!(base.starts_with("Please resolve the following feedback on plan.md."), "{base}");
+    assert!(base.contains("### On v1.0 (deliverables/plan@v1.0.md), from the thread “Calls”\n\n> Plan\n\nTighten this."), "{base}");
+    assert!(base.contains("### On the live file (deliverables/plan.md), as it stands, from the thread “Calls”\n\nAdd owners."), "{base}");
+    assert_eq!(prompts::suggest_base(&c, &p, &BaseSpec::default()).unwrap(), "", "nothing to fill it in from");
+
+    // A prompt that is written already gets the pieces it hasn't got added to its base, once each, and keeps its own words.
+    let draft = NewPrompt { base: "Look at the plan.".into(), body: "Be brief.".into(), feedback: vec![early.id.clone()], ..Default::default() };
+    let prompt = prompts::create(&c, &p, &t, &draft).unwrap();
+    assert_eq!(prompt.base, "Look at the plan.", "a base that was given is kept as it is");
+    let after = prompts::attach_feedback(&c, &p, &t, &prompt.id, &[early.id.clone(), late.id.clone(), late.id.clone()]).unwrap();
+    assert!(after.base.starts_with("Look at the plan.\n\nMore feedback to resolve:\n\n### On the live file"), "{}", after.base);
+    assert_eq!(after.base.matches("Tighten this.").count(), 0, "what it had is not added again");
+    assert_eq!(after.base.matches("Add owners.").count(), 1);
+    assert_eq!((after.feedback.len(), after.body.as_str()), (2, "Be brief."));
+
+    // A prompt with no base starts one with the opening text. Its text is the base and then what was added.
+    let bare = prompts::create(&c, &p, &t, &NewPrompt { body: "Do it.".into(), ..Default::default() }).unwrap();
+    let bare = prompts::attach_feedback(&c, &p, &t, &bare.id, std::slice::from_ref(&late.id)).unwrap();
+    assert!(bare.base.starts_with("Please resolve the following feedback on plan.md."), "{}", bare.base);
+    assert!(prompts::request_text(&bare).ends_with("Add owners.\n\nDo it."), "{}", prompts::request_text(&bare));
 }
 
 // ---- uploads ----------------------------------------------------------------------------------------
@@ -789,7 +880,7 @@ fn activity_counts_what_you_made_and_not_what_the_app_wrote_for_you() {
     let first = posts::add(&c, &p, &t, "A thought", AddOptions::default()).unwrap();
     posts::add(&c, &p, &t, "A reply", reply(&first.id)).unwrap();
     posts::add(&c, &p, &t, "What is it for?", AddOptions { guiding_question: true, ..Default::default() }).unwrap();
-    prompts::create(&c, &p, &t, "Memo", "Write it", None).unwrap();
+    prompts::create_titled(&c, &p, &t, "Memo", "Write it", None).unwrap();
     let memo = deliverables::create(&c, &p, "Memo", "Draft").unwrap();
     deliverables::publish(&c, dir.path(), &p, &memo.path, Bump::Major, None).unwrap(); // also posts a "version published" note
     feedback::add(&c, &p, &t, &memo.path, "Needs numbers", None).unwrap();
@@ -821,7 +912,7 @@ fn search_spans_posts_prompts_feedback_and_deliverables_across_projects() {
     posts::add(&c, &p, &t, "We should revisit the PRICING model next week", AddOptions::default()).unwrap();
     posts::add(&c, &other, &other_thread, "Pricing is different here", AddOptions::default()).unwrap();
     posts::add(&c, &p, &t, "Unrelated", AddOptions::default()).unwrap();
-    prompts::create(&c, &p, &t, "Pricing memo", "Write the memo", None).unwrap();
+    prompts::create_titled(&c, &p, &t, "Pricing memo", "Write the memo", None).unwrap();
     let memo = deliverables::create(&c, &p, "Memo", "Details about pricing tiers").unwrap();
     deliverables::publish(&c, dir.path(), &p, &memo.path, Bump::Major, None).unwrap();
     feedback::add(&c, &p, &t, &memo.path, "pricing tiers need numbers", None).unwrap();

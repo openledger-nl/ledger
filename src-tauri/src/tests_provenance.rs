@@ -21,7 +21,7 @@ fn setup() -> (Connection, String, String, String, String) {
     let p = projects::create(&c, "Acme").unwrap().slug;
     let t1 = threads::create(&c, &p, "Kick-off").unwrap().slug;
     let t2 = threads::create(&c, &p, "Review").unwrap().slug;
-    let prompt = prompts::create(&c, &p, &t1, "Write the plan", "Write the plan for the launch.", None).unwrap();
+    let prompt = prompts::create_titled(&c, &p, &t1, "Write the plan", "Write the plan for the launch.", None).unwrap();
     deliverables::create(&c, &p, "Plan", "# Plan\n\nfirst\n").unwrap();
     prompts::link_deliverable(&c, &p, &t1, &prompt.id, "plan.md").unwrap();
     (c, p, t1, t2, prompt.id)

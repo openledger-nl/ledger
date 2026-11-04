@@ -84,9 +84,12 @@ pub struct PostView {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptDeliverable {
+    /// The live path: a prompt belongs to the deliverable, not to one of its versions.
     pub path: String,
     /// Whether the file is (still) in the project's deliverables folder.
     pub exists: bool,
+    /// The versions published so far, oldest first.
+    pub versions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -97,13 +100,50 @@ pub struct PromptView {
     pub title: String,
     pub template_id: Option<String>,
     pub template_name: Option<String>,
+    /// What is filled in for the person, from a template or from feedback; they can edit it.
+    pub base: String,
+    pub base_html: String,
+    /// What the person adds, in their own words.
     pub body: String,
     pub html: String,
     pub created_at: String,
     pub updated_at: String,
     pub deliverables: Vec<PromptDeliverable>,
+    /// The pieces of feedback (ids) it was written to resolve.
+    pub feedback: Vec<String>,
     /// The times it was run with Claude Code, newest first.
     pub runs: Vec<RunRecordView>,
+}
+
+/// What a new prompt is made of. It has no title: it is named from what it asks.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewPrompt {
+    /// Filled in from the template or the feedback (see [`BaseSpec`]), and edited or not.
+    #[serde(default)]
+    pub base: String,
+    /// What the person adds.
+    #[serde(default)]
+    pub body: String,
+    pub template_id: Option<String>,
+    /// A deliverable that exists, which the prompt asks changes to (given as any of its paths; it is linked as the live file).
+    pub deliverable: Option<String>,
+    /// The name of a new deliverable to start for the prompt. Blank: whatever produces the deliverable names it.
+    pub new_deliverable: Option<String>,
+    /// The pieces of feedback (ids) it is meant to resolve.
+    #[serde(default)]
+    pub feedback: Vec<String>,
+}
+
+/// What a new prompt's base text is made from.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BaseSpec {
+    /// The template a new deliverable starts from.
+    pub template_id: Option<String>,
+    /// The feedback the prompt is to resolve.
+    #[serde(default)]
+    pub feedback: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

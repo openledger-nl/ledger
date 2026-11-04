@@ -1,6 +1,7 @@
 //! After a run: what it wrote is read into the vault the way an edit made in Obsidian would be (the same check
 //! the app makes when its window regains focus), and the deliverables it wrote are published and linked to the prompt
-//! (see `versions` for the rules), so the prompt shows what came out of it.
+//! (see `versions` for the rules), so the prompt shows what came out of it. The prompt is linked to the deliverable, by
+//! its live path, however many versions it makes: which version a run made is in that version's own record.
 
 use super::prompt::RunRequest;
 use super::records::{self, RunRecord};
@@ -24,7 +25,7 @@ const MAX_CHANGES: usize = 20;
 /// Reloads the vault if its files changed behind the app's back. Then, for each deliverable the run changed:
 /// edits that no version held are published first, whatever became of the run (they would otherwise be lost under
 /// the run's changes), and, when `link` is set (the run finished properly), the run's result is published as the next
-/// version and that version is linked to the prompt.
+/// version, and the prompt is linked to the deliverable (`linked` lists the versions that were made).
 pub fn refresh_vault(core: &mut Core, request: &RunRequest, changes: &[Change], link: bool) -> VaultOutcome {
     let mut outcome = VaultOutcome::default();
     if core.vault.changed_on_disk() {
@@ -78,6 +79,8 @@ pub fn refresh_vault(core: &mut Core, request: &RunRequest, changes: &[Change], 
         };
         published = true;
         let path = deliverables::snapshot_path(base, &version);
+        // Linked by the live path (`link_deliverable` reads a version's path as its file's), so a prompt that is run again
+        // doesn't pile up one link per version.
         match prompts::link_deliverable(&core.conn, &request.project, &request.thread, &request.prompt_id, &path) {
             Ok(_) => outcome.linked.push(path),
             Err(e) => outcome.error = Some(format!("{path} was published but couldn't be linked to the prompt: {e}")),

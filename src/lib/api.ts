@@ -15,6 +15,7 @@ import type {
 	Post,
 	ProjectSummary,
 	ProjectView,
+	NewPromptInput,
 	Prompt,
 	Provenance,
 	PublishChoices,
@@ -90,11 +91,19 @@ export const api = {
 	deletePost: (project: string, thread: string, id: string) => call<void>('delete_post', { project, thread, id }),
 
 	// prompts
-	/** `deliverable` is an existing deliverable the prompt asks for changes to; null asks for a new one. */
-	createPrompt: (project: string, thread: string, title: string, body: string, templateId: string | null, deliverable: string | null = null) =>
-		call<Prompt>('create_prompt', { project, thread, title, body, templateId, deliverable }),
-	updatePrompt: (project: string, thread: string, id: string, title: string, body: string) =>
-		call<Prompt>('update_prompt', { project, thread, id, title, body }),
+	createPrompt: (project: string, thread: string, draft: NewPromptInput) => call<Prompt>('create_prompt', { project, thread, draft }),
+	/** The prompts about a deliverable (any of its paths), oldest first. */
+	listDeliverablePrompts: (project: string, path: string) => call<Prompt[]>('list_deliverable_prompts', { project, path }),
+	/** Adds pieces of feedback to a prompt: they are linked, and put in its base text with the version each was given on. */
+	attachPromptFeedback: (project: string, thread: string, id: string, feedback: string[]) =>
+		call<Prompt>('attach_prompt_feedback', { project, thread, id, feedback }),
+	detachPromptFeedback: (project: string, thread: string, id: string, feedback: string) =>
+		call<Prompt>('detach_prompt_feedback', { project, thread, id, feedback }),
+	updatePrompt: (project: string, thread: string, id: string, base: string, body: string) =>
+		call<Prompt>('update_prompt', { project, thread, id, base, body }),
+	/** What a new prompt's base text starts as, from the template or the feedback it is made from. */
+	suggestPromptBase: (project: string, templateId: string | null, feedback: string[]) =>
+		call<string>('suggest_prompt_base', { project, spec: { templateId, feedback } }),
 	deletePrompt: (project: string, thread: string, id: string) => call<void>('delete_prompt', { project, thread, id }),
 	linkPromptDeliverable: (project: string, thread: string, id: string, path: string) =>
 		call<Prompt>('link_prompt_deliverable', { project, thread, id, path }),

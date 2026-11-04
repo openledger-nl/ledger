@@ -4,7 +4,7 @@
 //!
 //! Paths in this module are relative to the deliverables folder and use `/`.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -147,20 +147,16 @@ pub fn list(conn: &Connection, project: &str) -> Result<Vec<DeliverableSummary>>
         }
     }
 
-    // A prompt counts once for a deliverable, whether it is linked to the file or to some of its published versions.
-    let mut prompt_counts: HashMap<String, i64> = HashMap::new();
-    let mut counted: HashSet<(String, String)> = HashSet::new();
-    for (prompt, path) in query_all::<(String, String), _>(
+    // The prompts about each deliverable (a prompt is linked to the file, not to its versions).
+    let prompt_counts: HashMap<String, i64> = query_all::<(String, i64), _>(
         conn,
-        "SELECT d.prompt_id, d.path FROM prompt_deliverables d JOIN prompts p ON p.id = d.prompt_id WHERE p.project_slug = ?1",
+        "SELECT d.path, COUNT(DISTINCT d.prompt_id) FROM prompt_deliverables d JOIN prompts p ON p.id = d.prompt_id
+         WHERE p.project_slug = ?1 GROUP BY d.path",
         [project],
         |r| Ok((r.get(0)?, r.get(1)?)),
-    )? {
-        let base = split_version(&path).0;
-        if counted.insert((prompt, base.clone())) {
-            *prompt_counts.entry(base).or_default() += 1;
-        }
-    }
+    )?
+    .into_iter()
+    .collect();
     let mut open_feedback: HashMap<String, i64> = HashMap::new();
     for path in query_all::<String, _>(conn, "SELECT deliverable_path FROM feedback WHERE project_slug = ?1 AND status = 'open'", [project], |r| r.get(0))? {
         *open_feedback.entry(split_version(&path).0).or_default() += 1;
