@@ -16,6 +16,7 @@ use crate::models::{FeedbackFrom, SemesterDraft};
 use crate::portflow_api::*;
 use crate::portflow_auth::Session;
 use crate::portflow_config::{self as config, Portfolio};
+use crate::portflow_gamma::{self as gamma, parse_sub_goal};
 use crate::portflow_store as store;
 use crate::portflow_sync::{self, CoreLedger};
 use crate::state::Core;
@@ -419,6 +420,10 @@ impl Machine {
     }
 }
 
+fn outcome_count(c: &Connection) -> i64 {
+    c.query_row("SELECT COUNT(*) FROM outcomes", [], |r| r.get(0)).unwrap()
+}
+
 // ---- the round ----------------------------------------------------------------------------------------
 
 #[test]
@@ -433,10 +438,11 @@ fn a_round_mirrors_outcomes_people_and_the_linked_collection() {
     assert_eq!(report.new_versions, 3);
     assert_eq!(report.in_portflow_only, 3, "uploaded in Portflow: named, not copied");
 
-    let outcomes = m.read(|c| store::outcomes(c, ME)).unwrap();
-    assert_eq!(outcomes.iter().map(|o| o.name.as_str()).collect::<Vec<_>>(), ["Analysis", "Design"]);
-    assert_eq!(outcomes[0].sub_outcomes.len(), 2);
-    assert_eq!(outcomes[0].sub_outcomes[0].evidence[0].name, "Project plan");
+    let gamma = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    assert_eq!(gamma.columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Analysis", "Design"]);
+    assert_eq!(gamma.cells.iter().filter(|c| c.outcome == 10).count(), 2);
+    let analysis_u = gamma.cells.iter().find(|c| c.outcome == 10 && c.layer == "U").unwrap();
+    assert_eq!(analysis_u.levels[0].evidence[0].name, "Project plan");
     let people = m.read(store::people).unwrap();
     assert_eq!(people.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["Coach Teacher", "Peer Student"], "teachers first");
 
@@ -523,10 +529,10 @@ fn feedback_lands_once_the_evidence_is_in_a_thread() {
     let again = m.read(|c| feedback::list_for_thread(c, "speed-edit", "plan")).unwrap();
     assert_eq!(again[0].status, "resolved", "a round doesn't reopen what was resolved");
 
-    // And the outcome knows who gave feedback on it.
-    let outcomes = m.read(|c| store::outcomes(c, ME)).unwrap();
-    assert_eq!(outcomes[0].feedback_count, 1);
-    assert_eq!(outcomes[0].feedback_from, ["Coach Teacher"]);
+    // And Gamma counts it on the sub-goal the evidence counts for (not the student's own reply).
+    let gamma = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    let analysis_u = gamma.cells.iter().find(|c| c.outcome == 10 && c.layer == "U").unwrap();
+    assert_eq!(analysis_u.feedback_count, 1);
 }
 
 #[test]
@@ -628,9 +634,8 @@ fn an_outcome_gone_from_portflow_is_kept_as_removed() {
     portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
     fake.world.lock().unwrap().goals.pop();
     portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
-    let outcomes = m.read(|c| store::outcomes(c, ME)).unwrap();
-    let design = outcomes.iter().find(|o| o.name == "Design").unwrap();
-    assert!(design.removed);
+    let removed: bool = m.read(|c| c.query_row("SELECT removed FROM outcomes WHERE name = 'Design'", [], |r| r.get(0))).unwrap();
+    assert!(removed);
 }
 
 // ---- the switch ---------------------------------------------------------------------------------------
@@ -672,7 +677,7 @@ fn switched_off_the_portflow_files_are_left_byte_for_byte() {
         }
     }
     // Nothing Portflow made is in view.
-    assert!(m.read(|c| store::outcomes(c, ME)).unwrap().is_empty());
+    assert_eq!(m.read(outcome_count), 0);
     assert!(m.read(|c| store::evidence_in_project(c, "speed-edit", ME)).unwrap().is_empty());
     // But the links and who gave feedback are kept, in files Ledger always writes.
     let project = fs::read_to_string(m.root().join("projects/speed-edit/project.md")).unwrap();
@@ -682,7 +687,7 @@ fn switched_off_the_portflow_files_are_left_byte_for_byte() {
 
     // Switched on again, it's all back.
     m.switch(true);
-    assert_eq!(m.read(|c| store::outcomes(c, ME)).unwrap().len(), 2);
+    assert_eq!(m.read(outcome_count), 2);
 }
 
 #[test]
@@ -834,4 +839,177 @@ fn real_portflow_read_only_round() {
         feedback.iter().filter(|f| f.reply_to.is_some()).count(),
         m.root().join(format!("projects/real/portflow/{semester}.md")).is_file()
     );
+}
+
+// ---- semesters, sections and Gamma ---------------------------------------------------------------------
+
+
+#[test]
+fn a_sub_goals_name_says_its_layer_and_level() {
+    assert_eq!(parse_sub_goal("Analysis-U2"), Some((Some("U"), 2)));
+    assert_eq!(parse_sub_goal("Manage&Control-H3 "), Some((Some("H"), 3)));
+    assert_eq!(parse_sub_goal("Realise-i1"), Some((Some("I"), 1)));
+    assert_eq!(parse_sub_goal("PS-3"), Some((None, 3)));
+    assert_eq!(parse_sub_goal("Analysis-X1"), None, "no such layer");
+    assert_eq!(parse_sub_goal("Reflection"), None);
+}
+
+#[test]
+fn a_round_links_the_section_to_its_semester_and_fills_the_matrix() {
+    let m = Machine::new();
+    m.switch(true);
+    let semester = m.linked();
+    portflow_sync::run(&FakePortflow::new(), &m.ledger, &m.settings()).unwrap();
+
+    // The section is linked to the semester its import fell in, and that is written in the semester's file.
+    let sections = m.read(gamma::sections).unwrap();
+    assert_eq!(sections.len(), 1);
+    assert_eq!(sections[0].semester.as_deref(), Some(semester.as_str()));
+    let file = fs::read_to_string(m.root().join(format!("semesters/{semester}.md"))).unwrap();
+    assert!(file.contains("portflowSection: 9"), "{file}");
+    assert!(m.root().join("portflow/sections.md").is_file());
+
+    // The current semester's matrix: activities across, layers down, evidence per cell, the highest level with evidence.
+    let view = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    assert_eq!(view.semester.as_deref(), Some(semester.as_str()));
+    assert!(view.scoped);
+    assert_eq!(view.section_name.as_deref(), Some("Semester 3 – Fall 26"));
+    assert_eq!(view.columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Analysis", "Design"]);
+    assert_eq!(view.rows.iter().map(|r| r.layer.as_str()).collect::<Vec<_>>(), ["U", "I"], "in HBO-i's order");
+    let cell = |layer: &str, outcome: i64| view.cells.iter().find(|c| c.layer == layer && c.outcome == outcome).unwrap();
+    assert_eq!((cell("U", 10).evidence_count, cell("U", 10).level), (2, Some(1)), "Portflow counts more than Ledger links");
+    assert_eq!(cell("U", 10).levels[0].evidence[0].name, "Project plan");
+    assert_eq!((cell("I", 10).evidence_count, cell("I", 10).level), (0, None));
+    assert_eq!((cell("U", 20).evidence_count, cell("U", 20).level), (1, Some(1)), "linked in Ledger, not yet counted by Portflow");
+    assert_eq!((view.cells_with_evidence, view.cells_total), (2, 3));
+    assert_eq!(view.linked_projects, ["speed-edit"], "where a thread started from Gamma goes first");
+    assert_eq!(cell("U", 10).levels[0].description, "Analysis-U1 level", "the level's text, to quote");
+    assert_eq!(view.max_level, 1);
+
+    // The links survive reading the vault again.
+    m.reload();
+    let again = m.read(|c| gamma::gamma(c, Some(&semester), "2026-11-04", ME)).unwrap();
+    assert!(again.scoped);
+    assert_eq!(again.cells.iter().map(|c| c.evidence_count).collect::<Vec<_>>(), view.cells.iter().map(|c| c.evidence_count).collect::<Vec<_>>());
+}
+
+#[test]
+fn a_section_unlinked_by_hand_stays_unlinked() {
+    let m = Machine::new();
+    m.switch(true);
+    let semester = m.linked();
+    portflow_sync::run(&FakePortflow::new(), &m.ledger, &m.settings()).unwrap();
+    m.edit(|c| gamma::link_section(c, &semester, None)).unwrap();
+    portflow_sync::run(&FakePortflow::new(), &m.ledger, &m.settings()).unwrap();
+    assert_eq!(m.read(gamma::sections).unwrap()[0].semester, None, "a known section isn't guessed again");
+    let view = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    assert!(!view.scoped, "without a section, the newest goal set is shown");
+    assert_eq!(view.columns.len(), 2);
+}
+
+#[test]
+fn each_semester_shows_its_own_outcomes_and_levels_only_goals_apart() {
+    let m = Machine::new();
+    m.switch(true);
+    let draft = |name: &str, start: &str, end: &str| SemesterDraft { name: name.into(), start: start.into(), end: end.into(), sprint_weeks: 3, ..SemesterDraft::default() };
+    let (spring, fall) = m.edit(|c| {
+        (semesters::create(c, &draft("Spring 26", "2026-02-09", "2026-07-31")).unwrap().id, semesters::create(c, &draft("Fall 26", "2026-09-01", "2027-01-31")).unwrap().id)
+    });
+    let import = |id: i64, at: &str| Some(Import { id: Some(id), imported_at: Some(at.into()), template_name: None });
+    let goal = |id: i64, name: &str, imp: i64, at: &str| Goal { id, name: name.into(), position: id, last_import: import(imp, at), ..Goal::default() };
+    let sub = |id: i64, goal_id: i64, name: &str, count: i64| SubGoal { id, name: name.into(), goal_id, position: id, evidence_count: count, ..SubGoal::default() };
+    let goals = vec![
+        (goal(1, "Design", 33, "2026-02-01T09:00:00Z"), vec![sub(101, 1, "Design-S1", 3)]),
+        (goal(2, "Analysis", 34, "2026-09-21T09:00:00Z"), vec![sub(201, 2, "Analysis-S1", 1), sub(202, 2, "Analysis-S2", 1), sub(203, 2, "Analysis-S3", 0)]),
+        (goal(3, "Professional standard", 34, "2026-09-21T09:00:00Z"), vec![sub(301, 3, "PS-1", 2), sub(302, 3, "PS-2", 0)]),
+    ];
+    let sections = vec![
+        Section { id: 1, name: "Semester 2".into(), position: 2, last_import: import(33, "2026-02-01T09:00:00Z") },
+        Section { id: 2, name: "Semester 3".into(), position: 1, last_import: import(34, "2026-09-21T09:00:00Z") },
+    ];
+    m.edit(|c| {
+        store::store_outcomes(c, &goals, &[]).unwrap();
+        gamma::store_sections(c, &sections).unwrap();
+    });
+    let linked: Vec<_> = m.read(gamma::sections).unwrap().into_iter().map(|s| (s.id, s.semester)).collect();
+    assert_eq!(linked, [(2, Some(fall.clone())), (1, Some(spring.clone()))], "an import shortly before a semester starts belongs to it");
+
+    let fall_view = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    assert_eq!(fall_view.semester.as_deref(), Some(fall.as_str()));
+    assert_eq!(fall_view.columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Analysis"]);
+    assert_eq!(fall_view.cells[0].level, Some(2));
+    assert_eq!(fall_view.max_level, 3);
+    assert_eq!(fall_view.skills.len(), 1);
+    assert_eq!((fall_view.skills[0].nickname.as_str(), fall_view.skills[0].evidence_count, fall_view.skills[0].level), ("", 2, Some(1)));
+    assert_eq!(fall_view.semesters.iter().map(|s| (s.name.as_str(), s.current)).collect::<Vec<_>>(), [("Fall 26", true), ("Spring 26", false)]);
+
+    let spring_view = m.read(|c| gamma::gamma(c, Some(&spring), "2026-11-04", ME)).unwrap();
+    assert_eq!(spring_view.columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Design"]);
+    assert!(spring_view.skills.is_empty());
+    assert!(m.read(|c| gamma::gamma(c, Some("nope"), "2026-11-04", ME)).is_err());
+}
+
+#[test]
+fn intended_development_marks_the_rows_aimed_for_and_keeps_the_learning_plan() {
+    let m = Machine::new();
+    m.switch(true);
+    let semester = m.linked();
+    portflow_sync::run(&FakePortflow::new(), &m.ledger, &m.settings()).unwrap();
+
+    let goals = gamma::GammaGoals {
+        layers: BTreeMap::from([("u".into(), 1), ("I".into(), 2)]),
+        goals: BTreeMap::new(),
+        learning_plan: Some("speed-edit/project-plan".into()),
+        study_guide: Some("https://example.org/study-guide".into()),
+    };
+    m.edit(|c| gamma::set_goals(c, &semester, &goals)).unwrap();
+    let view = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    assert_eq!(view.rows.iter().map(|r| (r.layer.as_str(), r.target)).collect::<Vec<_>>(), [("U", Some(1)), ("I", Some(2))], "the letter is read in any case");
+    let cell = |layer: &str, outcome: i64| view.cells.iter().find(|c| c.layer == layer && c.outcome == outcome).unwrap();
+    assert!(cell("U", 10).reached && cell("U", 20).reached);
+    assert!(!cell("I", 10).reached);
+    assert_eq!((view.targets_reached, view.targets_total), (2, 3));
+    let plan = view.plan.as_ref().unwrap();
+    assert_eq!((plan.name.as_str(), plan.version, plan.delivered_at.as_deref()), ("Project plan", Some(2), Some("2026-10-02T10:00:00Z")));
+
+    // Kept in the semester's file, and read back from it.
+    let file = fs::read_to_string(m.root().join(format!("semesters/{semester}.md"))).unwrap();
+    assert!(file.contains("gamma:") && file.contains("learningPlan: speed-edit/project-plan"), "{file}");
+    m.reload();
+    assert_eq!(m.read(|c| gamma::goals_of(c, &semester)).unwrap().layers, BTreeMap::from([("U".into(), 1), ("I".into(), 2)]));
+
+    // Nonsense is refused, and clearing everything leaves no `gamma:` behind.
+    let bad = |g: gamma::GammaGoals| m.edit(|c| gamma::set_goals(c, &semester, &g)).is_err();
+    assert!(bad(gamma::GammaGoals { layers: BTreeMap::from([("X".into(), 1)]), ..Default::default() }));
+    assert!(bad(gamma::GammaGoals { layers: BTreeMap::from([("I".into(), 0)]), ..Default::default() }));
+    assert!(bad(gamma::GammaGoals { study_guide: Some("javascript:alert(1)".into()), ..Default::default() }));
+    m.edit(|c| gamma::set_goals(c, &semester, &gamma::GammaGoals::default())).unwrap();
+    let file = fs::read_to_string(m.root().join(format!("semesters/{semester}.md"))).unwrap();
+    assert!(!file.contains("gamma:"), "{file}");
+}
+
+#[test]
+fn a_level_only_goal_is_aimed_for_by_its_nickname() {
+    let m = Machine::new();
+    m.switch(true);
+    let fall = m.edit(|c| {
+        semesters::create(c, &SemesterDraft { name: "Fall 26".into(), start: "2026-09-01".into(), end: "2027-01-31".into(), sprint_weeks: 3, ..SemesterDraft::default() }).unwrap().id
+    });
+    let import = Some(Import { id: Some(34), imported_at: Some("2026-09-21T09:00:00Z".into()), template_name: None });
+    let goals = vec![(
+        Goal { id: 3, name: "Professional standard".into(), nickname: Some("PS".into()), last_import: import.clone(), ..Goal::default() },
+        vec![
+            SubGoal { id: 301, name: "PS-1".into(), goal_id: 3, evidence_count: 1, ..SubGoal::default() },
+            SubGoal { id: 302, name: "PS-2".into(), goal_id: 3, position: 1, ..SubGoal::default() },
+        ],
+    )];
+    m.edit(|c| {
+        store::store_outcomes(c, &goals, &[]).unwrap();
+        gamma::store_sections(c, &[Section { id: 2, name: "Semester 3".into(), position: 1, last_import: import.clone() }]).unwrap();
+        gamma::set_goals(c, &fall, &gamma::GammaGoals { goals: BTreeMap::from([("PS".into(), 2)]), ..Default::default() }).unwrap();
+    });
+    let view = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    let ps = &view.skills[0];
+    assert_eq!((ps.key.as_str(), ps.target, ps.reached), ("PS", Some(2), false));
+    assert_eq!((view.targets_reached, view.targets_total), (0, 1));
 }

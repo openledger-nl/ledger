@@ -86,36 +86,7 @@ pub struct EvidenceRef {
     pub thread: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubOutcomeView {
-    pub id: i64,
-    pub name: String,
-    pub nickname: String,
-    pub description_html: String,
-    pub evidence: Vec<EvidenceRef>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OutcomeView {
-    pub id: i64,
-    pub name: String,
-    pub nickname: String,
-    pub goal_set: String,
-    pub status: String,
-    pub explanation_html: String,
-    pub removed: bool,
-    pub sub_outcomes: Vec<SubOutcomeView>,
-    /// Evidence linked to the outcome itself (not to one of its sub-goals).
-    pub evidence: Vec<EvidenceRef>,
-    /// Feedback on evidence that counts for this outcome or one of its sub-goals.
-    pub feedback_count: i64,
-    /// Who gave that feedback.
-    pub feedback_from: Vec<String>,
-}
-
-fn evidence_for(conn: &Connection) -> Result<HashMap<i64, Vec<EvidenceRef>>> {
+pub(crate) fn evidence_for(conn: &Connection) -> Result<HashMap<i64, Vec<EvidenceRef>>> {
     let rows = query_all(
         conn,
         "SELECT o.outcome_id, e.project_slug, p.name, e.slug, e.name, e.thread_slug
@@ -129,63 +100,6 @@ fn evidence_for(conn: &Connection) -> Result<HashMap<i64, Vec<EvidenceRef>>> {
         out.entry(id).or_default().push(item);
     }
     Ok(out)
-}
-
-/// Every learning outcome with its sub-goals, and the evidence and feedback that count for them. `me`: the student's
-/// Portflow id, whose own comments (feedback requests, replies) aren't counted as feedback.
-pub fn outcomes(conn: &Connection, me: i64) -> Result<Vec<OutcomeView>> {
-    let mut evidence = evidence_for(conn)?;
-    let mut subs: HashMap<i64, Vec<SubOutcomeView>> = HashMap::new();
-    for (outcome, id, name, nickname, description) in query_all(
-        conn,
-        "SELECT outcome_id, id, name, nickname, description FROM sub_outcomes ORDER BY outcome_id, position, id",
-        [],
-        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?)),
-    )? {
-        subs.entry(outcome).or_default().push(SubOutcomeView { id, name, nickname, description_html: markdown::render(&description), evidence: evidence.remove(&id).unwrap_or_default() });
-    }
-    // Feedback per outcome: on any evidence item linked to it or to one of its sub-goals.
-    let feedback = query_all(
-        conn,
-        "SELECT DISTINCT COALESCE(s.outcome_id, o.outcome_id), f.id, f.from_name
-         FROM feedback f JOIN evidence_outcomes o ON o.project_slug = f.project_slug AND o.evidence_slug = f.evidence
-         LEFT JOIN sub_outcomes s ON s.id = o.outcome_id
-         WHERE COALESCE(f.from_user, -1) <> ?1",
-        [me],
-        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?)),
-    )?;
-    let mut counts: HashMap<i64, (BTreeSet<String>, BTreeSet<String>)> = HashMap::new();
-    for (outcome, id, from) in feedback {
-        let entry = counts.entry(outcome).or_default();
-        entry.0.insert(id);
-        if let Some(from) = from {
-            entry.1.insert(from);
-        }
-    }
-    query_all(
-        conn,
-        "SELECT id, name, nickname, goal_set, status, explanation, removed FROM outcomes ORDER BY removed, goal_set, position, id",
-        [],
-        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?, r.get::<_, bool>(6)?)),
-    )?
-    .into_iter()
-    .map(|(id, name, nickname, goal_set, status, explanation, removed)| {
-        let (ids, from) = counts.remove(&id).unwrap_or_default();
-        Ok(OutcomeView {
-            id,
-            name,
-            nickname,
-            goal_set,
-            status,
-            explanation_html: markdown::render(&explanation),
-            removed,
-            sub_outcomes: subs.remove(&id).unwrap_or_default(),
-            evidence: evidence.remove(&id).unwrap_or_default(),
-            feedback_count: ids.len() as i64,
-            feedback_from: from.into_iter().collect(),
-        })
-    })
-    .collect()
 }
 
 /// The name of an outcome or sub-goal, by id.

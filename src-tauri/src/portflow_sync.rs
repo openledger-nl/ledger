@@ -2,7 +2,7 @@
 //! Portflow but reads (the access gate in `portflow_api.rs` would refuse anything else anyway).
 //!
 //! A round reads, in this order: who is signed in; the learning outcomes with their sub-goals and goal sets; the people
-//! the portfolio is shared with; the sections and collections; and for every collection linked to a project, its
+//! the portfolio is shared with; the sections (linked to semesters) and collections; and for every collection linked to a project, its
 //! outcomes and its evidence. Per evidence item it reads the outcomes it counts for, its versions, and, once the item is
 //! in a thread, its comments, which become feedback there.
 //!
@@ -142,16 +142,19 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
     }
     report.outcomes = with_subs.len();
     let shares = portflow.shares(p)?;
+    // The sections are the portfolio's semesters: mirrored, and a new one linked to the semester it falls in.
+    let section_list = portflow.sections(p)?;
     report.files_touched += ledger
         .write(&mut |conn, _| {
             store::store_outcomes(conn, &with_subs, &sets)?;
-            store::store_people(conn, &shares)
+            store::store_people(conn, &shares)?;
+            crate::portflow_gamma::store_sections(conn, &section_list)
         })
         .map_err(ledger_err)?;
     report.people = shares.iter().map(|s| s.invitee.id).collect::<HashSet<_>>().len();
 
     // The linked collections.
-    let sections: HashMap<i64, String> = portflow.sections(p)?.into_iter().map(|s| (s.id, s.name)).collect();
+    let sections: HashMap<i64, String> = section_list.into_iter().map(|s| (s.id, s.name)).collect();
     let collections: HashMap<i64, crate::portflow_api::Collection> = portflow.collections(p)?.into_iter().map(|c| (c.id, c)).collect();
     let mut links = vec![];
     ledger

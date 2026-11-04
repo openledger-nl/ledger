@@ -64,7 +64,7 @@
 				{#if c.descriptionHtml}<Markdown html={c.descriptionHtml} />{/if}
 				{#if c.outcomes.length}
 					<div class="chips">
-						{#each c.outcomes as o (o.id)}<a class="chip" href="/outcomes">{o.name}</a>{/each}
+						{#each c.outcomes as o (o.id)}<a class="chip" href="/gamma">{o.name}</a>{/each}
 					</div>
 				{/if}
 			</div>

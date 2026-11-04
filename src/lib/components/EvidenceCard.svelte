@@ -59,7 +59,7 @@
 	{#if evidence.outcomes.length}
 		<div class="outcomes hint">
 			Counts for:
-			{#each evidence.outcomes as o, i (o.id)}<a href="/outcomes">{o.name}</a>{i < evidence.outcomes.length - 1 ? ', ' : ''}{/each}
+			{#each evidence.outcomes as o, i (o.id)}<a href="/gamma">{o.name}</a>{i < evidence.outcomes.length - 1 ? ', ' : ''}{/each}
 		</div>
 	{/if}
 

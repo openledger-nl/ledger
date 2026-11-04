@@ -3,6 +3,7 @@
 //! ```text
 //! portflow/outcomes/<id>-<slug>.md          a learning outcome and its sub-goals, mirrored from Portflow
 //! portflow/people.md                        the people the portfolio is shared with, mirrored from Portflow
+//! portflow/sections.md                      the portfolio's sections (its semesters), mirrored from Portflow
 //! projects/<p>/portflow/<semester>.md       a linked collection: name, subtitle, outcomes, and its description
 //! projects/<p>/evidence/<slug>.md           an evidence item: its files, thread, outcomes, and Portflow's versions
 //!                                           (by file name; a version that came from Ledger names its deliverable)
@@ -32,6 +33,7 @@ pub fn outcome_file(id: i64, name: &str) -> String {
 }
 
 pub const PEOPLE_FILE: &str = "portflow/people.md";
+pub const SECTIONS_FILE: &str = "portflow/sections.md";
 
 pub fn collection_file(project: &str, semester: &str) -> String {
     format!("projects/{project}/portflow/{semester}.md")
@@ -162,6 +164,7 @@ pub fn feedback_extras(conn: &Connection) -> Result<HashMap<String, FeedbackExtr
 pub fn export(conn: &Connection, files: &mut BTreeMap<String, String>) -> Result<()> {
     export_outcomes(conn, files)?;
     export_people(conn, files)?;
+    export_sections(conn, files)?;
     export_collections(conn, files)?;
     export_evidence(conn, files)?;
     Ok(())
@@ -233,6 +236,37 @@ fn export_people(conn: &Connection, files: &mut BTreeMap<String, String>) -> Res
     frontmatter::set(&mut meta, "mirror", MIRROR_NOTE);
     frontmatter::set(&mut meta, "people", Value::Sequence(items));
     files.insert(PEOPLE_FILE.to_string(), frontmatter::render(&meta, "The people your Portflow portfolio is shared with."));
+    Ok(())
+}
+
+fn export_sections(conn: &Connection, files: &mut BTreeMap<String, String>) -> Result<()> {
+    type Row = (i64, String, i64, Option<i64>, String, Option<String>);
+    let sections = query_all::<Row, _>(conn, "SELECT id, name, position, import_id, template, imported_at FROM portflow_sections ORDER BY position, id", [], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+    })?;
+    if sections.is_empty() {
+        return Ok(());
+    }
+    let items = sections
+        .into_iter()
+        .map(|(id, name, position, import_id, template, imported_at)| {
+            let mut item = Mapping::new();
+            set_int(&mut item, "id", Some(id));
+            frontmatter::set(&mut item, "name", name);
+            set_int(&mut item, "position", Some(position));
+            set_int(&mut item, "import", import_id);
+            frontmatter::set_opt(&mut item, "template", Some(&template));
+            frontmatter::set_opt(&mut item, "importedAt", imported_at.as_deref());
+            Value::Mapping(item)
+        })
+        .collect();
+    let mut meta = Mapping::new();
+    frontmatter::set(&mut meta, "mirror", MIRROR_NOTE);
+    frontmatter::set(&mut meta, "sections", Value::Sequence(items));
+    files.insert(
+        SECTIONS_FILE.to_string(),
+        frontmatter::render(&meta, "The sections of your Portflow portfolio: one per semester. Which Ledger semester each is, is in that semester's file (`portflowSection`)."),
+    );
     Ok(())
 }
 
@@ -346,6 +380,7 @@ fn export_evidence(conn: &Connection, files: &mut BTreeMap<String, String>) -> R
 pub(crate) fn import(conn: &Connection, source: &Source, projects: &[String]) -> Result<()> {
     import_outcomes(conn, source)?;
     import_people(conn, source)?;
+    import_sections(conn, source)?;
     for project in projects {
         import_collections(conn, source, project)?;
         import_evidence(conn, source, project)?;
@@ -405,6 +440,18 @@ fn import_people(conn: &Connection, source: &Source) -> Result<()> {
         conn.execute(
             "INSERT OR IGNORE INTO portflow_people (id, name, role, share_type, expires, position) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![id, name, person.text("role").unwrap_or_default(), person.text("shared").unwrap_or_default(), person.text("until"), position as i64],
+        )?;
+    }
+    Ok(())
+}
+
+fn import_sections(conn: &Connection, source: &Source) -> Result<()> {
+    let Some((meta, _)) = source.parsed(SECTIONS_FILE) else { return Ok(()) };
+    for section in meta.maps("sections") {
+        let (Some(id), Some(name)) = (int(section, "id"), section.text("name")) else { continue };
+        conn.execute(
+            "INSERT OR IGNORE INTO portflow_sections (id, name, position, import_id, template, imported_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, name, int(section, "position").unwrap_or(0), int(section, "import"), section.text("template").unwrap_or_default(), section.text("importedAt")],
         )?;
     }
     Ok(())

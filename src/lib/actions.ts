@@ -38,6 +38,55 @@ export async function newThreadFlow(project: string) {
 	await goto(threadUrl(project, created.slug));
 }
 
+/** A learning outcome's level, as Gamma shows it: what a thread or deliverable started from it aims at. */
+interface AimedLevel {
+	name: string;
+	level: number;
+	description: string;
+}
+
+/** The opening of something started from a level in Gamma: which level it aims at, and what that level asks. */
+function aimNote(aim: AimedLevel): string {
+	const asks = aim.description.trim();
+	return `Working towards **${aim.name}** (level ${aim.level}).${asks ? `\n\n${asks.split('\n').map((line) => `> ${line}`.trimEnd()).join('\n')}` : ''}`;
+}
+
+/** From Gamma: asks for a title, creates a thread in the project whose first post says which level it aims at and what
+ *  that level asks, and opens it. */
+export async function threadForLevelFlow(project: string, aim: AimedLevel) {
+	const title = await promptDialog({
+		title: `New thread for ${aim.name}`,
+		label: 'What will you work on?',
+		initial: `${aim.name}: `,
+		confirmLabel: 'Create'
+	});
+	if (!title) return;
+	const created = await attempt(() => api.createThread(project, title));
+	if (!created) return;
+	await attempt(() => api.addPost(project, created.slug, aimNote(aim)));
+	await refresh();
+	await goto(threadUrl(project, created.slug));
+}
+
+/** From Gamma: asks for a file name, creates the deliverable starting with which level it aims at (a markdown file; any
+ *  other kind starts empty), and opens it. */
+export async function deliverableForLevelFlow(project: string, aim: AimedLevel) {
+	const slug = aim.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'deliverable';
+	const name = await promptDialog({
+		title: `New deliverable for ${aim.name}`,
+		label: 'File name',
+		initial: `${slug}.md`,
+		confirmLabel: 'Create'
+	});
+	if (!name) return;
+	const title = name.replace(/^.*\//, '').replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
+	const body = /\.md$/i.test(name) ? `# ${title.charAt(0).toUpperCase()}${title.slice(1)}\n\n${aimNote(aim)}\n` : '';
+	const made = await attempt(() => api.createDeliverable(project, name, body));
+	if (!made) return;
+	await refresh();
+	await goto(deliverableUrl(project, made.path));
+}
+
 /** Asks for a file name, creates an empty deliverable in the project and opens it. (The Deliverables tab can also start one from a template.) */
 export async function newDeliverableFlow(project: string) {
 	const name = await promptDialog({

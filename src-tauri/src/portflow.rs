@@ -23,8 +23,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::error::{Error, Result};
 use crate::portflow_api::{Gate, HttpPortflow, PResult, Portflow, PortflowError};
 use crate::portflow_auth::{self as auth, Auth, Session};
+use crate::portflow_gamma::{self as gamma, EvidenceChoice, GammaGoals, GammaView, SectionView};
 use crate::portflow_config::{self as config, Portfolio, PortflowSettings, WRITE_KINDS};
-use crate::portflow_store::{self as store, CollectionView, EvidenceView, Imported, OutcomeView, PersonView, RecentFeedback};
+use crate::portflow_store::{self as store, CollectionView, EvidenceView, Imported, PersonView, RecentFeedback};
 use crate::portflow_sync::{self, CoreLedger, Report};
 use crate::state::{App, Core};
 use crate::{ids, threads};
@@ -652,12 +653,6 @@ pub fn portflow_open(handle: AppHandle, app: State<App>) -> Result<()> {
 // ---- commands: what the screens show ------------------------------------------------------------------
 
 #[tauri::command]
-pub fn portflow_outcomes(app: State<App>) -> Result<Vec<OutcomeView>> {
-    let me = me(&require_on(&root_of(&app))?);
-    app.read(|conn, _| store::outcomes(conn, me))
-}
-
-#[tauri::command]
 pub fn portflow_people(app: State<App>) -> Result<Vec<PersonView>> {
     require_on(&root_of(&app))?;
     app.read(|conn, _| store::people(conn))
@@ -712,4 +707,50 @@ pub fn portflow_place_evidence(
 pub fn portflow_recent_feedback(app: State<App>, limit: Option<i64>) -> Result<Vec<RecentFeedback>> {
     let me = me(&require_on(&root_of(&app))?);
     app.read(|conn, _| store::open_portflow_feedback(conn, limit.unwrap_or(8).clamp(1, 50), me))
+}
+
+// ---- commands: semesters, sections and Gamma (the competence matrix) ----------------------------------
+
+/// Gamma, the competence matrix of a semester (the current one when none is given), from the vault's mirror of Portflow: no
+/// request is sent, so it answers at once.
+#[tauri::command]
+pub fn portflow_gamma(app: State<App>, semester: Option<String>) -> Result<GammaView> {
+    let me = me(&require_on(&root_of(&app))?);
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    app.read(|conn, _| gamma::gamma(conn, semester.as_deref(), &today, me))
+}
+
+/// The portfolio's sections (its semesters), as last synced, with the Ledger semester each is.
+#[tauri::command]
+pub fn portflow_sections(app: State<App>) -> Result<Vec<SectionView>> {
+    require_on(&root_of(&app))?;
+    app.read(|conn, _| gamma::sections(conn))
+}
+
+/// Says which Portflow section a semester is, or that it is none (`section` null).
+#[tauri::command]
+pub fn portflow_link_section(app: State<App>, semester: String, section: Option<i64>) -> Result<Vec<SectionView>> {
+    require_on(&root_of(&app))?;
+    app.mutate(|conn, _| {
+        gamma::link_section(conn, &semester, section)?;
+        gamma::sections(conn)
+    })
+}
+
+/// Sets a semester's intended development (Gamma's goals and overview) and answers with its matrix.
+#[tauri::command]
+pub fn portflow_set_intended(app: State<App>, semester: String, goals: GammaGoals) -> Result<GammaView> {
+    let me = me(&require_on(&root_of(&app))?);
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    app.mutate(|conn, _| {
+        gamma::set_goals(conn, &semester, &goals)?;
+        gamma::gamma(conn, Some(&semester), &today, me)
+    })
+}
+
+/// The evidence items to pick the learning plan from.
+#[tauri::command]
+pub fn portflow_evidence_choices(app: State<App>) -> Result<Vec<EvidenceChoice>> {
+    require_on(&root_of(&app))?;
+    app.read(|conn, _| gamma::evidence_choices(conn))
 }
