@@ -741,6 +741,19 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 .dd-option.active { background: var(--card-2); }
 .dd-option.selected { color: var(--accent); font-weight: 600; }
 
+/* ---------- menu: a button of your own that opens a list, placed on the screen so no panel clips it ---------- */
+.menu-host { display: inline-flex; min-width: 0; }
+.dd-menu.pop { position: fixed; top: 0; left: 0; z-index: 70; min-width: 190px; max-width: min(300px, calc(100vw - 16px)); }
+.dd-menu.pop.unplaced { visibility: hidden; }
+.dd-rule { height: 1px; background: var(--line); margin: 4px 2px; }
+.dd-option .mi { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
+.dd-option .mi-ico { color: var(--muted); }
+.dd-option .mi-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex-shrink: 0; }
+.dd-option .mi-text { display: flex; flex-direction: column; min-width: 0; }
+.dd-option .mi-sub { font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.dd-option.danger, .dd-option.danger .mi-ico { color: var(--red); }
+.btn.icon-only { padding: 6px 8px; }
+
 /* ---------- the contribution graph: a semester's sprints ---------- */
 .contrib-grid.mid { --cell: 16px; --gap: 4px; }
 .contrib-grid.mid .contrib-day { border-radius: 3px; }
