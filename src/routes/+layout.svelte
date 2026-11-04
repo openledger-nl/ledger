@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Menu from '@lucide/svelte/icons/menu';
+	import Settings from '@lucide/svelte/icons/settings';
 	import '../app.css';
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
@@ -48,6 +49,9 @@
 		<header class="topbar">
 			<button class="icon-btn" aria-label="Menu" onclick={() => (drawer.open = true)}><Menu size={22} /></button>
 			<Wordmark height={22} />
+			<a class="icon-btn settings-link" class:active={page.url.pathname.startsWith('/settings')} href="/settings" title="Settings" aria-label="Settings"
+				><Settings size={20} /></a
+			>
 		</header>
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div class="scrim" class:open={drawer.open} onclick={() => (drawer.open = false)}></div>

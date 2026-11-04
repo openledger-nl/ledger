@@ -141,14 +141,16 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <aside class="sidebar" class:open={drawer.open} onclick={closeDrawer}>
-	<div class="brand"><Wordmark /></div>
+	<div class="brand">
+		<Wordmark />
+		<a class="icon-btn" class:active={on('/settings')} href="/settings" title="Settings" aria-label="Settings"><Settings size={18} /></a>
+	</div>
 
 	<form class="search-wrap" onsubmit={search}>
 		<input type="search" placeholder="Search everything…" autocomplete="off" spellcheck="false" bind:value={query} />
 	</form>
 
 	<a class="nav-item" class:active={path === '/'} href="/"><span class="nav-ico"><House size={16} /></span>Home</a>
-	<a class="nav-item" class:active={on('/settings')} href="/settings"><span class="nav-ico"><Settings size={16} /></span>Settings</a>
 
 	{#if latestThreads.length || latestDeliverables.length}
 		<div class="section-head"><span>Latest</span></div>
