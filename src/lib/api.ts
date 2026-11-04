@@ -299,9 +299,7 @@ export const updatesApi = {
 	/** Looks now, whether or not automatic checks are on. */
 	check: () => call<UpdateCheck>('check_for_updates'),
 	/** Downloads (once), waits for syncs and runs, installs and restarts. Call again while the answer is to wait. */
-	install: (choice: RunsChoice) => call<InstallStep>('install_update', { choice }),
-	/** Development builds only: pretend a release was found. */
-	simulate: (major: boolean) => call<UpdateInfo>('simulate_update', { major })
+	install: (choice: RunsChoice) => call<InstallStep>('install_update', { choice })
 };
 
 import type { AboutInfo, LogEntry } from './types';

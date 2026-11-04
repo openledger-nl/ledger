@@ -1,31 +1,37 @@
 // The update notice: what the backend found, whether "Later" hid it, and how far installing has got. The backend
-// looks for releases by itself (release builds only) and says so with `update-available`; installing downloads the
-// update once, waits until a restart cuts nothing off, and ends in the restart (see src-tauri/src/updates.rs).
+// looks by itself, for releases in a release build and, in a development build, for what `pnpm run dev:app` holds back
+// of the changes in its checkout, and says so with `update-available`; installing downloads a release once, waits until
+// a restart cuts nothing off, and ends in the restart (see src-tauri/src/updates.rs and devupdates.rs).
 
 import { listen } from '@tauri-apps/api/event';
 import { updatesApi } from './api';
-import type { RunsChoice, UpdateInfo, UpdateProgress } from './types';
+import type { Announced, RunsChoice, UpdateProgress } from './types';
 
 /**
- * - `idle`: the notice offers *Install and restart* and *Later*.
- * - `working`: downloading (with progress), checking the signature, installing.
+ * - `idle`: the notice asks: *Install and restart* and *Later*, or in a development build *Update* and *Not now*.
+ * - `working`: downloading (with progress), checking the signature, installing, or bringing the new build in.
  * - `ask`: Claude Code is still running prompts; wait for them or stop them?
- * - `waiting`: downloaded; installs as soon as what is still going is over.
- * - `simulated`: a development build's pretend update went through every step.
+ * - `waiting`: ready; installs as soon as what is still going is over.
+ * - `applied`: a development build is bringing in what was held back; it restarts, or the window reloads.
  * - `failed`: said why, and nothing was installed.
  */
-export type UpdatePhase = 'idle' | 'working' | 'ask' | 'waiting' | 'simulated' | 'failed';
+export type UpdatePhase = 'idle' | 'working' | 'ask' | 'waiting' | 'applied' | 'failed';
 
 export const updates = $state({
-	available: null as UpdateInfo | null,
+	available: null as Announced | null,
 	/** *Later* was pressed: hidden until the next check finds the update again. */
 	hidden: false,
 	phase: 'idle' as UpdatePhase,
 	waitingFor: [] as string[],
 	runs: [] as string[],
 	progress: null as UpdateProgress | null,
+	/** What is being brought in, once a development build is updating. */
+	applied: null as { commits: number; head: string; restart: boolean } | null,
 	error: null as string | null
 });
+
+/** What tells one announcement from another: a release's version; for a development build, which change it is. */
+export const keyOf = (update: Announced) => (update.kind === 'release' ? update.version : `${update.target}#${update.generation}`);
 
 // ---- before the restart, whatever is typed and not yet saved is saved ---------------------------------
 
@@ -51,10 +57,22 @@ async function flushAll() {
 
 // ---- found, hidden, shown -----------------------------------------------------------------------------
 
-/** Shows the notice for this update, unless installing is already under way. */
-export function showUpdate(info: UpdateInfo) {
-	if (updates.phase === 'working' || updates.phase === 'waiting' || updates.phase === 'ask') {
-		if (updates.available?.version === info.version) updates.hidden = false;
+/**
+ * Shows the notice for this update, unless installing is already under way. A development build hears of the same change
+ * again as its build moves on (building, ready, failed): that refreshes the notice, and one that *Not now* hid stays hidden
+ * until another change comes, unless `reveal` asks for it (Settings).
+ */
+export function showUpdate(info: Announced, reveal = false) {
+	const same = updates.available !== null && keyOf(updates.available) === keyOf(info);
+	if (updates.phase === 'working' || updates.phase === 'waiting' || updates.phase === 'ask' || updates.phase === 'applied') {
+		if (same) {
+			updates.available = info;
+			updates.hidden = false;
+		}
+		return;
+	}
+	if (same && info.kind === 'branch' && updates.hidden && !reveal) {
+		updates.available = info;
 		return;
 	}
 	updates.available = info;
@@ -63,8 +81,13 @@ export function showUpdate(info: UpdateInfo) {
 	updates.error = null;
 }
 
-/** *Later*: hides the notice until the next check, and stops waiting to install. */
+/** *Later* (*Not now*): hides the notice until the next check, and stops waiting to install. */
 export function later() {
+	// What was applied has been dealt with: closing the notice ends it, rather than offering it again.
+	if (updates.phase === 'applied') {
+		updates.available = null;
+		updates.applied = null;
+	}
 	stopWaiting();
 	updates.hidden = true;
 }
@@ -75,7 +98,7 @@ export function startUpdates(): () => void {
 	let alive = true;
 	const keep = (unlisten: () => void) => (alive ? cleanups.push(unlisten) : unlisten());
 
-	listen<UpdateInfo>('update-available', (event) => showUpdate(event.payload))
+	listen<Announced>('update-available', (event) => showUpdate(event.payload))
 		.then(keep)
 		.catch(() => {});
 	listen<UpdateProgress>('update-progress', (event) => {
@@ -104,8 +127,8 @@ let attempt = 0;
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * *Install and restart*. Asks the backend again every second while the answer is to wait; the update is downloaded
- * once. A real install that goes through never comes back: Ledger restarts.
+ * *Install and restart* (*Update*). Asks the backend again every second while the answer is to wait; a release is
+ * downloaded once. A release that installs never comes back: Ledger restarts. A development build comes back as `applied`.
  */
 export async function installUpdate(choice: RunsChoice = 'ask') {
 	const mine = ++attempt;
@@ -129,8 +152,12 @@ export async function installUpdate(choice: RunsChoice = 'ask') {
 			updates.runs = step.runs;
 			return;
 		}
-		if (step.state === 'simulated') {
-			updates.phase = 'simulated';
+		if (step.state === 'applied') {
+			updates.applied = { commits: step.commits, head: step.head, restart: step.restart };
+			updates.phase = 'applied';
+			// With a restart, Ledger is already exiting and `pnpm run dev:app` starts the new build. Without one, only the
+			// front end changed: a reload is the restart, and the page it loads is the new one.
+			if (!step.restart) setTimeout(() => window.location.reload(), 800);
 			return;
 		}
 		updates.phase = 'waiting';

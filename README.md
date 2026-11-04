@@ -159,7 +159,7 @@ Installing downloads the new version and checks that it is signed with Ledger's 
 
 **Settings → About** shows the version you have and has **Check for updates**. To stop the automatic checks, untick **Check for updates automatically** there; **Check for updates** still works. The choice belongs to this computer, not to the vault: it is kept in Ledger's `config.json` in the app's config folder (next to the vault's location), so another computer syncing the same vault keeps its own.
 
-Ledger built from source with `pnpm run tauri dev` (or any debug build) never looks for updates; its Settings → About can simulate one, to try the notice. A release build you make yourself does look, and offers the official releases.
+Ledger built from source with `pnpm run dev:app` (scripts/dev.mjs) runs from your checkout as `pnpm run tauri dev` does, but nothing that changes there is put in front of you until you say so. It keeps watching the files: a change to the front end doesn't reload the window, and a change to the Rust side is built in the background while the app keeps running the build it started with. Ledger then shows what is waiting: the commits the checkout's branch gained since the running build (merged by you, or by an assistant working in another worktree; read from the local branch, nothing is fetched), and whether the new build is still being built, ready, or failing. Only **Update** brings it in, once a sync or a Claude Code run has finished: the window reloads when only the front end changed, otherwise Ledger restarts into the new build (and installs the packages first when `package.json` changed). **Not now** keeps the prompt away until something else changes. Quitting Ledger ends `pnpm run dev:app`; starting it again runs whatever the checkout has. Plain `pnpm run tauri dev` still reloads and restarts by itself as files change, and says nothing; a debug build that isn't served by the dev server (`tauri build --debug`) never looks. A release build you make yourself looks for releases, and offers the official ones.
 
 ### Building from source
 
@@ -168,6 +168,7 @@ You need [Node.js](https://nodejs.org) 26 (the version in `.nvmrc`; `nvm use` pi
 ```bash
 pnpm install
 pnpm run tauri dev     # the app, with hot reload
+pnpm run dev:app       # the app, with every change held until you choose Update in it
 pnpm run tauri build   # an installer / bundle for this machine
 ```
 

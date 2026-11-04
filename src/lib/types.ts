@@ -802,6 +802,7 @@ export interface TrelloMapping {
 
 /** A release newer than this one, as the notice shows it. */
 export interface UpdateInfo {
+	kind: 'release';
 	version: string;
 	currentVersion: string;
 	/** When it was published (ISO), if the release says. */
@@ -812,20 +813,55 @@ export interface UpdateInfo {
 	notesHtml: string;
 	/** The "Breaking changes" section, rendered, shown apart. */
 	breakingHtml: string | null;
-	/** A development build's pretend update: installing it installs nothing. */
-	simulated: boolean;
 }
+
+/** One of the commits a development build's branch gained since the running build. */
+export interface BranchCommit {
+	hash: string;
+	subject: string;
+	/** The first line marks it as breaking (`feat!:`). */
+	breaking: boolean;
+}
+
+/** What a development build's runner (`pnpm run dev:app`) holds back, and the commits that came with it (see devupdates.rs). */
+export interface BranchUpdate {
+	kind: 'branch';
+	/** The branch the checkout is on, or `HEAD` when it is on a commit. */
+	branch: string;
+	/** The commit the running build was made from (short), and the one the checkout is at now (full). */
+	head: string;
+	target: string;
+	/** Commits the branch gained since; the newest are listed, `more` is how many are left out. */
+	behind: number;
+	commits: BranchCommit[];
+	more: number;
+	/** Which change this is: the same one is announced once, and *Not now* holds until another comes. */
+	generation: number;
+	/** Updating restarts the app (the Rust side or the packages changed); otherwise only the window reloads. */
+	restart: boolean;
+	/** The new Rust build: none needed, being built, ready, or failing. */
+	build: 'none' | 'building' | 'ready' | 'failed';
+	/** The first error of a build that failed. */
+	error: string | null;
+	/** `package.json` or `pnpm-lock.yaml` changed: the packages are installed when you update. */
+	dependencies: boolean;
+}
+
+/** What there is to install: a release, or new commits on a development build's branch. */
+export type Announced = UpdateInfo | BranchUpdate;
 
 /** Settings → About. */
 export interface UpdateView {
 	currentVersion: string;
 	/** Look by itself shortly after starting and every few hours. */
 	automatic: boolean;
-	/** Why this build doesn't look for updates (a development build, or no updater key yet). */
+	/** Why this build can't look for anything newer (a debug build `pnpm run dev:app` didn't start, or no updater key yet). */
 	unavailable: string | null;
-	/** A development build, which can simulate an update. */
+	/** A development build, which hears of the changes in its checkout instead of the releases. */
 	devBuild: boolean;
-	available: UpdateInfo | null;
+	/** The branch its checkout is on, once a look has found it. */
+	following: string | null;
+	available: Announced | null;
 	/** When a check last worked (ISO). */
 	checkedAt: string | null;
 	/** Where the choice is kept: the app's config, on this machine only. */
@@ -833,18 +869,21 @@ export interface UpdateView {
 }
 
 export interface UpdateCheck {
-	available: UpdateInfo | null;
+	available: Announced | null;
 	message: string;
 }
 
 /** What to do about Claude Code runs that a restart would stop: ask, wait for them, or stop them. */
 export type RunsChoice = 'ask' | 'wait' | 'stop';
 
-/** Where installing got to when it couldn't restart (yet). A real install that goes through ends in a restart. */
+/**
+ * Where installing got to when it couldn't restart (yet). A release that installs ends in a restart; a development build
+ * ends in `applied`: it restarts into the new build when `restart` says so, or the window reloads.
+ */
 export type InstallStep =
 	| { state: 'wait'; waitingFor: string[] }
 	| { state: 'ask'; runs: string[] }
-	| { state: 'simulated'; version: string };
+	| { state: 'applied'; commits: number; head: string; restart: boolean };
 
 /** The `update-progress` event. */
 export interface UpdateProgress {

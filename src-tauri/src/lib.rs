@@ -6,6 +6,7 @@ mod commands;
 mod crypto;
 mod db;
 mod deliverables;
+mod devupdates;
 mod encrypted_remote;
 mod error;
 mod feedback;
@@ -54,6 +55,8 @@ mod tests_trello;
 #[cfg(test)]
 mod tests_crypto;
 #[cfg(test)]
+mod tests_devupdates;
+#[cfg(test)]
 mod tests_onboarding;
 #[cfg(test)]
 mod tests_provenance;
@@ -83,8 +86,8 @@ pub fn run() {
         screenshot::reveal_main(app);
         screenshot::open_files(app, args.get(1..).unwrap_or_default(), std::path::Path::new(&cwd));
     }));
-    // Looking for and installing new releases (`updates.rs`): in release builds only, so `tauri dev`, debug builds
-    // and sandboxes never look. `updates::BUILT_IN` says the same to the rest of the app.
+    // Looking for and installing new releases (`updates.rs`): the plugin is in release builds only. A development build
+    // follows its git branch instead (`devupdates.rs`), without it. `updates::BUILT_IN` says the same to the rest of the app.
     #[cfg(not(debug_assertions))]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     builder
@@ -280,7 +283,6 @@ pub fn run() {
             updates::save_update_settings,
             updates::check_for_updates,
             updates::install_update,
-            updates::simulate_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
