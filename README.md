@@ -110,7 +110,9 @@ Real-CLI smoke tests are opt-in and use a temporary vault. They require an authe
 inference charges. Set `LEDGER_SMOKE_PROVIDER` (`claude`, `codex`, `agy` or `prime`) and `LEDGER_SMOKE_CLI`
 (the absolute executable path), optionally `LEDGER_SMOKE_MODEL`, then run
 `cargo test --manifest-path src-tauri/Cargo.toml opted_in_real_harness -- --ignored --nocapture`.
-Normal tests never invoke a real model.
+Normal tests never invoke a real model. Pull-request CI runs the Rust suite on Windows, Linux and macOS,
+including process lifecycle and ACP protocol tests. Authenticated inference smoke tests are separate: a passing
+CI job does not prove that a locally installed harness is signed in or its sandbox is configured.
 
 ## Screenshots
 

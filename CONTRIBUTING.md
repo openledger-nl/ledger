@@ -25,7 +25,9 @@ pnpm run check   # Svelte + TypeScript
 pnpm test        # Rust tests
 ```
 
-CI runs both on every pull request, with the commits check below, and a pull request is merged only when they pass.
+CI runs the frontend check once and the Rust tests on Windows, Linux and macOS on every pull request, with the
+commits check below. A pull request is merged only when they pass. Live harness tests stay opt-in and require
+local authentication; CI never invokes a real model.
 On your first pull request here, the checks wait until a maintainer lets them run.
 
 ## Commits
