@@ -3,6 +3,7 @@
 // [](…)) fade away except where the cursor is, so they can still be edited. Source mode shows them all instead.
 // MarkdownEditor.svelte wraps it.
 
+import { autocompletion, pickedCompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from '@codemirror/commands';
 import { insertNewlineContinueMarkup, markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
@@ -32,6 +33,8 @@ import {
 import { tags } from '@lezer/highlight';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { locate, plain, type Mark } from '$lib/anchors';
+import { WIKI_LINK, type LinkIndex } from '$lib/links';
+import type { LinkTarget } from '$lib/types';
 import { isVaultSrc, isWebSrc, type ImageLoad } from '$lib/vaultImages';
 
 type SyntaxNode = ReturnType<typeof syntaxTree>['topNode'];
@@ -71,7 +74,22 @@ const theme = EditorView.theme({
 	'.cm-md-codeblock': { backgroundColor: 'var(--card-2)', padding: '0 10px' },
 	'.cm-md-code': { backgroundColor: 'var(--card-2)', borderRadius: '4px', padding: '1px 3px' },
 	'.cm-md-link': { color: 'var(--accent)', textDecoration: 'underline', textDecorationColor: 'var(--accent-soft)', textUnderlineOffset: '2px' },
+	'.cm-md-wikilink': { color: 'var(--accent)', textDecoration: 'underline', textDecorationColor: 'var(--accent-soft)', textUnderlineOffset: '2px' },
+	'.cm-md-wikilink.unresolved': { color: 'var(--muted)', textDecorationStyle: 'dashed', textDecorationColor: 'var(--line)' },
+	'.cm-md-wikibracket': { color: 'var(--faint)' },
 	'.cm-md-bullet': { color: 'var(--muted)', padding: '0 4px 0 2px' },
+	'.cm-tooltip.cm-tooltip-autocomplete': {
+		backgroundColor: 'var(--card)',
+		border: '1px solid var(--line)',
+		borderRadius: '8px',
+		boxShadow: 'var(--shadow-toast)',
+		overflow: 'hidden'
+	},
+	'.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--font-sans)', fontSize: '13px', maxHeight: '260px', maxWidth: '420px' },
+	'.cm-tooltip-autocomplete > ul > li': { padding: '4px 10px', color: 'var(--ink)', display: 'flex', alignItems: 'baseline', gap: '10px' },
+	'.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--accent-soft)', color: 'var(--ink)' },
+	'.cm-completionLabel': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+	'.cm-completionDetail': { marginLeft: 'auto', paddingLeft: '8px', flexShrink: '0', color: 'var(--faint)', fontStyle: 'normal', fontSize: '11.5px' },
 	'.cm-md-task': { margin: '0 6px 0 0', verticalAlign: '-2px', accentColor: 'var(--accent)', cursor: 'pointer' },
 	'.cm-md-picture img': { maxWidth: '100%', borderRadius: '6px', verticalAlign: 'bottom' },
 	'.cm-md-picture.missing': { color: 'var(--faint)', fontStyle: 'italic' },
@@ -423,7 +441,27 @@ function tableDom(source: string, view: EditorView): HTMLElement {
 			if (found[i]) inline(text, found[i]!, cell, view);
 		}
 	}
+	wrap.normalize(); // `[[a]]` arrives in pieces
+	showLinks(wrap);
 	return wrap;
+}
+
+/** `[[target]]` and `[[target|words]]` in the text of a drawn table: shown as links (they can be followed once the table is open for editing). */
+function showLinks(root: HTMLElement) {
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	const texts: Text[] = [];
+	for (let node = walker.nextNode(); node; node = walker.nextNode()) texts.push(node as Text);
+	for (const node of texts) {
+		const parts: (string | HTMLElement)[] = [];
+		let last = 0;
+		for (const m of node.data.matchAll(WIKI_LINK)) {
+			parts.push(node.data.slice(last, m.index), span('cm-md-wikilink', m[2]?.trim() || m[1].trim()));
+			last = m.index + m[0].length;
+		}
+		if (!parts.length) continue;
+		parts.push(node.data.slice(last));
+		node.replaceWith(...parts);
+	}
 }
 
 class Table extends WidgetType {
@@ -477,6 +515,164 @@ const tables = StateField.define<{ focused: boolean; decorations: DecorationSet 
 	},
 	provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
 });
+
+// ---- [[links]] -------------------------------------------------------------------------------------
+// As in Obsidian: `[[Thread]]` and `[[report|the report]]` read as links in both modes. In live preview the brackets (and
+// the target in front of the words shown instead) fade away except where the cursor is; a link that points at nothing is
+// drawn faint and dashed. Ctrl/⌘+click follows one, like a link to the web. Typing `[[` closes the brackets and offers the
+// project's threads, deliverables and feedback. What the targets are is up to whoever hosts the editor (`LinkSupport`);
+// the rules for matching them are in links.ts.
+
+export interface LinkSupport {
+	/** What links can point at right now, or null where there is nothing (outside a project). Asked for each time. */
+	index: () => LinkIndex | null;
+	/** Ctrl/⌘+click on a link that points at something. */
+	open: (target: LinkTarget) => void;
+}
+
+const linkSupport = Facet.define<LinkSupport, LinkSupport | null>({ combine: (values) => values[0] ?? null });
+const linksChanged = StateEffect.define<null>();
+
+/** Says the list of things links point at has changed, so the links are looked at again. */
+export function refreshLinks(view: EditorView) {
+	view.dispatch({ effects: linksChanged.of(null) });
+}
+
+const wikiBracket = Decoration.mark({ class: 'cm-md-wikibracket' });
+const NOT_LINKABLE = /^(InlineCode|FencedCode|CodeBlock|CodeText|CodeInfo|HTMLBlock|HTMLTag|CommentBlock|ProcessingInstructionBlock|Autolink|URL)$/;
+
+/** Whether `pos` is somewhere `[[` means nothing: in code, in HTML, in an address. */
+function notLinkable(state: EditorState, pos: number): boolean {
+	for (let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 1); node; node = node.parent) if (NOT_LINKABLE.test(node.name)) return true;
+	return false;
+}
+
+function wikiDecorations(view: EditorView): DecorationSet {
+	const { state } = view;
+	const index = state.facet(linkSupport)?.index() ?? null;
+	const preview = !state.facet(inSource);
+	const ranges = view.hasFocus ? state.selection.ranges : [];
+	const found: Range<Decoration>[] = [];
+	let scanned = -1;
+	for (const visible of view.visibleRanges) {
+		const start = Math.max(state.doc.lineAt(visible.from).from, scanned + 1);
+		const end = state.doc.lineAt(visible.to).to;
+		scanned = end;
+		if (start > end) continue;
+		for (const m of state.sliceDoc(start, end).matchAll(WIKI_LINK)) {
+			const at = start + m.index;
+			const stop = at + m[0].length;
+			if (notLinkable(state, at)) continue;
+			const target = m[1].trim();
+			const words = m[2]?.trim();
+			const missing = !!index && !index.resolve(target);
+			const attributes: Record<string, string> = { 'data-wikilink': target };
+			if (index) attributes.title = missing ? `Nothing in this project is called “${target}”` : 'Ctrl+click to open';
+			const mark = Decoration.mark({ class: missing ? 'cm-md-wikilink unresolved' : 'cm-md-wikilink', attributes });
+			if (preview && !ranges.some((r) => r.from <= stop && r.to >= at)) {
+				// Only the words that are shown remain: the target alone, or what comes after the bar.
+				const shownFrom = words ? stop - 2 - m[2].length : at + 2;
+				found.push(hidden.range(at, shownFrom), mark.range(shownFrom, stop - 2), hidden.range(stop - 2, stop));
+			} else {
+				found.push(wikiBracket.range(at, at + 2), mark.range(at + 2, stop - 2), wikiBracket.range(stop - 2, stop));
+			}
+		}
+	}
+	return Decoration.set(found, true);
+}
+
+const wikiLinks = ViewPlugin.fromClass(
+	class {
+		decorations: DecorationSet;
+		constructor(view: EditorView) {
+			this.decorations = wikiDecorations(view);
+		}
+		update(update: ViewUpdate) {
+			if (
+				update.docChanged ||
+				update.viewportChanged ||
+				update.selectionSet ||
+				update.focusChanged ||
+				syntaxTree(update.startState) !== syntaxTree(update.state) ||
+				update.startState.facet(inSource) !== update.state.facet(inSource) ||
+				update.transactions.some((tr) => tr.effects.some((effect) => effect.is(linksChanged)))
+			) {
+				this.decorations = wikiDecorations(update.view);
+			}
+		}
+	},
+	{
+		decorations: (plugin) => plugin.decorations,
+		eventHandlers: {
+			mousedown(event, view) {
+				if (!event.ctrlKey && !event.metaKey) return false;
+				const support = view.state.facet(linkSupport);
+				const name = (event.target as HTMLElement).closest?.<HTMLElement>('.cm-md-wikilink')?.dataset.wikilink;
+				const target = name === undefined ? null : (support?.index()?.resolve(name) ?? null);
+				if (!support || !target) return false;
+				event.preventDefault();
+				support.open(target);
+				return true;
+			}
+		}
+	}
+);
+
+const LINK_TEXT = /\[\[[^[\]|\n\\]*/;
+
+/** After `[[`: what the target could be. The list is ranked here, so the editor's own filtering stays out of it. */
+function wikiCompletions(context: CompletionContext): CompletionResult | null {
+	const index = context.state.facet(linkSupport)?.index();
+	const typed = context.matchBefore(LINK_TEXT);
+	if (!index || !typed || notLinkable(context.state, typed.from)) return null;
+	return {
+		from: typed.from + 2,
+		filter: false,
+		options: index.suggest(typed.text.slice(2)).map((s) => ({
+			label: s.label,
+			detail: s.detail,
+			type: s.target.kind,
+			apply: (view, completion, from, to) => {
+				// The rest of the target goes too, up to a bar or the closing brackets; those are added only where missing.
+				const { state } = view;
+				const tail = /^[^[\]|\n\\]*/.exec(state.sliceDoc(to, state.doc.lineAt(to).to))![0];
+				const end = to + tail.length;
+				const closed = state.sliceDoc(end, end + 2) === ']]';
+				const aliased = /^\\?\|/.test(state.sliceDoc(end, end + 2));
+				view.dispatch({
+					changes: { from, to: end, insert: s.insert + (closed || aliased ? '' : ']]') },
+					selection: { anchor: from + s.insert.length + (aliased ? 0 : 2) },
+					annotations: pickedCompletion.of(completion),
+					userEvent: 'input.complete'
+				});
+			}
+		}))
+	};
+}
+
+/** Typing `[[` makes `[[]]` with the cursor inside, and typing `]` at the end of a link steps over the closing brackets. */
+const wikiBrackets = EditorView.inputHandler.of((view, from, to, text) => {
+	if (view.composing || from !== to || (text !== '[' && text !== ']')) return false;
+	const { state } = view;
+	if (!state.facet(linkSupport)?.index()) return false;
+	if (text === '[') {
+		const before = state.sliceDoc(Math.max(0, from - 2), from);
+		if (!before.endsWith('[') || before === '[[' || state.sliceDoc(from, from + 1) === ']' || notLinkable(state, from)) return false;
+		view.dispatch({ changes: { from, insert: '[]]' }, selection: { anchor: from + 1 }, scrollIntoView: true, userEvent: 'input.type' });
+		return true;
+	}
+	if (state.sliceDoc(from, from + 1) !== ']' || !/\[\[[^[\]\n]*\]?$/.test(state.sliceDoc(state.doc.lineAt(from).from, from))) return false;
+	view.dispatch({ selection: { anchor: from + 1 }, userEvent: 'input.type' });
+	return true;
+});
+
+/** Backspace in the middle of an empty `[[]]` takes the whole pair. */
+const deleteEmptyLink: StateCommand = ({ state, dispatch }) => {
+	const { from, empty } = state.selection.main;
+	if (!empty || state.sliceDoc(from - 2, from) !== '[[' || state.sliceDoc(from, from + 2) !== ']]') return false;
+	dispatch(state.update({ changes: { from: from - 2, to: from + 2 }, selection: { anchor: from - 2 }, userEvent: 'delete.backward' }));
+	return true;
+};
 
 // ---- modes ---------------------------------------------------------------------------------------
 // Live preview, above; or source mode: the markdown exactly as it is, every mark in sight, in the monospace font.
@@ -607,6 +803,8 @@ export interface MarkdownEditorOptions {
 	changed: (update: ViewUpdate) => void;
 	/** A click on a lit-up passage (not the end of a selection): the id of its mark. */
 	markClicked?: (id: string) => void;
+	/** What `[[links]]` can point at and how to follow one; without it they are drawn but not resolved, completed or followed. */
+	links?: LinkSupport;
 }
 
 export function markdownEditor(options: MarkdownEditorOptions): Extension {
@@ -615,9 +813,12 @@ export function markdownEditor(options: MarkdownEditorOptions): Extension {
 		return true;
 	};
 	return [
+		// First, so that while its list is open, Enter picks from it and Escape closes it, before the keys below get them.
+		autocompletion({ override: [wikiCompletions], icons: false, maxRenderedOptions: 60 }),
 		// Ctrl/⌘+Enter always submits rather than adding a line; without a handler here, a modal's window listener saves.
 		Prec.highest(
 			keymap.of([
+				{ key: 'Backspace', run: deleteEmptyLink },
 				{ key: 'Mod-Enter', run: submit },
 				...(options.submitOnEnter ? [{ key: 'Enter', run: submit, shift: insertNewlineContinueMarkup }] : []),
 				{ key: 'Escape', run: options.cancel },
@@ -632,6 +833,9 @@ export function markdownEditor(options: MarkdownEditorOptions): Extension {
 		markdown({ base: markdownLanguage }),
 		syntaxHighlighting(highlight),
 		mode.of(modeExtension(options.source)),
+		options.links ? linkSupport.of(options.links) : [],
+		wikiLinks,
+		wikiBrackets,
 		tables,
 		markField,
 		EditorView.domEventHandlers({

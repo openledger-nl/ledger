@@ -10,7 +10,8 @@
 	import MessagesSquare from '@lucide/svelte/icons/messages-square';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
 	import Trash from '@lucide/svelte/icons/trash';
-	import { goto } from '$app/navigation';
+	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import DocSide from '$lib/components/DocSide.svelte';
 	import FileImage from '$lib/components/FileImage.svelte';
@@ -325,6 +326,20 @@
 
 	/** A lit-up passage was clicked: show its feedback. */
 	const showFeedback = (id: string) => void side?.reveal('feedback', id);
+
+	// A [[link]] to a piece of feedback opens this page with `?feedback=<id>`: its window opens at that piece, which flashes.
+	// The address is cleaned up afterwards, so following the same link again does it again.
+	const wantedFeedback = $derived(page.url.searchParams.get('feedback'));
+	$effect(() => {
+		const id = wantedFeedback;
+		if (!id || !side) return;
+		untrack(() => {
+			void side?.reveal('feedback', id);
+			const url = new URL(page.url);
+			url.searchParams.delete('feedback');
+			replaceState(url, page.state);
+		});
+	});
 
 	/** Feedback's passage, shown in the document. */
 	const showPassage = (id: string) => (snapshot || mode === 'reading' ? reader : editor)?.reveal(id);

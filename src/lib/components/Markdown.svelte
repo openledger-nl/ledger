@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { openUrl } from '@tauri-apps/plugin-opener';
+	import { goto } from '$app/navigation';
 	import { locate, plain, rangeIn, textOf, type Mark } from '$lib/anchors';
+	import { linkUrl, projectLinks } from '$lib/links.svelte';
+	import { toast } from '$lib/ui.svelte';
 	import { imageLoader, isVaultSrc, type ImageBase } from '$lib/vaultImages';
 
 	/**
@@ -26,6 +29,33 @@
 				if (url) img.src = url;
 				else img.replaceWith(Object.assign(document.createElement('span'), { className: 'missing', textContent: `Couldn’t load ${img.alt || img.dataset.src}` }));
 			});
+		}
+	});
+
+	// ---- [[links]] -------------------------------------------------------------------------------
+	// The backend leaves `[[target]]` as <a class="wikilink" data-wikilink="target"> with no address. What the target is
+	// (a thread, a deliverable, a piece of feedback) is looked up here, in the same list the editor completes from; one
+	// that is nothing is drawn faint, as in Obsidian.
+
+	const links = projectLinks();
+
+	$effect(() => {
+		void shown;
+		const index = links.index;
+		const project = links.project;
+		for (const a of root.querySelectorAll<HTMLAnchorElement>('a.wikilink')) {
+			const name = a.dataset.wikilink ?? '';
+			const target = index?.resolve(name) ?? null;
+			a.classList.toggle('unresolved', !target);
+			if (!target || !project) {
+				a.removeAttribute('href');
+				a.title = index ? `Nothing in this project is called “${name}”` : 'Links work inside a project';
+				continue;
+			}
+			a.href = linkUrl(project, target);
+			a.title = target.kind === 'feedback' ? `Feedback ${target.detail}` : target.kind === 'thread' ? 'Thread' : `Deliverable ${target.id}`;
+			// Feedback has no name to type: without words of its own, the link says what the feedback says.
+			if (target.kind === 'feedback' && !a.dataset.alias) a.textContent = target.title;
 		}
 	});
 
@@ -92,6 +122,11 @@
 		if (anchor) {
 			e.preventDefault();
 			const href = anchor.getAttribute('href') ?? '';
+			if (anchor.classList.contains('wikilink')) {
+				if (href) void goto(href);
+				else toast(anchor.title);
+				return;
+			}
 			if (/^(https?:|mailto:)/i.test(href)) openUrl(href).catch(() => {});
 			return;
 		}

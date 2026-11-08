@@ -3,7 +3,8 @@
 	import { EditorState, type Extension } from '@codemirror/state';
 	import { EditorView } from '@codemirror/view';
 	import type { Mark } from '$lib/anchors';
-	import { markdownEditor, revealMark, setSourceMode, showMarks } from '$lib/markdownEditor';
+	import { projectLinks } from '$lib/links.svelte';
+	import { markdownEditor, refreshLinks, revealMark, setSourceMode, showMarks } from '$lib/markdownEditor';
 	import { imageLoader, type ImageBase } from '$lib/vaultImages';
 
 	/**
@@ -54,6 +55,9 @@
 		onmark?: (id: string) => void;
 	} = $props();
 
+	// [[links]] point at the threads, deliverables and feedback of the project the window is in (none outside a project).
+	const links = projectLinks();
+
 	let host: HTMLDivElement;
 	let view: EditorView | undefined;
 	let extensions: Extension;
@@ -79,6 +83,7 @@
 				return true;
 			},
 			markClicked: (id) => onmark?.(id),
+			links: { index: () => links.index, open: (target) => links.open(target) },
 			changed: (update) => {
 				if (!update.docChanged) return;
 				held = update.state.doc.toString();
@@ -108,6 +113,12 @@
 	});
 
 	$effect(() => pushMarks(marks ?? []));
+
+	// The things links point at changed (something was made, renamed or deleted): they are looked at again.
+	$effect(() => {
+		void links.index;
+		if (view) refreshLinks(view);
+	});
 
 	$effect(() => {
 		const next = source;

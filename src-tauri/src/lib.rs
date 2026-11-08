@@ -14,6 +14,7 @@ mod frontmatter;
 mod github;
 mod ids;
 mod keystore;
+mod links;
 mod markdown;
 mod models;
 mod onboarding;
@@ -146,6 +147,7 @@ pub fn run() {
         .on_window_event(claude_code::on_window_event)
         .invoke_handler(tauri::generate_handler![
             commands::render_markdown,
+            commands::list_links,
             commands::search,
             commands::list_activity,
             commands::list_semesters,

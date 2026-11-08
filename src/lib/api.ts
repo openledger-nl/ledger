@@ -12,6 +12,7 @@ import type {
 	DeliverableSummary,
 	EncryptionStatus,
 	Feedback,
+	LinkTarget,
 	Post,
 	ProjectSummary,
 	ProjectView,
@@ -59,6 +60,8 @@ async function call<T>(command: string, args?: Record<string, unknown>, log = tr
 
 export const api = {
 	renderMarkdown: (body: string) => call<string>('render_markdown', { body }),
+	/** What a [[link]] in this project's markdown can point at: its threads, deliverables and feedback. */
+	listLinks: (project: string) => call<LinkTarget[]>('list_links', { project }),
 	search: (query: string) => call<SearchHit[]>('search', { query }),
 	/** Everything made in the vault and when, oldest first: the contribution graph's events. */
 	listActivity: () => call<ActivityEvent[]>('list_activity'),
