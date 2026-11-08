@@ -373,6 +373,10 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 .md th { background: var(--card-2); text-align: left; }
 .md hr { border: 0; border-top: 1px solid var(--line); margin: 1em 0; }
 .md img { max-width: 100%; border-radius: 6px; }
+/* [[links]] to a thread, a deliverable or feedback (Markdown.svelte); one that points at nothing is drawn faint and dashed. */
+.md a.wikilink { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); cursor: pointer; }
+.md a.wikilink:hover { border-bottom-color: var(--accent); }
+.md a.wikilink.unresolved { color: var(--muted); border-bottom: 1px dashed var(--line); cursor: default; }
 mark { background: var(--highlight); color: inherit; border-radius: 3px; padding: 0 1px; }
 
 /* ---------- markdown editor ----------

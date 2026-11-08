@@ -424,6 +424,25 @@ pub struct ActivityEvent {
     pub at: String,
 }
 
+// ---- links ------------------------------------------------------------------------------------------
+
+/// Something a `[[link]]` in a project's markdown can point at.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkTarget {
+    /// "thread", "deliverable" or "feedback".
+    pub kind: String,
+    /// The thread's slug, the deliverable's live path, or the feedback's id.
+    pub id: String,
+    /// What it is called: a thread's title, a deliverable's file name, the start of what a piece of feedback says.
+    pub title: String,
+    /// Where it is, which tells same-named things apart: a deliverable's folder, the file a piece of feedback is on.
+    pub detail: String,
+    /// For a deliverable and for feedback, the path that opens it: the live file, a version, or (when the live file is
+    /// gone) the newest version. Empty for a thread.
+    pub open: String,
+}
+
 // ---- search -----------------------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize)]

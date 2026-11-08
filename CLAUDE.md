@@ -46,7 +46,7 @@ repo (`build: move to Node 26`).
 
 | Area | Scopes |
 |---|---|
-| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `dashboard` (the home page and its contribution graph), `onboarding` (the setup guide a new client gets on the home page) |
+| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `links` (`[[links]]` between threads, deliverables and feedback, written in any markdown), `dashboard` (the home page and its contribution graph), `onboarding` (the setup guide a new client gets on the home page) |
 | Data and sync | `vault`, `sync`, `crypto`, `settings` |
 | Integrations | `screenshots`, `trello`, `claude` (runs with Claude Code) |
 | Across the app | `ui` (shared components, layout, icons), `brand` (logo, tokens, colours), `updates` (installing new releases from inside the app, and a development build following its git branch), `logs` (the error log, debug captures, reporting a problem) |

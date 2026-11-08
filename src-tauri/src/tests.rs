@@ -8,7 +8,7 @@ use tempfile::tempdir;
 use crate::error::Error;
 use crate::models::{BaseSpec, Bump, Criterion, NewPrompt, Quote, SemesterDraft, Sprint, StoryDraft, StoryUpdate, TaskUpdate, Vacation};
 use crate::posts::AddOptions;
-use crate::{activity, board, db, deliverables, semesters, feedback, markdown, posts, projects, prompts, search, stories, templates, threads, uploads};
+use crate::{activity, board, db, deliverables, semesters, feedback, links, markdown, posts, projects, prompts, search, stories, templates, threads, uploads};
 
 fn conn() -> Connection {
     db::open_in_memory().unwrap()
@@ -957,4 +957,49 @@ fn markdown_escapes_raw_html_and_strips_unsafe_links() {
 
     let html = markdown::render("**strong**\n\n- [x] done\n- [ ] todo\n\n| a | b |\n|---|---|\n| 1 | 2 |");
     assert!(html.contains("<strong>strong</strong>") && html.contains("<table>") && html.contains("checkbox"));
+}
+
+#[test]
+fn markdown_marks_wiki_links_for_the_page_to_resolve() {
+    let html = markdown::render("see [[Pricing model]], [[brief.md|the brief]] and [[feedback:17-abc|a note]]");
+    assert!(html.contains(r#"<a class="wikilink" data-wikilink="Pricing model">Pricing model</a>"#), "{html}");
+    assert!(html.contains(r#"<a class="wikilink" data-wikilink="brief.md" data-alias="1">the brief</a>"#), "{html}");
+    assert!(html.contains(r#"data-wikilink="feedback:17-abc" data-alias="1">a note</a>"#), "{html}");
+    assert!(!html.contains("href"), "a link without an address: the page finds out where it goes\n{html}");
+
+    // Code stays text, and nothing typed in a target gets out of its attribute.
+    assert!(!markdown::render("`[[not a link]]`\n\n```\n[[nor this]]\n```").contains("wikilink"));
+    let html = markdown::render("[[a\"onmouseover=\"x|b]] [[<i>&]]");
+    assert!(!html.contains("\"onmouseover=\"") && !html.contains("<i>"), "{html}");
+    // Words in single brackets are still just words.
+    assert!(!markdown::render("[just words]").contains("wikilink"));
+}
+
+#[test]
+fn links_list_what_a_project_can_point_at() {
+    let c = conn();
+    let (p, t) = setup(&c);
+    let brief = deliverables::create(&c, &p, "Pricing brief", "# Pricing brief\n").unwrap();
+    let note = feedback::add(&c, &p, &t, &brief.path, "## Too long\n\nCut the intro.", None).unwrap();
+    let long = feedback::add(&c, &p, &t, &brief.path, &"word ".repeat(40), None).unwrap();
+    feedback::set_status(&c, &p, &t, &long.id, "resolved").unwrap();
+    // Nothing of another project is on offer.
+    let (other, other_thread) = {
+        let o = projects::create(&c, "Other").unwrap().slug;
+        let ot = threads::create(&c, &o, "Elsewhere").unwrap().slug;
+        (o, ot)
+    };
+    let theirs = deliverables::create(&c, &other, "Theirs", "").unwrap();
+    feedback::add(&c, &other, &other_thread, &theirs.path, "not yours", None).unwrap();
+
+    let found = links::list(&c, &p).unwrap();
+    let summary: Vec<_> = found.iter().map(|l| (l.kind.as_str(), l.id.as_str(), l.title.as_str(), l.detail.as_str(), l.open.as_str())).collect();
+    assert_eq!(summary.len(), 4, "{summary:?}");
+    assert_eq!(summary[0], ("thread", t.as_str(), "Calls", "", ""));
+    assert_eq!(summary[1], ("deliverable", "pricing-brief.md", "pricing-brief.md", "", "pricing-brief.md"));
+    // Newest feedback first; a long one is cut to 60 characters, and a heading's mark isn't part of a name.
+    assert_eq!((summary[2].0, summary[2].1, summary[2].3, summary[2].4), ("feedback", long.id.as_str(), "on pricing-brief.md, resolved", "pricing-brief.md"));
+    assert_eq!(summary[2].2.chars().count(), 60, "{}", summary[2].2);
+    assert!(summary[2].2.starts_with("word word") && summary[2].2.ends_with('…'), "{}", summary[2].2);
+    assert_eq!(summary[3], ("feedback", note.id.as_str(), "Too long", "on pricing-brief.md", "pricing-brief.md"));
 }

@@ -19,11 +19,17 @@ use crate::screenshot::{self, Region, ScreenshotSettings};
 use crate::settings::{self, SyncConfig, SyncEnv};
 use crate::state::App;
 use crate::syncer::SyncStatus;
-use crate::{activity, board, semesters, deliverables, feedback, markdown, posts, projects, prompts, provenance, search, stories, templates, threads, uploads};
+use crate::{activity, board, semesters, deliverables, feedback, links, markdown, posts, projects, prompts, provenance, search, stories, templates, threads, uploads};
 
 #[tauri::command]
 pub fn render_markdown(body: String) -> String {
     markdown::render(&body)
+}
+
+/// What a `[[link]]` in this project's markdown can point at.
+#[tauri::command]
+pub fn list_links(app: State<App>, project: String) -> Result<Vec<LinkTarget>> {
+    app.read(|c, _| links::list(c, &project))
 }
 
 #[tauri::command]
