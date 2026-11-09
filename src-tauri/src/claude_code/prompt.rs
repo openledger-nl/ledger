@@ -1,9 +1,10 @@
 //! What gets sent to Claude Code for a prompt, and where it runs.
 //!
 //! The prompt is run in its project's folder (`<vault>/projects/<project>/`): there it can read the project's
-//! README (the reading guide), its threads and its other deliverables, and write the deliverable where this app
-//! looks for it, in `deliverables/`. Around the prompt's own text goes a short, fixed preamble that says exactly
-//! that and nothing more. The whole text is shown to the person before anything is started.
+//! README (the reading guide), its threads, its other deliverables and their published versions (in `versions/`),
+//! and write the deliverable where this app looks for it, in `deliverables/`. Around the prompt's own text goes a
+//! short, fixed preamble that says exactly that and nothing more. The whole text is shown to the person before
+//! anything is started.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -95,7 +96,7 @@ pub fn compose(project_name: &str, prompt: &PromptView) -> String {
         one_line(project_name)
     ));
     out.push_str(
-        "Put what the request below asks for in the deliverables/ folder, as a markdown file unless the request says otherwise. Stay inside this folder, and leave published versions (names like plan@v1.0.md) alone.\n",
+        "Put what the request below asks for in the deliverables/ folder, as a markdown file unless the request says otherwise. Stay inside this folder, and leave the published versions in versions/ (names like plan@v1.0.md) alone.\n",
     );
 
     let linked: &[PromptDeliverable] = &prompt.deliverables;
@@ -108,7 +109,7 @@ pub fn compose(project_name: &str, prompt: &PromptView) -> String {
         // The versions are the history of the file: there to be read (to see how it got here, and what a piece of feedback
         // was given on), never to be written.
         for d in linked.iter().filter(|d| !d.versions.is_empty()) {
-            let files: Vec<String> = d.versions.iter().map(|v| format!("deliverables/{}", deliverables::snapshot_path(&d.path, v))).collect();
+            let files: Vec<String> = d.versions.iter().map(|v| format!("versions/{}", deliverables::snapshot_path(&d.path, v))).collect();
             out.push_str(&format!("Published so far of deliverables/{}, oldest first: {}. They are frozen history to read, not to change.\n", d.path, files.join(", ")));
         }
     }

@@ -1,8 +1,10 @@
 //! Deliverables are the files prompts produce, kept in a project's `deliverables/` folder. They can be anything;
-//! markdown ones can be read and edited here. Publishing freezes a copy as "<name>@v1.0.<ext>" next to the live
-//! file, and that snapshot never changes.
+//! markdown ones can be read and edited here. Publishing freezes a copy as "<name>@v1.0.<ext>" in the project's
+//! `versions/` folder, at the same place under it as the live file is under `deliverables/`, and that snapshot never
+//! changes. So `deliverables/` holds only the live files, and reads the same in any other tool.
 //!
-//! Paths in this module are relative to the deliverables folder and use `/`.
+//! Paths in this module are relative to the deliverables folder and use `/`; a snapshot's path is named the same way
+//! ("reports/plan@v1.2.md") even though its file is under `versions/` ([`file_of`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -93,6 +95,17 @@ pub fn snapshot_path(base: &str, version: &str) -> String {
 
 pub fn deliverables_dir(root: &Path, project: &str) -> PathBuf {
     uploads::project_dir(root, project).join("deliverables")
+}
+
+/// Where published versions are kept, next to the records of how each came to be (see [`provenance`]).
+pub fn versions_dir(root: &Path, project: &str) -> PathBuf {
+    uploads::project_dir(root, project).join("versions")
+}
+
+/// The file on disk for a deliverable path: a live file under `deliverables/`, a published version under `versions/`.
+pub fn file_of(root: &Path, project: &str, path: &str) -> PathBuf {
+    let dir = if split_version(path).1.is_some() { versions_dir(root, project) } else { deliverables_dir(root, project) };
+    dir.join(path)
 }
 
 // ---- reading ----------------------------------------------------------------------------------------
@@ -355,11 +368,14 @@ fn freeze(
             provenance::sha256_hex(text.as_bytes())
         }
         None => {
-            let to = deliverables_dir(root, project).join(&snapshot);
+            let to = file_of(root, project, &snapshot);
+            if let Some(dir) = to.parent() {
+                fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
+            }
             match held {
                 Some(bytes) => fs::write(&to, bytes).map_err(|e| Error::io(&to, e))?,
                 None => {
-                    let from = deliverables_dir(root, project).join(base);
+                    let from = file_of(root, project, base);
                     fs::copy(&from, &to).map_err(|e| Error::io(&to, e))?;
                 }
             }
@@ -402,7 +418,7 @@ pub fn delete(conn: &Connection, root: &Path, project: &str, path: &str) -> Resu
     )?;
     tx.commit()?;
     if view.body.is_none() {
-        let file = deliverables_dir(root, project).join(path);
+        let file = file_of(root, project, path);
         if let Err(e) = fs::remove_file(&file)
             && e.kind() != std::io::ErrorKind::NotFound
         {

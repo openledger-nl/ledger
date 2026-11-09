@@ -42,8 +42,8 @@
 	const snapshot = $derived(doc.version !== null);
 	const isMarkdown = $derived(doc.kind === 'markdown');
 	const file = $derived(deliverableFile(doc.path));
-	// Pictures in it are looked for beside the file.
-	const images = $derived({ project, dir: dirOf(file) });
+	// Pictures in it are looked for beside the live file, also in a version (which is kept in versions/, apart from them).
+	const images = $derived({ project, dir: dirOf(deliverableFile(doc.basePath)) });
 
 	// ---- the editable copy (markdown) ----------------------------------------------------------
 	// The page keeps its own text while you type and saves it in the background. It is only reset when a

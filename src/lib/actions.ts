@@ -105,8 +105,14 @@ export function promptName(prompt: Pick<Prompt, 'title' | 'base' | 'body'>): str
 	return line.length > 60 ? `${line.slice(0, 60).trimEnd()}…` : line;
 }
 
-/** Where a project's deliverable lives relative to the project's folder (what file commands take). */
-export const deliverableFile = (path: string) => `deliverables/${path}`;
+/** Whether a deliverable path names a published version ("reports/plan@v1.2.md", "LICENSE@v2.0"), as the backend reads it. */
+export const isVersionPath = (path: string) => /^.+@v\d+\.\d+(\.[^.]*)?$/.test(baseName(path));
+
+/**
+ * Where a project's deliverable lives relative to the project's folder (what file commands take): the live file under
+ * `deliverables/`, a published version at the same place under `versions/`.
+ */
+export const deliverableFile = (path: string) => `${isVersionPath(path) ? 'versions' : 'deliverables'}/${path}`;
 
 export function mimeOf(name: string): string {
 	const ext = name.split('.').pop()?.toLowerCase() ?? '';

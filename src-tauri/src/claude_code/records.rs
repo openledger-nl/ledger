@@ -34,8 +34,8 @@ pub struct RunRecord {
     pub finished_at: String,
     pub seconds: u64,
     pub turns: Option<u64>,
-    /// The deliverables the run produced, relative to the project's `deliverables/` folder: the versions that were
-    /// linked to the prompt, or when none were, the files it changed.
+    /// The deliverables the run produced, named relative to the project's `deliverables/` folder: the versions that were
+    /// linked to the prompt (whose files are under `versions/`), or when none were, the files it changed.
     pub files: Vec<String>,
     pub body: String,
 }

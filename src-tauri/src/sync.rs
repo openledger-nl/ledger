@@ -208,8 +208,9 @@ pub struct Overview {
     pub head: Option<String>,
     /// Files in that agreement.
     pub files: usize,
-    /// Of those: files under a project's `deliverables/` (published versions included), files under its
-    /// `attachments/`, and the notes that are everything else (threads, posts, stories, templates, semesters …).
+    /// Of those: files under a project's `deliverables/` and the published versions under its `versions/`, files under
+    /// its `attachments/`, and the notes that are everything else (threads, posts, stories, version records, templates,
+    /// semesters …).
     pub deliverables: usize,
     pub attachments: usize,
     pub notes: usize,
@@ -227,9 +228,12 @@ pub fn overview(root: &Path, repo: &str, branch: &str) -> Option<Overview> {
         if parts.next() != Some("projects") {
             continue;
         }
-        match parts.nth(1) {
-            Some("deliverables") => deliverables += 1,
-            Some("attachments") => attachments += 1,
+        let Some(folder) = parts.nth(1) else { continue };
+        match folder {
+            "deliverables" => deliverables += 1,
+            // beside the records of how each version came to be, which are notes
+            "versions" if crate::deliverables::split_version(path.splitn(4, '/').nth(3).unwrap_or("")).1.is_some() => deliverables += 1,
+            "attachments" => attachments += 1,
             _ => {}
         }
     }

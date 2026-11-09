@@ -2,9 +2,9 @@
 //! says they used elsewhere), the thread it is filed under, the prompt and run behind it, and the AI-use label
 //! (MMM, https://mmmlabel.tech) declared for the product at that version.
 //!
-//! A version is a bare file in `deliverables/` and must stay one (its bytes are compared with the live file, and
-//! anything next to it would show up as a deliverable), so this lives in a record of its own: `versions/<id>.md` in the
-//! project, one per published version. A version published before records existed has none; what can be proven from
+//! A version is a bare file in `versions/` (as "<name>@v1.0.<ext>", see [`deliverables`]) and must stay one (its bytes
+//! are compared with the live file), so this lives in a record of its own beside it: `versions/<id>.md` in the project,
+//! one per published version. A version published before records existed has none; what can be proven from
 //! the runs and the "version published" notes is worked out when it is shown ([`resolve`]), and nothing is written for
 //! it until the person marks it.
 //!
@@ -517,7 +517,7 @@ pub struct NoteRef {
 #[serde(rename_all = "camelCase")]
 pub struct VersionEntry {
     pub version: String,
-    /// The snapshot, relative to the deliverables folder.
+    /// The snapshot, named relative to the deliverables folder (its file is at that place under `versions/`).
     pub path: String,
     pub at: String,
     /// "ai", "human" or "unknown".

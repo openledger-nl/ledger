@@ -114,10 +114,11 @@ fn latest_versions(files: &BTreeSet<String>) -> HashMap<String, String> {
 }
 
 impl Baseline {
-    /// Reads the deliverables folder: which files there are, and for each whether a version holds what it says.
-    pub fn capture(dir: &Path) -> Baseline {
+    /// Reads the deliverables folder `dir`: which files there are, and for each whether a version holds what it says (the
+    /// latest of its published versions, in the versions folder `versions`).
+    pub fn capture(dir: &Path, versions: &Path) -> Baseline {
         let files = list_files(dir);
-        let latest = latest_versions(&files);
+        let latest = latest_versions(&list_files(versions));
         let mut baseline = Baseline::default();
         for path in files.iter().filter(|p| split_version(p).1.is_none()) {
             let Some(bytes) = read_capped(&dir.join(path)) else {
@@ -125,7 +126,7 @@ impl Baseline {
                 continue;
             };
             let before = match latest.get(path) {
-                Some(snapshot) if read_capped(&dir.join(snapshot)).is_some_and(|published| published == bytes) => Before::Published,
+                Some(snapshot) if read_capped(&versions.join(snapshot)).is_some_and(|published| published == bytes) => Before::Published,
                 Some(_) => Before::Unpublished(bytes.clone()),
                 None if is_placeholder(&bytes) => Before::Placeholder,
                 None => Before::Unpublished(bytes.clone()),
