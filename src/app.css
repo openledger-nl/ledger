@@ -181,7 +181,7 @@ details[open] > summary .disclosure { transform: rotate(90deg); }
    full    ≥ 1200 px     sidebar with names, side panels beside the page; the sidebar can be folded (Ctrl \)
    half    720–1199 px   the sidebar is folded and slides in from the top bar, side panels are drawers, search is an icon
    narrow  < 720 px      as half, and never a rail: there is no room for one
-   Folded means an icon rail (.fold-rail) or gone (.fold-hide). */
+   Folded means an icon rail (.fold-rail, the default) or gone (.fold-hide): Settings › Visual › Sidebar. */
 @media (min-width: 1200px) {
 	.app.sidebar-hidden .sidebar { display: none; }
 	.app.sidebar-hidden.fold-rail .rail { display: flex; }

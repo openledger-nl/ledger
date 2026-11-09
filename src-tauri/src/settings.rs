@@ -136,6 +136,25 @@ pub struct VaultSettings {
     pub screenshot_hotkey: Option<String>,
     pub screenshot_tool: ScreenshotTool,
     pub encryption: EncryptionSettings,
+    pub layout: LayoutSettings,
+}
+
+/// How the app's shell is laid out on this machine for this vault. Display only: nothing in the vault changes.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LayoutSettings {
+    #[serde(deserialize_with = "lenient")]
+    pub sidebar_fold: SidebarFold,
+}
+
+/// What a folded sidebar becomes (hidden with Ctrl \, or on a window narrower than 1200 px): an icon rail with the
+/// main pages and the projects' initials, or nothing at all.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SidebarFold {
+    #[default]
+    Rail,
+    Hide,
 }
 
 /// How a screenshot is taken: Ledger's built-in capture, or a program of the user's own (Flameshot, say). The

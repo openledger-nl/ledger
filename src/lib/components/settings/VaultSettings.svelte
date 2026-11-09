@@ -4,6 +4,7 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { api } from '$lib/api';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
+	import { loadLayoutSettings } from '$lib/layout.svelte';
 	import type { Settings } from '$lib/types';
 
 	let { settings }: { settings: Settings } = $props();
@@ -34,7 +35,7 @@
 		busy = false;
 		if (!next) return;
 		toast('Vault changed');
-		await refresh();
+		await Promise.all([refresh(), loadLayoutSettings()]);
 	}
 
 	async function reload() {

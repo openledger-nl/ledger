@@ -20,6 +20,8 @@ import type {
 	PublishChoices,
 	Region,
 	ScreenshotTaken,
+	SidebarFold,
+	LayoutSettings,
 	SearchHit,
 	Settings,
 	Story,
@@ -201,6 +203,9 @@ export const api = {
 	// screenshots
 	saveScreenshotHotkey: (hotkey: string) => call<Settings>('save_screenshot_hotkey', { hotkey }),
 	saveScreenshotTool: (useCommand: boolean, command: string) => call<Settings>('save_screenshot_tool', { useCommand, command }),
+	// the shell's layout, kept in the vault's .ledger/settings.json
+	layoutSettings: () => call<LayoutSettings>('layout_settings'),
+	saveSidebarFold: (fold: SidebarFold) => call<LayoutSettings>('save_sidebar_fold', { fold }),
 	pendingScreenshot: () => call<ScreenshotTaken | null>('pending_screenshot'),
 	takeScreenshot: () => call<void>('take_screenshot'),
 	/** Lets go of the hotkey while it is being re-recorded, and takes it back afterwards. */

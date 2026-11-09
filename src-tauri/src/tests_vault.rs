@@ -785,3 +785,24 @@ fn the_config_of_the_old_identifier_is_brought_over_once() {
     // Nothing to bring over: nothing happens.
     assert!(!settings::adopt_old_config(&base.path().join("fresh"), "no.such.identifier"));
 }
+
+#[test]
+fn the_folded_sidebar_is_a_rail_until_the_vault_settings_say_otherwise() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    // No settings file, an older one without the layout, and a value this version doesn't know: all a rail.
+    assert_eq!(settings::read_settings(root).layout.sidebar_fold, settings::SidebarFold::Rail);
+    write(root, ".ledger/settings.json", r#"{ "screenshotHotkey": "Control+Shift+S" }"#);
+    assert_eq!(settings::read_settings(root).layout.sidebar_fold, settings::SidebarFold::Rail);
+    write(root, ".ledger/settings.json", r#"{ "screenshotHotkey": "Control+Shift+S", "layout": { "sidebarFold": "sideways" } }"#);
+    let got = settings::read_settings(root);
+    assert_eq!(got.layout.sidebar_fold, settings::SidebarFold::Rail);
+    assert_eq!(got.screenshot_hotkey.as_deref(), Some("Control+Shift+S"));
+
+    // Saving it keeps the other settings and writes the choice where a person can read it.
+    settings::update_settings(root, |s| s.layout.sidebar_fold = settings::SidebarFold::Hide).unwrap();
+    assert!(read(root, ".ledger/settings.json").contains(r#""sidebarFold": "hide""#));
+    let got = settings::read_settings(root);
+    assert_eq!(got.layout.sidebar_fold, settings::SidebarFold::Hide);
+    assert_eq!(got.screenshot_hotkey.as_deref(), Some("Control+Shift+S"));
+}

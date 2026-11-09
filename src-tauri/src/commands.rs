@@ -743,6 +743,21 @@ pub fn save_screenshot_hotkey(app: AppHandle, hotkey: String) -> Result<Settings
     Ok(view(&state))
 }
 
+/// The shell's layout as this vault's settings have it (the folded sidebar: an icon rail or nothing).
+#[tauri::command]
+pub fn layout_settings(app: State<App>) -> settings::LayoutSettings {
+    let root = app.lock().vault.root().to_path_buf();
+    settings::read_settings(&root).layout
+}
+
+/// Saves what a folded sidebar becomes, in `.ledger/settings.json`.
+#[tauri::command]
+pub fn save_sidebar_fold(app: State<App>, fold: settings::SidebarFold) -> Result<settings::LayoutSettings> {
+    let root = app.lock().vault.root().to_path_buf();
+    settings::update_settings(&root, |s| s.layout.sidebar_fold = fold)?;
+    Ok(settings::read_settings(&root).layout)
+}
+
 /// Chooses between the built-in capture and the user's own tool (and saves the tool's command either way).
 #[tauri::command]
 pub fn save_screenshot_tool(app: State<App>, use_command: bool, command: String) -> Result<SettingsView> {

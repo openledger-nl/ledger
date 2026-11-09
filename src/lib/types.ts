@@ -496,6 +496,14 @@ export interface EncryptionStatus {
 	needsFreshTarget: boolean;
 }
 
+/** What a folded sidebar becomes: an icon rail (the default) or nothing. */
+export type SidebarFold = 'rail' | 'hide';
+
+/** The shell's layout, from the vault's `.ledger/settings.json` (never synced: each machine has its own). */
+export interface LayoutSettings {
+	sidebarFold: SidebarFold;
+}
+
 export interface ScreenshotSettings {
 	hotkey: string;
 	defaultHotkey: string;

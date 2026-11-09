@@ -5,10 +5,17 @@
 //   half    720 to 1199 px      sidebar folded (it slides in from the top bar), side panels as drawers, search as an icon
 //   narrow  below 720 px        as half, but never a rail
 //
-// A folded sidebar becomes an icon rail. Whether it is folded right now is remembered in the browser's storage.
+// What a folded sidebar becomes is a setting (Settings › Visual › Sidebar): an icon rail, the default, or gone. It is
+// kept in the vault's .ledger/settings.json, which never syncs, so each machine has its own; a copy in the browser's
+// storage only makes the first paint right before the vault has answered. Whether the sidebar is folded right now is
+// a passing state, kept in the browser's storage alone.
 //
 // The CSS in app.css draws the same three widths with media queries at the same numbers; this module is for what
 // scripts decide (which buttons to show, whether a click closes a drawer, what Ctrl K does).
+
+import { api } from './api';
+import { toast } from './ui.svelte';
+import type { SidebarFold } from './types';
 
 export type Width = 'full' | 'half' | 'narrow';
 
@@ -16,9 +23,10 @@ export const HALF = 1200;
 export const NARROW = 720;
 
 const HIDDEN_KEY = 'ledger-sidebar-hidden';
+const FOLD_KEY = 'ledger-sidebar-fold';
 
 /** What a folded sidebar becomes: an icon rail, or nothing (it comes back from the top bar). */
-export type Fold = 'rail' | 'hide';
+export type Fold = SidebarFold;
 
 // Read before the first paint (the app renders in the browser only), so a folded sidebar doesn't flash open.
 function savedHidden(): boolean {
@@ -26,6 +34,14 @@ function savedHidden(): boolean {
 		return localStorage.getItem(HIDDEN_KEY) === '1';
 	} catch {
 		return false;
+	}
+}
+
+function savedFold(): Fold {
+	try {
+		return localStorage.getItem(FOLD_KEY) === 'hide' ? 'hide' : 'rail';
+	} catch {
+		return 'rail';
 	}
 }
 
@@ -37,8 +53,8 @@ export const layout = $state({
 	width: typeof window === 'undefined' ? ('full' as Width) : widthOf(window.innerWidth),
 	/** The person folded the sidebar at full width; remembered on this machine, like the theme. */
 	sidebarHidden: savedHidden(),
-	/** What folded means. */
-	fold: 'rail' as Fold,
+	/** What folded means; remembered on this machine. */
+	fold: savedFold(),
 	/** The whole sidebar, slid in over the page from the top bar's button, below full width. */
 	drawerOpen: false,
 	/** The search box, opened over the top bar where it is only an icon. */
@@ -54,6 +70,36 @@ export function setSidebarHidden(hidden: boolean) {
 	}
 }
 
+function applyFold(fold: Fold) {
+	layout.fold = fold;
+	try {
+		localStorage.setItem(FOLD_KEY, fold);
+	} catch {
+		// No copy for the first paint; the vault still has it.
+	}
+}
+
+/** Reads the choice from the vault's settings: at start, and after switching to another vault. */
+export async function loadLayoutSettings() {
+	try {
+		applyFold((await api.layoutSettings()).sidebarFold);
+	} catch {
+		// The copy from the last run stays; the error is in the log.
+	}
+}
+
+/** Saves the choice in the vault's settings; it shows at once, and goes back if it can't be saved. */
+export async function setFold(fold: Fold) {
+	const before = layout.fold;
+	applyFold(fold);
+	try {
+		applyFold((await api.saveSidebarFold(fold)).sidebarFold);
+	} catch (e) {
+		applyFold(before);
+		toast(e instanceof Error ? e.message : String(e), true);
+	}
+}
+
 /** The one button for the sidebar: folds or unfolds it at full width, slides it in over the page below that. */
 export function toggleSidebar() {
 	if (layout.width !== 'full') layout.drawerOpen = !layout.drawerOpen;
@@ -62,6 +108,8 @@ export function toggleSidebar() {
 
 /** Follows the window's width and listens for the shell's shortcuts; returns the clean-up. */
 export function startLayout(): () => void {
+	loadLayoutSettings();
+
 	const half = window.matchMedia(`(min-width: ${HALF}px)`);
 	const narrow = window.matchMedia(`(min-width: ${NARROW}px)`);
 	const measure = () => {
