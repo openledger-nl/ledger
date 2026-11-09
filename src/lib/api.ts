@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { Anchor } from './anchors';
 import { capture, captureDebug, logError } from './log.svelte';
 import type {
 	ActivityEvent,
@@ -11,9 +12,12 @@ import type {
 	DeliverableSummary,
 	EncryptionStatus,
 	Feedback,
+	LinkTarget,
 	Post,
 	ProjectSummary,
 	ProjectView,
+	NewPromptInput,
+	OnboardingStatus,
 	Prompt,
 	Provenance,
 	PublishChoices,
@@ -56,6 +60,8 @@ async function call<T>(command: string, args?: Record<string, unknown>, log = tr
 
 export const api = {
 	renderMarkdown: (body: string) => call<string>('render_markdown', { body }),
+	/** What a [[link]] in this project's markdown can point at: its threads, deliverables and feedback. */
+	listLinks: (project: string) => call<LinkTarget[]>('list_links', { project }),
 	search: (query: string) => call<SearchHit[]>('search', { query }),
 	/** Everything made in the vault and when, oldest first: the contribution graph's events. */
 	listActivity: () => call<ActivityEvent[]>('list_activity'),
@@ -89,11 +95,19 @@ export const api = {
 	deletePost: (project: string, thread: string, id: string) => call<void>('delete_post', { project, thread, id }),
 
 	// prompts
-	/** `deliverable` is an existing deliverable the prompt asks for changes to; null asks for a new one. */
-	createPrompt: (project: string, thread: string, title: string, body: string, templateId: string | null, deliverable: string | null = null) =>
-		call<Prompt>('create_prompt', { project, thread, title, body, templateId, deliverable }),
-	updatePrompt: (project: string, thread: string, id: string, title: string, body: string) =>
-		call<Prompt>('update_prompt', { project, thread, id, title, body }),
+	createPrompt: (project: string, thread: string, draft: NewPromptInput) => call<Prompt>('create_prompt', { project, thread, draft }),
+	/** The prompts about a deliverable (any of its paths), oldest first. */
+	listDeliverablePrompts: (project: string, path: string) => call<Prompt[]>('list_deliverable_prompts', { project, path }),
+	/** Adds pieces of feedback to a prompt: they are linked, and put in its base text with the version each was given on. */
+	attachPromptFeedback: (project: string, thread: string, id: string, feedback: string[]) =>
+		call<Prompt>('attach_prompt_feedback', { project, thread, id, feedback }),
+	detachPromptFeedback: (project: string, thread: string, id: string, feedback: string) =>
+		call<Prompt>('detach_prompt_feedback', { project, thread, id, feedback }),
+	updatePrompt: (project: string, thread: string, id: string, base: string, body: string) =>
+		call<Prompt>('update_prompt', { project, thread, id, base, body }),
+	/** What a new prompt's base text starts as, from the template or the feedback it is made from. */
+	suggestPromptBase: (project: string, templateId: string | null, feedback: string[]) =>
+		call<string>('suggest_prompt_base', { project, spec: { templateId, feedback } }),
 	deletePrompt: (project: string, thread: string, id: string) => call<void>('delete_prompt', { project, thread, id }),
 	linkPromptDeliverable: (project: string, thread: string, id: string, path: string) =>
 		call<Prompt>('link_prompt_deliverable', { project, thread, id, path }),
@@ -103,8 +117,9 @@ export const api = {
 		call<Prompt>('create_prompt_deliverable', { project, thread, id, name }),
 
 	// feedback
-	addFeedback: (project: string, thread: string, deliverablePath: string, body: string) =>
-		call<Feedback>('add_feedback', { project, thread, deliverablePath, body }),
+	/** On the whole document, or on the passage `quote` when given. */
+	addFeedback: (project: string, thread: string, deliverablePath: string, body: string, quote: Anchor | null = null) =>
+		call<Feedback>('add_feedback', { project, thread, deliverablePath, body, quote }),
 	setFeedbackStatus: (project: string, thread: string, id: string, status: 'open' | 'resolved') =>
 		call<Feedback>('set_feedback_status', { project, thread, id, status }),
 	updateFeedback: (project: string, thread: string, id: string, body: string) =>
@@ -179,6 +194,11 @@ export const api = {
 	testSync: (repo: string, branch: string, token: string | null) => call<string>('test_sync', { repo, branch, token }),
 	syncNow: () => call<void>('sync_now'),
 	setVaultPath: (path: string, copy: boolean) => call<Settings>('set_vault_path', { path, copy }),
+	// the guide for a new client
+	onboardingStatus: () => call<OnboardingStatus>('onboarding_status'),
+	skipOnboardingStep: (step: 'semester' | 'sync') => call<OnboardingStatus>('skip_onboarding_step', { step }),
+	finishOnboarding: () => call<OnboardingStatus>('finish_onboarding'),
+	restartOnboarding: () => call<OnboardingStatus>('restart_onboarding'),
 	reloadVault: () => call<void>('reload_vault'),
 	checkVaultChanges: () => call<boolean>('check_vault_changes'),
 
@@ -222,8 +242,8 @@ import type {
 
 export const claudeCodeApi = {
 	settings: () => call<ClaudeCodeSettings>('claude_code_settings'),
-	saveSettings: (cliPath: string, permissionMode: string, model: string, confine: boolean, autoRun: boolean) =>
-		call<ClaudeCodeSettings>('save_claude_code_settings', { cliPath, permissionMode, model, confine, autoRun }),
+	saveSettings: (cliPath: string, permissionMode: string, model: string, confine: boolean, autoRun: boolean, namePrompts: boolean) =>
+		call<ClaudeCodeSettings>('save_claude_code_settings', { cliPath, permissionMode, model, confine, autoRun, namePrompts }),
 	/** Runs `claude --version` with the path as typed (blank: look on the PATH). Doesn't save anything. */
 	check: (cliPath: string) => call<ClaudeCodeCheck>('check_claude_code', { cliPath }),
 	/** Everything a run would send and where, for the confirmation. */
@@ -282,9 +302,7 @@ export const updatesApi = {
 	/** Looks now, whether or not automatic checks are on. */
 	check: () => call<UpdateCheck>('check_for_updates'),
 	/** Downloads (once), waits for syncs and runs, installs and restarts. Call again while the answer is to wait. */
-	install: (choice: RunsChoice) => call<InstallStep>('install_update', { choice }),
-	/** Development builds only: pretend a release was found. */
-	simulate: (major: boolean) => call<UpdateInfo>('simulate_update', { major })
+	install: (choice: RunsChoice) => call<InstallStep>('install_update', { choice })
 };
 
 import type { AboutInfo, LogEntry } from './types';

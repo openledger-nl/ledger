@@ -3,12 +3,12 @@
 //! The deliverables are looked at before the run starts ([`Baseline::capture`]) and again when it is over
 //! ([`Baseline::changes`]), so it doesn't matter how the run wrote a file. What a change means for the versions:
 //!
-//! * a file that wasn't there is new: it is published as the first version and that version is linked to the prompt;
+//! * a file that wasn't there is new: it is published as the first version, and the prompt is linked to the file;
 //! * a file that was there, and is the same as its latest version, was edited: the edit is published as the next
-//!   minor version and that is linked;
+//!   minor version, and the prompt is linked to the file;
 //! * a file that was there with edits no version holds (it was never published, or was edited after the latest
 //!   version) first has those edits published as a version, from what was read before the run; then the run's edit is
-//!   published as the next minor and that one is linked. The version made to keep the earlier edits is not linked.
+//!   published as the next minor. The version made to keep the earlier edits is not the run's, and is not reported as such.
 //!
 //! A file that has never been published and holds nothing but a title (what "Create deliverable" starts one with) is
 //! a new deliverable that has yet to be written, so it counts as new rather than having a stub published.

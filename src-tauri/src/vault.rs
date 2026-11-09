@@ -59,6 +59,13 @@ fn thread_dir(project: &str, thread: &str) -> String {
     format!("projects/{project}/threads/{thread}")
 }
 
+/// The live paths a prompt's links stand for, each once. Older vaults linked the version a run published
+/// ("plan@v0.2.md"); a prompt belongs to the deliverable, so that reads as "plan.md".
+fn live_paths(paths: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    paths.into_iter().map(|p| crate::deliverables::split_version(&p).0).filter(|p| seen.insert(p.clone())).collect()
+}
+
 fn entity_file(project: &str, thread: &str, folder: &str, id: &str) -> String {
     format!("{}/{folder}/{id}.md", thread_dir(project, thread))
 }
@@ -358,35 +365,47 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
     })? {
         linked.entry(prompt).or_default().push(path);
     }
-    type PromptRow = (String, String, String, String, Option<String>, String, String, String);
-    for (id, project, thread, title, template, created_at, updated_at, body) in query_all::<PromptRow, _>(
+    let mut covered: HashMap<String, Vec<String>> = HashMap::new();
+    for (prompt, feedback) in query_all(conn, "SELECT prompt_id, feedback_id FROM prompt_feedback ORDER BY prompt_id, position", [], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })? {
+        covered.entry(prompt).or_default().push(feedback);
+    }
+    type PromptRow = (String, String, String, String, Option<String>, String, String, String, String);
+    for (id, project, thread, title, template, created_at, updated_at, base, body) in query_all::<PromptRow, _>(
         conn,
-        "SELECT id, project_slug, thread_slug, title, template_id, created_at, updated_at, body FROM prompts",
+        "SELECT id, project_slug, thread_slug, title, template_id, created_at, updated_at, base, body FROM prompts",
         [],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)),
     )? {
         let mut meta = Mapping::new();
         frontmatter::set(&mut meta, "id", id.clone());
         frontmatter::set_opt(&mut meta, "title", Some(&title));
         frontmatter::set_opt(&mut meta, "template", template.as_deref());
+        frontmatter::set_opt(&mut meta, "base", Some(&base));
         frontmatter::set_list(&mut meta, "deliverables", &linked.remove(&id).unwrap_or_default());
+        frontmatter::set_list(&mut meta, "feedback", &covered.remove(&id).unwrap_or_default());
         frontmatter::set(&mut meta, "createdAt", created_at);
         frontmatter::set(&mut meta, "updatedAt", updated_at);
         files.insert(entity_file(&project, &thread, "prompts", &id), frontmatter::render(&meta, &body));
     }
 
-    type FeedbackRow = (String, String, String, String, Option<String>, String, String, String, String);
-    for (id, project, thread, path, version, status, created_at, updated_at, body) in query_all::<FeedbackRow, _>(
+    type FeedbackRow = (String, String, String, String, Option<String>, String, String, String, String, Option<String>, Option<String>, Option<String>);
+    for (id, project, thread, path, version, status, created_at, updated_at, body, quote, prefix, suffix) in query_all::<FeedbackRow, _>(
         conn,
-        "SELECT id, project_slug, thread_slug, deliverable_path, deliverable_version, status, created_at, updated_at, body FROM feedback",
+        "SELECT id, project_slug, thread_slug, deliverable_path, deliverable_version, status, created_at, updated_at, body,
+                quote, quote_prefix, quote_suffix FROM feedback",
         [],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?)),
     )? {
         let mut meta = Mapping::new();
         frontmatter::set(&mut meta, "id", id.clone());
         frontmatter::set(&mut meta, "deliverable", path);
         frontmatter::set_opt(&mut meta, "version", version.as_deref());
         frontmatter::set(&mut meta, "status", status);
+        frontmatter::set_opt(&mut meta, "quote", quote.as_deref());
+        frontmatter::set_opt(&mut meta, "quotePrefix", prefix.as_deref());
+        frontmatter::set_opt(&mut meta, "quoteSuffix", suffix.as_deref());
         frontmatter::set(&mut meta, "createdAt", created_at);
         frontmatter::set(&mut meta, "updatedAt", updated_at);
         files.insert(entity_file(&project, &thread, "feedback", &id), frontmatter::render(&meta, &body));
@@ -832,8 +851,10 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
         )?;
     }
 
-    type PromptItem = (String, String, String, Option<String>, Vec<String>, String, String, String);
-    type FeedbackItem = (String, String, String, Option<String>, String, String, String, String);
+    // id, thread, title, template, deliverables, created, updated, body, then the base and the feedback the prompt covers
+    type PromptItem = (String, String, String, Option<String>, Vec<String>, String, String, String, String, Vec<String>);
+    // id, thread, deliverable, version, status, created, updated, body, then the quoted passage with its context
+    type FeedbackItem = (String, String, String, Option<String>, String, String, String, String, Option<String>, Option<String>, Option<String>);
     let mut prompts: Vec<PromptItem> = vec![];
     let mut feedback: Vec<FeedbackItem> = vec![];
     let mut uploads: Vec<(String, String, String, String, i64, String, String)> = vec![];
@@ -844,7 +865,8 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
         for stem in source.stems(&format!("{}/prompts", thread_dir(project, slug))) {
             let rel = entity_file(project, slug, "prompts", &stem);
             let Some((meta, body)) = source.parsed(&rel) else { continue };
-            if body.trim().is_empty() {
+            let base = meta.text("base").unwrap_or_default();
+            if body.trim().is_empty() && base.trim().is_empty() {
                 continue;
             }
             let created_at = meta.text("createdAt").unwrap_or_else(|| source.stamp(&rel));
@@ -853,10 +875,12 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
                 slug.clone(),
                 meta.text("title").unwrap_or_default(),
                 meta.text("template"),
-                meta.list("deliverables"),
+                live_paths(meta.list("deliverables")),
                 created_at.clone(),
                 meta.text("updatedAt").unwrap_or(created_at),
                 body,
+                base,
+                meta.list("feedback"),
             ));
         }
         for stem in source.stems(&format!("{}/feedback", thread_dir(project, slug))) {
@@ -877,6 +901,9 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
                 created_at.clone(),
                 meta.text("updatedAt").unwrap_or(created_at),
                 body,
+                meta.text("quote"),
+                meta.text("quotePrefix"),
+                meta.text("quoteSuffix"),
             ));
         }
         for stem in source.stems(&format!("{}/uploads", thread_dir(project, slug))) {
@@ -923,23 +950,36 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
     }
 
     prompts.sort_by(|a, b| (&a.5, &a.0).cmp(&(&b.5, &b.0)));
-    for (id, thread, title, template, deliverables, created_at, updated_at, body) in prompts {
+    let mut covered: Vec<(String, Vec<String>)> = vec![];
+    for (id, thread, title, template, deliverables, created_at, updated_at, body, base, feedback_ids) in prompts {
         conn.execute(
-            "INSERT OR IGNORE INTO prompts (id, project_slug, thread_slug, title, template_id, created_at, updated_at, body)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![id, project, thread, title, template, created_at, updated_at, body],
+            "INSERT OR IGNORE INTO prompts (id, project_slug, thread_slug, title, template_id, created_at, updated_at, base, body)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![id, project, thread, title, template, created_at, updated_at, base, body],
         )?;
         for (position, path) in deliverables.iter().enumerate() {
             conn.execute("INSERT OR IGNORE INTO prompt_deliverables (prompt_id, position, path) VALUES (?1, ?2, ?3)", params![id, position as i64, path])?;
         }
+        covered.push((id, feedback_ids));
     }
     feedback.sort_by(|a, b| (&a.5, &a.0).cmp(&(&b.5, &b.0)));
-    for (id, thread, path, version, status, created_at, updated_at, body) in feedback {
+    for (id, thread, path, version, status, created_at, updated_at, body, quote, prefix, suffix) in feedback {
         conn.execute(
-            "INSERT OR IGNORE INTO feedback (id, project_slug, thread_slug, deliverable_path, deliverable_version, status, created_at, updated_at, body)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![id, project, thread, path, version, status, created_at, updated_at, body],
+            "INSERT OR IGNORE INTO feedback (id, project_slug, thread_slug, deliverable_path, deliverable_version, status, created_at, updated_at, body,
+                                             quote, quote_prefix, quote_suffix)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![id, project, thread, path, version, status, created_at, updated_at, body, quote, prefix, suffix],
         )?;
+    }
+    // The feedback a prompt covers can be linked now that both are there; what is gone is left out.
+    for (prompt, feedback_ids) in covered {
+        for (position, feedback_id) in feedback_ids.iter().enumerate() {
+            conn.execute(
+                "INSERT OR IGNORE INTO prompt_feedback (prompt_id, feedback_id, position)
+                 SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM prompts WHERE id = ?1) AND EXISTS (SELECT 1 FROM feedback WHERE id = ?2)",
+                params![prompt, feedback_id, position as i64],
+            )?;
+        }
     }
     uploads.sort_by(|a, b| (&a.5, &a.0).cmp(&(&b.5, &b.0)));
     for (id, thread, file, name, size, uploaded_at, description) in uploads {

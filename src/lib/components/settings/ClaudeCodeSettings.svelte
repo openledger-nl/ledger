@@ -31,12 +31,13 @@
 	let model = $state('');
 	let confine = $state(true);
 	let autoRun = $state(false);
+	let namePrompts = $state(true);
 	let busy = $state<'save' | 'check' | null>(null);
 	let checked = $state<ClaudeCodeCheck | null>(null);
 	let error = $state<string | null>(null);
 
 	const changed = $derived(
-		saved !== null && (cliPath.trim() !== saved.cliPath || mode !== saved.permissionMode || model.trim() !== saved.model || confine !== saved.confine || autoRun !== saved.autoRun)
+		saved !== null && (cliPath.trim() !== saved.cliPath || mode !== saved.permissionMode || model.trim() !== saved.model || confine !== saved.confine || autoRun !== saved.autoRun || namePrompts !== saved.namePrompts)
 	);
 
 	function show(settings: ClaudeCodeSettings) {
@@ -46,6 +47,7 @@
 		model = settings.model;
 		confine = settings.confine;
 		autoRun = settings.autoRun;
+		namePrompts = settings.namePrompts;
 	}
 
 	onMount(async () => {
@@ -76,7 +78,7 @@
 		busy = 'save';
 		error = null;
 		try {
-			show(await claudeCodeApi.saveSettings(cliPath, mode, model, confine, autoRun));
+			show(await claudeCodeApi.saveSettings(cliPath, mode, model, confine, autoRun, namePrompts));
 			toast('Claude Code settings saved');
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -146,6 +148,15 @@
 		Off by default. When it is on, saving a new prompt starts it in Claude Code at once, so you don’t press <b>Run in Claude Code</b> and don’t see the
 		confirmation of what will be sent first. It runs with the permissions chosen above and uses your Claude allowance, and it starts before any guiding
 		questions from a template are answered. You can still cancel it from the prompt’s card, and a prompt you already have still needs the button.
+	</div>
+
+	<label class="check">
+		<input type="checkbox" bind:checked={namePrompts} /> Let Claude Code name new prompts
+	</label>
+	<div class="hint">
+		On by default. A prompt has no title to write: when it is created, Claude Code is asked once for a short name for what it asks, the way a chat
+		app names a chat. Only the text of the request is sent, to a small fast model, with no tools and nothing of your vault in reach. Off, or when Claude
+		Code can’t be reached, a prompt is called by the start of its text.
 	</div>
 
 	{#if error}<div class="notice bad">{error}</div>{/if}

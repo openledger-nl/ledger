@@ -2,7 +2,9 @@
 	import { onMount, untrack } from 'svelte';
 	import { EditorState, type Extension } from '@codemirror/state';
 	import { EditorView } from '@codemirror/view';
-	import { markdownEditor, setSourceMode } from '$lib/markdownEditor';
+	import type { Mark } from '$lib/anchors';
+	import { projectLinks } from '$lib/links.svelte';
+	import { markdownEditor, refreshLinks, revealMark, setSourceMode, showMarks } from '$lib/markdownEditor';
 	import { imageLoader, type ImageBase } from '$lib/vaultImages';
 
 	/**
@@ -24,7 +26,9 @@
 		submitOnEnter = false,
 		onsubmit,
 		oncancel,
-		oninput
+		oninput,
+		marks,
+		onmark
 	}: {
 		value?: string;
 		placeholder?: string;
@@ -45,7 +49,14 @@
 		/** Escape. */
 		oncancel?: () => void;
 		oninput?: () => void;
+		/** Passages to light up (feedback on a selection), found again by their words as the text changes. */
+		marks?: Mark[];
+		/** A click on one of them. */
+		onmark?: (id: string) => void;
 	} = $props();
+
+	// [[links]] point at the threads, deliverables and feedback of the project the window is in (none outside a project).
+	const links = projectLinks();
 
 	let host: HTMLDivElement;
 	let view: EditorView | undefined;
@@ -71,6 +82,8 @@
 				oncancel();
 				return true;
 			},
+			markClicked: (id) => onmark?.(id),
+			links: { index: () => links.index, open: (target) => links.open(target) },
 			changed: (update) => {
 				if (!update.docChanged) return;
 				held = update.state.doc.toString();
@@ -79,6 +92,7 @@
 			}
 		});
 		view = new EditorView({ parent: host, state: EditorState.create({ doc: value, extensions }) });
+		pushMarks(marks ?? []);
 		if (autofocus || focusWhenReady) focus(autofocus);
 		return () => {
 			view?.destroy();
@@ -95,12 +109,34 @@
 		const head = Math.min(view.state.selection.main.head, next.length);
 		view.setState(EditorState.create({ doc: next, selection: { anchor: head }, extensions }));
 		setSourceMode(view, untrack(() => source));
+		pushMarks(untrack(() => marks) ?? []);
+	});
+
+	$effect(() => pushMarks(marks ?? []));
+
+	// The things links point at changed (something was made, renamed or deleted): they are looked at again.
+	$effect(() => {
+		void links.index;
+		if (view) refreshLinks(view);
 	});
 
 	$effect(() => {
 		const next = source;
 		if (view) setSourceMode(view, next);
 	});
+
+	let lit = false;
+	/** Hands the passages to the editor; an editor that has never had any isn't bothered. */
+	function pushMarks(next: Mark[]) {
+		if (!view || (!next.length && !lit)) return;
+		lit = next.length > 0;
+		showMarks(view, next);
+	}
+
+	/** Scrolls the passage of mark `id` into view; false when it is not in the text. */
+	export function reveal(id: string): boolean {
+		return view ? revealMark(view, id) : false;
+	}
 
 	/** Focuses the editor, now or as soon as it exists; `atEnd` puts the cursor after the text. */
 	export function focus(atEnd = false) {

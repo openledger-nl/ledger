@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 use crate::frontmatter::{self, MetaExt};
-use crate::models::{Bump, Criterion, SemesterDraft, StoryDraft, TaskUpdate};
+use crate::models::{Bump, Criterion, Quote, SemesterDraft, StoryDraft, TaskUpdate};
 use crate::posts::AddOptions;
 use crate::provenance::{self, Origin};
 use crate::settings::{self, SyncEnv};
@@ -63,11 +63,15 @@ fn populate(conn: &Connection, root: &Path) -> (String, String) {
     let first = posts::add(conn, &project, &alpha, "A note with **bold**\n\nand a second paragraph.", AddOptions::default()).unwrap();
     posts::add(conn, &project, &alpha, "A reply", AddOptions { reply_to_id: Some(first.id), ..Default::default() }).unwrap();
 
-    let prompt = prompts::create(conn, &project, &alpha, "Call summary", "Write up the call with Ana.", Some("interview")).unwrap();
+    let prompt = prompts::create_titled(conn, &project, &alpha, "Call summary", "Write up the call with Ana.", Some("interview")).unwrap();
     let plan = deliverables::create(conn, &project, "Call summary", "# Call summary\n\nAna wants SSO.\n").unwrap();
     prompts::link_deliverable(conn, &project, &alpha, &prompt.id, &plan.path).unwrap();
     deliverables::publish(conn, root, &project, &plan.path, Bump::Major, None).unwrap();
-    feedback::add(conn, &project, &beta, &plan.path, "Add the date of the call.").unwrap();
+    feedback::add(conn, &project, &beta, &plan.path, "Add the date of the call.", None).unwrap();
+    let quote = Quote { text: "Ana wants SSO: really?".into(), prefix: "Call summary ".into(), suffix: " and more".into() };
+    let sso = feedback::add(conn, &project, &beta, &plan.path, "Which SSO?", Some(&quote)).unwrap();
+    // The prompt covers it: that link is in the prompt's file.
+    prompts::attach_feedback(conn, &project, &alpha, &prompt.id, std::slice::from_ref(&sso.id)).unwrap();
 
     uploads::add_bytes(conn, root, &project, &alpha, "site plan.png", b"\x89PNG....", "The site plan").unwrap();
 
@@ -146,13 +150,21 @@ fn the_vault_has_the_agreed_folder_structure() {
     assert_eq!(prompt_files.len(), 1);
     let prompt = read(root, &format!("{thread}/prompts/{}", prompt_files[0]));
     assert!(prompt.contains("title: Call summary") && prompt.contains("template: interview") && prompt.contains("- call-summary.md"), "{prompt}");
+    assert!(prompt.contains("feedback:"), "the feedback it covers: {prompt}");
+    assert!(prompt.contains("base:") && prompt.contains("Which SSO?"), "the base text, with the feedback in it: {prompt}");
     assert!(prompt.ends_with("Write up the call with Ana.\n"));
 
     // Feedback lives in the thread it was written in and names the deliverable.
     let beta = format!("{project}/threads/beta/feedback");
-    let feedback_file = names(root, &beta);
-    let text = read(root, &format!("{beta}/{}", feedback_file[0]));
-    assert!(text.contains("deliverable: call-summary.md") && text.contains("status: open") && text.ends_with("Add the date of the call.\n"), "{text}");
+    let feedback_files = names(root, &beta);
+    assert_eq!(feedback_files.len(), 2);
+    let texts: Vec<String> = feedback_files.iter().map(|f| read(root, &format!("{beta}/{f}"))).collect();
+    let text = texts.iter().find(|x| x.ends_with("Add the date of the call.\n")).unwrap();
+    assert!(text.contains("deliverable: call-summary.md") && text.contains("status: open") && !text.contains("quote"), "{text}");
+    // On a passage, it keeps the passage and the words around it; nothing else changes.
+    let quoted = texts.iter().find(|x| x.ends_with("Which SSO?\n")).unwrap();
+    assert!(quoted.contains("quote: 'Ana wants SSO: really?'") || quoted.contains("quote: \"Ana wants SSO: really?\""), "{quoted}");
+    assert!(quoted.contains("quotePrefix:") && quoted.contains("quoteSuffix:"), "{quoted}");
 
     // An upload: a manifest in the thread, the file itself in the project's attachments.
     let manifest_name = &names(root, &format!("{thread}/uploads"))[0];
@@ -213,7 +225,7 @@ fn things_made_in_the_same_instant_keep_their_order_after_a_reload() {
     templates::create(&conn, "", "Many", "", &questions, "").unwrap();
     let p = projects::create(&conn, "P").unwrap().slug;
     let t = threads::create(&conn, &p, "T").unwrap().slug;
-    prompts::create(&conn, &p, &t, "", "Answer them all", Some("many")).unwrap();
+    prompts::create_titled(&conn, &p, &t, "", "Answer them all", Some("many")).unwrap();
     vault.persist(&conn).unwrap();
 
     let (_, reloaded) = open(root);
@@ -678,7 +690,7 @@ fn version_records_and_the_prompt_a_note_names_survive_a_reload() {
     let (mut vault, conn) = open(root);
     let p = projects::create(&conn, "Acme").unwrap().slug;
     let t = threads::create(&conn, &p, "Call").unwrap().slug;
-    let prompt = prompts::create(&conn, &p, &t, "Summary", "Write it.", None).unwrap();
+    let prompt = prompts::create_titled(&conn, &p, &t, "Summary", "Write it.", None).unwrap();
     deliverables::create(&conn, &p, "Plan", "# Plan\n\ntext\n").unwrap();
     let origin = Origin {
         mmm: Some("piggybacker".into()),
@@ -767,21 +779,42 @@ fn a_vault_from_before_version_records_loads_as_it_was_and_is_not_rewritten() {
 }
 
 #[test]
-fn the_config_of_the_old_identifier_is_brought_over_once() {
-    let base = tempdir().unwrap();
-    let old = base.path().join(settings::OLD_IDENTIFIER);
-    let new = base.path().join("nl.openledger.ledger");
-    fs::create_dir_all(&old).unwrap();
-    fs::write(old.join("config.json"), r#"{"vaultPath":"/somewhere/else"}"#).unwrap();
+fn a_prompt_an_older_vault_linked_to_versions_reads_as_linked_to_the_deliverable() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/ideas/deliverables/plan.md", "# Plan\n");
+    write(root, "projects/ideas/deliverables/plan@v0.1.md", "# Plan\n");
+    write(root, "projects/ideas/deliverables/plan@v0.2.md", "# Plan, again\n");
+    write(root, "projects/ideas/threads/first/prompts/p1.md", "---\ntitle: Plan it\ndeliverables:\n  - plan@v0.1.md\n  - plan@v0.2.md\n  - plan.md\n---\n\nWrite a plan.\n");
 
-    assert!(settings::adopt_old_config(&new, settings::OLD_IDENTIFIER));
-    assert_eq!(settings::load_config(&new).vault_path.as_deref(), Some("/somewhere/else"));
+    let (mut vault, conn) = open(root);
+    let prompt = prompts::list(&conn, "ideas", "first").unwrap().remove(0);
+    assert_eq!(prompt.deliverables.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(), ["plan.md"], "one link, to the file");
+    assert_eq!(prompt.deliverables[0].versions, ["0.1", "0.2"], "and the file knows its versions");
 
-    // Once there is a config of its own, the old one is left alone.
-    settings::update_config(&new, |c| c.vault_path = Some("/chosen/later".into())).unwrap();
-    assert!(!settings::adopt_old_config(&new, settings::OLD_IDENTIFIER));
-    assert_eq!(settings::load_config(&new).vault_path.as_deref(), Some("/chosen/later"));
+    // Written again, it says so.
+    prompts::update(&conn, "ideas", "first", &prompt.id, None, Some("Write a better plan.")).unwrap();
+    vault.persist(&conn).unwrap();
+    let text = read(root, "projects/ideas/threads/first/prompts/p1.md");
+    assert!(text.contains("- plan.md") && !text.contains("@v0"), "{text}");
+}
 
-    // Nothing to bring over: nothing happens.
-    assert!(!settings::adopt_old_config(&base.path().join("fresh"), "no.such.identifier"));
+#[test]
+fn a_prompt_may_be_all_base_with_nothing_added() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/ideas/threads/first/prompts/p1.md", "---\ntitle: Resolve the feedback\nbase: |-\n  Please resolve this.\n\n  ---\n\n  ### On v1.0\n---\n");
+    write(root, "projects/ideas/threads/first/prompts/p2.md", "---\ntitle: nothing at all\n---\n");
+
+    let (mut vault, conn) = open(root);
+    let found = prompts::list(&conn, "ideas", "first").unwrap();
+    assert_eq!(found.len(), 1, "a prompt with no base and no body says nothing, so it is not one");
+    assert_eq!(found[0].base, "Please resolve this.\n\n---\n\n### On v1.0", "a line of dashes inside the base doesn't end the frontmatter");
+    assert_eq!(found[0].body, "");
+
+    // And it is written back the way it was read.
+    prompts::set_title(&conn, "ideas", "first", &found[0].id, "Resolve it").unwrap();
+    vault.persist(&conn).unwrap();
+    let (_, again) = open(root);
+    assert_eq!(prompts::list(&again, "ideas", "first").unwrap()[0].base, found[0].base);
 }

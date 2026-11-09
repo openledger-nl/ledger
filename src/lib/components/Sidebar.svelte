@@ -14,6 +14,7 @@
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { drawer, sync } from '$lib/ui.svelte';
+	import { sidebar } from '$lib/sidebar.svelte';
 	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
 	import Wordmark from '$lib/components/Wordmark.svelte';
 
@@ -148,43 +149,6 @@
 	</form>
 
 	<a class="nav-item" class:active={path === '/'} href="/"><span class="nav-ico"><House size={16} /></span>Home</a>
-	<a class="nav-item" class:active={on('/settings')} href="/settings"><span class="nav-ico"><Settings size={16} /></span>Settings</a>
-
-	{#if latestThreads.length || latestDeliverables.length}
-		<div class="section-head"><span>Latest</span></div>
-		<nav class="space-list" aria-label="Latest">
-			{#if latestThreads.length}
-				<div class="tree-label plain">Threads</div>
-				{#each latestThreads as { thread, project } (project.slug + '/' + thread.slug)}
-					<a class="tree-item" class:active={path === threadUrl(project.slug, thread.slug)} href={threadUrl(project.slug, thread.slug)}>
-						<span class="dot"></span>
-						<span class="stack">
-							<span class="name">{thread.title}</span>
-							<span class="of">{project.name}</span>
-						</span>
-					</a>
-				{/each}
-			{/if}
-			{#if latestDeliverables.length}
-				<div class="tree-label plain">Deliverables</div>
-				{#each latestDeliverables as { d, project } (project.slug + '/' + d.path)}
-					{@const target = deliverableTarget(d)}
-					<a
-						class="tree-item"
-						class:active={currentProject === project.slug && (viewing === target || viewing === d.path)}
-						href={deliverableUrl(project.slug, target)}
-						title={d.path}
-					>
-						<span class="file"><FileText size={13} /></span>
-						<span class="stack">
-							<span class="name">{d.name}</span>
-							<span class="of">{project.name}</span>
-						</span>
-					</a>
-				{/each}
-			{/if}
-		</nav>
-	{/if}
 
 	<div class="section-head">
 		<span>Projects</span>
@@ -245,6 +209,42 @@
 		{/each}
 	</nav>
 
+	{#if sidebar.showLatest && (latestThreads.length || latestDeliverables.length)}
+		<div class="section-head"><span>Latest</span></div>
+		<nav class="space-list" aria-label="Latest">
+			{#if latestThreads.length}
+				<div class="tree-label plain">Threads</div>
+				{#each latestThreads as { thread, project } (project.slug + '/' + thread.slug)}
+					<a class="tree-item" class:active={path === threadUrl(project.slug, thread.slug)} href={threadUrl(project.slug, thread.slug)}>
+						<span class="dot"></span>
+						<span class="stack">
+							<span class="name">{thread.title}</span>
+							<span class="of">{project.name}</span>
+						</span>
+					</a>
+				{/each}
+			{/if}
+			{#if latestDeliverables.length}
+				<div class="tree-label plain">Deliverables</div>
+				{#each latestDeliverables as { d, project } (project.slug + '/' + d.path)}
+					{@const target = deliverableTarget(d)}
+					<a
+						class="tree-item"
+						class:active={currentProject === project.slug && (viewing === target || viewing === d.path)}
+						href={deliverableUrl(project.slug, target)}
+						title={d.path}
+					>
+						<span class="file"><FileText size={13} /></span>
+						<span class="stack">
+							<span class="name">{d.name}</span>
+							<span class="of">{project.name}</span>
+						</span>
+					</a>
+				{/each}
+			{/if}
+		</nav>
+	{/if}
+
 	<div class="spacer"></div>
 
 	<div class="sync-box">
@@ -256,4 +256,6 @@
 		{#if footer.encryption}<div class="sync-sub">{footer.encryption}</div>{/if}
 		{#if footer.error}<div class="sync-sub error">{footer.error}</div>{/if}
 	</div>
+
+	<a class="nav-item" class:active={on('/settings')} href="/settings"><span class="nav-ico"><Settings size={16} /></span>Settings</a>
 </aside>

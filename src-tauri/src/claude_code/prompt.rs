@@ -13,8 +13,9 @@ use rusqlite::Connection;
 
 use crate::db::query_opt;
 use crate::error::{Error, Result};
-use crate::models::{PromptDeliverable, PromptView, TemplateView};
-use crate::{deliverables, projects, prompts, templates, threads, uploads};
+use crate::models::{PromptDeliverable, PromptView};
+use crate::prompts::one_line;
+use crate::{deliverables, projects, prompts, threads, uploads};
 
 /// A prompt may be long, but this long means something went wrong.
 pub const MAX_PROMPT_BYTES: usize = 1024 * 1024;
@@ -61,8 +62,7 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, thread: &str, prom
     let dir = deliverables::deliverables_dir(root, project);
     fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
 
-    let template = prompt.template_id.as_deref().and_then(|id| templates::find(conn, project, id).ok());
-    let text = compose(&name, &prompt, template.as_ref());
+    let text = compose(&name, &prompt);
     if text.len() > MAX_PROMPT_BYTES {
         return Err(Error::invalid("That prompt is too long to send"));
     }
@@ -86,23 +86,9 @@ pub fn ensure_confirmed(request: &RunRequest, confirmed: &str) -> Result<()> {
     }
 }
 
-/// One line of text: names are the user's, and a stray newline in one must not read as an instruction.
-fn one_line(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// A code fence longer than any run of backticks inside `text`, so quoting a template can't end early.
-fn fence_for(text: &str) -> String {
-    let (mut longest, mut run) = (0, 0);
-    for c in text.chars() {
-        run = if c == '`' { run + 1 } else { 0 };
-        longest = longest.max(run);
-    }
-    "`".repeat((longest + 1).max(3))
-}
-
-/// The text sent to Claude Code: a preamble, a line, and the prompt exactly as written.
-pub fn compose(project_name: &str, prompt: &PromptView, template: Option<&TemplateView>) -> String {
+/// The text sent to Claude Code: a preamble, a line, and the prompt exactly as written (its base, then what the person
+/// added).
+pub fn compose(project_name: &str, prompt: &PromptView) -> String {
     let mut out = String::new();
     out.push_str(&format!(
         "You are working in the folder of the Ledger project \"{}\": your working directory. It is a vault of markdown files, and README.md is the project's reading guide, so read that first.\n\n",
@@ -113,27 +99,23 @@ pub fn compose(project_name: &str, prompt: &PromptView, template: Option<&Templa
     );
 
     let linked: &[PromptDeliverable] = &prompt.deliverables;
-    if !linked.is_empty() {
+    if linked.is_empty() {
+        out.push_str("Choose a short, descriptive file name for it.\n");
+    } else {
         let names: Vec<String> =
             linked.iter().map(|d| format!("deliverables/{}{}", d.path, if d.exists { "" } else { " (not written yet)" })).collect();
         out.push_str(&format!("This request is already linked to {}. Write into those rather than creating other files.\n", names.join(", ")));
+        // The versions are the history of the file: there to be read (to see how it got here, and what a piece of feedback
+        // was given on), never to be written.
+        for d in linked.iter().filter(|d| !d.versions.is_empty()) {
+            let files: Vec<String> = d.versions.iter().map(|v| format!("deliverables/{}", deliverables::snapshot_path(&d.path, v))).collect();
+            out.push_str(&format!("Published so far of deliverables/{}, oldest first: {}. They are frozen history to read, not to change.\n", d.path, files.join(", ")));
+        }
     }
     out.push_str(&format!("The discussion the request came out of is in threads/{}/ (thread.md, and the posts/ folder next to it).\n", prompt.thread_slug));
 
-    // A deliverable that exists already has the template's structure; one still to be written gets it here.
-    if let Some(template) = template.filter(|t| !t.body.trim().is_empty())
-        && !linked.iter().any(|d| d.exists)
-    {
-        let body = template.body.trim_end();
-        let fence = fence_for(body);
-        out.push_str(&format!("\nUse this structure for the deliverable (the template \"{}\"):\n\n{fence}markdown\n{body}\n{fence}\n", one_line(&template.name)));
-    }
-
     out.push_str("\nWhen you are done, say in a sentence or two which files you wrote.\n\n---\n\n");
-    if !prompt.title.trim().is_empty() {
-        out.push_str(&format!("# {}\n\n", one_line(&prompt.title)));
-    }
-    out.push_str(prompt.body.trim());
+    out.push_str(&prompts::request_text(prompt));
     out.push('\n');
     out
 }

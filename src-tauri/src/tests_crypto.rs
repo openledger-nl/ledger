@@ -43,7 +43,7 @@ fn what_is_sealed_looks_nothing_like_the_file_and_is_new_every_time() {
     assert_ne!(a, b, "a fresh nonce for every encryption");
     assert!(!a.windows(text.len().min(12)).any(|w| w == &text[..w.len()]), "no plaintext shows through");
     assert_eq!(&a[..4], &[0x89, b'L', b'D', b'G'], "magic");
-    assert_eq!(a[4], 1, "format version");
+    assert_eq!(a[4], 2, "format version");
     assert_eq!(a[5], key.id(), "key id");
 }
 
@@ -90,9 +90,15 @@ fn a_tampered_file_is_refused_wherever_it_was_touched() {
         assert_eq!(crypto::decrypt(&key, "a.md", &bad), Err(CryptoError::Failed), "byte {i}");
     }
 
-    let mut other_version = sealed.clone();
-    other_version[4] = 2;
-    assert_eq!(crypto::decrypt(&key, "a.md", &other_version), Err(CryptoError::UnsupportedVersion(2)));
+    let mut newer = sealed.clone();
+    newer[4] = 3;
+    assert_eq!(crypto::decrypt(&key, "a.md", &newer), Err(CryptoError::UnsupportedVersion(3)));
+    assert!(CryptoError::UnsupportedVersion(3).to_string().contains("newer version"));
+    // Format 1 was sealed under readable paths; it is not read any more.
+    let mut earlier = sealed.clone();
+    earlier[4] = 1;
+    assert_eq!(crypto::decrypt(&key, "a.md", &earlier), Err(CryptoError::UnsupportedVersion(1)));
+    assert!(CryptoError::UnsupportedVersion(1).to_string().contains("earlier version"));
 
     let mut other_label = sealed.clone();
     other_label[5] ^= 0x01;
@@ -109,6 +115,16 @@ fn a_file_moved_to_another_path_no_longer_opens() {
     let sealed = crypto::encrypt(&key, "projects/a/readme.md", b"for a").unwrap();
     assert_eq!(crypto::decrypt(&key, "projects/b/readme.md", &sealed), Err(CryptoError::Failed));
     assert_eq!(crypto::decrypt(&key, "projects/a/readme.md", &sealed).unwrap(), b"for a");
+}
+
+#[test]
+fn a_path_is_stored_under_a_name_only_the_key_can_make() {
+    let name = crypto::remote_name(&key(12), "projects/acquisition-company-x/threads/layoffs-q1/thread.md");
+    assert_eq!(name.len(), 32);
+    assert!(name.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)), "{name}");
+    assert_eq!(name, crypto::remote_name(&key(12), "projects/acquisition-company-x/threads/layoffs-q1/thread.md"), "the same on every machine");
+    assert_ne!(name, crypto::remote_name(&key(13), "projects/acquisition-company-x/threads/layoffs-q1/thread.md"), "another key, another name");
+    assert_ne!(crypto::remote_name(&key(12), "a.md"), crypto::remote_name(&key(12), "b.md"));
 }
 
 #[test]

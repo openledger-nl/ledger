@@ -654,7 +654,7 @@ pub fn for_deliverable(conn: &Connection, project: &str, base: &str) -> Result<P
             .into_iter()
             .collect();
 
-    // Prompts: the ones linked to the file or to one of its versions, and the ones the records name.
+    // Prompts: the ones linked to the file, and the ones the records name.
     let mut prompt_rows: BTreeMap<String, (String, String, String)> = BTreeMap::new(); // id -> thread, title, created_at
     for (id, thread, title, body, created_at, path) in query_all(
         conn,
@@ -663,7 +663,7 @@ pub fn for_deliverable(conn: &Connection, project: &str, base: &str) -> Result<P
         [project],
         |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?)),
     )? {
-        if split_version(&path).0 == base {
+        if path == base {
             prompt_rows.entry(id).or_insert((thread, prompts::display_title(&title, &body), created_at));
         }
     }

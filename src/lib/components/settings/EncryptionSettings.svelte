@@ -207,7 +207,8 @@
 		<div class="hint">
 			Encryption always starts fresh: on a new repository, or on a branch that doesn’t exist yet, which Ledger creates with nothing behind it. A branch
 			that already holds your files in plain text is never converted, because its history would keep them. The plain copy stays on the old branch or
-			repository until you delete it on GitHub. File and folder names are not encrypted, only what is inside the files.
+			repository until you delete it on GitHub. File and folder names are encrypted too; what GitHub still shows is how many files there are,
+			roughly how big they are, and when they change.
 		</div>
 	</details>
 </div>

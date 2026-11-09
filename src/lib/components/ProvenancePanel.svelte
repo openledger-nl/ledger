@@ -6,23 +6,24 @@
 	import { orderProvenance } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { attempt, refresh } from '$lib/ui.svelte';
-	import type { Deliverable, MmmLevel, Provenance, ProvenanceVersion, VersionUpdate } from '$lib/types';
+	import type { Deliverable, MmmLevel, Provenance, ProvenanceDraft, ProvenanceVersion, VersionUpdate } from '$lib/types';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import MessageCircle from '@lucide/svelte/icons/message-circle';
 	import MessageSquare from '@lucide/svelte/icons/message-square';
 	import Play from '@lucide/svelte/icons/play';
 	import X from '@lucide/svelte/icons/x';
+	import Menu, { type MenuItem } from './Menu.svelte';
 	import MmmBadge from './MmmBadge.svelte';
 
-	let {
-		project,
-		doc,
-		provenance,
-		onclose
-	}: { project: string; doc: Deliverable; provenance: Provenance; onclose: () => void } = $props();
+	// `draft` is what the live file holds beyond the last version. The page works it out while the file is being edited, so
+	// it is not left to what was true when the page loaded.
+	let { project, doc, provenance, draft }: { project: string; doc: Deliverable; provenance: Provenance; draft: ProvenanceDraft | null } = $props();
 
 	const summary = $derived(provenance.summary);
 	const latest = $derived(doc.versions.at(-1) ?? null);
-	// The order is a setting (Settings, Order); the draft is the newest thing there is, so it goes where newest does.
+	/** Whether there is a live file to list: the page's "Live" chip follows the same rule. */
+	const hasLive = $derived(!!doc.basePath && (doc.exists || doc.version === null));
+	// The order is a setting (Settings, Order); the live file is the newest thing there is, so it goes where newest does.
 	const groups = $derived(orderProvenance(provenance.groups, listOrder.order));
 
 	let busy = $state(false);
@@ -34,7 +35,23 @@
 		if (done) await refresh();
 	}
 
-	const setLevel = (v: ProvenanceVersion, value: string) => update(v, { mmm: value as MmmLevel | '' });
+	const setLevel = (v: ProvenanceVersion, value: string) => {
+		if (value !== (v.mmm ?? '')) void update(v, { mmm: value as MmmLevel | '' });
+	};
+	const setBy = (v: ProvenanceVersion, value: string) => {
+		if (value !== v.by) void update(v, { by: value as 'human' | 'ai' });
+	};
+
+	/** Who made it: a run Ledger recorded can't be argued with, anything else is the person's to say. */
+	const authors = (v: ProvenanceVersion): MenuItem[] => [
+		{ id: 'human', label: 'You', checked: v.by === 'human' },
+		{ id: 'ai', label: 'AI', checked: v.by === 'ai' }
+	];
+
+	const levels = (v: ProvenanceVersion): MenuItem[] => [
+		...MMM.map((m) => ({ id: m.level, label: m.name, sub: m.tagline, dot: m.color, checked: v.mmm === m.level })),
+		...(v.mmm ? [{ id: '', label: 'Remove the label', icon: X, rule: true }] : [])
+	];
 
 	/** "3 Oct", or "3 Oct – 9 Oct" when a thread's part in the file spans days. */
 	function span(first: string, last: string): string {
@@ -44,12 +61,8 @@
 	const promptUrl = (thread: string, id: string) => `${threadUrl(project, thread)}?item=pr-${id}`;
 </script>
 
-<div class="pv-head">
-	<h2>Produced by</h2>
-	<button class="icon-btn" aria-label="Close" onclick={onclose}><X size={18} /></button>
-</div>
-
 <div class="pv-summary">
+	<h3 class="pv-title">Summary</h3>
 	<div class="pv-line">
 		{#if summary.label}
 			<MmmBadge level={summary.label.level} tagline />
@@ -64,29 +77,31 @@
 		{plural(summary.versions, 'version')}
 		· {summary.ai} made with AI · {summary.human} by you{summary.unrecorded ? ` · ${summary.unrecorded} not recorded` : ''}
 	</div>
-	<div class="pv-hint">
-		Claude Code runs started here are recorded as they happen. AI used elsewhere is only as complete as the box you tick when you publish.
-	</div>
 </div>
 
-{#snippet draftRow()}
-{#if provenance.draft}
-	<div class="pv-draft">
-		<strong>Draft{provenance.draft.since ? ` after v${provenance.draft.since}` : ''}</strong>
-		<span class="pv-meta">the live file changed {ago(provenance.draft.modified)}</span>
-		{#if provenance.draft.stoppedRun}
-			<div class="pv-warn">
-				Claude Code’s run of “{provenance.draft.stoppedRun.promptTitle}” changed this file{provenance.draft.stoppedRun.status === 'finished'
-					? ''
-					: ` and was ${provenance.draft.stoppedRun.status}`}, and no version holds it yet. Publishing starts with “made with AI” ticked.
-			</div>
+<!-- The live file is a version of its own, the newest: always listed, and a draft when it holds more than the last version. -->
+{#snippet liveRow()}
+{#if hasLive}
+	<div class="pv-live" class:draft={!!draft} class:current={doc.version === null}>
+		<div class="pv-line">
+			<a class="vchip" class:on={doc.version === null} href={deliverableUrl(project, doc.basePath)}>Live</a>
+			<strong>{draft ? `Draft${draft.since ? ` after v${draft.since}` : ''}` : latest ? `Same as v${latest}` : 'Not published yet'}</strong>
+		</div>
+		{#if draft}
+			<span class="pv-meta">the live file changed {ago(draft.modified)}</span>
+			{#if draft.stoppedRun}
+				<div class="pv-warn">
+					Claude Code’s run of “{draft.stoppedRun.promptTitle}” changed this file{draft.stoppedRun.status === 'finished'
+						? ''
+						: ` and was ${draft.stoppedRun.status}`}, and no version holds it yet. Publishing starts with “made with AI” ticked.
+				</div>
+			{/if}
 		{/if}
 	</div>
 {/if}
-
 {/snippet}
 
-{#if listOrder.order === 'desc'}{@render draftRow()}{/if}
+{#if listOrder.order === 'desc'}{@render liveRow()}{/if}
 
 {#each groups as group (group.thread?.slug ?? '—')}
 	<section class="pv-group">
@@ -138,15 +153,30 @@
 					<div class="pv-version" class:current={doc.version === e.version}>
 						<div class="pv-line">
 							<a class="vchip" class:on={doc.version === e.version} href={deliverableUrl(project, e.path)}>v{e.version}</a>
-							<span class="pv-by" class:ai={e.by === 'ai'} class:unknown={e.by === 'unknown'}>{authorLabel(e)}</span>
-							{#if e.mmm}
-								<MmmBadge level={e.mmm} />
+							{#if e.run}
+								<span class="pv-by ai">{authorLabel(e)}</span>
 							{:else}
-								<select class="pv-level" aria-label="Set the AI-use label of v{e.version}" disabled={busy} value="" onchange={(ev) => setLevel(e, ev.currentTarget.value)}>
-									<option value="">Set label…</option>
-									{#each MMM as m (m.level)}<option value={m.level}>{m.name} — {m.tagline}</option>{/each}
-								</select>
+								<Menu
+									class="pv-pick pv-by {e.by}"
+									label="Made by, v{e.version}"
+									title="Who made v{e.version}"
+									items={authors(e)}
+									onpick={(id) => setBy(e, id)}
+									disabled={busy}
+								>
+									{authorLabel(e)}<ChevronDown size={12} />
+								</Menu>
 							{/if}
+							<Menu
+								class="pv-pick"
+								label="AI-use label, v{e.version}"
+								title={e.mmm ? 'Change the AI-use label' : 'Set the AI-use label'}
+								items={levels(e)}
+								onpick={(id) => setLevel(e, id)}
+								disabled={busy}
+							>
+								{#if e.mmm}<MmmBadge level={e.mmm} />{:else}<span class="pv-unset">Set label…</span>{/if}<ChevronDown size={12} />
+							</Menu>
 						</div>
 						<div class="pv-line">
 							<span class="pv-when">{dateTime(e.at)}</span>
@@ -195,19 +225,6 @@
 									<dd>{e.run.status} · {e.run.seconds} s{e.run.turns !== null ? ` · ${plural(e.run.turns, 'turn')}` : ''}</dd>
 								{/if}
 							</dl>
-							<div class="pv-edit">
-								{#if !e.run}
-									<span class="pv-meta">Made by</span>
-									<button class="btn small" class:primary={e.by === 'human'} disabled={busy} onclick={() => update(e, { by: 'human' })}>You</button>
-									<button class="btn small" class:primary={e.by === 'ai'} disabled={busy} onclick={() => update(e, { by: 'ai' })}>AI</button>
-								{/if}
-								{#if e.mmm}
-									<select class="pv-level" aria-label="Change the AI-use label of v{e.version}" disabled={busy} value={e.mmm} onchange={(ev) => setLevel(e, ev.currentTarget.value)}>
-										<option value="">Remove the label</option>
-										{#each MMM as m (m.level)}<option value={m.level}>{m.name} — {m.tagline}</option>{/each}
-									</select>
-								{/if}
-							</div>
 						</details>
 					</div>
 				{/if}
@@ -215,9 +232,7 @@
 		</div>
 	</section>
 {:else}
-	{#if !provenance.draft}
-		<div class="pv-hint">Nothing has produced this file yet. Versions you publish, and the prompts and runs behind them, are listed here by thread.</div>
-	{/if}
+	<div class="pv-hint">Nothing has produced this file yet. Versions you publish, and the prompts and runs behind them, are listed here by thread.</div>
 {/each}
 
-{#if listOrder.order === 'asc'}{@render draftRow()}{/if}
+{#if listOrder.order === 'asc'}{@render liveRow()}{/if}

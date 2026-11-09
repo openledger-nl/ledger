@@ -90,7 +90,8 @@ export const themes = [
 
 const THEME_KEY = 'ledger-theme';
 
-export const theme = $state({ id: 'dark' as string });
+/** Sepia until another one is chosen (app.html starts the page in it, so there is no flash of another theme). */
+export const theme = $state({ id: 'sepia' as string });
 
 export function initTheme() {
 	try {
