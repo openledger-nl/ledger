@@ -260,6 +260,12 @@ pub fn upload_files(app: State<App>, project: String, thread: String, paths: Vec
     app.mutate(|c, root| uploads::add_files(c, root, &project, &thread, &sources, &description))
 }
 
+/// Every file uploaded in the project, from all its threads (the project's Attachments tab).
+#[tauri::command]
+pub fn list_project_uploads(app: State<App>, project: String) -> Result<Vec<UploadView>> {
+    app.read(|c, root| uploads::list_project(c, root, &project))
+}
+
 #[tauri::command]
 pub fn update_upload(app: State<App>, project: String, thread: String, id: String, description: String) -> Result<UploadView> {
     app.mutate(|c, root| uploads::set_description(c, root, &project, &thread, &id, &description))

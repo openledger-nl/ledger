@@ -184,6 +184,7 @@ pub fn run() {
             commands::update_feedback,
             commands::delete_feedback,
             commands::upload_files,
+            commands::list_project_uploads,
             commands::update_upload,
             commands::delete_upload,
             commands::read_project_file,
