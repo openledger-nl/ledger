@@ -60,6 +60,8 @@ mod tests_crypto;
 #[cfg(test)]
 mod tests_devupdates;
 #[cfg(test)]
+mod tests_margin_fixture;
+#[cfg(test)]
 mod tests_onboarding;
 #[cfg(test)]
 mod tests_provenance;
