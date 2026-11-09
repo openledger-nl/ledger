@@ -514,8 +514,9 @@ export interface Board {
 // ---- search -----------------------------------------------------------------------------------------
 
 export interface SearchHit {
-	kind: 'post' | 'prompt' | 'feedback' | 'deliverable';
-	/** The post, prompt or feedback id; the path for a deliverable. */
+	/** A "review" hit is in a code review's summary; a "review-comment" one in one of its comments. */
+	kind: 'post' | 'prompt' | 'feedback' | 'deliverable' | 'review' | 'review-comment';
+	/** The post, prompt, feedback, review or review comment id; the path for a deliverable. */
 	id: string;
 	projectSlug: string;
 	projectName: string;

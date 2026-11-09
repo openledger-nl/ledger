@@ -523,9 +523,9 @@ pub struct LinkTarget {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchHit {
-    /// "post", "prompt", "feedback" or "deliverable".
+    /// "post", "prompt", "feedback", "deliverable", "review" (a code review's summary) or "review-comment".
     pub kind: String,
-    /// The post, prompt or feedback id; the path for a deliverable.
+    /// The post, prompt, feedback, review or review comment id; the path for a deliverable.
     pub id: String,
     pub project_slug: String,
     pub project_name: String,

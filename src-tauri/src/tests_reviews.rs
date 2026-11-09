@@ -351,3 +351,20 @@ fn review_files_are_read_leniently() {
     );
     assert!(shouting.files.last().unwrap().comments[0].resolved);
 }
+
+#[test]
+fn search_finds_review_summaries_comments_and_replies() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    margin_review(root);
+    let (_vault, conn) = open(root);
+
+    let hits = crate::search::search(&conn, "things to fix").unwrap();
+    let [summary] = hits.as_slice() else { panic!("{hits:?}") };
+    assert_eq!((summary.kind.as_str(), summary.id.as_str(), summary.thread_slug.as_deref()), ("review", REVIEW, Some("margin-code")));
+    assert_eq!(summary.title, "Review margin code");
+
+    let found = |query: &str| crate::search::search(&conn, query).unwrap().into_iter().map(|h| (h.kind, h.id)).collect::<Vec<_>>();
+    assert_eq!(found("instead of returning"), [("review-comment".to_string(), "1793873760000-aaaaaaaa".to_string())]);
+    assert_eq!(found("agreed, WILL do"), [("review-comment".to_string(), "1793873820000-bbbbbbbb".to_string())], "replies too");
+}
