@@ -28,7 +28,6 @@
 	const thread = $derived(data.thread);
 	const project = $derived(thread.projectSlug);
 	const slug = $derived(thread.slug);
-	const projectName = $derived(data.project.name);
 	const posts = $derived(thread.posts);
 	const byId = $derived(Object.fromEntries(posts.map((p) => [p.id, p])));
 	const siblings = $derived((data.projects.find((p) => p.slug === project)?.threads ?? []).filter((t) => t.slug !== slug));
@@ -219,9 +218,6 @@
 <svelte:head><title>{thread.title} · Ledger</title></svelte:head>
 
 <div class="header-wrap">
-	<div class="crumbs">
-		<a href={projectUrl(project)}>{projectName}</a><span>/</span><a href="{projectUrl(project)}/threads">Threads</a>
-	</div>
 	<div class="header-top">
 		<div>
 			<h1>{thread.title} <span class="badge accent">Thread</span></h1>

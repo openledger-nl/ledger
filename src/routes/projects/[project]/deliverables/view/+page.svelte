@@ -2,11 +2,8 @@
 	import { onDestroy, untrack } from 'svelte';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import CodeXml from '@lucide/svelte/icons/code-xml';
-	import Copy from '@lucide/svelte/icons/copy';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
-	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import FileText from '@lucide/svelte/icons/file-text';
-	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import MessagesSquare from '@lucide/svelte/icons/messages-square';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
 	import Trash from '@lucide/svelte/icons/trash';
@@ -258,13 +255,7 @@
 
 	// What else can be done with it, behind the ⋯ next to Publish. Delete only for the live file; a version is kept.
 	const more = $derived<MenuItem[]>([
-		...(isMarkdown ? [{ id: 'copy', label: 'Copy markdown', icon: Copy }] : []),
-		...(doc.exists
-			? [
-					{ id: 'open', label: 'Open in editor', icon: ExternalLink },
-					{ id: 'reveal', label: 'Show in folder', icon: FolderOpen }
-				]
-			: []),
+		// Copy, Open and Show in folder are buttons of their own beside it.
 		...(!snapshot && doc.exists ? [{ id: 'delete', label: 'Delete deliverable', icon: Trash, danger: true, rule: true }] : [])
 	]);
 
@@ -371,10 +362,7 @@
 
 <svelte:head><title>{doc.name} · Ledger</title></svelte:head>
 
-<div class="header-wrap flat">
-	<div class="crumbs">
-		<a href="/projects/{project}">{data.project.name}</a><span>/</span><a href="/projects/{project}/deliverables">Deliverables</a>
-	</div>
+<div class="header-wrap">
 	<div class="header-top">
 		<div style="flex:1;min-width:0">
 			<h1 title={doc.path}>
@@ -412,6 +400,11 @@
 					<button class="link accent" onclick={() => newThreadFlow(project)}>Create one</button>
 				{/if}
 			</div>
+			{#if isMarkdown}<button class="btn ghost small" onclick={copyMarkdown}>Copy markdown</button>{/if}
+			{#if doc.exists}
+				<button class="btn ghost small" onclick={() => open(false)}>Open</button>
+				<button class="btn ghost small" onclick={() => open(true)}>Show in folder</button>
+			{/if}
 			{#if !snapshot && doc.exists}
 				<button class="btn primary" onclick={startPublishing}>Publish version…</button>
 			{/if}

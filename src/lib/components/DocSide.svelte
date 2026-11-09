@@ -9,6 +9,7 @@
 	import FeedbackPanel from './FeedbackPanel.svelte';
 	import PromptsPanel from './PromptsPanel.svelte';
 	import ProvenancePanel from './ProvenancePanel.svelte';
+	import { HALF } from '$lib/layout.svelte';
 
 	// The side of a deliverable's page: a rail that is always there, with a button for each section (Produced by, Feedback,
 	// Prompts), and the section it opens beside the page. One section is open at a time; its button closes it again, and so does the X in its header.
@@ -55,6 +56,7 @@
 		{ id: 'prompts' as const, title: 'Prompts', icon: Sparkles, count: 0 }
 	]);
 
+	// Open by default where the window holds it beside the page (full width); below that it is a drawer, so it starts closed.
 	const KEY = 'ledger-doc-side';
 
 	let active = $state<Section | null>('provenance');
@@ -62,7 +64,7 @@
 		const saved = localStorage.getItem(KEY);
 		if (saved === 'provenance' || saved === 'feedback' || saved === 'prompts') active = saved;
 		else if (saved === 'closed') active = null;
-		else active = window.innerWidth >= 1100 ? 'provenance' : null;
+		else active = window.innerWidth >= HALF ? 'provenance' : null;
 	} catch {
 		// Storage unavailable: Produced by is open.
 	}
