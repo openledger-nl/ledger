@@ -54,6 +54,8 @@ pub struct ProjectView {
     pub readme_html: String,
     pub thread_count: i64,
     pub deliverable_count: i64,
+    /// Files uploaded in its threads, screenshots included.
+    pub attachment_count: i64,
     pub story_count: i64,
     pub task_count: i64,
     pub open_task_count: i64,

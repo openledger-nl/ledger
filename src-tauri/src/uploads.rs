@@ -52,6 +52,16 @@ pub fn list(conn: &Connection, root: &Path, project: &str, thread: &str) -> Resu
     )
 }
 
+/// Every upload in the project, from all its threads, newest first: what its Attachments tab lists.
+pub fn list_project(conn: &Connection, root: &Path, project: &str) -> Result<Vec<UploadView>> {
+    query_all(
+        conn,
+        &format!("SELECT {COLUMNS} FROM uploads WHERE project_slug = ?1 ORDER BY uploaded_at DESC, rowid DESC"),
+        [project],
+        view(root, project),
+    )
+}
+
 fn get(conn: &Connection, root: &Path, project: &str, thread: &str, id: &str) -> Result<UploadView> {
     query_opt(
         conn,

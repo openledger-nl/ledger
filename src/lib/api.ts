@@ -129,6 +129,8 @@ export const api = {
 	// uploads and project files
 	uploadFiles: (project: string, thread: string, paths: string[], description: string) =>
 		call<Upload[]>('upload_files', { project, thread, paths, description }),
+	/** Every file uploaded in the project, from all its threads, newest first. */
+	listProjectUploads: (project: string) => call<Upload[]>('list_project_uploads', { project }),
 	updateUpload: (project: string, thread: string, id: string, description: string) =>
 		call<Upload>('update_upload', { project, thread, id, description }),
 	deleteUpload: (project: string, thread: string, id: string) => call<void>('delete_upload', { project, thread, id }),

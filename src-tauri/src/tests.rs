@@ -581,6 +581,32 @@ fn feedback_goes_into_a_prompts_base_with_the_version_it_was_given_on() {
 // ---- uploads ----------------------------------------------------------------------------------------
 
 #[test]
+fn a_project_lists_the_uploads_of_all_its_threads_newest_first() {
+    let c = conn();
+    let dir = tempdir().unwrap();
+    let (p, calls) = setup(&c);
+    let design = threads::create(&c, &p, "Design").unwrap().slug;
+    let other = projects::create(&c, "Other").unwrap().slug;
+    let other_thread = threads::create(&c, &other, "Elsewhere").unwrap().slug;
+
+    let first = uploads::add_bytes(&c, dir.path(), &p, &calls, "notes.pdf", b"%PDF", "From the call").unwrap();
+    let second = uploads::add_bytes(&c, dir.path(), &p, &design, "sketch.png", b"png", "").unwrap();
+    uploads::add_bytes(&c, dir.path(), &other, &other_thread, "not-here.png", b"png", "").unwrap();
+
+    let listed = uploads::list_project(&c, dir.path(), &p).unwrap();
+    let names: Vec<(&str, &str)> = listed.iter().map(|u| (u.name.as_str(), u.thread_slug.as_str())).collect();
+    assert_eq!(names, [("sketch.png", design.as_str()), ("notes.pdf", calls.as_str())], "newest first, with the thread each came in, and only this project's");
+    assert_eq!((listed[0].id.as_str(), listed[0].image, listed[1].image), (second.id.as_str(), true, false));
+    assert_eq!(listed[1].id, first.id);
+    assert!(listed.iter().all(|u| u.exists));
+    assert_eq!(projects::get(&c, &p).unwrap().attachment_count, 2);
+
+    // A file that is gone from attachments/ is still listed, and says so.
+    fs::remove_file(uploads::project_dir(dir.path(), &p).join(&first.file)).unwrap();
+    assert!(!uploads::list_project(&c, dir.path(), &p).unwrap()[1].exists);
+}
+
+#[test]
 fn an_upload_is_a_file_in_attachments_and_a_manifest_in_the_thread() {
     let c = conn();
     let dir = tempdir().unwrap();

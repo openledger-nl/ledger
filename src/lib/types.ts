@@ -41,6 +41,8 @@ export interface ProjectView {
 	readmeHtml: string;
 	threadCount: number;
 	deliverableCount: number;
+	/** Files uploaded in its threads, screenshots included. */
+	attachmentCount: number;
 	storyCount: number;
 	taskCount: number;
 	openTaskCount: number;
