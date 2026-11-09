@@ -1,5 +1,6 @@
 <script lang="ts">
-	// The sidebar folded to an icon rail: at full width once the sidebar is folded, and between 720 and 1199 px (Ledger snapped to half the screen, next to Canvas or Portflow). The main
+	// The sidebar folded to an icon rail, when Settings › Visual › Sidebar asks for one: at full width once the sidebar
+	// is folded, and between 720 and 1199 px (Ledger snapped to half the screen, next to Canvas or Portflow). The main
 	// pages as icons, each project as its initial, and the sync dot; hovering or focusing an item shows its name.
 	// Wireframes A6 and A7.
 	import House from '@lucide/svelte/icons/house';

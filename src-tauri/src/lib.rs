@@ -300,6 +300,8 @@ pub fn run() {
             commands::check_vault_changes,
             commands::save_screenshot_hotkey,
             commands::save_screenshot_tool,
+            commands::layout_settings,
+            commands::save_sidebar_fold,
             commands::pending_screenshot,
             commands::take_screenshot,
             commands::pause_screenshot_hotkey,
