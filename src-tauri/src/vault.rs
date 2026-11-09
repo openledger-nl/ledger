@@ -12,6 +12,8 @@
 //!                                    /feedback/<id>.md    its feedback (on a deliverable)
 //!                                    /uploads/<id>.md     a manifest: when, where the file is, a description
 //!                                    /runs/<id>.md        a run of a prompt with Claude Code: how it went, what it did
+//!                                    /reviews/<id>.md     a code review written with margin-code (read, never written)
+//!                                    /reviews/<id>/<c>.md   a comment in it, or a reply
 //! projects/<project>/versions/<id>.md            how a published version came to be: who made it, its thread, its AI-use label
 //! projects/<project>/versions/…                  the published versions themselves, "@v1.0" in the name, each at the same
 //!                                                place under versions/ as its live file is under deliverables/
@@ -30,7 +32,9 @@
 //!
 //! Only text the database owns is rendered: the markdown entities above, the reading guides, and markdown
 //! deliverables (kept verbatim). Every other file — other deliverables, attachments — is the filesystem's own;
-//! the database knows deliverables by name and size, and the app copies or removes those files directly.
+//! the database knows deliverables by name and size, and the app copies or removes those files directly. Code reviews
+//! are margin-code's: they are read in but never rendered, so nothing here writes them, and they are removed only with
+//! their thread (see `reviews`).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -45,7 +49,7 @@ use crate::db::{self, query_all};
 use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
 use crate::models::{SemesterDraft, Sprint, Vacation};
-use crate::{board, deliverables, ids, projects, provenance, semesters, settings};
+use crate::{board, deliverables, ids, projects, provenance, reviews, semesters, settings};
 
 // ---- layout -----------------------------------------------------------------------------------------
 
@@ -66,6 +70,12 @@ fn thread_dir(project: &str, thread: &str) -> String {
 fn live_paths(paths: Vec<String>) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     paths.into_iter().map(|p| crate::deliverables::split_version(&p).0).filter(|p| seen.insert(p.clone())).collect()
+}
+
+/// Whether a path is a thread's folder, `projects/<project>/threads/<thread>`.
+fn is_thread_dir(rel: &str) -> bool {
+    let parts: Vec<&str> = rel.split('/').collect();
+    parts.len() == 4 && parts[0] == "projects" && parts[2] == "threads"
 }
 
 fn entity_file(project: &str, thread: &str, folder: &str, id: &str) -> String {
@@ -176,15 +186,63 @@ impl Vault {
             }
             self.written.remove(&path);
             self.disk.remove(&path);
+            // A thread that is gone takes its code reviews along. They are never written through, so this is the one
+            // place they are removed; whatever else margin-code keeps in that folder goes too.
+            if let Some(dir) = path.strip_suffix("/thread.md").filter(|dir| is_thread_dir(dir)) {
+                self.remove_dir(&format!("{dir}/reviews"))?;
+            }
             prune_empty_dirs(&self.root, &file);
             touched += 1;
         }
+        self.adopt_own_files(conn)?;
         Ok(touched)
+    }
+
+    /// Deliverables that aren't markdown are copied and removed by the app itself rather than written through (a
+    /// version published, a file deleted). A file that wasn't there before and is what the database says it is (its
+    /// size), or one that is gone along with its row, was this app, not an edit made elsewhere: `changed_on_disk`
+    /// doesn't report it, so the vault watcher doesn't reload for it. A file that was there and changed is never this
+    /// app's doing.
+    fn adopt_own_files(&mut self, conn: &Connection) -> Result<()> {
+        let known: HashMap<String, u64> = query_all(conn, "SELECT project_slug, path, size FROM deliverables WHERE body IS NULL", [], |r| {
+            Ok((deliverable_file(&r.get::<_, String>(0)?, &r.get::<_, String>(1)?), r.get::<_, i64>(2)?))
+        })?
+        .into_iter()
+        .map(|(rel, size)| (rel, size.max(0) as u64))
+        .collect();
+        for (rel, size) in &known {
+            if !self.disk.contains_key(rel)
+                && let Some(fp) = fingerprint(&self.root.join(rel))
+                && fp.0 == *size
+            {
+                self.disk.insert(rel.clone(), fp);
+            }
+        }
+        let root = &self.root;
+        self.disk.retain(|rel, _| {
+            let other_deliverable = rel.split('/').nth(2) == Some("deliverables") && rel.starts_with("projects/") && !deliverables::is_markdown(rel);
+            !other_deliverable || known.contains_key(rel) || root.join(rel).exists()
+        });
+        Ok(())
     }
 
     /// Whether files were added, removed or edited by something other than this vault since it last looked.
     pub fn changed_on_disk(&self) -> bool {
         managed_listing(&self.root) != self.disk
+    }
+
+    /// Removes a folder of files the database doesn't write (a thread's reviews), and forgets them.
+    fn remove_dir(&mut self, rel: &str) -> Result<()> {
+        let dir = self.root.join(rel);
+        match fs::remove_dir_all(&dir) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(Error::io(&dir, e)),
+        }
+        let prefix = format!("{rel}/");
+        self.disk.retain(|p, _| !p.starts_with(&prefix));
+        self.written.retain(|p, _| !p.starts_with(&prefix));
+        Ok(())
     }
 
     /// Forgets a project folder's leftovers after the project was deleted: attachments and non-markdown
@@ -1052,7 +1110,28 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             conn.execute("INSERT OR IGNORE INTO claude_run_files (run_id, position, path) VALUES (?1, ?2, ?3)", params![id, position as i64, path])?;
         }
     }
+    for slug in &slugs {
+        import_reviews(conn, source, project, slug)?;
+    }
     Ok(known)
+}
+
+/// margin-code's code reviews in a thread: `reviews/<id>.md`, each with its comments in `reviews/<id>/`. Comments of a
+/// review that isn't there (yet) wait on disk. How the files read is for `reviews` to say.
+fn import_reviews(conn: &Connection, source: &Source, project: &str, thread: &str) -> Result<()> {
+    let folder = format!("{}/reviews", thread_dir(project, thread));
+    for id in source.stems(&folder) {
+        let rel = format!("{folder}/{id}.md");
+        let Some((meta, summary)) = source.parsed(&rel) else { continue };
+        reviews::insert_review(conn, project, thread, &id, &meta, &summary, &source.stamp(&rel))?;
+        let comments = format!("{folder}/{id}");
+        for comment in source.stems(&comments) {
+            let rel = format!("{comments}/{comment}.md");
+            let Some((meta, body)) = source.parsed(&rel) else { continue };
+            reviews::insert_comment(conn, project, thread, &id, &comment, &meta, &body, &source.stamp(&rel))?;
+        }
+    }
+    Ok(())
 }
 
 /// Every file in the project's deliverables folder is a deliverable, and every published version in its versions folder

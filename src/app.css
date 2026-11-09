@@ -676,6 +676,46 @@ details.more p { margin: 0; }
 .missing { color: var(--red); font-size: 12px; }
 .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* a code review written with margin-code: read-only, its edge and badge say how it stands */
+.review-card { border-left: 3px solid var(--accent); }
+.review-card.draft { border-left-color: var(--amber); }
+.review-card.approve { border-left-color: var(--green); }
+.review-card.changes { border-left-color: var(--red); }
+.review-card .card-kind { color: var(--muted); }
+.rv-status { display: inline-flex; align-items: center; gap: 4px; align-self: center; }
+.rv-status.draft { background: var(--amber-soft); color: var(--amber); }
+.rv-status.approve { background: var(--green-soft); color: var(--green); }
+.rv-status.changes { background: var(--red-soft); color: var(--red); }
+.rv-status.comment { background: var(--accent-soft); color: var(--accent); }
+.rv-target { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 13px; color: var(--muted); }
+.rv-repo { font-weight: 600; color: var(--ink); }
+.rv-range { font-family: var(--font-mono); font-size: 12px; background: var(--card-2); color: var(--ink); border-radius: 6px; padding: 1px 6px; overflow-wrap: anywhere; }
+.rv-shas { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+.rv-note { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--amber); background: var(--amber-soft); border-radius: 8px; padding: 6px 10px; }
+.rv-note > svg { flex-shrink: 0; margin-top: 2px; }
+.rv-files { display: flex; flex-direction: column; gap: 12px; }
+.rv-file { display: flex; flex-direction: column; gap: 6px; }
+.rv-path { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.rv-path > svg { flex-shrink: 0; color: var(--muted); }
+.rv-comment { background: var(--card-2); border-left: 3px solid var(--amber); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; scroll-margin: 80px; }
+.rv-comment.resolved { border-left-color: var(--green); }
+.rv-comment.flash, .rv-reply.flash { box-shadow: 0 0 0 2px var(--accent); }
+.rv-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 12px; color: var(--muted); }
+.rv-place { font-family: var(--font-mono); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.rv-state { font-weight: 600; color: var(--amber); }
+.rv-comment.resolved .rv-state { color: var(--green); }
+.rv-code { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 0; overflow: auto; max-height: 320px; }
+.rv-row { display: flex; width: max-content; min-width: 100%; padding-right: 12px; background: var(--accent-soft); }
+.rv-row.context { background: none; color: var(--faint); }
+.rv-ln { flex-shrink: 0; width: 4.5em; padding-right: 12px; text-align: right; color: var(--faint); user-select: none; }
+.rv-text { white-space: pre; }
+.rv-replies { display: flex; flex-direction: column; gap: 6px; }
+.rv-reply { display: flex; align-items: flex-start; gap: 6px; border-radius: 6px; scroll-margin: 80px; }
+.rv-reply > svg { flex-shrink: 0; margin-top: 3px; color: var(--faint); }
+.rv-reply-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rv-by { font-size: 12px; color: var(--muted); }
+.rv-foot { display: flex; align-items: center; gap: 6px; }
+
 /* ---------- screenshot attach ---------- */
 .shot-preview { max-width: 100%; max-height: 260px; border-radius: 8px; border: 1px solid var(--line); background: var(--card-2); align-self: center; object-fit: contain; }
 .shot-target { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-radius: 8px; background: var(--card-2); }

@@ -22,6 +22,7 @@ mod posts;
 mod projects;
 mod prompts;
 mod provenance;
+mod reviews;
 mod screenshot;
 mod search;
 mod semesters;
@@ -35,6 +36,7 @@ mod threads;
 mod updates;
 mod uploads;
 mod vault;
+mod watcher;
 
 // ---- Trello sync (feat/trello-sync) ----
 mod trello;
@@ -58,9 +60,13 @@ mod tests_crypto;
 #[cfg(test)]
 mod tests_devupdates;
 #[cfg(test)]
+mod tests_margin_fixture;
+#[cfg(test)]
 mod tests_onboarding;
 #[cfg(test)]
 mod tests_provenance;
+#[cfg(test)]
+mod tests_reviews;
 #[cfg(test)]
 mod tests_screenshot;
 #[cfg(test)]
@@ -69,6 +75,8 @@ mod tests_sync;
 mod tests_updates;
 #[cfg(test)]
 mod tests_vault;
+#[cfg(test)]
+mod tests_watcher;
 
 
 use std::sync::{Arc, Mutex};
@@ -134,7 +142,15 @@ pub fn run() {
             // If .env is filled in, this also starts with a sync.
             syncer.reconfigure(sync.as_ref());
 
+            let watched_core = core.clone();
             app.manage(state::App::new(core, syncer, screenshot::Screenshots::new()));
+            // Files changed outside Ledger (Obsidian, margin-code in VS Code) are read in within seconds, synced, and
+            // the window told so; the check on regaining focus stays as the fallback.
+            let handle = app.handle().clone();
+            app.manage(watcher::VaultWatcher::start(watched_core, move || {
+                handle.state::<state::App>().syncer.dirty();
+                let _ = handle.emit("vault-reloaded", ());
+            }));
             trello::start_app(app.handle(), trello_core); // feat/trello-sync: its own worker, needs the App state above
             // Looks for new releases now and then (release builds only); it asks the syncs above whether they are busy.
             updates::start(app.handle(), config_dir);

@@ -9,8 +9,8 @@ use crate::models::SearchHit;
 const SNIPPET_CONTEXT: usize = 60;
 const MAX_HITS: usize = 200;
 
-/// Case-insensitive substring search across every post, prompt, piece of feedback and markdown deliverable in
-/// every project, newest first.
+/// Case-insensitive substring search across every post, prompt, piece of feedback, markdown deliverable and code
+/// review (its summary, and each of its comments) in every project, newest first.
 pub fn search(conn: &Connection, query: &str) -> Result<Vec<SearchHit>> {
     let query = query.trim();
     if query.is_empty() {
@@ -30,6 +30,12 @@ pub fn search(conn: &Connection, query: &str) -> Result<Vec<SearchHit>> {
          UNION ALL
          SELECT 'feedback', x.id, x.project_slug, p.name, x.thread_slug, t.title, x.created_at, x.body
          FROM feedback x JOIN threads t ON t.project_slug = x.project_slug AND t.slug = x.thread_slug JOIN projects p ON p.slug = x.project_slug
+         UNION ALL
+         SELECT 'review', x.id, x.project_slug, p.name, x.thread_slug, t.title, x.created_at, x.summary
+         FROM reviews x JOIN threads t ON t.project_slug = x.project_slug AND t.slug = x.thread_slug JOIN projects p ON p.slug = x.project_slug
+         UNION ALL
+         SELECT 'review-comment', x.id, x.project_slug, p.name, x.thread_slug, t.title, x.created_at, x.body
+         FROM review_comments x JOIN threads t ON t.project_slug = x.project_slug AND t.slug = x.thread_slug JOIN projects p ON p.slug = x.project_slug
          UNION ALL
          SELECT 'deliverable', x.path, x.project_slug, p.name, NULL, NULL, x.modified, x.body
          FROM deliverables x JOIN projects p ON p.slug = x.project_slug WHERE x.body IS NOT NULL",

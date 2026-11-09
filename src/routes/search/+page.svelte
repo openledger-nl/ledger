@@ -7,8 +7,15 @@
 
 	type Hit = PageData['hits'][number];
 
-	const DOM_PREFIX = { post: 'p', prompt: 'pr', feedback: 'f' } as const;
-	const LABEL = { post: 'Post in', prompt: 'Prompt in', feedback: 'Feedback in', deliverable: 'Deliverable' } as const;
+	const DOM_PREFIX = { post: 'p', prompt: 'pr', feedback: 'f', review: 'rv', 'review-comment': 'rc' } as const;
+	const LABEL = {
+		post: 'Post in',
+		prompt: 'Prompt in',
+		feedback: 'Feedback in',
+		deliverable: 'Deliverable',
+		review: 'Code review in',
+		'review-comment': 'Review comment in'
+	} as const;
 
 	const href = (hit: Hit) =>
 		hit.kind === 'deliverable' || !hit.threadSlug
@@ -36,7 +43,7 @@
 <div class="page">
 	<div class="page-inner">
 		{#if data.q && data.hits.length === 0}
-			<div class="empty-state"><h1>Nothing found</h1><p>No post, prompt, feedback or deliverable mentions “{data.q}”.</p></div>
+			<div class="empty-state"><h1>Nothing found</h1><p>No post, prompt, feedback, deliverable or code review mentions “{data.q}”.</p></div>
 		{/if}
 		<div class="hit-list">
 			{#each data.hits as hit (hit.kind + hit.projectSlug + hit.id)}

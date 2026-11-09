@@ -47,6 +47,16 @@ impl Core {
         Ok(())
     }
 
+    /// Reloads if the files were changed behind the app's back (in Obsidian, by margin-code in VS Code). Whether
+    /// anything was reloaded.
+    pub fn reload_if_changed(&mut self) -> Result<bool> {
+        if !self.vault.changed_on_disk() {
+            return Ok(false);
+        }
+        self.reload()?;
+        Ok(true)
+    }
+
     /// Switches to the vault in `path`. With `copy`, and when that folder is empty, the current vault's files
     /// are copied there first, so "move my vault" is one step.
     pub fn set_vault(&mut self, path: &Path, copy: bool) -> Result<()> {

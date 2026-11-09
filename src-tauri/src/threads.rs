@@ -6,7 +6,7 @@ use rusqlite::{Connection, params};
 use crate::db::{query_all, query_opt};
 use crate::error::{Error, Result};
 use crate::models::{LinkedThread, ThreadSummary, ThreadView};
-use crate::{feedback, ids, posts, projects, prompts, stories, uploads};
+use crate::{feedback, ids, posts, projects, prompts, reviews, stories, uploads};
 
 const SUMMARY_SQL: &str = "
     SELECT t.project_slug, t.slug, t.title, t.created_at,
@@ -19,7 +19,9 @@ const SUMMARY_SQL: &str = "
                COALESCE((SELECT MAX(created_at) FROM posts x WHERE x.project_slug = t.project_slug AND x.thread_slug = t.slug), ''),
                COALESCE((SELECT MAX(created_at) FROM prompts x WHERE x.project_slug = t.project_slug AND x.thread_slug = t.slug), ''),
                COALESCE((SELECT MAX(created_at) FROM feedback x WHERE x.project_slug = t.project_slug AND x.thread_slug = t.slug), ''),
-               COALESCE((SELECT MAX(uploaded_at) FROM uploads x WHERE x.project_slug = t.project_slug AND x.thread_slug = t.slug), ''))
+               COALESCE((SELECT MAX(uploaded_at) FROM uploads x WHERE x.project_slug = t.project_slug AND x.thread_slug = t.slug), ''),
+               COALESCE((SELECT MAX(created_at) FROM reviews x WHERE x.project_slug = t.project_slug AND x.thread_slug = t.slug), ''),
+               COALESCE((SELECT MAX(created_at) FROM review_comments x WHERE x.project_slug = t.project_slug AND x.thread_slug = t.slug), ''))
     FROM threads t
     WHERE t.project_slug = ?1 AND (?2 IS NULL OR t.slug = ?2)
     ORDER BY 10 DESC, t.slug";
@@ -119,12 +121,14 @@ pub fn get(conn: &Connection, root: &Path, project: &str, slug: &str) -> Result<
         prompts: prompts::list(conn, project, slug)?,
         feedback: feedback::list_for_thread(conn, project, slug)?,
         uploads: uploads::list(conn, root, project, slug)?,
+        reviews: reviews::list_for_thread(conn, project, slug)?,
         stories: stories::list_for_thread(conn, project, slug)?,
     })
 }
 
-/// The thread goes, with its posts, prompts, feedback, upload manifests and links. Attachments nothing else
-/// refers to go with it; tasks that pointed at it just lose that link.
+/// The thread goes, with its posts, prompts, feedback, upload manifests, code reviews and links. Attachments nothing
+/// else refers to go with it; tasks that pointed at it just lose that link. The reviews' files, which only margin-code
+/// writes, are removed with the thread's own when it is written through (see `Vault::persist`).
 pub fn delete(conn: &Connection, root: &Path, project: &str, slug: &str) -> Result<()> {
     let files = uploads::files_of_thread(conn, project, slug)?;
     let tx = conn.unchecked_transaction()?;
