@@ -167,7 +167,8 @@ fn the_overview_counts_what_the_last_agreement_holds() {
     write(root, "projects/a/project.md", "a");
     write(root, "projects/a/threads/t/thread.md", "t");
     write(root, "projects/a/deliverables/brief.md", "draft");
-    write(root, "projects/a/deliverables/brief@v0.1.md", "draft");
+    write(root, "projects/a/versions/brief@v0.1.md", "draft");
+    write(root, "projects/a/versions/1-abcdefgh.md", "how brief@v0.1.md came to be");
     write(root, "projects/a/attachments/shot.png", "png");
     write(root, "semesters/s.md", "s");
     let remote = Fake::default();
@@ -177,7 +178,7 @@ fn the_overview_counts_what_the_last_agreement_holds() {
 
     let overview = sync::overview(root, "me/notes", "main").unwrap();
     assert_eq!(overview.head.as_deref(), Some("commit-0"));
-    assert_eq!((overview.files, overview.notes, overview.deliverables, overview.attachments), (6, 3, 2, 1));
+    assert_eq!((overview.files, overview.notes, overview.deliverables, overview.attachments), (7, 4, 2, 1), "a version is a deliverable, its record a note");
     assert_eq!(overview.key, None);
     assert_eq!(sync::overview(root, "me/notes", "other"), None, "another branch has its own agreement");
     assert_eq!(sync::overview(root, "someone/else", "main"), None, "and so does another repository");

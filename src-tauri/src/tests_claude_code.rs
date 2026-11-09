@@ -720,7 +720,7 @@ first text
     assert!(!text.contains("Choose a short"), "the file is named already: {text}");
     assert!(text.contains("already linked to deliverables/plan.md"), "{text}");
     assert!(
-        text.contains("deliverables/plan@v0.1.md, deliverables/plan@v0.2.md") && text.contains("frozen history to read, not to change"),
+        text.contains("versions/plan@v0.1.md, versions/plan@v0.2.md") && text.contains("frozen history to read, not to change"),
         "the versions, oldest first, as history: {text}"
     );
     assert!(!text.contains("(not written yet)"));
@@ -841,8 +841,11 @@ fn the_files_in_the_deliverables_folder_are_listed_without_dotfiles() {
 #[test]
 fn a_baseline_tells_new_and_changed_files_from_untouched_ones_and_remembers_unpublished_edits() {
     let dir = tempdir().unwrap();
+    let (live, versions) = (dir.path().join("deliverables"), dir.path().join("versions"));
+    // A published version goes in the versions folder, beside the deliverables one.
     let put = |name: &str, text: &str| {
-        let file = dir.path().join(name);
+        let folder = if crate::deliverables::split_version(name).1.is_some() { &versions } else { &live };
+        let file = folder.join(name);
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(file, text).unwrap();
     };
@@ -856,7 +859,7 @@ fn a_baseline_tells_new_and_changed_files_from_untouched_ones_and_remembers_unpu
     put("stub.md", "# Stub\n");
     put("empty.md", "");
     put(".hidden.md", "x");
-    let baseline = Baseline::capture(dir.path());
+    let baseline = Baseline::capture(&live, &versions);
 
     put("new.md", "x");
     put("reports/q3.md", "x");
@@ -871,7 +874,7 @@ fn a_baseline_tells_new_and_changed_files_from_untouched_ones_and_remembers_unpu
 
     let edited = |path: &str, held: Option<&str>| Change::Edited { path: path.into(), held: held.map(|h| h.as_bytes().to_vec()) };
     assert_eq!(
-        baseline.changes(dir.path()),
+        baseline.changes(&live),
         [
             edited("clean.md", None),
             edited("dirty.md", Some("edited since")),
@@ -883,7 +886,7 @@ fn a_baseline_tells_new_and_changed_files_from_untouched_ones_and_remembers_unpu
         ],
         "a file the run rewrote with the same text isn't a change; a placeholder counts as new; earlier edits are held"
     );
-    assert_eq!(Baseline::capture(dir.path()).changes(dir.path()), Vec::<Change>::new(), "nothing happened since");
+    assert_eq!(Baseline::capture(&live, &versions).changes(&live), Vec::<Change>::new(), "nothing happened since");
 }
 
 // ---- runs: streaming, finishing, failing --------------------------------------------------------------------
@@ -1543,6 +1546,11 @@ fn deliverables_folder(f: &Fixture) -> PathBuf {
     dir
 }
 
+/// Where the published versions are, beside the deliverables folder.
+fn versions_folder(f: &Fixture) -> PathBuf {
+    f.project_dir().join("versions")
+}
+
 /// A deliverable the person wrote and published once, as 0.1.
 fn seed_published(f: &mut Fixture, name: &str, text: &str) {
     fs::write(deliverables_folder(f).join(name), text).unwrap();
@@ -1571,7 +1579,7 @@ fn version_posts(f: &Fixture) -> Vec<String> {
 fn a_new_file_is_published_as_the_first_version_and_the_prompt_is_linked_to_the_file() {
     let mut f = Fixture::new();
     let dir = deliverables_folder(&f);
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("summary.md"), "# Summary\n\nAna wants SSO.\n").unwrap();
     fs::write(dir.join("chart.png"), b"\x89PNG").unwrap();
 
@@ -1583,7 +1591,7 @@ fn a_new_file_is_published_as_the_first_version_and_the_prompt_is_linked_to_the_
     assert_eq!(linked_paths(&f), ["chart.png", "summary.md"], "the prompt is linked to the deliverables, not to their versions");
     assert!(body_of(&f, "summary@v0.1.md").contains("Ana wants SSO"));
     assert!(body_of(&f, "summary.md").contains("Ana wants SSO"), "the live file stays");
-    assert_eq!(fs::read(dir.join("chart@v0.1.png")).unwrap(), b"\x89PNG", "a file that isn't text is copied");
+    assert_eq!(fs::read(versions_folder(&f).join("chart@v0.1.png")).unwrap(), b"\x89PNG", "a file that isn't text is copied");
 
     // Each version is noted in the thread, and the deliverable knows the prompt that produced it.
     let posts = version_posts(&f);
@@ -1596,7 +1604,7 @@ fn a_new_file_is_published_as_the_first_version_and_the_prompt_is_linked_to_the_
     // Written to the vault's files, so it survives a reload.
     f.core.reload().unwrap();
     assert_eq!(linked_paths(&f), ["chart.png", "summary.md"]);
-    assert!(dir.join("summary@v0.1.md").is_file());
+    assert!(versions_folder(&f).join("summary@v0.1.md").is_file() && !dir.join("summary@v0.1.md").exists(), "a version is kept in versions/");
 }
 
 #[test]
@@ -1604,7 +1612,7 @@ fn an_edited_file_with_nothing_unpublished_is_published_as_the_next_minor_and_th
     let mut f = Fixture::new();
     seed_published(&mut f, "plan.md", "# Plan\n\nfirst text\n");
     let dir = deliverables_folder(&f);
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("plan.md"), "# Plan\n\nsecond text\n").unwrap();
 
     let outcome = after_run(&mut f, &baseline, true);
@@ -1623,7 +1631,7 @@ fn an_edited_file_with_unpublished_edits_has_them_published_first_and_only_the_r
     let dir = deliverables_folder(&f);
     // The person edited the live file after publishing: no version holds this.
     fs::write(dir.join("plan.md"), "# Plan\n\nthe person's edit\n").unwrap();
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("plan.md"), "# Plan\n\nthe run's edit\n").unwrap();
 
     let outcome = after_run(&mut f, &baseline, true);
@@ -1646,7 +1654,7 @@ fn an_edited_file_with_unpublished_edits_has_them_published_first_and_only_the_r
 fn a_runs_version_is_recorded_as_ai_with_its_prompt_and_run_and_the_note_links_the_prompt() {
     let mut f = Fixture::new();
     let dir = deliverables_folder(&f);
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("summary.md"), "# Summary\n\nAna wants SSO.\n").unwrap();
     fs::write(dir.join("chart.png"), b"\x89PNG").unwrap();
     after_run(&mut f, &baseline, true);
@@ -1674,7 +1682,7 @@ fn edits_kept_before_a_run_are_recorded_as_the_persons_and_not_linked_to_the_pro
     seed_published(&mut f, "plan.md", "# Plan\n\nfirst text\n");
     let dir = deliverables_folder(&f);
     fs::write(dir.join("plan.md"), "# Plan\n\nthe person's edit\n").unwrap();
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("plan.md"), "# Plan\n\nthe run's edit\n").unwrap();
     after_run(&mut f, &baseline, true);
 
@@ -1694,7 +1702,7 @@ fn what_a_stopped_run_left_in_the_file_is_kept_as_that_runs_when_the_next_run_st
     let dir = deliverables_folder(&f);
 
     // A run that is stopped halfway: it changed the file, nothing is published, and its note lists the file.
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("plan.md"), "# Plan\n\nhalf of the run's text\n").unwrap();
     after_run(&mut f, &baseline, false);
     let at = ids::now();
@@ -1721,7 +1729,7 @@ fn what_a_stopped_run_left_in_the_file_is_kept_as_that_runs_when_the_next_run_st
     assert_eq!(provenance::stopped_run(&f.core.conn, &f.project, "plan.md").unwrap().map(|r| r.id), Some("run-stopped".to_string()));
 
     // The next run starts with that text in the file and no version holding it.
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("plan.md"), "# Plan\n\nthe next run's text\n").unwrap();
     let outcome = after_run(&mut f, &baseline, true);
     assert_eq!((outcome.kept.as_slice(), outcome.linked.as_slice()), (&["plan@v0.2.md".to_string()][..], &["plan@v0.3.md".to_string()][..]), "{outcome:?}");
@@ -1743,7 +1751,7 @@ fn a_file_that_was_never_published_has_what_it_said_published_first() {
     let dir = deliverables_folder(&f);
     fs::write(dir.join("draft.md"), "# Draft\n\nnotes the person wrote\n").unwrap();
     f.core.reload().unwrap();
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("draft.md"), "# Draft\n\nthe run's text\n").unwrap();
 
     let outcome = after_run(&mut f, &baseline, true);
@@ -1760,7 +1768,7 @@ fn a_placeholder_counts_as_new_so_no_stub_is_published() {
     prompts::link_deliverable(&f.core.conn, &f.project, &f.thread, &f.prompt.id, "open-hello-world.md").unwrap();
     f.persist();
     let dir = deliverables_folder(&f);
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("open-hello-world.md"), "# Open hello world\n\nTwo sentences.\n").unwrap();
 
     let outcome = after_run(&mut f, &baseline, true);
@@ -1778,7 +1786,7 @@ fn a_run_that_did_not_finish_keeps_unpublished_edits_but_publishes_and_links_not
     seed_published(&mut f, "other.md", "# Other\n\nfirst text\n");
     let dir = deliverables_folder(&f);
     fs::write(dir.join("plan.md"), "# Plan\n\nthe person's edit\n").unwrap();
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     for name in ["plan.md", "other.md", "new.md"] {
         fs::write(dir.join(name), "# Half\n\nhalf done\n").unwrap();
     }
@@ -1797,7 +1805,7 @@ fn a_deliverable_the_run_did_not_change_publishes_nothing_and_an_untouched_vault
     let mut f = Fixture::new();
     seed_published(&mut f, "plan.md", "# Plan\n\nfirst text\n");
     let dir = deliverables_folder(&f);
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
 
     let quiet = after_run(&mut f, &baseline, true);
     assert!(!quiet.reloaded && quiet.linked.is_empty() && quiet.kept.is_empty() && quiet.error.is_none(), "{quiet:?}");
@@ -1816,7 +1824,7 @@ fn a_prompt_that_made_two_versions_of_a_file_is_linked_to_it_once_and_counts_onc
     seed_published(&mut f, "plan.md", "# Plan\n\nfirst text\n");
     let dir = deliverables_folder(&f);
     for text in ["second text", "third text"] {
-        let baseline = Baseline::capture(&dir);
+        let baseline = Baseline::capture(&dir, &versions_folder(&f));
         fs::write(dir.join("plan.md"), format!("# Plan\n\n{text}\n")).unwrap();
         after_run(&mut f, &baseline, true);
     }

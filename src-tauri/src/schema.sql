@@ -162,7 +162,8 @@ CREATE TABLE uploads (
 );
 
 -- Every file under a project's deliverables/ folder, whatever its type. `body` is the text of a markdown file and
--- NULL for anything else, whose bytes stay on disk. A published version is its own row, named "<name>@v1.0.<ext>".
+-- NULL for anything else, whose bytes stay on disk. A published version is its own row, named "<name>@v1.0.<ext>"
+-- relative to deliverables/ like the rest, though its file is at that place under the project's versions/ folder.
 CREATE TABLE deliverables (
     project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
     path         TEXT NOT NULL,

@@ -70,7 +70,7 @@ pub fn find(conn: &Connection, project: &str, id: &str) -> Result<FeedbackView> 
 pub fn block(conn: &Connection, project: &str, item: &FeedbackView) -> Result<String> {
     let live = deliverables::split_version(&item.deliverable_path).0;
     let on = match &item.given_on {
-        Some(version) => format!("v{version} (deliverables/{})", deliverables::snapshot_path(&live, version)),
+        Some(version) => format!("v{version} (versions/{})", deliverables::snapshot_path(&live, version)),
         None => format!("the live file (deliverables/{live}), as it stands"),
     };
     let thread = query_opt(conn, "SELECT title FROM threads WHERE project_slug = ?1 AND slug = ?2", [project, item.thread_slug.as_str()], |r| r.get::<_, String>(0))?;

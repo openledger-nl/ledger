@@ -172,12 +172,14 @@ fn the_vault_has_the_agreed_folder_structure() {
     assert!(manifest.contains("uploadedAt:") && manifest.contains("file: attachments/site plan.png") && manifest.ends_with("The site plan\n"), "{manifest}");
     assert_eq!(fs::read(root.join(&project).join("attachments/site plan.png")).unwrap(), b"\x89PNG....");
 
-    // Deliverables are written verbatim; a published version is tagged @v1.0.
-    assert_eq!(names(root, &format!("{project}/deliverables")), ["call-summary.md", "call-summary@v1.0.md"]);
+    // Deliverables are written verbatim; a published version is tagged @v1.0 and kept in versions/, so deliverables/
+    // holds only the live files.
+    assert_eq!(names(root, &format!("{project}/deliverables")), ["call-summary.md"]);
     assert_eq!(read(root, &format!("{project}/deliverables/call-summary.md")), "# Call summary\n\nAna wants SSO.\n");
+    assert_eq!(read(root, &format!("{project}/versions/call-summary@v1.0.md")), "# Call summary\n\nAna wants SSO.\n");
 
-    // How the published version came to be: one file for it, next to the project's other notes.
-    let record_files = names(root, &format!("{project}/versions"));
+    // How the published version came to be: one file for it, beside the version itself.
+    let record_files: Vec<String> = names(root, &format!("{project}/versions")).into_iter().filter(|n| n != "call-summary@v1.0.md").collect();
     assert_eq!(record_files.len(), 1, "{record_files:?}");
     let record = read(root, &format!("{project}/versions/{}", record_files[0]));
     assert!(
@@ -280,7 +282,41 @@ fn deleting_things_deletes_their_files_and_leaves_no_empty_folders() {
     // Deleting the current file keeps its published versions.
     deliverables::delete(&conn, root, &p, "call-summary.md").unwrap();
     vault.persist(&conn).unwrap();
-    assert_eq!(names(root, &format!("projects/{p}/deliverables")), ["call-summary@v1.0.md"]);
+    assert!(!root.join(format!("projects/{p}/deliverables")).exists());
+    assert!(names(root, &format!("projects/{p}/versions")).contains(&"call-summary@v1.0.md".to_string()));
+}
+
+#[test]
+fn versions_kept_beside_their_live_file_by_an_older_ledger_are_moved_to_the_versions_folder() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/acme/project.md", "---\nname: Acme\n---\n");
+    write(root, "projects/acme/deliverables/plan.md", "# Plan\n\nthird\n");
+    write(root, "projects/acme/deliverables/plan@v0.1.md", "# Plan\n\nfirst\n");
+    write(root, "projects/acme/deliverables/reports/q3@v1.0.md", "# Q3\n");
+    write(root, "projects/acme/deliverables/chart@v0.1.png", "png");
+    // Already moved by another machine, with the same bytes: the old copy goes.
+    write(root, "projects/acme/deliverables/plan@v0.2.md", "# Plan\n\nsecond\n");
+    write(root, "projects/acme/versions/plan@v0.2.md", "# Plan\n\nsecond\n");
+    // In both places but not the same: the one in versions/ counts, the other is left where it is.
+    write(root, "projects/acme/deliverables/plan@v0.3.md", "# Plan\n\nby hand\n");
+    write(root, "projects/acme/versions/plan@v0.3.md", "# Plan\n\nthird\n");
+    let record = "---\nid: 1-abcdefgh\ndeliverable: plan.md\nversion: '0.1'\nby: human\ncreatedAt: 2026-01-01T00:00:00.000Z\n---\n";
+    write(root, "projects/acme/versions/1-abcdefgh.md", record);
+
+    let (_vault, conn) = open(root);
+    assert_eq!(names(root, "projects/acme/deliverables"), ["plan.md", "plan@v0.3.md"]);
+    assert_eq!(names(root, "projects/acme/versions"), ["1-abcdefgh.md", "chart@v0.1.png", "plan@v0.1.md", "plan@v0.2.md", "plan@v0.3.md", "reports"]);
+    assert_eq!(read(root, "projects/acme/versions/reports/q3@v1.0.md"), "# Q3\n");
+    assert_eq!(read(root, "projects/acme/versions/plan@v0.1.md"), "# Plan\n\nfirst\n", "moved as it was");
+
+    assert_eq!(deliverables::versions_of(&conn, "acme", "plan.md").unwrap(), ["0.1", "0.2", "0.3"]);
+    assert!(deliverables::get(&conn, "acme", "plan@v0.3.md").unwrap().body.unwrap().contains("third"));
+    assert_eq!(deliverables::versions_of(&conn, "acme", "reports/q3.md").unwrap(), ["1.0"]);
+    assert_eq!(deliverables::versions_of(&conn, "acme", "chart.png").unwrap(), ["0.1"]);
+    assert_eq!(deliverables::list(&conn, "acme").unwrap().len(), 3, "plan.md, chart.png and reports/q3.md: a version is no deliverable of its own");
+    let known = provenance::resolve(&conn, "acme", "plan.md").unwrap();
+    assert_eq!(known.iter().find(|v| v.version == "0.1").unwrap().author, "human", "the record beside the versions is still read");
 }
 
 #[test]
@@ -330,6 +366,18 @@ fn files_the_app_does_not_manage_are_left_alone() {
     write(root, "projects/acme/attachments/new.png", "x");
     assert!(!vault.changed_on_disk());
     write(root, "projects/acme/deliverables/report.pdf", "%PDF");
+    assert!(vault.changed_on_disk());
+}
+
+#[test]
+fn a_published_version_that_is_not_markdown_is_watched_in_the_versions_folder() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/acme/project.md", "---\nname: Acme\n---\n");
+    let (vault, _conn) = open(root);
+    write(root, "projects/acme/versions/sketch.png", "not a version");
+    assert!(!vault.changed_on_disk(), "a file in versions/ that is no version isn't the app's");
+    write(root, "projects/acme/versions/chart@v0.1.png", "png");
     assert!(vault.changed_on_disk());
 }
 
@@ -768,7 +816,8 @@ fn a_vault_from_before_version_records_loads_as_it_was_and_is_not_rewritten() {
     );
 
     let (_vault, conn) = open(root);
-    assert!(!root.join(format!("{project}/versions")).exists(), "nothing is written for versions that have no record");
+    // The version itself moves to versions/, but no record is written for it.
+    assert_eq!(names(root, &format!("{project}/versions")), ["plan@v0.1.md"], "nothing is written for versions that have no record");
     let known = provenance::resolve(&conn, "acme", "plan.md").unwrap();
     assert_eq!((known[0].author, known[0].thread.as_deref(), known[0].record.is_none()), ("", Some("call"), true));
     assert_eq!(posts::list(&conn, "acme", "call").unwrap()[0].prompt_id, None);

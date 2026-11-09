@@ -337,7 +337,10 @@ impl Runs {
         };
 
         // How the deliverables stand before the run, to tell afterwards what it changed and what to publish.
-        let baseline = Baseline::capture(&deliverables::deliverables_dir(&ctx.root, &request.project));
+        let baseline = Baseline::capture(
+            &deliverables::deliverables_dir(&ctx.root, &request.project),
+            &deliverables::versions_dir(&ctx.root, &request.project),
+        );
 
         let run = Arc::new(Run::new(&request));
         request.run_id = run.id.clone();
