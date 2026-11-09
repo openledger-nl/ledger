@@ -46,6 +46,12 @@
 		return c.endLine !== null && c.endLine !== c.line ? `${name}:${c.line}-${c.endLine}` : `${name}:${c.line}`;
 	}
 
+	/**
+	 * Whether a comment's lines are numbered in another commit than the head the review shows: a draft moved on to a
+	 * newer head keeps the comments made before, with their own commit and lines.
+	 */
+	const elsewhere = (c: ReviewComment) => c.side === 'new' && c.line !== null && !!c.commit && c.commit !== review.head;
+
 	/** The lines of a block of code, without the newline that ends it. */
 	function lines(text: string | null): string[] {
 		if (!text) return [];
@@ -107,6 +113,9 @@
 							<div class="rv-head">
 								<span class="rv-place">{place(file.path, c)}</span>
 								{#if c.side === 'old'}<span class="hint" title="The line is in the version compared against">old version</span>{/if}
+								{#if elsewhere(c)}
+									<span class="hint" title="Lines as they were in {c.commit}; the review has since moved on to {review.head}">at {short(c.commit ?? '')}</span>
+								{/if}
 								<span class="rv-state">{c.resolved ? 'Resolved' : 'Open'}</span>
 								<span>{c.author ? `${c.author} · ` : ''}{when(c.createdAt)}</span>
 								{#if c.newerFormat}<span class="hint" title="Written by a newer margin-code: shown as far as it can be read">newer format</span>{/if}
