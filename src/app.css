@@ -133,7 +133,8 @@ h1, h2, h3 { margin: 0; }
 	background: var(--side); color: var(--side-text);
 	display: flex; flex-direction: column; padding: 20px 14px; gap: 2px; overflow-y: auto;
 }
-.brand { display: flex; align-items: center; padding: 0 8px 18px; }
+.brand { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 18px 8px; }
+.brand-link { display: flex; }
 .section-head {
 	display: flex; justify-content: space-between; align-items: center;
 	padding: 16px 8px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--side-faint);
@@ -148,9 +149,6 @@ summary { list-style: none; display: flex; align-items: center; gap: 4px; }
 summary::-webkit-details-marker { display: none; }
 summary .disclosure { color: var(--muted); transition: transform 0.15s; }
 details[open] > summary .disclosure { transform: rotate(90deg); }
-.search-wrap { padding: 0 2px 8px; }
-.search-wrap input { width: 100%; background: var(--side-well); border: 1px solid var(--side-edge); border-radius: 8px; padding: 8px 10px; color: var(--side-bright); font-size: 13px; outline: none; }
-.search-wrap input:focus { border-color: var(--accent); }
 .nav-item, .space-item {
 	display: flex; align-items: center; gap: 10px; width: 100%;
 	background: none; border: 0; text-align: left; color: var(--side-nav); padding: 8px 10px; border-radius: 8px; text-decoration: none;
@@ -177,7 +175,84 @@ details[open] > summary .disclosure { transform: rotate(90deg); }
 .sync-sub.error { color: var(--side-error); white-space: normal; }
 .version { font-size: 10.5px; color: var(--side-dim); margin-top: 2px; }
 
-.topbar, .scrim { display: none; }
+.scrim { display: none; }
+
+/* ---------- the shell at three widths (wireframes A4, A6, A7; the numbers are those of layout.svelte.ts) ----------
+   full    ≥ 1200 px     sidebar with names, side panels beside the page; the sidebar can be folded (Ctrl \)
+   half    720–1199 px   the sidebar is folded and slides in from the top bar, side panels are drawers, search is an icon
+   narrow  < 720 px      as half, and never a rail: there is no room for one
+   Folded means an icon rail (.fold-rail) or gone (.fold-hide). */
+@media (min-width: 1200px) {
+	.app.sidebar-hidden .sidebar { display: none; }
+	.app.sidebar-hidden.fold-rail .rail { display: flex; }
+	/* With the sidebar folded away the page is centred in the room it gets back (A4). */
+	.app.sidebar-hidden.fold-hide .page-inner { margin-inline: auto; }
+}
+
+/* The icon rail: only drawn where the sidebar is folded and the setting asks for a rail. */
+.rail {
+	display: none; width: 56px; flex-shrink: 0; height: 100vh; background: var(--side); color: var(--side-text);
+	flex-direction: column; align-items: center; gap: 4px; padding: 14px 0 12px;
+}
+.rail-mark { display: flex; padding: 4px 0 14px; }
+.rail-group { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.rail-projects { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: 2px 0; }
+.rail-item, .rail-project, .rail-sync {
+	width: 36px; height: 36px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+	border-radius: 8px; border: 0; background: none; color: var(--side-nav); text-decoration: none;
+}
+.rail-item:hover, .rail-item.active { background: var(--side-hover); color: var(--side-ink); }
+.rail-project { width: 30px; height: 30px; margin: 3px 0; border: 1.5px solid var(--side-edge); font-size: 12px; font-weight: 700; color: var(--side-text); }
+.rail-project:hover { border-color: var(--side-muted); color: var(--side-ink); }
+.rail-project.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.rail-rule { width: 28px; height: 1px; background: var(--side-edge); margin: 8px 0; flex-shrink: 0; }
+.rail-sync { margin-top: 6px; }
+.rail-sync:hover { background: var(--side-hover); }
+.rail-tip {
+	position: fixed; z-index: 60; left: 62px; transform: translateY(-50%); pointer-events: none;
+	background: var(--side); color: var(--side-ink); border: 1px solid var(--side-edge); box-shadow: var(--shadow-toast);
+	font-size: 12px; font-weight: 500; padding: 4px 9px; border-radius: 6px; white-space: nowrap;
+}
+
+/* The top bar over every page. */
+.topbar {
+	display: flex; align-items: center; gap: 10px; flex-shrink: 0; min-height: 52px; padding: 8px 20px 8px 14px;
+	background: var(--panel); border-bottom: 1px solid var(--line); position: relative; z-index: 15;
+}
+.tb-icon {
+	display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px;
+	background: none; border: 0; border-radius: 8px; color: var(--muted);
+}
+.tb-icon:hover { background: var(--card-2); color: var(--ink); }
+.tb-crumbs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; padding-left: 6px; }
+.tb-crumb { color: var(--muted); text-decoration: none; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
+a.tb-crumb:hover { color: var(--accent); }
+.tb-crumb.current { color: var(--ink); font-weight: 500; flex-shrink: 0; max-width: 100%; }
+.tb-sep { color: var(--faint); flex-shrink: 0; }
+.tb-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.tb-search {
+	display: flex; align-items: center; gap: 8px; width: 280px; padding: 0 6px 0 10px; height: 34px;
+	background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--faint);
+}
+.tb-search:focus-within { border-color: var(--accent); }
+.tb-search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 13px; padding: 0; }
+.tb-search input::-webkit-search-cancel-button { display: none; }
+.tb-search kbd { font: 500 11px var(--font-sans); color: var(--faint); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+/* Where search is an icon, the box opens over the whole bar. */
+.topbar.searching .tb-actions { position: absolute; inset: 0; padding: 8px 14px; background: var(--panel); z-index: 1; }
+.topbar.searching .tb-search { flex: 1; width: auto; }
+.topbar.searching .tb-capture { display: none; }
+
+/* Below full width the whole sidebar is a drawer, slid in from the top bar's button. */
+@media (max-width: 1199px) {
+	.app.fold-rail .rail { display: flex; }
+	.sidebar, .app.sidebar-hidden .sidebar {
+		display: flex; position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; width: min(86vw, 320px); height: 100dvh;
+		transform: translateX(-100%); transition: transform 0.2s ease; visibility: hidden;
+	}
+	.sidebar.open { transform: none; box-shadow: var(--shadow-drawer); visibility: visible; }
+	.scrim.open { display: block; position: fixed; inset: 0; z-index: 20; background: var(--scrim-soft); }
+}
 
 /* ---------- buttons and small controls ---------- */
 .btn {
@@ -456,7 +531,7 @@ mark { background: var(--highlight); color: inherit; border-radius: 3px; padding
 .dash-empty .link { font-size: 12.5px; text-decoration: none; }
 /* A project's latest threads and deliverables side by side, on its Overview. */
 .latest-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 32px; }
-@media (max-width: 760px) { .latest-cols { grid-template-columns: 1fr; } }
+@media (max-width: 719px) { .latest-cols { grid-template-columns: 1fr; } }
 .proj-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: -2px; }
 .proj-foot .btn.ghost { border-color: transparent; color: var(--muted); }
 .proj-foot .btn.ghost:hover { color: var(--ink); background: var(--card-2); }
@@ -537,24 +612,31 @@ details.more p { margin: 0; }
 .un-status .dot { display: inline-block; margin-right: 4px; }
 .un-progress { height: 6px; border-radius: 999px; background: var(--card-2); overflow: hidden; }
 .un-progress span { display: block; height: 100%; background: var(--accent); transition: width 0.15s; }
-@media (max-width: 760px) {
+@media (max-width: 719px) {
 	.update-notice { left: 16px; right: 16px; bottom: 16px; width: auto; }
 }
 
-/* ---------- narrow windows: the sidebar becomes a drawer ---------- */
-@media (max-width: 760px) {
-	.app { flex-direction: column; height: 100dvh; }
-	.topbar { display: flex; align-items: center; gap: 10px; flex-shrink: 0; background: var(--side); color: var(--side-ink); font-weight: 700; font-size: 16px; padding: 8px 12px; min-height: 48px; }
-	.topbar .icon-btn { font-size: 22px; padding: 4px 10px; color: var(--side-ink); }
-	.sidebar { position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; width: min(86vw, 320px); height: 100dvh; transform: translateX(-100%); transition: transform 0.2s ease; }
-	.sidebar.open { transform: none; box-shadow: var(--shadow-drawer); }
-	.scrim.open { display: block; position: fixed; inset: 0; z-index: 20; background: var(--scrim-soft); }
-	main { height: auto; flex: 1; min-height: 0; }
+/* ---------- half width: a little less room around the page ---------- */
+@media (max-width: 1199px) {
+	.thread, .page, .composer, .header-wrap, .board-tools, .board { padding-left: 24px; padding-right: 24px; }
+}
+
+/* ---------- narrow windows (< 720 px): no rail, whatever the setting; the sidebar stays a drawer ---------- */
+@media (max-width: 719px) {
+	.app { height: 100dvh; }
+	.app.fold-rail .rail { display: none; }
+	main { height: 100dvh; }
+	.topbar { padding: 6px 10px; min-height: 48px; gap: 6px; }
+	/* Only where you are, not the way there: the last crumb. */
+	.tb-crumb:not(.current), .tb-sep { display: none; }
+	.tb-label { display: none; }
+	.tb-capture { padding: 6px 8px; }
 	.thread, .page, .composer, .header-wrap, .board-tools { padding-left: 14px; padding-right: 14px; }
 	.board { padding-left: 14px; padding-right: 14px; }
 	.header-top { flex-direction: column; gap: 8px; }
 	.header-actions { width: 100%; justify-content: flex-start; }
 	.md-editor, input, select { font-size: 16px; }
+	.tb-search input { font-size: 16px; }
 	.doc-row, .doc-row.all { grid-template-columns: 1fr auto; row-gap: 4px; }
 	.doc-row .doc-date, .doc-row .doc-space, .doc-row .badge.type { display: none; }
 	.col { flex-basis: 82vw; }
@@ -595,10 +677,6 @@ details.more p { margin: 0; }
 .tree-item .stack { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .tree-item .of { font-size: 11px; font-weight: 400; color: var(--side-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---------- project pages ---------- */
-.crumbs { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 4px; flex-wrap: wrap; }
-.crumbs a { color: var(--muted); text-decoration: none; }
-.crumbs a:hover { color: var(--accent); }
 
 /* ---------- thread timeline extras ---------- */
 .prompt-card { border-left: 3px solid var(--accent); }
@@ -666,7 +744,7 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 .mmm .mmm-tag { font-weight: 400; color: var(--muted); }
 
 /* Where the window is too narrow to hold it beside the page, it is a drawer over it. */
-@media (max-width: 1099px) {
+@media (max-width: 1199px) {
 	.side-window { position: fixed; z-index: 40; top: 0; right: 0; bottom: 0; width: min(420px, 92vw); box-shadow: var(--shadow-drawer); }
 	.side-scrim.open { display: block; position: fixed; inset: 0; z-index: 35; background: var(--scrim-faint); }
 }
@@ -885,7 +963,7 @@ select.pv-level { padding: 2px 6px; font-size: 11.5px; border-radius: 8px; width
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent);
 }
 .contrib-day.vac { outline: 1px dashed color-mix(in srgb, var(--amber) 70%, transparent); outline-offset: -1px; }
-@media (max-width: 760px) {
+@media (max-width: 719px) {
 	.sem-dates { grid-template-columns: 1fr 1fr; }
 	.sem-length { grid-column: 1 / -1; }
 	.sprint-row { grid-template-columns: 24px 1fr auto; grid-template-areas: 'n name weeks' '. span span' '. goal goal'; }

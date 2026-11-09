@@ -3,17 +3,18 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import House from '@lucide/svelte/icons/house';
+	import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Settings from '@lucide/svelte/icons/settings';
 	import { untrack } from 'svelte';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
 	import { deliverableTarget, deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
-	import { ago, deliverableTime, newest } from '$lib/format';
+	import { deliverableTime, newest } from '$lib/format';
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
-	import { drawer, sync } from '$lib/ui.svelte';
+	import { sync, syncFooter } from '$lib/ui.svelte';
+	import { layout, toggleSidebar } from '$lib/layout.svelte';
 	import { portflow } from '$lib/portflow.svelte';
 	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
 	import GammaIcon from '$lib/components/GammaIcon.svelte';
@@ -23,7 +24,6 @@
 
 	const OPEN_KEY = 'ledger-open-project';
 
-	let query = $state('');
 	/** The project that is unfolded: one at a time, null when none is. */
 	let open = $state<string | null>(load());
 	const path = $derived(page.url.pathname);
@@ -101,11 +101,6 @@
 		newest(projects.flatMap((project) => (deliverables[project.slug] ?? []).map((d) => ({ d, project }))), (x) => deliverableTime(x.d).at).slice(0, LATEST)
 	);
 
-	// Reflect an open search in the box, so refining it is one edit away.
-	$effect(() => {
-		if (path === '/search') query = page.url.searchParams.get('q') ?? '';
-	});
-
 	// "just now" and "5 min ago" are worked out when drawn, so the footer redraws every half minute to keep them true.
 	let tick = $state(0);
 	$effect(() => {
@@ -113,41 +108,28 @@
 		return () => clearInterval(timer);
 	});
 
-	// What the footer says about the vault and GitHub: how it stands, where the files go (owner/repo@branch) and
-	// whether they go up sealed; a problem adds its message.
 	const footer = $derived.by(() => {
 		void tick;
-		const s = sync.status;
-		if (!s || !s.configured) return { dot: 'off', title: 'Local vault', when: '', where: 'Not synced to GitHub', encryption: '', error: '' };
-		const base = { when: '', where: `${s.repo ?? ''}@${s.branch ?? ''}`, encryption: s.encrypted ? 'Encrypted' : 'Not encrypted', error: '' };
-		if (s.state === 'syncing') return { ...base, dot: 'warn pulse', title: 'Syncing…' };
-		if (s.state === 'error') return { ...base, dot: 'bad', title: 'Sync problem', error: s.lastError ?? 'See Settings' };
-		if (s.pending) return { ...base, dot: 'warn', title: 'Changes waiting to sync' };
-		return { ...base, dot: 'ok', title: 'Synced with GitHub', when: s.lastSyncAt ? ago(s.lastSyncAt) : '' };
+		return syncFooter(sync.status);
 	});
-
-	function search(e: SubmitEvent) {
-		e.preventDefault();
-		const q = query.trim();
-		if (q) goto(`/search?q=${encodeURIComponent(q)}`);
-	}
 
 	// On a narrow window the drawer closes after every choice (but not after folding a project).
 	function closeDrawer(e: MouseEvent) {
 		// Folding a project goes nowhere, so the drawer stays.
 		if (e.defaultPrevented) return;
 		const target = (e.target as HTMLElement).closest('a, button');
-		if (target && !target.classList.contains('folder-toggle')) drawer.open = false;
+		if (target && !target.classList.contains('folder-toggle')) layout.drawerOpen = false;
 	}
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-<aside class="sidebar" class:open={drawer.open} onclick={closeDrawer}>
-	<div class="brand"><Wordmark /></div>
-
-	<form class="search-wrap" onsubmit={search}>
-		<input type="search" placeholder="Search everything…" autocomplete="off" spellcheck="false" bind:value={query} />
-	</form>
+<aside class="sidebar" class:open={layout.drawerOpen} onclick={closeDrawer} aria-label="Sidebar">
+	<div class="brand">
+		<a href="/" class="brand-link" aria-label="Home"><Wordmark /></a>
+		<button class="icon-btn side-hide" title="Hide sidebar (Ctrl+\)" aria-label="Hide sidebar" onclick={toggleSidebar}>
+			<PanelLeftClose size={18} />
+		</button>
+	</div>
 
 	<a class="nav-item" class:active={path === '/'} href="/"><span class="nav-ico"><House size={16} /></span>Home</a>
 	{#if portflow.enabled}

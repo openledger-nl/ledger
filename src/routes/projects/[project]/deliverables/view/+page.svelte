@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
+	import PanelRight from '@lucide/svelte/icons/panel-right';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
 	import { goto } from '$app/navigation';
+	import { HALF } from '$lib/layout.svelte';
 	import FeedbackCard from '$lib/components/FeedbackCard.svelte';
 	import FileImage from '$lib/components/FileImage.svelte';
 	import Markdown from '$lib/components/Markdown.svelte';
@@ -126,12 +128,13 @@
 	}
 
 	// ---- the "Produced by" side window -----------------------------------------------------------
-	// Open by default where the window is wide enough to hold it next to the page (below that it is a drawer over it).
+	// Open by default where the window is wide enough to hold it next to the page (full width, 1200 px and up; below that
+	// it is a drawer over the page, so it starts closed).
 
 	let sideOpen = $state(true);
 	try {
 		const saved = localStorage.getItem('ledger-doc-provenance');
-		sideOpen = saved === 'open' || saved === 'closed' ? saved === 'open' : window.innerWidth >= 1100;
+		sideOpen = saved === 'open' || saved === 'closed' ? saved === 'open' : window.innerWidth >= HALF;
 	} catch {
 		// Storage unavailable: open.
 	}
@@ -255,9 +258,6 @@
 <svelte:head><title>{doc.name} · Ledger</title></svelte:head>
 
 <div class="header-wrap">
-	<div class="crumbs">
-		<a href="/projects/{project}">{data.project.name}</a><span>/</span><a href="/projects/{project}/deliverables">Deliverables</a>
-	</div>
 	<div class="header-top">
 		<div style="flex:1;min-width:0">
 			<h1 title={doc.path}>{doc.name}</h1>
@@ -279,7 +279,7 @@
 			</div>
 		</div>
 		<div class="header-actions">
-			<button class="btn ghost small" aria-pressed={sideOpen} onclick={() => setSide(!sideOpen)}>Produced by</button>
+			<button class="btn ghost small" aria-pressed={sideOpen} onclick={() => setSide(!sideOpen)}><PanelRight size={14} />Produced by</button>
 			{#if isMarkdown}<button class="btn ghost small" onclick={copyMarkdown}>Copy markdown</button>{/if}
 			{#if doc.exists}
 				<button class="btn ghost small" onclick={() => open(false)}>Open</button>
