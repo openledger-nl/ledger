@@ -159,7 +159,7 @@ The comment in markdown.
 - margin-code may create a thread for a review. It makes a new folder `threads/<slug>/` with a `thread.md` holding `title` and `createdAt` (the body is an optional description), the slug made as `ids::slugify` makes it, with `-2`, `-3`… when taken. After creating it, margin-code never writes that `thread.md` again: it is Ledger's, and Ledger may rewrite it canonically.
 - Writes are atomic: a temp file whose name starts with `.` in the same folder, renamed over the target. Ledger ignores dotfiles.
 - Both sides keep unknown frontmatter keys as they are and otherwise ignore them. A file with a `format` higher than a side knows is shown read-only by Ledger and left untouched by margin-code, with a note.
-- While Ledger runs, it notices these files within seconds (the watcher from step 1) and syncs them. Until it runs, they wait on disk.
+- While Ledger runs, it notices these files within seconds (through a vault watcher) and syncs them. Until it runs, they wait on disk.
 
 ## Screenshots
 
