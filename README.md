@@ -14,7 +14,7 @@ This is the rewrite of the original ASP.NET ledger, which is kept in the author'
          └── GitHub (private repo): pulled at start, pushed after changes, checked every few minutes
 ```
 
-- **The vault is the source of truth.** Open it in Obsidian, grep it, put it in git yourself. Edits made outside Ledger are picked up when its window regains focus, and go to GitHub like any other change.
+- **The vault is the source of truth.** Open it in Obsidian, grep it, put it in git yourself. Edits made outside Ledger (in Obsidian, by margin-code in VS Code, by a `git pull`) are noticed while it runs: the vault folder is watched, and a second after the last change the files are read in again, the screens refresh, and the change goes to GitHub like any other. Ledger's own writes, its `.ledger/` folder, dotfiles and attachments don't count. If the system can't watch the folder, edits are picked up when the window regains focus, which is checked as well.
 - **At startup** the whole vault is read into an in-memory database. Screens are answered from memory; every change is written straight back to the files (only the files that actually changed, and atomically).
 - **GitHub is the store you sync to.** Ledger talks to GitHub's REST API directly, so nothing else needs installing. Each round is a three-way comparison per file against what both sides last agreed on, so changes made on two machines merge file by file. Binary files (uploads, images) sync too. If the same file was edited on both sides, this machine's version wins and the other is kept in `.ledger/conflicts/`; an edit always beats a delete. Ledger refuses to sync to a public repository.
 
@@ -246,6 +246,7 @@ src-tauri/src/
   sync.rs                the three-way reconcile, behind a `Remote` trait
   github.rs              the GitHub REST implementation of `Remote`
   syncer.rs              the background worker: debounce, poll, retry, status events
+  watcher.rs             watches the vault folder and reloads when its files change outside the app
   screenshot.rs          hotkey, your own tool, pictures opened with Ledger, the built-in capture; Linux portals
   updates.rs             looking for releases, the notice's view of one, and when it is safe to install and restart
   state.rs commands.rs   the running app and the thin Tauri command layer

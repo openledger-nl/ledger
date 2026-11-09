@@ -40,6 +40,8 @@ zeroize = "1.9.1"
 hmac = "0.13"
 # Installing new releases from inside the app (`updates.rs`). Registered in release builds only, see `lib.rs`.
 tauri-plugin-updater = "2"
+# Noticing files changed outside the app while it runs (`watcher.rs`).
+notify = "8.2.2"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

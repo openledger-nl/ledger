@@ -548,6 +548,34 @@ fn edits_made_outside_the_app_are_noticed() {
 }
 
 #[test]
+fn files_the_app_copies_or_removes_itself_are_not_changes_made_elsewhere() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/acme/deliverables/report.pdf", "%PDF-1.7 the report");
+    let (mut vault, conn) = open(root);
+    assert!(!vault.changed_on_disk());
+
+    // Publishing a deliverable that isn't markdown copies the file; deleting it removes the file.
+    deliverables::publish(&conn, root, "acme", "report.pdf", Bump::Minor, None).unwrap();
+    vault.persist(&conn).unwrap();
+    assert!(root.join("projects/acme/versions/report@v0.1.pdf").exists());
+    assert!(!vault.changed_on_disk(), "the copy is the app's own");
+    deliverables::delete(&conn, root, "acme", "report.pdf").unwrap();
+    vault.persist(&conn).unwrap();
+    assert!(!root.join("projects/acme/deliverables/report.pdf").exists());
+    assert!(!vault.changed_on_disk(), "so is the removal");
+
+    // The same kind of file, changed or added by something else, is still noticed.
+    write(root, "projects/acme/versions/report@v0.1.pdf", "%PDF-1.7 rewritten elsewhere, longer");
+    vault.persist(&conn).unwrap();
+    assert!(vault.changed_on_disk(), "an edit to a file that was there");
+    let conn = vault.load().unwrap();
+    write(root, "projects/acme/deliverables/chart.png", "png");
+    vault.persist(&conn).unwrap();
+    assert!(vault.changed_on_disk(), "a file the database doesn't know");
+}
+
+#[test]
 fn a_large_vault_persists_quickly() {
     let dir = tempdir().unwrap();
     let (mut vault, conn) = open(dir.path());

@@ -179,7 +179,36 @@ impl Vault {
             prune_empty_dirs(&self.root, &file);
             touched += 1;
         }
+        self.adopt_own_files(conn)?;
         Ok(touched)
+    }
+
+    /// Deliverables that aren't markdown are copied and removed by the app itself rather than written through (a
+    /// version published, a file deleted). A file that wasn't there before and is what the database says it is (its
+    /// size), or one that is gone along with its row, was this app, not an edit made elsewhere: `changed_on_disk`
+    /// doesn't report it, so the vault watcher doesn't reload for it. A file that was there and changed is never this
+    /// app's doing.
+    fn adopt_own_files(&mut self, conn: &Connection) -> Result<()> {
+        let known: HashMap<String, u64> = query_all(conn, "SELECT project_slug, path, size FROM deliverables WHERE body IS NULL", [], |r| {
+            Ok((deliverable_file(&r.get::<_, String>(0)?, &r.get::<_, String>(1)?), r.get::<_, i64>(2)?))
+        })?
+        .into_iter()
+        .map(|(rel, size)| (rel, size.max(0) as u64))
+        .collect();
+        for (rel, size) in &known {
+            if !self.disk.contains_key(rel)
+                && let Some(fp) = fingerprint(&self.root.join(rel))
+                && fp.0 == *size
+            {
+                self.disk.insert(rel.clone(), fp);
+            }
+        }
+        let root = &self.root;
+        self.disk.retain(|rel, _| {
+            let other_deliverable = rel.split('/').nth(2) == Some("deliverables") && rel.starts_with("projects/") && !deliverables::is_markdown(rel);
+            !other_deliverable || known.contains_key(rel) || root.join(rel).exists()
+        });
+        Ok(())
     }
 
     /// Whether files were added, removed or edited by something other than this vault since it last looked.

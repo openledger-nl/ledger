@@ -19,6 +19,7 @@ use crate::screenshot::{self, Region, ScreenshotSettings};
 use crate::settings::{self, SyncConfig, SyncEnv};
 use crate::state::App;
 use crate::syncer::SyncStatus;
+use crate::watcher::VaultWatcher;
 use crate::{activity, board, semesters, deliverables, feedback, links, markdown, posts, projects, prompts, provenance, search, stories, templates, threads, uploads};
 
 #[tauri::command]
@@ -726,12 +727,15 @@ pub fn export_recovery_key(app: State<App>) -> Result<String> {
 #[tauri::command]
 pub fn set_vault_path(app: AppHandle, path: String, copy: bool) -> Result<SettingsView> {
     let state = app.state::<App>();
-    let config = {
+    let (config, root) = {
         let mut core = state.lock();
         core.set_vault(&PathBuf::from(path.trim()), copy)?;
-        core.sync.clone()
+        (core.sync.clone(), core.vault.root().to_path_buf())
     };
     state.syncer.reconfigure(config.as_ref());
+    if let Some(watcher) = app.try_state::<VaultWatcher>() {
+        watcher.watch(&root);
+    }
     // The new vault has its own settings, the screenshot hotkey among them.
     screenshot::register_saved(&app);
     Ok(view(&state))
@@ -745,17 +749,17 @@ pub fn reload_vault(app: State<App>) -> Result<()> {
     Ok(())
 }
 
-/// Reloads if the files were changed behind the app's back (in Obsidian, say). Whether anything was reloaded.
+/// Reloads if the files were changed behind the app's back (in Obsidian, say). Whether anything was reloaded. The
+/// vault watcher (`watcher.rs`) does the same within seconds; this is what the window asks when it regains focus, in
+/// case the watcher missed something or couldn't watch.
 #[tauri::command]
 pub fn check_vault_changes(app: State<App>) -> Result<bool> {
-    let mut core = app.lock();
-    if !core.vault.changed_on_disk() {
-        return Ok(false);
+    let reloaded = app.lock().reload_if_changed()?;
+    if reloaded {
+        // What was edited elsewhere is part of the vault now, and goes to GitHub like anything else.
+        app.syncer.dirty();
     }
-    core.reload()?;
-    // What was edited elsewhere is part of the vault now, and goes to GitHub like anything else.
-    app.syncer.dirty();
-    Ok(true)
+    Ok(reloaded)
 }
 
 // ---- screenshots ------------------------------------------------------------------------------------

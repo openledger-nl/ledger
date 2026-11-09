@@ -122,8 +122,9 @@ export const sync = $state<{ status: SyncStatus | null }>({ status: null });
 export const screenshot = $state<{ pending: ScreenshotTaken | null }>({ pending: null });
 
 /**
- * Listens for what the backend announces — sync progress, files changed by a pull — and checks the vault for
- * edits made elsewhere (in Obsidian, say) whenever the window regains focus. Returns the cleanup.
+ * Listens for what the backend announces — sync progress, files changed by a pull, edits made elsewhere that the vault
+ * watcher read in — and, as a fallback for the watcher, checks the vault for those edits whenever the window regains
+ * focus. Returns the cleanup.
  */
 export function startBackendEvents(): () => void {
 	const cleanups: Array<() => void> = [];
@@ -141,6 +142,13 @@ export function startBackendEvents(): () => void {
 		.then(keep)
 		.catch(() => {});
 	listen('vault-changed', () => {
+		void refresh();
+	})
+		.then(keep)
+		.catch(() => {});
+	// The vault watcher read in files changed outside Ledger (Obsidian, margin-code in VS Code), within seconds.
+	listen('vault-reloaded', () => {
+		toast('Reloaded changes made outside Ledger');
 		void refresh();
 	})
 		.then(keep)
