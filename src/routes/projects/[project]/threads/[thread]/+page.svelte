@@ -11,6 +11,7 @@
 	import PostCard from '$lib/components/PostCard.svelte';
 	import PromptCard from '$lib/components/PromptCard.svelte';
 	import PromptModal from '$lib/components/PromptModal.svelte';
+	import ReviewCard from '$lib/components/ReviewCard.svelte';
 	import StoryModal from '$lib/components/StoryModal.svelte';
 	import UploadCard from '$lib/components/UploadCard.svelte';
 	import UploadModal from '$lib/components/UploadModal.svelte';
@@ -18,7 +19,7 @@
 	import { orderFlow } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { attempt, confirmDialog, promptDialog, refresh } from '$lib/ui.svelte';
-	import type { Feedback, Post, Prompt, Story, Upload } from '$lib/types';
+	import type { Feedback, Post, Prompt, Review, Story, Upload } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -61,15 +62,17 @@
 		| { kind: 'post'; key: string; at: string; post: Post }
 		| { kind: 'prompt'; key: string; at: string; prompt: Prompt }
 		| { kind: 'feedback'; key: string; at: string; feedback: Feedback }
-		| { kind: 'upload'; key: string; at: string; upload: Upload };
+		| { kind: 'upload'; key: string; at: string; upload: Upload }
+		| { kind: 'review'; key: string; at: string; review: Review };
 
-	/** Notes, prompts, feedback and uploads in the order they happened, oldest first. */
+	/** Notes, prompts, feedback, uploads and code reviews (on the day each was started) in the order they happened, oldest first. */
 	const chronological = $derived.by(() => {
 		const entries: Entry[] = [
 			...posts.filter((p) => !structure.embedded.has(p.id)).map((post): Entry => ({ kind: 'post', key: `p-${post.id}`, at: post.createdAt, post })),
 			...thread.prompts.map((prompt): Entry => ({ kind: 'prompt', key: `pr-${prompt.id}`, at: prompt.createdAt, prompt })),
 			...thread.feedback.map((feedback): Entry => ({ kind: 'feedback', key: `f-${feedback.id}`, at: feedback.createdAt, feedback })),
-			...thread.uploads.map((upload): Entry => ({ kind: 'upload', key: `u-${upload.id}`, at: upload.uploadedAt, upload }))
+			...thread.uploads.map((upload): Entry => ({ kind: 'upload', key: `u-${upload.id}`, at: upload.uploadedAt, upload })),
+			...thread.reviews.map((review): Entry => ({ kind: 'review', key: `rv-${review.id}`, at: review.createdAt, review }))
 		];
 		entries.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
 		return entries;
@@ -145,7 +148,7 @@
 	async function remove() {
 		const ok = await confirmDialog({
 			title: `Delete “${thread.title}”?`,
-			message: `Its ${plural(posts.length, 'post')}, prompts, feedback and uploaded files go with it. Deliverables are kept, and its user stories lose the link.`,
+			message: `Its ${plural(posts.length, 'post')}, prompts, feedback${thread.reviews.length ? `, ${plural(thread.reviews.length, 'code review')} (their files too)` : ''} and uploaded files go with it. Deliverables are kept, and its user stories lose the link.`,
 			confirmLabel: 'Delete thread',
 			danger: true
 		});
@@ -189,7 +192,7 @@
 			<h1>{thread.title} <span class="badge accent">Thread</span></h1>
 			<div class="sub">
 				{plural(posts.length, 'post')} · {plural(thread.prompts.length, 'prompt')} · {plural(thread.feedback.length, 'feedback item', 'feedback items')} ·
-				{plural(thread.uploads.length, 'upload')} · last activity {date(lastActivity)}
+				{plural(thread.uploads.length, 'upload')}{thread.reviews.length ? ` · ${plural(thread.reviews.length, 'code review')}` : ''} · last activity {date(lastActivity)}
 			</div>
 		</div>
 		<div class="header-actions">
@@ -253,8 +256,10 @@
 				<PromptCard {project} thread={slug} prompt={e.prompt} onedit={(prompt) => (promptModal = { prompt })} />
 			{:else if e.kind === 'feedback'}
 				<FeedbackCard {project} thread={slug} feedback={e.feedback} />
-			{:else}
+			{:else if e.kind === 'upload'}
 				<UploadCard {project} thread={slug} upload={e.upload} />
+			{:else}
+				<ReviewCard review={e.review} />
 			{/if}
 		{:else}
 			<div class="empty-state">
