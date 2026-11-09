@@ -1,7 +1,8 @@
 //! What you did, and when: the events behind the contribution graph on the dashboard.
 //!
 //! Every thing you make counts once, on the moment it was made: a thread, a post you wrote, a prompt, feedback, an
-//! upload, a published version, a run of a prompt with Claude Code, a user story, a task. What the app writes for
+//! upload, a published version, a run of a prompt with Claude Code, a user story, a task, and a code review submitted
+//! with margin-code (on the moment it was submitted: a draft is still being made). What the app writes for
 //! you (a template's guiding questions, the "version published" note) doesn't count, and neither do edits, which
 //! leave no history. The frontend groups the events into days, in local time.
 
@@ -21,6 +22,7 @@ const EVENTS: &str = "
     UNION ALL SELECT project_slug, 'run', started_at FROM claude_runs
     UNION ALL SELECT project_slug, 'story', created_at FROM user_stories
     UNION ALL SELECT project_slug, 'task', created_at FROM tasks
+    UNION ALL SELECT project_slug, 'review', submitted_at FROM reviews WHERE state = 'submitted' AND submitted_at IS NOT NULL
     ORDER BY 3";
 
 /// Every event in the vault, oldest first.

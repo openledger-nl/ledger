@@ -368,3 +368,15 @@ fn search_finds_review_summaries_comments_and_replies() {
     assert_eq!(found("instead of returning"), [("review-comment".to_string(), "1793873760000-aaaaaaaa".to_string())]);
     assert_eq!(found("agreed, WILL do"), [("review-comment".to_string(), "1793873820000-bbbbbbbb".to_string())], "replies too");
 }
+
+#[test]
+fn a_submitted_review_counts_on_the_contribution_graph_when_it_was_submitted() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    margin_review(root);
+    margin_review_in(root, "projects/acme/threads/kept"); // a draft
+    let (_vault, conn) = open(root);
+
+    let reviews: Vec<String> = crate::activity::list(&conn).unwrap().into_iter().filter(|e| e.kind == "review").map(|e| e.at).collect();
+    assert_eq!(reviews, ["2026-11-09T11:00:00.000Z"], "the submitted one, at its submission; not the draft, and not its comments");
+}

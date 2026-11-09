@@ -276,7 +276,7 @@ export interface SemesterDraft {
 
 // ---- activity ---------------------------------------------------------------------------------------
 
-export type ActivityKind = 'thread' | 'post' | 'prompt' | 'feedback' | 'upload' | 'version' | 'run' | 'story' | 'task';
+export type ActivityKind = 'thread' | 'post' | 'prompt' | 'feedback' | 'upload' | 'version' | 'run' | 'story' | 'task' | 'review';
 
 /** One thing made in a project, at a moment: what the contribution graph counts. */
 export interface ActivityEvent {

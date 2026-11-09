@@ -494,7 +494,7 @@ pub struct SemesterDraft {
 #[serde(rename_all = "camelCase")]
 pub struct ActivityEvent {
     pub project_slug: String,
-    /// thread, post, prompt, feedback, upload, version, run, story or task.
+    /// thread, post, prompt, feedback, upload, version, run, story, task or review (a code review, when it was submitted).
     pub kind: String,
     pub at: String,
 }

@@ -28,7 +28,8 @@
 		version: ['published version', 'published versions'],
 		run: ['Claude Code run', 'Claude Code runs'],
 		story: ['story', 'stories'],
-		task: ['task', 'tasks']
+		task: ['task', 'tasks'],
+		review: ['code review', 'code reviews']
 	};
 	const ORDER = Object.keys(KIND) as ActivityKind[];
 
