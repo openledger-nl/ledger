@@ -22,6 +22,7 @@ mod posts;
 mod projects;
 mod prompts;
 mod provenance;
+mod reviews;
 mod screenshot;
 mod search;
 mod semesters;
@@ -62,6 +63,8 @@ mod tests_devupdates;
 mod tests_onboarding;
 #[cfg(test)]
 mod tests_provenance;
+#[cfg(test)]
+mod tests_reviews;
 #[cfg(test)]
 mod tests_screenshot;
 #[cfg(test)]

@@ -29,6 +29,8 @@ projects/<project>/threads/<thread>/prompts/<id>.md     its prompts: requests fo
 projects/<project>/threads/<thread>/feedback/<id>.md    its feedback, which lands on a deliverable
 projects/<project>/threads/<thread>/uploads/<id>.md     upload manifests: when, where the file is, a description
 projects/<project>/threads/<thread>/runs/<id>.md        a run of a prompt with Claude Code: how it ended, what it did
+projects/<project>/threads/<thread>/reviews/<id>.md     a code review written with margin-code (Ledger only reads it)
+projects/<project>/threads/<thread>/reviews/<id>/<id>.md   its comments and their replies
 projects/<project>/userstories/<id>.md              a user story
 projects/<project>/tasks/<id>.md                    a task (a card on the board)
 projects/<project>/deliverables/                    what prompts produce — any kind of file; only the live files
@@ -87,6 +89,75 @@ Use a [fine-grained token](https://github.com/settings/personal-access-tokens/ne
 - **Semesters** (Settings → Semesters, or the Semesters button on the dashboard's contribution graph) — half years you set by hand, listed there, with a + to add one: the **NJ26** preset (autumn 2026: a kick-off week, a shorter sprint 0, five sprints of three weeks, a week off in autumn and two at Christmas; named "NJ26 - Semester X" until you fill in the X) or a semester of your own: a name, a first and a last day, and the vacations in them. Each is cut into sprints of three weeks of work (or another length for all, and any sprint can have a length of its own) from its first day. The sprint clock stops for a vacation: a sprint that runs into one carries on after it, one that would start in it starts after it, and less than a week of work left at the end joins the last sprint. So the sprints always fit; you name them and give them goals. Semesters can't share days, so a day belongs to one semester at most. Kept as `semesters/<id>.md`, synced like everything else; on the dashboard's graph vacation days are outlined.
 - **Dates** are shown the European way everywhere: day before month ("3 Nov 2026", typed as 03-11-2026) and a 24-hour clock. Files keep the ISO form (2026-11-03) that YAML and other tools expect; a hand-written semester may use either.
 - **Search** across every post, prompt, feedback and deliverable, with highlighted snippets. **Themes**: Sepia (the default), Dark, Night, Forest, Ocean, Light. **Order** (Settings): one choice, newest first by default, for the posts of a thread, the threads in the sidebar, the feedback, versions and "Produced by" window of a deliverable, and a project's attachments. It only changes how things are shown. **Settings → Features** also turns the contribution graph and the explorer's **Latest** section (the newest threads and deliverables, under the projects) on and off. **Name prompts** (Settings → Claude Code, on by default): a new prompt is named by Claude Code from what it asks. **Run prompts by themselves** (Settings → Claude Code, off by default): a prompt you create starts running in Claude Code at once, without the confirmation of what will be sent.
+
+## Code reviews with margin-code
+
+[margin-code](https://github.com/openledger-nl/margin) (the `code/` folder there) is a VS Code extension that reviews a diff of any local git repository, whatever forge it lives on, and keeps every review in the Ledger vault, in a thread, as markdown files. So a review in progress reaches your other machines through Ledger's own sync, and a finished one stays with the thread it belongs to. Posting reviews to GitHub or GitLab is for margin-code, later.
+
+Ledger reads the files leniently, like everything in the vault, and never writes them: not when it writes its own files through, not on a reload. They go only with their thread or project, when you delete that in Ledger. A file in a newer format than Ledger knows is shown as far as it can be read, with a note. The format is shared with margin-code and fixed: change it only in step with margin-code.
+
+### The contract: margin review format, version 1
+
+Paths are relative to the vault root. Ids are Ledger's: `<epoch-millis>-<8 chars of [0-9a-z]>`, which sort chronologically as strings. The file name is the id plus `.md`. Timestamps are ISO-8601 UTC with milliseconds (`2026-11-09T10:15:00.123Z`). Frontmatter is YAML with camelCase keys. The body is markdown.
+
+```
+projects/<project>/threads/<thread>/thread.md                       the thread (Ledger's own format)
+projects/<project>/threads/<thread>/reviews/<review>.md             a review: one round of reviewing one diff
+projects/<project>/threads/<thread>/reviews/<review>/<comment>.md   a comment in it, or a reply
+```
+
+Review, `reviews/<review>.md`:
+```yaml
+---
+format: 1
+repo: github.com/openledger-nl/margin   # repo identity, see below
+repoName: margin                        # for display
+base: <40-char sha>                     # the commit compared against
+baseRef: main                           # optional, display only
+head: <40-char sha>                     # the commit reviewed
+headRef: feat/code                      # optional, display only
+state: draft                            # draft | submitted; submitted is final, a next round is a new review
+verdict: approve                        # approve | changes | comment; only when submitted
+author: Milan Molenbrugge               # git user.name
+createdAt: 2026-11-09T10:15:00.123Z
+updatedAt: 2026-11-09T10:15:00.123Z
+submittedAt: 2026-11-09T11:00:00.000Z   # only when submitted
+---
+The summary in markdown (may be empty while a draft).
+```
+
+Comment, `reviews/<review>/<comment>.md`:
+```yaml
+---
+format: 1
+path: browser/server/src/mcp.ts   # repo-relative, forward slashes, the file as it is on `side`
+side: new                         # new = the head's version, old = the base's (e.g. a removed line)
+line: 42                          # 1-based first line; leave line and endLine out for a comment on the whole file
+endLine: 44                       # last line; equal to line for a single line
+commit: <40-char sha>             # the commit those line numbers belong to
+code: |                           # the commented lines, verbatim: readable without the repo, and how the place is found again after the code moves
+  …
+codeBefore: |                     # optional, up to 3 lines before
+  …
+codeAfter: |                      # optional, up to 3 lines after
+  …
+replyTo: <comment id>             # only on a reply; a reply leaves out path/side/line/endLine/commit/code and sits where its parent does
+resolved: false                   # on the first comment of a conversation
+author: Milan Molenbrugge
+createdAt: …
+updatedAt: …
+---
+The comment in markdown.
+```
+
+**Repo identity.** Take the `origin` remote, or else the first remote by name, as host/path. Lowercase the host, and drop the scheme, user, port and trailing `.git`. So `git@github.com:openledger-nl/margin.git` and `https://github.com/openledger-nl/margin` both become `github.com/openledger-nl/margin`. A repo without remotes is `git:<sha of its root commit>`.
+
+**Who writes what**
+- margin-code writes and deletes review and comment files. Ledger reads them and never rewrites or deletes them, except together with their thread or project when the user deletes that in Ledger.
+- margin-code may create a thread for a review. It makes a new folder `threads/<slug>/` with a `thread.md` holding `title` and `createdAt` (the body is an optional description), the slug made as `ids::slugify` makes it, with `-2`, `-3`… when taken. After creating it, margin-code never writes that `thread.md` again: it is Ledger's, and Ledger may rewrite it canonically.
+- Writes are atomic: a temp file whose name starts with `.` in the same folder, renamed over the target. Ledger ignores dotfiles.
+- Both sides keep unknown frontmatter keys as they are and otherwise ignore them. A file with a `format` higher than a side knows is shown read-only by Ledger and left untouched by margin-code, with a note.
+- While Ledger runs, it notices these files within seconds (the watcher from step 1) and syncs them. Until it runs, they wait on disk.
 
 ## Screenshots
 
@@ -240,6 +311,7 @@ src-tauri/src/
   projects.rs threads.rs posts.rs prompts.rs feedback.rs uploads.rs deliverables.rs templates.rs
   provenance.rs          how published versions came to be: the records, what old versions prove, the "Produced by" window
   stories.rs board.rs search.rs links.rs
+  reviews.rs             code reviews written with margin-code: read leniently, never written
                          one store per concern, plain functions over the in-memory connection
   vault.rs frontmatter.rs   files ⇄ database: layout, lenient import, canonical export, write-through
   settings.rs            vault location, .ledger/settings.json and .env, .gitignore

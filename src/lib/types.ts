@@ -156,6 +156,68 @@ export interface Upload {
 	exists: boolean;
 }
 
+/** A comment in a code review, or a reply to one (which has no place of its own: it sits under its comment). */
+export interface ReviewComment {
+	id: string;
+	format: number;
+	/** Written in a newer format than this version of Ledger knows: shown as far as it can be read. */
+	newerFormat: boolean;
+	path: string | null;
+	/** "new": the head's version of the file; "old": the base's (a removed line). */
+	side: 'new' | 'old';
+	/** 1-based, both ends included; null for a comment on the whole file. */
+	line: number | null;
+	endLine: number | null;
+	commit: string | null;
+	/** The commented lines verbatim, and up to three lines either side. */
+	code: string | null;
+	codeBefore: string | null;
+	codeAfter: string | null;
+	/** Kept on the first comment of a conversation. */
+	resolved: boolean;
+	author: string;
+	createdAt: string;
+	updatedAt: string;
+	body: string;
+	html: string;
+	replies: ReviewComment[];
+}
+
+export interface ReviewFile {
+	/** Relative to the repository; empty for comments on no file. */
+	path: string;
+	/** The first comment of each conversation, in line order, its replies under it. */
+	comments: ReviewComment[];
+}
+
+/** A code review written with margin-code (VS Code): read-only in Ledger. */
+export interface Review {
+	id: string;
+	threadSlug: string;
+	format: number;
+	newerFormat: boolean;
+	/** The repository's identity, e.g. "github.com/openledger-nl/margin", and its name for display. */
+	repo: string;
+	repoName: string;
+	/** Full SHAs of the commit compared against and the commit reviewed, and their names (display only). */
+	base: string;
+	baseRef: string | null;
+	head: string;
+	headRef: string | null;
+	state: 'draft' | 'submitted';
+	/** On a submitted review: "approve", "changes", "comment", or whatever else the file says. */
+	verdict: string | null;
+	author: string;
+	createdAt: string;
+	updatedAt: string;
+	submittedAt: string | null;
+	summary: string;
+	summaryHtml: string;
+	files: ReviewFile[];
+	commentCount: number;
+	openCount: number;
+}
+
 export interface ThreadView {
 	projectSlug: string;
 	slug: string;
@@ -167,6 +229,7 @@ export interface ThreadView {
 	prompts: Prompt[];
 	feedback: Feedback[];
 	uploads: Upload[];
+	reviews: Review[];
 	stories: Story[];
 }
 

@@ -201,6 +201,78 @@ pub struct UploadView {
     pub exists: bool,
 }
 
+/// A code review written with margin-code, as its thread shows it: read-only, since margin-code writes it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewView {
+    pub id: String,
+    pub thread_slug: String,
+    pub format: i64,
+    /// Written in a newer format than this version of Ledger knows: shown as far as it can be read.
+    pub newer_format: bool,
+    /// The repository's identity ("github.com/openledger-nl/margin") and its name for display.
+    pub repo: String,
+    pub repo_name: String,
+    /// The commit compared against and the commit reviewed, in full, and the names they had (display only).
+    pub base: String,
+    pub base_ref: Option<String>,
+    pub head: String,
+    pub head_ref: Option<String>,
+    /// "draft" (in progress) or "submitted".
+    pub state: String,
+    /// On a submitted review: "approve", "changes", "comment", or whatever else the file says.
+    pub verdict: Option<String>,
+    pub author: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub submitted_at: Option<String>,
+    pub summary: String,
+    pub summary_html: String,
+    /// The conversations, by file: the ones on no file first, then the files in path order.
+    pub files: Vec<ReviewFileView>,
+    /// Every comment, replies included.
+    pub comment_count: i64,
+    /// Conversations not resolved.
+    pub open_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewFileView {
+    /// Relative to the repository, with forward slashes; empty for comments on no file.
+    pub path: String,
+    /// The first comment of each conversation, in line order, its replies under it.
+    pub comments: Vec<ReviewCommentView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewCommentView {
+    pub id: String,
+    pub format: i64,
+    pub newer_format: bool,
+    pub path: Option<String>,
+    /// "new" (the head's version of the file) or "old" (the base's).
+    pub side: String,
+    /// 1-based, both ends included; none for a comment on the whole file.
+    pub line: Option<i64>,
+    pub end_line: Option<i64>,
+    pub commit: Option<String>,
+    /// The commented lines, verbatim, and up to three lines either side.
+    pub code: Option<String>,
+    pub code_before: Option<String>,
+    pub code_after: Option<String>,
+    /// Kept on the first comment of a conversation.
+    pub resolved: bool,
+    pub author: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub body: String,
+    pub html: String,
+    /// The answers to it, oldest first; empty on a reply.
+    pub replies: Vec<ReviewCommentView>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadView {
@@ -214,6 +286,7 @@ pub struct ThreadView {
     pub prompts: Vec<PromptView>,
     pub feedback: Vec<FeedbackView>,
     pub uploads: Vec<UploadView>,
+    pub reviews: Vec<ReviewView>,
     pub stories: Vec<StoryView>,
 }
 
