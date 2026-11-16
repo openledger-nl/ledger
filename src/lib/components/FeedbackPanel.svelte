@@ -4,12 +4,14 @@
 	import { tick } from 'svelte';
 	import { api } from '$lib/api';
 	import type { Anchor } from '$lib/anchors';
-	import { deliverableUrl, promptName, snapshotPath, threadUrl } from '$lib/actions';
+	import { deliverableUrl, newThreadFlow, promptName, snapshotPath, threadUrl } from '$lib/actions';
 	import { date, dayKey } from '$lib/format';
 	import { orderFeedback, orderVersions } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
-	import type { Deliverable, Feedback, Prompt, ThreadSummary } from '$lib/types';
+	import type { Deliverable, Feedback, FeedbackFrom, Prompt, ThreadSummary } from '$lib/types';
+	import Dropdown from './Dropdown.svelte';
+	import PersonPicker from './PersonPicker.svelte';
 	import FeedbackCard from './FeedbackCard.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	import Menu, { type MenuItem } from './Menu.svelte';
@@ -25,7 +27,7 @@
 		doc,
 		prompts,
 		threads,
-		thread,
+		thread = $bindable(),
 		threadTitle,
 		pending = $bindable(null),
 		lost,
@@ -52,6 +54,10 @@
 
 	let text = $state('');
 	let busy = $state(false);
+	/** Who it is from; left empty, it is yours. */
+	const nobody = (): FeedbackFrom => ({ name: null, portflowUser: null, role: null, given: null });
+	let from = $state<FeedbackFrom>(nobody());
+	const threadOptions = $derived(threads.map((t) => ({ value: t.slug, label: t.title })));
 	let editor: MarkdownEditor | undefined = $state();
 
 	// A passage was selected in the document: the box is where to go next.
@@ -61,10 +67,11 @@
 
 	async function add() {
 		busy = true;
-		const added = await attempt(() => api.addFeedback(project, thread, doc.path, text, pending));
+		const added = await attempt(() => api.addFeedback(project, thread, doc.path, text, pending, from.name?.trim() ? from : null));
 		busy = false;
 		if (!added) return;
 		text = '';
+		from = nobody();
 		pending = null;
 		await refresh();
 	}
@@ -139,12 +146,17 @@
 	}
 </script>
 
+{#if thread && !pending}
+	<span class="hint">Select text in the document to comment on just that passage.</span>
+{/if}
 <div class="field">
 	<span>
 		{#if pending}On the selected text{:else if snapshot}On version {doc.version}, as a whole{:else}On the whole document{/if}
 	</span>
 	{#if !thread}
-		<span class="hint">Create a thread first — feedback is written in one.</span>
+		<span class="hint">
+			Create a thread first — feedback is written in one. <button class="link accent" onclick={() => newThreadFlow(project)}>Create one</button>
+		</span>
 	{:else}
 		{#if pending}
 			<div class="quote passage pending">
@@ -162,13 +174,16 @@
 			placeholder="What works, what doesn’t, what to change…"
 			onsubmit={() => text.trim() && add()}
 		/>
-		<div class="row-end" style="align-items:center">
-			<span class="hint" style="margin-right:auto">In the thread “{threadTitle}”</span>
+		<PersonPicker bind:value={from} {project} />
+		<div class="row-end fp-actions">
+			{#if threadOptions.length > 1}
+				<div class="fp-thread" title="Where new feedback, the notes on publishing and the prompts made from feedback go">
+					<span class="hint">Thread</span>
+					<Dropdown bind:value={thread} options={threadOptions} label="Thread for new feedback" />
+				</div>
+			{/if}
 			<button class="btn small primary" onclick={add} disabled={busy || !text.trim()}>Add feedback</button>
 		</div>
-		{#if !pending}
-			<span class="hint">To comment on a passage, select it in the document and click the comment icon beside it.</span>
-		{/if}
 	{/if}
 </div>
 
@@ -237,3 +252,16 @@
 		onclose={() => (creating = false)}
 	/>
 {/if}
+
+<style>
+	.fp-actions {
+		align-items: center;
+	}
+	.fp-thread {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-right: auto;
+		min-width: 0;
+	}
+</style>

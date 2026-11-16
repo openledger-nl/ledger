@@ -26,7 +26,7 @@
 		draft,
 		prompts,
 		threads,
-		thread,
+		thread = $bindable(),
 		threadTitle,
 		pending = $bindable(null),
 		lost,
@@ -109,7 +109,7 @@
 		<ProvenancePanel {project} {doc} {provenance} {draft} />
 	</div>
 	<div class="side-body" hidden={active !== 'feedback'}>
-		<FeedbackPanel {project} {doc} {prompts} {threads} {thread} {threadTitle} bind:pending {lost} {here} {onlocate} onopenprompts={() => void reveal('prompts')} />
+		<FeedbackPanel {project} {doc} {prompts} {threads} bind:thread {threadTitle} bind:pending {lost} {here} {onlocate} onopenprompts={() => void reveal('prompts')} />
 	</div>
 	<div class="side-body" hidden={active !== 'prompts'}>
 		<PromptsPanel {project} {doc} {prompts} {threads} {thread} {threadTitle} onfeedback={(id) => void reveal('feedback', id)} />
