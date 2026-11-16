@@ -2,13 +2,14 @@
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
 	import Target from '@lucide/svelte/icons/target';
+	import Users from '@lucide/svelte/icons/users';
 	import { deleteProjectFlow, projectUrl, renameProjectFlow } from '$lib/actions';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
 	import PreviewBadge from '$lib/components/PreviewBadge.svelte';
 	import { previewDialogs } from '$lib/mock/dialogs.svelte';
 	import { previews } from '$lib/mock/flag.svelte';
 	import { dayLabel } from '$lib/semesters';
-	import { daysLeft, daysLeftText, endDay, kindName } from '$lib/v1';
+	import { daysLeft, daysLeftText, endDay, kindName, ROLES } from '$lib/v1';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
@@ -63,7 +64,16 @@
 					{#if meta.mainQuestion}<span class="pj-mq" title={meta.mainQuestion}>Main question: {meta.mainQuestion}</span>{/if}
 					<PreviewBadge />
 				</div>
-			{:else}
+			{/if}
+			{#if data.people.length}
+				<div class="subline pj-facts pj-people" aria-label="People">
+					<Users size={14} />
+					{#each ROLES.filter((r) => data.people.some((p) => p.role === r.role)) as r (r.role)}
+						<span><strong>{r.role !== 'other' && data.people.filter((p) => p.role === r.role).length > 1 ? `${r.name}s` : r.name}</strong> {data.people.filter((p) => p.role === r.role).map((p) => p.name).join(', ')}</span>
+					{/each}
+				</div>
+			{/if}
+			{#if !meta}
 				<div class="notice info pj-unset">
 					This project has no goal or end date yet: the most important thing a project has.
 					<button class="link accent" onclick={editMeta}>Set them</button>

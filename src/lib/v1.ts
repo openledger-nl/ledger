@@ -1,7 +1,7 @@
 // Words and small sums for the v1 preview screens: the names of project kinds, post kinds, labels and roles, how a
 // person tag reads, and the days a project has left. Free of Svelte and Tauri, like mmm.ts.
 
-import type { EpistemicLabel, FeedbackRole, PersonTag, PostKind, ProjectKind, ProjectMeta, Semester } from './types';
+import type { EpistemicLabel, FeedbackRole, PersonTag, PostKind, ProjectKind, ProjectMeta, ProjectPerson, Semester } from './types';
 import { parseDay, today } from './semesters';
 
 export const PROJECT_KINDS: { kind: ProjectKind; name: string; hint: string }[] = [
@@ -41,6 +41,11 @@ export const roleName = (role: FeedbackRole | null) => (role ? (ROLES.find((r) =
 export function personName(tag: PersonTag): string {
 	const last = tag.split('/').pop() ?? tag;
 	return last.charAt(0).toUpperCase() + last.slice(1);
+}
+
+/** The tags of the whole team of these projects: every teammate, each once, in the order they are listed. */
+export function teamTags(people: ProjectPerson[], projects: string[]): PersonTag[] {
+	return [...new Set(people.filter((p) => p.role === 'teammate' && projects.includes(p.project)).map((p) => p.tag))];
 }
 
 /** `client/police/ries` → `client · police`: the role and where they are from. */

@@ -2,9 +2,9 @@
 // meeting notes and the feedback, each with how it reads and how often it is used. Until the backend indexes the
 // vault's tags, the meeting notes and feedback come from the mock data.
 
-import type { DailyNote, FeedbackItem, ProjectMeta, ProjectSummary } from './types';
+import type { DailyNote, FeedbackItem, ProjectMeta, ProjectPerson, ProjectSummary } from './types';
 import type { TagOption } from './components/TagPicker.svelte';
-import { personName, personRole } from './v1';
+import { personName, personRole, roleName } from './v1';
 import { plural } from './format';
 
 const words = (tag: string) => tag.split('-').map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(' ');
@@ -31,13 +31,23 @@ export function projectTagOptions(projects: ProjectSummary[], meta: ProjectMeta[
 		.sort((a, b) => Number(inVault.has(b.value)) - Number(inVault.has(a.value)) || a.label.localeCompare(b.label));
 }
 
-/** Person tags (`coach/frank`): from the meetings and the feedback, most used first. */
-export function personTagOptions(notes: DailyNote[] = [], feedback: FeedbackItem[] = []): TagOption[] {
+/** Person tags (`coach/frank`): the people of the projects first (by their own name and role), then the others from the
+ *  meetings and the feedback, most used first. */
+export function personTagOptions(notes: DailyNote[] = [], feedback: FeedbackItem[] = [], people: ProjectPerson[] = []): TagOption[] {
 	const uses = new Map<string, number>();
 	const count = (t: string) => uses.set(t, (uses.get(t) ?? 0) + 1);
 	for (const n of notes) for (const m of n.meetings) m.people.forEach(count);
 	for (const f of feedback) if (f.from) count(f.from);
-	return [...uses]
+	const listed = new Map<string, ProjectPerson[]>();
+	for (const p of people) listed.set(p.tag, [...(listed.get(p.tag) ?? []), p]);
+	const own = [...listed].map(([value, of]) => ({
+		value,
+		label: of[0].name,
+		hint: `#${value} · ${roleName(of[0].role)} in ${of.map((p) => p.project).join(', ')}${uses.get(value) ? ` · ${plural(uses.get(value) ?? 0, 'use')}` : ''}`
+	}));
+	const others = [...uses]
+		.filter(([value]) => !listed.has(value))
 		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
 		.map(([value, n]) => ({ value, label: personName(value), hint: `#${value} · ${personRole(value)} · ${plural(n, 'use')}` }));
+	return [...own, ...others];
 }

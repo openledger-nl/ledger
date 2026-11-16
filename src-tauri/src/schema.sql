@@ -31,6 +31,16 @@ CREATE TABLE projects (
     client            TEXT
 );
 
+-- The people of a project (see project_facts.rs): its coach, teammates, client…, in the order they are listed.
+CREATE TABLE project_people (
+    project_slug  TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    position      INTEGER NOT NULL,
+    name          TEXT NOT NULL,
+    role          TEXT NOT NULL,
+    portflow_user INTEGER,
+    PRIMARY KEY (project_slug, position)
+);
+
 CREATE TABLE project_columns (
     project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
     id           TEXT NOT NULL,

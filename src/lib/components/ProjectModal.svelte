@@ -7,8 +7,11 @@
 	import { mmmInfo } from '$lib/mmm';
 	import { currentSemester, dayLabel, nearestSemester, today, workDays } from '$lib/semesters';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
-	import { daysLeft, daysLeftText, endDay, PROJECT_KINDS } from '$lib/v1';
-	import type { MmmLevel, ProjectKind, ProjectMeta, Semester } from '$lib/types';
+	import { daysLeft, daysLeftText, endDay, PROJECT_KINDS, ROLES } from '$lib/v1';
+	import type { FeedbackRole, MmmLevel, ProjectKind, ProjectMeta, ProjectPerson, Semester } from '$lib/types';
+	import X from '@lucide/svelte/icons/x';
+	import UserPlus from '@lucide/svelte/icons/user-plus';
+	import Dropdown from './Dropdown.svelte';
 	import DateInput from './DateInput.svelte';
 	import Modal from './Modal.svelte';
 	import MmmPicker from './MmmPicker.svelte';
@@ -36,6 +39,21 @@
 	let mainQuestion = $state(m?.mainQuestion ?? '');
 	let client = $state(m?.client ?? '');
 	let busy = $state(false);
+
+	// Its people: the coach, the teammates, the client. Kept with the project whether or not it has a goal yet.
+	type Person = Omit<ProjectPerson, 'project' | 'tag'>;
+	let people = $state<Person[]>([]);
+	// svelte-ignore state_referenced_locally
+	if (project) api.listProjectPeople(project.slug).then((list) => (people = list.map(({ name, role, portflowUser }) => ({ name, role, portflowUser }))), () => {});
+	let newName = $state('');
+	let newRole = $state<FeedbackRole>('teammate');
+	const roleOptions = ROLES.map((r) => ({ value: r.role, label: r.name }));
+	function addPerson() {
+		const name = newName.trim();
+		if (!name) return;
+		people = [...people, { name, role: newRole, portflowUser: null }];
+		newName = '';
+	}
 
 	let semesters = $state<Semester[]>([]);
 	api.listSemesters().then((s) => (semesters = s), () => {});
@@ -71,7 +89,11 @@
 			const renamed = project.slug;
 			await attempt(() => api.renameProject(renamed, name.trim()));
 		}
-		if (slug) await attempt(() => api.saveProjectMeta({ ...meta, slug, tag: slug }));
+		if (slug) {
+			const s = slug;
+			await attempt(() => api.saveProjectMeta({ ...meta, slug: s, tag: s }));
+			await attempt(() => api.saveProjectPeople(s, people));
+		}
 		busy = false;
 		if (!slug) return;
 		onclose();
@@ -152,6 +174,32 @@
 			<input bind:value={client} placeholder="e.g. Bakkerij De Korenaar" />
 		</label>
 	{/if}
+
+	<div class="field">
+		<span>People (optional)</span>
+		{#if people.length}
+			<ul class="pm-people">
+				{#each people as p, i (i)}
+					<li>
+						<span class="pm-person">{p.name}</span>
+						<span class="badge">{ROLES.find((r) => r.role === p.role)?.name ?? p.role}</span>
+						<button class="icon-btn" aria-label="Remove {p.name}" title="Remove" onclick={() => (people = people.filter((_, j) => j !== i))}><X size={14} /></button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+		<div class="form-row pm-add-person">
+			<input
+				bind:value={newName}
+				placeholder="Name, e.g. Frank de Vries"
+				aria-label="Name of someone in the project"
+				onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addPerson())}
+			/>
+			<Dropdown bind:value={() => newRole, (v) => (newRole = v as FeedbackRole)} options={roleOptions} label="Their role" />
+			<button class="btn small" onclick={addPerson} disabled={!newName.trim()}><UserPlus size={14} />Add</button>
+		</div>
+		<span class="hint">Your coach, teammates and client: offered when you note feedback or who was in a meeting, where “Whole team” adds every teammate at once.</span>
+	</div>
 
 	{#snippet footer()}
 		<PreviewBadge text="Preview: goal, kind and end" />

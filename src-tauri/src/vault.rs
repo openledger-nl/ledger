@@ -380,6 +380,7 @@ fn export_projects(conn: &Connection, files: &mut BTreeMap<String, String>) -> R
             frontmatter::set(&mut meta, "portflowCollections", Value::Mapping(collections));
         }
         crate::project_facts::export(conn, &slug, &mut meta)?;
+        crate::project_facts::export_people(conn, &slug, &mut meta)?;
         files.insert(project_file(&slug), frontmatter::render(&meta, &description));
         files.insert(readme_file(&slug), readme);
     }
@@ -805,6 +806,7 @@ fn import_projects(conn: &Connection, source: &Source) -> Result<Vec<String>> {
             }
         }
         crate::project_facts::import(conn, slug, &meta)?;
+        crate::project_facts::import_people(conn, slug, &meta)?;
         if seen.is_empty() {
             board::seed_columns(conn, slug)?;
         } else {

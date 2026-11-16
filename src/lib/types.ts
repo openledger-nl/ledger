@@ -1314,6 +1314,17 @@ export type FeedbackKind = 'own' | 'someone';
 
 export type FeedbackRole = 'coach' | 'expert' | 'teammate' | 'client' | 'colleague' | 'other';
 
+/** Someone who is part of a project (its coach, a teammate, the client), listed in its project.md. */
+export interface ProjectPerson {
+	project: string;
+	name: string;
+	role: FeedbackRole;
+	/** Their Portflow id, when they are someone in Portflow. */
+	portflowUser: number | null;
+	/** `role/name` (`coach/frank-de-vries`), as meetings and feedback tag them; Ledger fills it in. */
+	tag: PersonTag;
+}
+
 /** What feedback lands on. */
 export type FeedbackTarget =
 	| { on: 'deliverable'; project: string; deliverable: string; version: string | null }

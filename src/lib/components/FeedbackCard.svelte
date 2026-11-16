@@ -163,7 +163,7 @@
 	{/if}
 
 	{#if editing}
-		<PersonPicker bind:value={from} />
+		<PersonPicker bind:value={from} {project} />
 		<MarkdownEditor bind:value={draft} label="Feedback" autofocus onsubmit={save} oncancel={() => (editing = false)} />
 		<div class="row-end">
 			<span class="hint" style="align-self:center">Ctrl+Enter saves</span>

@@ -181,6 +181,8 @@ pub fn run() {
             commands::get_project_meta,
             commands::list_project_meta,
             commands::save_project_meta,
+            commands::list_project_people,
+            commands::save_project_people,
             commands::delete_project,
             commands::create_thread,
             commands::rename_thread,

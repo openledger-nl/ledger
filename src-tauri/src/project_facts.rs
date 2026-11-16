@@ -12,6 +12,19 @@
 //! ```
 //!
 //! A project without a kind and a goal has no facts yet: the screens then ask for them.
+//!
+//! Its people are listed there too, whether or not it has facts, each with their role:
+//!
+//! ```text
+//! people:
+//! - name: Frank de Vries
+//!   role: coach
+//! - name: Sanne
+//!   role: teammate
+//!   portflowUser: 4711        when they are someone in Portflow
+//! ```
+//!
+//! A person goes by a tag, `role/name` (`coach/frank-de-vries`): how meetings and feedback name them.
 
 use chrono::NaiveDate;
 use rusqlite::{Connection, params};
@@ -24,6 +37,7 @@ use crate::frontmatter::{self, MetaExt};
 use crate::{ids, projects, provenance};
 
 pub const KINDS: [&str; 3] = ["study", "hobby", "company"];
+pub const ROLES: [&str; 6] = ["coach", "expert", "teammate", "client", "colleague", "other"];
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -154,4 +168,112 @@ pub fn import(conn: &Connection, slug: &str, meta: &Mapping) -> Result<()> {
         params![slug, kind, goal, end, meta.text("semester"), intended, meta.text("mainQuestion"), meta.text("client")],
     )?;
     Ok(())
+}
+
+// ---- its people -------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProjectPerson {
+    /// The project they are part of.
+    pub project: String,
+    pub name: String,
+    /// coach, expert, teammate, client, colleague or other.
+    pub role: String,
+    /// Their Portflow id, when they are someone in Portflow.
+    pub portflow_user: Option<i64>,
+    /// `role/name`, as meetings and feedback tag them (filled in by Ledger).
+    pub tag: String,
+}
+
+/// The tag a person goes by: `coach/frank-de-vries`.
+pub fn person_tag(role: &str, name: &str) -> String {
+    format!("{role}/{}", ids::slugify_as(name, "someone"))
+}
+
+fn person_row(r: &rusqlite::Row) -> rusqlite::Result<ProjectPerson> {
+    let role: String = r.get(2)?;
+    let name: String = r.get(1)?;
+    Ok(ProjectPerson { project: r.get(0)?, tag: person_tag(&role, &name), name, role, portflow_user: r.get(3)? })
+}
+
+/// The people of one project, or of every project with `None`, in the order they are listed.
+pub fn people(conn: &Connection, project: Option<&str>) -> Result<Vec<ProjectPerson>> {
+    let sql = "SELECT project_slug, name, role, portflow_user FROM project_people";
+    match project {
+        Some(slug) => {
+            projects::require(conn, slug)?;
+            query_all(conn, &format!("{sql} WHERE project_slug = ?1 ORDER BY position"), [slug], person_row)
+        }
+        None => query_all(conn, &format!("{sql} ORDER BY project_slug, position"), [], person_row),
+    }
+}
+
+/// Replaces the project's people: a name and one of the roles each; the same person in the same role is listed once.
+pub fn save_people(conn: &Connection, slug: &str, people: &[ProjectPerson]) -> Result<Vec<ProjectPerson>> {
+    projects::require(conn, slug)?;
+    let mut cleaned: Vec<(String, String, Option<i64>)> = vec![];
+    for p in people {
+        let name = p.name.trim();
+        if name.is_empty() {
+            return Err(Error::invalid("Give everyone a name"));
+        }
+        let role = p.role.trim().to_lowercase();
+        if !ROLES.contains(&role.as_str()) {
+            return Err(Error::invalid("A person is a coach, expert, teammate, client, colleague or other"));
+        }
+        if !cleaned.iter().any(|(n, r, _)| person_tag(r, n) == person_tag(&role, name)) {
+            cleaned.push((name.to_string(), role, p.portflow_user));
+        }
+    }
+    store_people(conn, slug, &cleaned)?;
+    conn.execute("UPDATE projects SET updated_at = ?2 WHERE slug = ?1", params![slug, ids::now()])?;
+    self::people(conn, Some(slug))
+}
+
+fn store_people(conn: &Connection, slug: &str, people: &[(String, String, Option<i64>)]) -> Result<()> {
+    conn.execute("DELETE FROM project_people WHERE project_slug = ?1", [slug])?;
+    for (position, (name, role, user)) in people.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO project_people (project_slug, position, name, role, portflow_user) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![slug, position as i64, name, role, user],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn export_people(conn: &Connection, slug: &str, meta: &mut Mapping) -> Result<()> {
+    let list = self::people(conn, Some(slug))?;
+    if list.is_empty() {
+        return Ok(());
+    }
+    let items = list
+        .into_iter()
+        .map(|p| {
+            let mut item = Mapping::new();
+            frontmatter::set(&mut item, "name", p.name);
+            frontmatter::set(&mut item, "role", p.role);
+            if let Some(user) = p.portflow_user {
+                frontmatter::set(&mut item, "portflowUser", user);
+            }
+            serde_yaml_ng::Value::Mapping(item)
+        })
+        .collect();
+    frontmatter::set(meta, "people", serde_yaml_ng::Value::Sequence(items));
+    Ok(())
+}
+
+/// Reads the people leniently: a role that isn't one of the six reads as "other", someone without a name is skipped,
+/// and the same person in the same role is kept once.
+pub fn import_people(conn: &Connection, slug: &str, meta: &Mapping) -> Result<()> {
+    let mut list: Vec<(String, String, Option<i64>)> = vec![];
+    for item in meta.maps("people") {
+        let Some(name) = item.text("name").map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) else { continue };
+        let role = item.text("role").map(|r| r.trim().to_lowercase()).filter(|r| ROLES.contains(&r.as_str())).unwrap_or_else(|| "other".into());
+        let user = item.text("portflowUser").and_then(|u| u.parse().ok());
+        if !list.iter().any(|(n, r, _)| person_tag(r, n) == person_tag(&role, &name)) {
+            list.push((name, role, user));
+        }
+    }
+    store_people(conn, slug, &list)
 }

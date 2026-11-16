@@ -14,7 +14,7 @@ use crate::error::{Error, Result};
 use crate::github::GithubRemote;
 use crate::keystore::{self, EncryptionStatus, KeyStore};
 use crate::models::*;
-use crate::project_facts::{self, ProjectMeta};
+use crate::project_facts::{self, ProjectMeta, ProjectPerson};
 use crate::posts::AddOptions;
 use crate::screenshot::{self, Region, ScreenshotSettings};
 use crate::settings::{self, SyncConfig, SyncEnv};
@@ -102,6 +102,17 @@ pub fn get_project_meta(app: State<App>, slug: String) -> Result<Option<ProjectM
 #[tauri::command]
 pub fn list_project_meta(app: State<App>) -> Result<Vec<ProjectMeta>> {
     app.read(|c, _| project_facts::list(c))
+}
+
+/// The people of a project (its coach, teammates, client…), or of every project without one.
+#[tauri::command]
+pub fn list_project_people(app: State<App>, slug: Option<String>) -> Result<Vec<ProjectPerson>> {
+    app.read(|c, _| project_facts::people(c, slug.as_deref()))
+}
+
+#[tauri::command]
+pub fn save_project_people(app: State<App>, slug: String, people: Vec<ProjectPerson>) -> Result<Vec<ProjectPerson>> {
+    app.mutate(|c, _| project_facts::save_people(c, &slug, &people))
 }
 
 #[tauri::command]

@@ -61,7 +61,7 @@
 			Deliverable
 			<Dropdown bind:value={target} {options} label="Deliverable" full />
 		</div>
-		<PersonPicker bind:value={from} />
+		<PersonPicker bind:value={from} {project} />
 		<div class="field">
 			The feedback
 			<MarkdownEditor bind:value={body} rows={8} label="Your feedback" placeholder="What works, what doesn’t, what to change. Markdown works." />

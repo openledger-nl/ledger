@@ -4,6 +4,7 @@ import { capture, captureDebug, logError } from './log.svelte';
 import type {
 	ActivityEvent,
 	ProjectMeta,
+	ProjectPerson,
 	Semester,
 	SemesterDraft,
 	Board,
@@ -87,6 +88,11 @@ export const api = {
 	getProjectMeta: (slug: string) => call<ProjectMeta | null>('get_project_meta', { slug }),
 	listProjectMeta: () => call<ProjectMeta[]>('list_project_meta'),
 	saveProjectMeta: (meta: ProjectMeta) => call<ProjectMeta>('save_project_meta', { slug: meta.slug, meta }),
+	/** The people of one project (coach, teammates, client…), or of every project with null. */
+	listProjectPeople: (slug: string | null = null) => call<ProjectPerson[]>('list_project_people', { slug }),
+	/** Replaces the project's people. */
+	saveProjectPeople: (slug: string, people: Omit<ProjectPerson, 'project' | 'tag'>[]) =>
+		call<ProjectPerson[]>('save_project_people', { slug, people: people.map((p) => ({ ...p, project: slug, tag: '' })) }),
 
 	// threads
 	createThread: (project: string, title: string) => call<ThreadSummary>('create_thread', { project, title }),

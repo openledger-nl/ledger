@@ -7,14 +7,24 @@
 		/** A second line: the tag as written, how often it is used. */
 		hint?: string;
 	}
+
+	/** A button beside the chips that adds several tags at once: "Whole team" adds every teammate of the projects. */
+	export interface TagQuickPick {
+		label: string;
+		tags: string[];
+		/** Said on hover: who it adds. */
+		title?: string;
+	}
 </script>
 
 <script lang="ts">
 	// Tags as chips, picked from the tags already in the vault (the index) in a menu like Dropdown's: type to search,
 	// the arrows and Enter pick, and something new can be added as a tag of its own. Used for every `#` tag: the
-	// projects and people of a meeting, who gave feedback. With `max={1}` it holds one tag.
+	// projects and people of a meeting, who gave feedback. With `max={1}` it holds one tag. `quick` adds buttons that put
+	// several tags in at once (the whole team); one whose tags are all in already is left out.
 	import Plus from '@lucide/svelte/icons/plus';
 	import Hash from '@lucide/svelte/icons/hash';
+	import Users from '@lucide/svelte/icons/users';
 	import X from '@lucide/svelte/icons/x';
 	import { tick } from 'svelte';
 	import { cleanTag } from '$lib/v1';
@@ -26,7 +36,8 @@
 		placeholder = 'Add',
 		max = Infinity,
 		allowNew = true,
-		prefix = ''
+		prefix = '',
+		quick = []
 	}: {
 		value?: string[];
 		/** The indexed tags to pick from. */
@@ -38,7 +49,9 @@
 		allowNew?: boolean;
 		/** Written before the tag where it is shown as a tag: `project/` for projects. */
 		prefix?: string;
+		quick?: TagQuickPick[];
 	} = $props();
+
 
 	const id = `tp-${Math.random().toString(36).slice(2, 9)}`;
 	let open = $state(false);
@@ -51,6 +64,11 @@
 
 	const known = $derived(new Map(options.map((o) => [o.value, o])));
 	const full = $derived(value.length >= max);
+	const quickShown = $derived(full ? [] : quick.filter((q) => q.tags.some((t) => !value.includes(t))));
+	function addAll(tags: string[]) {
+		const next = [...value, ...tags.filter((t) => !value.includes(t))];
+		value = next.slice(0, max === Infinity ? next.length : max);
+	}
 	const typed = $derived(cleanTag(query.replace(prefix ? new RegExp(`^#?${prefix}`) : /^$/, '')));
 
 	/** What the menu lists: the matching tags not picked yet, and the typed one as a new tag when it is new. */
@@ -154,6 +172,9 @@
 			<Plus size={13} />{value.length ? '' : placeholder}
 		</button>
 	{/if}
+	{#each quickShown as q (q.label)}
+		<button type="button" class="tp-add tp-quick" title={q.title} onclick={() => addAll(q.tags)}><Users size={13} />{q.label}</button>
+	{/each}
 
 	{#if open}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->

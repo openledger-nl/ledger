@@ -1156,6 +1156,7 @@ details.more p { margin: 0; }
 	background: none; color: var(--muted); font-size: 12px;
 }
 .tp-add:hover { border-color: var(--accent); color: var(--accent); }
+.tp-quick { border-style: solid; }
 .filter-bar, .mt-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .filter-bar select, .mt-tools select { min-width: 0; width: auto; padding: 6px 8px; font-size: 13px; }
 
@@ -1215,6 +1216,12 @@ details.more p { margin: 0; }
 .field textarea { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); resize: vertical; font: inherit; color: var(--ink); }
 .field textarea:focus { outline: none; border-color: var(--accent); }
 .pm-ends { display: flex; flex-direction: column; gap: 6px; }
+.pm-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.pm-people li { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.pm-person { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-add-person { flex-wrap: nowrap; align-items: center; }
+.pm-add-person input { flex: 1; min-width: 0; }
+.pj-people { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .dm-project-goal { margin: -4px 0 0; font-size: 12.5px; color: var(--muted); }
 .dm-project-goal strong { font-weight: 600; margin-right: 6px; }
 .check.disabled { opacity: 0.5; }
