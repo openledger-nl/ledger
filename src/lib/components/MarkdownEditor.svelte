@@ -3,6 +3,7 @@
 	import { EditorState, type Extension } from '@codemirror/state';
 	import { EditorView } from '@codemirror/view';
 	import type { Mark } from '$lib/anchors';
+	import type { EvidenceMention } from '$lib/types';
 	import { projectLinks } from '$lib/links.svelte';
 	import { markdownEditor, refreshLinks, revealMark, setSourceMode, showMarks } from '$lib/markdownEditor';
 	import { imageLoader, type ImageBase } from '$lib/vaultImages';
@@ -28,7 +29,8 @@
 		oncancel,
 		oninput,
 		marks,
-		onmark
+		onmark,
+		mentions
 	}: {
 		value?: string;
 		placeholder?: string;
@@ -53,6 +55,8 @@
 		marks?: Mark[];
 		/** A click on one of them. */
 		onmark?: (id: string) => void;
+		/** What typing `@` offers: a Portflow reading guide's evidence items. */
+		mentions?: EvidenceMention[];
 	} = $props();
 
 	// [[links]] point at the threads, deliverables and feedback of the project the window is in (none outside a project).
@@ -84,6 +88,7 @@
 			},
 			markClicked: (id) => onmark?.(id),
 			links: { index: () => links.index, open: (target) => links.open(target) },
+			mentions: () => (mentions ?? []).map((m) => ({ id: `evidence-${m.portflowId}`, label: m.name, detail: m.threadTitle ?? 'Not in a thread' })),
 			changed: (update) => {
 				if (!update.docChanged) return;
 				held = update.state.doc.toString();

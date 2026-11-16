@@ -1114,6 +1114,17 @@ export interface ProjectPortflow {
 	guideCollection: number | null;
 	/** Whether the guide is written to that collection's description (Settings → Portflow, off by default). */
 	guideWrite: boolean;
+	/** The project's evidence items: what the reading guide can mention (`@Analysis`), and where a mention leads. */
+	mentions: EvidenceMention[];
+}
+
+/** An evidence item as a reading guide mentions it: written `[@Name](portflow:evidence-<portflowId>)`. */
+export interface EvidenceMention {
+	portflowId: number;
+	name: string;
+	/** The Ledger thread it is placed in, if any: a mention leads there. */
+	thread: string | null;
+	threadTitle: string | null;
 }
 
 export interface PortflowFeedback {

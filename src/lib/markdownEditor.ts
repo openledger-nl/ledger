@@ -805,6 +805,47 @@ export interface MarkdownEditorOptions {
 	markClicked?: (id: string) => void;
 	/** What `[[links]]` can point at and how to follow one; without it they are drawn but not resolved, completed or followed. */
 	links?: LinkSupport;
+	/** What `@` offers (a Portflow reading guide's evidence items); without it, `@` is just a character. */
+	mentions?: () => MentionOption[];
+}
+
+// ---- @ mentions ----------------------------------------------------------------------------------
+// In a reading guide that is a Portflow collection's description: typing `@` offers the project's evidence items and
+// writes the one picked as `[@Name](portflow:evidence-<id>)`, which Portflow gets back as its own mention.
+
+export interface MentionOption {
+	/** The mention's id in Portflow (`evidence-2110705`). */
+	id: string;
+	label: string;
+	/** Where it is in Ledger (its thread), shown beside it. */
+	detail: string;
+}
+
+const mentionSupport = Facet.define<() => MentionOption[], (() => MentionOption[]) | null>({ combine: (values) => values[0] ?? null });
+
+/** Escapes what would end a link's words or address. */
+const linkWords = (text: string) => text.replace(/([[\]\\])/g, '\\$1');
+
+/** After an `@` at the start of a word: the evidence items, those whose names hold what is typed first. */
+function mentionCompletions(context: CompletionContext): CompletionResult | null {
+	const items = context.state.facet(mentionSupport)?.();
+	const typed = context.matchBefore(/@[^@[\]()\n]{0,60}$/);
+	if (!items?.length || !typed || notLinkable(context.state, typed.from)) return null;
+	const before = typed.from > 0 ? context.state.sliceDoc(typed.from - 1, typed.from) : '';
+	if (before && !/[\s(]/.test(before)) return null; // an address (me@example.com), not a mention
+	const needle = typed.text.slice(1).trim().toLowerCase();
+	const matching = items.filter((m) => !needle || m.label.toLowerCase().includes(needle));
+	if (!matching.length) return null;
+	return {
+		from: typed.from,
+		filter: false,
+		options: matching.map((m) => ({
+			label: `@${m.label}`,
+			detail: m.detail,
+			type: 'mention',
+			apply: `[@${linkWords(m.label)}](portflow:${m.id})`
+		}))
+	};
 }
 
 export function markdownEditor(options: MarkdownEditorOptions): Extension {
@@ -814,7 +855,7 @@ export function markdownEditor(options: MarkdownEditorOptions): Extension {
 	};
 	return [
 		// First, so that while its list is open, Enter picks from it and Escape closes it, before the keys below get them.
-		autocompletion({ override: [wikiCompletions], icons: false, maxRenderedOptions: 60 }),
+		autocompletion({ override: [wikiCompletions, mentionCompletions], icons: false, maxRenderedOptions: 60 }),
 		// Ctrl/⌘+Enter always submits rather than adding a line; without a handler here, a modal's window listener saves.
 		Prec.highest(
 			keymap.of([
@@ -834,6 +875,7 @@ export function markdownEditor(options: MarkdownEditorOptions): Extension {
 		syntaxHighlighting(highlight),
 		mode.of(modeExtension(options.source)),
 		options.links ? linkSupport.of(options.links) : [],
+		options.mentions ? mentionSupport.of(options.mentions) : [],
 		wikiLinks,
 		wikiBrackets,
 		tables,

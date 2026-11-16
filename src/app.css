@@ -459,6 +459,9 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 .md a.wikilink { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); cursor: pointer; }
 .md a.wikilink:hover { border-bottom-color: var(--accent); }
 .md a.wikilink.unresolved { color: var(--muted); border-bottom: 1px dashed var(--line); cursor: default; }
+/* A Portflow @mention in a reading guide: a chip, leading to the evidence item's thread (or to Portflow). */
+.md a.mention { display: inline-block; padding: 0 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); text-decoration: none; font-weight: 500; cursor: pointer; }
+.md a.mention:hover { background: var(--accent); color: var(--accent-ink); }
 mark { background: var(--highlight); color: inherit; border-radius: 3px; padding: 0 1px; }
 
 /* ---------- markdown editor ----------

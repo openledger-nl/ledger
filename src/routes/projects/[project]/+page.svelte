@@ -127,6 +127,7 @@
 				autofocus
 				spellcheck={false}
 				{images}
+				mentions={linked?.mentions}
 				onsubmit={save}
 				oncancel={() => (editing = false)}
 			/>
@@ -136,7 +137,7 @@
 				<button class="btn primary" onclick={save} disabled={saving}>Save</button>
 			</div>
 		{:else if !empty}
-			<Markdown html={project.readmeHtml} {images} />
+			<Markdown html={project.readmeHtml} {images} mentions={linked?.mentions} />
 		{:else if linked}
 			<div class="notice guide-missing">
 				<BookOpen size={16} />
