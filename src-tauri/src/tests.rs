@@ -1052,3 +1052,17 @@ fn renaming_a_deliverable_keeps_its_extension_versions_and_feedback() {
     assert_eq!(message(deliverables::rename(&c, dir.path(), &p, &to, "  ").unwrap_err()), "Name is required");
     assert!(deliverables::rename(&c, dir.path(), &p, "Go-to-market plan@v1.0.md", "Old").is_err(), "a version keeps its name");
 }
+
+#[test]
+fn notes_between_percent_marks_are_left_out_of_the_page() {
+    let text = "# Plan\n%% What: the plan. %%\n\nGoal %%inline%% here.\n\n%% a note\nover lines %%\nAfter.\n\n`%% code %%` and\n\n```\n%% fenced %%\n```\n\n%% open to the end\nGone.";
+    let html = markdown::render(text);
+    for gone in ["What: the plan", "inline", "a note", "over lines", "open to the end", "Gone."] {
+        assert!(!html.contains(gone), "{gone} in {html}");
+    }
+    for kept in ["<h1>Plan</h1>", "Goal  here.", "After.", "<code>%% code %%</code>", "%% fenced %%"] {
+        assert!(html.contains(kept), "{kept} not in {html}");
+    }
+    assert!(matches!(markdown::strip_comments("no notes"), std::borrow::Cow::Borrowed(_)));
+    assert_eq!(markdown::strip_comments("50%% off"), "50", "a lone %% runs to the end, as in Obsidian");
+}

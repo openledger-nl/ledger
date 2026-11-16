@@ -1,6 +1,7 @@
 // The markdown editor: CodeMirror 6 editing the markdown itself, so what you type is exactly what lands in the
 // vault. It reads like the rendered page: headings are big, bold is bold, and the marks around them (#, **, `,
-// [](…)) fade away except where the cursor is, so they can still be edited. Source mode shows them all instead.
+// [](…)) fade away except where the cursor is, so they can still be edited. Source mode shows them all instead. Notes
+// between %% marks are only seen in source mode (or with the cursor in them).
 // MarkdownEditor.svelte wraps it.
 
 import { autocompletion, pickedCompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
@@ -78,6 +79,7 @@ const theme = EditorView.theme({
 	'.cm-md-wikilink.unresolved': { color: 'var(--muted)', textDecorationStyle: 'dashed', textDecorationColor: 'var(--line)' },
 	'.cm-md-wikibracket': { color: 'var(--faint)' },
 	'.cm-md-bullet': { color: 'var(--muted)', padding: '0 4px 0 2px' },
+	'.cm-md-comment, .cm-md-comment *': { color: 'var(--faint)' },
 	'.cm-tooltip.cm-tooltip-autocomplete': {
 		backgroundColor: 'var(--card)',
 		border: '1px solid var(--line)',
@@ -516,6 +518,72 @@ const tables = StateField.define<{ focused: boolean; decorations: DecorationSet 
 	provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
 });
 
+// ---- %% comments ----------------------------------------------------------------------------------
+// As in Obsidian, text between %% marks is a note to the writer (a template says what a heading is for in one). It is
+// only seen in source mode, faded. In live preview it is hidden, unless the cursor is in it, so it is never changed
+// unseen; one that takes whole lines takes the lines with it. A %% with no partner runs to the end, as in Obsidian.
+// Notes can span lines, which a view plugin may not hide, so they come from a state field, like tables.
+
+const commentMark = Decoration.mark({ class: 'cm-md-comment' });
+const IN_CODE = /^(InlineCode|FencedCode|CodeBlock|CodeText)$/;
+
+function inCode(state: EditorState, pos: number): boolean {
+	for (let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 1); node; node = node.parent) if (IN_CODE.test(node.name)) return true;
+	return false;
+}
+
+/** Where the %% notes are: each from its opening %% to just after its closing one. */
+export function commentRanges(text: string, skip: (pos: number) => boolean = () => false): { from: number; to: number }[] {
+	const found: { from: number; to: number }[] = [];
+	let open = -1;
+	for (let at = text.indexOf('%%'); at >= 0; at = text.indexOf('%%', at + 2)) {
+		if (open < 0) {
+			if (!skip(at)) open = at;
+		} else {
+			found.push({ from: open, to: at + 2 });
+			open = -1;
+		}
+	}
+	if (open >= 0) found.push({ from: open, to: text.length });
+	return found;
+}
+
+function commentDecorations(state: EditorState, focused: boolean): DecorationSet {
+	const text = state.doc.toString();
+	if (!text.includes('%%')) return Decoration.none;
+	const source = state.facet(inSource);
+	const ranges = focused ? state.selection.ranges : [];
+	const found: Range<Decoration>[] = [];
+	for (const { from, to } of commentRanges(text, (pos) => inCode(state, pos))) {
+		if (source || ranges.some((r) => r.from <= to && r.to >= from)) {
+			found.push(commentMark.range(from, to));
+			continue;
+		}
+		const first = state.doc.lineAt(from);
+		const last = state.doc.lineAt(to);
+		const wholeLines = !state.sliceDoc(first.from, from).trim() && !state.sliceDoc(to, last.to).trim();
+		if (wholeLines) found.push(Decoration.replace({ block: true }).range(first.from, last.to));
+		else found.push(Decoration.replace({}).range(from, to));
+	}
+	return Decoration.set(found, true);
+}
+
+const comments = StateField.define<{ focused: boolean; decorations: DecorationSet }>({
+	create: (state) => ({ focused: false, decorations: commentDecorations(state, false) }),
+	update(value, tr) {
+		let focused = value.focused;
+		for (const effect of tr.effects) if (effect.is(focusChanged)) focused = effect.value;
+		const stale =
+			tr.docChanged ||
+			tr.selection ||
+			focused !== value.focused ||
+			tr.startState.facet(inSource) !== tr.state.facet(inSource) ||
+			syntaxTree(tr.startState) !== syntaxTree(tr.state);
+		return stale ? { focused, decorations: commentDecorations(tr.state, focused) } : value;
+	},
+	provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
+});
+
 // ---- [[links]] -------------------------------------------------------------------------------------
 // As in Obsidian: `[[Thread]]` and `[[report|the report]]` read as links in both modes. In live preview the brackets (and
 // the target in front of the words shown instead) fade away except where the cursor is; a link that points at nothing is
@@ -882,6 +950,7 @@ export function markdownEditor(options: MarkdownEditorOptions): Extension {
 		wikiLinks,
 		wikiBrackets,
 		tables,
+		comments,
 		markField,
 		EditorView.domEventHandlers({
 			click: (event, view) => {
