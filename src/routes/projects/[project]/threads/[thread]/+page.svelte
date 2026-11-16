@@ -77,7 +77,19 @@
 		const byNumber = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
 		return [...found]
 			.filter(([path]) => !ofEvidence.has(path))
-			.map(([path, versions]) => ({ path, latest: [...versions].sort(byNumber).at(-1) ?? null }))
+			.map(([path, versions]) => {
+				// The latest prompt that asks for it, and the feedback on it (on any of its versions).
+				const prompt = thread.prompts.filter((p) => p.deliverables.some((d) => d.path === path)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+				const feedback = thread.feedback.filter((f) => f.deliverablePath && liveDeliverable(f.deliverablePath, f.deliverableVersion) === path);
+				return {
+					path,
+					latest: [...versions].sort(byNumber).at(-1) ?? null,
+					prompt,
+					template: thread.prompts.find((p) => p.templateName && p.deliverables.some((d) => d.path === path))?.templateName ?? null,
+					feedback: feedback.length,
+					open: feedback.filter((f) => f.status === 'open').length
+				};
+			})
 			.sort((a, b) => baseName(a.path).localeCompare(baseName(b.path)));
 	});
 	const sideCount = $derived(evidence.length + otherDeliverables.length);
@@ -378,9 +390,16 @@
 		{#snippet panel()}
 			{#each evidence as item (item.slug)}<EvidenceCard evidence={item} />{/each}
 			{#each otherDeliverables as d (d.path)}
-				<a class="card side-deliverable" href={deliverableUrl(project, d.path, slug)}>
+				<a class="card side-deliverable" href={deliverableUrl(project, d.path, slug)} title="Open the deliverable">
 					<strong>{baseName(d.path)}</strong>
-					{#if d.latest}<span class="badge published">v{d.latest}</span>{:else}<span class="badge draft">not published</span>{/if}
+					<span class="meta">
+						{#if d.latest}<span class="badge published">v{d.latest}</span>{:else}<span class="badge draft">not published</span>{/if}
+						{#if d.template}<span class="badge accent">{d.template}</span>{/if}
+						{#if d.feedback}
+							<span class="hint">{plural(d.feedback, 'piece', 'pieces')} of feedback{d.open ? `, ${d.open} open` : ''}</span>
+						{/if}
+					</span>
+					{#if d.prompt}<span class="hint from">From prompt: {d.prompt.title}</span>{/if}
 				</a>
 			{:else}
 				{#if !evidence.length}
@@ -480,10 +499,10 @@
 		align-items: center;
 		gap: 6px 14px;
 	}
+	/* Laid out like an evidence item's card above it: its name, then a row of badges. */
 	.side-deliverable {
-		flex-direction: row;
-		align-items: center;
-		justify-content: space-between;
+		display: flex;
+		flex-direction: column;
 		gap: 8px;
 		color: inherit;
 		text-decoration: none;
@@ -491,10 +510,25 @@
 	.side-deliverable:hover {
 		border-color: var(--accent);
 	}
+	.side-deliverable:hover strong {
+		color: var(--accent);
+		text-decoration: underline;
+	}
 	.side-deliverable strong {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		min-width: 0;
+	}
+	.side-deliverable .meta {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.side-deliverable .from {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 </style>
