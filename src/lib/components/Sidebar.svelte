@@ -133,6 +133,7 @@
 <aside class="sidebar" class:open={layout.drawerOpen} onclick={closeDrawer} aria-label="Sidebar">
 	<div class="brand">
 		<a href="/" class="brand-link" aria-label="Home"><Wordmark /></a>
+		<a class="icon-btn side-settings" class:active={on('/settings')} href="/settings" title="Settings" aria-label="Settings"><Settings size={18} /></a>
 		<button class="icon-btn side-hide" title="Hide sidebar (Ctrl+\)" aria-label="Hide sidebar" onclick={toggleSidebar}>
 			<PanelLeftClose size={18} />
 		</button>
@@ -263,5 +264,4 @@
 		{/if}
 	</div>
 
-	<a class="nav-item" class:active={on('/settings')} href="/settings"><span class="nav-ico"><Settings size={16} /></span>Settings</a>
 </aside>
