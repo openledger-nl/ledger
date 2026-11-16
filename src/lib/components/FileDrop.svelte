@@ -1,8 +1,10 @@
 <script lang="ts">
 	// Files dragged onto Ledger from outside. While they hover, the window shows where they will go. Dropped in a
 	// thread, they are attached to it at once; anywhere else, a dialog asks which project (and thread) they belong to.
-	// Only drags that carry files count: dragging a card on the board, or text, is left to whatever handles it. File
-	// drops are caught before anything else sees them, so an editor never pastes a dropped file's text instead.
+	// A drag that starts inside Ledger (a card on the board, selected text) is left to whatever handles it: those start
+	// with a `dragstart` here, one from outside never does. Every drag from outside is caught before anything else sees
+	// it, whatever it says it carries (a file manager on Linux says "text/uri-list", not "Files", while it hovers):
+	// otherwise the window would open the dropped file itself instead of Ledger, and an editor would paste its text.
 	import FileUp from '@lucide/svelte/icons/file-up';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -34,10 +36,12 @@
 	let hovering = $state(false);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
-	const carriesFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
+	/** A drag that began in this window: not a file from outside. */
+	let inside = false;
+	const outside = (e: DragEvent) => !inside && !!e.dataTransfer;
 
 	function over(e: DragEvent) {
-		if (!carriesFiles(e)) return;
+		if (!outside(e)) return;
 		e.preventDefault();
 		e.stopPropagation();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
@@ -47,28 +51,60 @@
 	}
 
 	function drop(e: DragEvent) {
-		if (!carriesFiles(e)) return;
+		if (!outside(e)) return;
 		e.preventDefault();
 		e.stopPropagation();
 		clearTimeout(timer);
 		hovering = false;
-		const files = Array.from(e.dataTransfer?.files ?? []);
-		if (!files.length) return;
-		if (here) void save(here.project, here.thread, here.title, files, false);
-		else open(files);
+		const dropped = droppedOf(e.dataTransfer);
+		if (!dropped) return;
+		if (here) void save(here.project, here.thread, here.title, dropped, false);
+		else open(dropped);
 	}
+
+	/** What was dropped: the files' paths when the system gives them (file:// URLs; Ledger copies the files itself, so a
+	 *  large one is never read into the page), or else the files' contents. `null` when it held no file at all. */
+	type Dropped = { kind: 'paths'; paths: string[] } | { kind: 'files'; files: File[] };
+	function droppedOf(data: DataTransfer | null): Dropped | null {
+		if (!data) return null;
+		const paths = (data.getData('text/uri-list') || '')
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter((line) => line.startsWith('file://'))
+			.map(pathOf)
+			.filter((p): p is string => !!p);
+		if (paths.length) return { kind: 'paths', paths };
+		const files = Array.from(data.files ?? []);
+		return files.length ? { kind: 'files', files } : null;
+	}
+
+	/** `file:///home/me/a%20b.pdf` → `/home/me/a b.pdf`; `file:///C:/x.pdf` → `C:/x.pdf`. */
+	function pathOf(uri: string): string | null {
+		try {
+			const path = decodeURIComponent(new URL(uri).pathname);
+			return /^\/[A-Za-z]:\//.test(path) ? path.slice(1) : path;
+		} catch {
+			return null;
+		}
+	}
+
+	const namesOf = (d: Dropped) => (d.kind === 'paths' ? d.paths.map((p) => p.split(/[\\/]/).pop() ?? p) : d.files.map((f) => f.name));
 
 	// ---- saving ----------------------------------------------------------------------------------------
 
 	let busy = $state(false);
 
-	/** Saves the files one by one; one that can't be read (a folder, say) is said and skipped, the rest still go. */
-	async function save(project: string, thread: string, title: string, files: File[], go: boolean): Promise<boolean> {
+	/** Saves what was dropped; a file that can't be read (a folder, say) is said and skipped, the rest still go. */
+	async function save(project: string, thread: string, title: string, dropped: Dropped, go: boolean): Promise<boolean> {
 		busy = true;
 		const saved: Upload[] = [];
-		for (const file of files) {
-			const upload = await attempt(() => api.uploadDropped(project, thread, file));
-			if (upload) saved.push(upload);
+		if (dropped.kind === 'paths') {
+			saved.push(...((await attempt(() => api.uploadFiles(project, thread, dropped.paths, ''))) ?? []));
+		} else {
+			for (const file of dropped.files) {
+				const upload = await attempt(() => api.uploadDropped(project, thread, file));
+				if (upload) saved.push(upload);
+			}
 		}
 		busy = false;
 		if (!saved.length) return false;
@@ -80,7 +116,7 @@
 
 	// ---- asking where they go ------------------------------------------------------------------------
 
-	let pending = $state<File[] | null>(null);
+	let pending = $state<Dropped | null>(null);
 	let project = $state('');
 	let thread = $state('');
 	let title = $state('');
@@ -99,8 +135,8 @@
 		return newest(p?.threads ?? [], (t) => t.lastActivity)[0]?.slug ?? NEW;
 	}
 
-	function open(files: File[]) {
-		pending = files;
+	function open(dropped: Dropped) {
+		pending = dropped;
 		project = projects.find((p) => p.slug === page.params.project)?.slug ?? projects[0]?.slug ?? '';
 		thread = defaultThread(project);
 		title = '';
@@ -127,7 +163,13 @@
 	}
 </script>
 
-<svelte:window ondragovercapture={over} ondragentercapture={over} ondropcapture={drop} />
+<svelte:window
+	ondragstartcapture={() => (inside = true)}
+	ondragendcapture={() => (inside = false)}
+	ondragovercapture={over}
+	ondragentercapture={over}
+	ondropcapture={drop}
+/>
 
 {#if hovering}
 	<div class="file-drop" aria-hidden="true">
@@ -144,10 +186,14 @@
 {/if}
 
 {#if pending}
-	<Modal title={pending.length === 1 ? 'Save the file' : `Save ${pending.length} files`} onclose={() => (pending = null)}>
+	{@const names = namesOf(pending)}
+	<Modal title={names.length === 1 ? 'Save the file' : `Save ${names.length} files`} onclose={() => (pending = null)}>
 		<ul class="file-drop-list">
-			{#each pending as f, i (i)}
-				<li><span class="name">{f.name}</span><span class="hint">{formatSize(f.size)}</span></li>
+			{#each names as name, i (i)}
+				<li>
+					<span class="name">{name}</span>
+					{#if pending.kind === 'files'}<span class="hint">{formatSize(pending.files[i].size)}</span>{/if}
+				</li>
 			{/each}
 		</ul>
 

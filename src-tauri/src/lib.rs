@@ -97,6 +97,26 @@ use tauri::{Emitter, Manager};
 use crate::syncer::Event;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Keeps the main window on Ledger itself: a navigation away from the app (a file dropped where nothing caught it, a link
+/// that slipped through) is refused, so the window can never end up showing a PDF instead of Ledger. Links outside are
+/// opened with the system's browser (the opener plugin), never in this window. Other windows (the Portflow sign-in, the
+/// screenshot overlay) are left alone.
+fn stay_in_the_app<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("stay-in-the-app")
+        .on_navigation(|webview, url| webview.label() != "main" || is_app_url(url))
+        .build()
+}
+
+/// The app's own pages: the bundled ones (tauri://, or http(s)://tauri.localhost on Windows) and, in development, the dev
+/// server on localhost.
+fn is_app_url(url: &tauri::Url) -> bool {
+    match url.scheme() {
+        "tauri" => true,
+        "http" | "https" => matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "tauri.localhost")),
+        _ => false,
+    }
+}
+
 pub fn run() {
     let builder = tauri::Builder::default();
     // First, so a second launch hands its arguments over before anything else starts. That is how a picture
@@ -114,6 +134,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(stay_in_the_app())
         .setup(|app| {
             // The vault is loaded into memory before the window shows anything.
             // LEDGER_CONFIG_DIR moves the per-machine settings (vault location, screenshot hotkey, update checks) for testing.
@@ -363,4 +384,19 @@ pub fn run() {
                 screenshot::open_files(_app, &paths, std::path::Path::new("/"));
             }
         });
+}
+
+#[cfg(test)]
+mod tests_navigation {
+    use super::is_app_url;
+
+    #[test]
+    fn the_main_window_stays_on_the_app() {
+        for ok in ["tauri://localhost/projects/x", "http://localhost:1420/", "http://tauri.localhost/", "https://tauri.localhost/a"] {
+            assert!(is_app_url(&ok.parse().unwrap()), "{ok}");
+        }
+        for no in ["file:///home/me/plan.pdf", "https://fhict.instructure.com/", "http://example.com/", "data:text/html,hi"] {
+            assert!(!is_app_url(&no.parse().unwrap()), "{no}");
+        }
+    }
 }
