@@ -1074,7 +1074,6 @@ export interface PortflowCollection {
 	subtitle: string;
 	section: string;
 	color: string;
-	descriptionHtml: string;
 	outcomes: OutcomeRef[];
 }
 

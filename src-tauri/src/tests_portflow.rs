@@ -462,7 +462,8 @@ fn a_round_mirrors_outcomes_people_and_the_linked_collection() {
     let collections = m.read(|c| store::project_collections(c, "speed-edit")).unwrap();
     assert_eq!(collections[0].name, "Speed edit");
     assert_eq!(collections[0].section, "Semester 3 – Fall 26");
-    assert!(collections[0].description_html.contains("<em>plan</em>"));
+    // Its description isn't mirrored: it is a study project's reading guide (this one has no facts, so it stays out).
+    assert!(!readme_of(&m).contains("plan"));
     assert_eq!(collections[0].outcomes[0].name, "Analysis");
 
     // The files: the mirror, the collection and the evidence items; no copies of Portflow's files.
@@ -1037,13 +1038,36 @@ fn guide_on(m: &Machine, write: bool, kinds: &[&str]) {
     .unwrap();
 }
 
+/// Makes the linked project a study project: only those have their reading guide kept in step with Portflow.
+fn study(m: &Machine) {
+    m.edit(|c| {
+        crate::project_facts::save(c, "speed-edit", &crate::project_facts::ProjectMeta { kind: "study".into(), goal: "Pass the semester.".into(), ..Default::default() })
+            .unwrap()
+    });
+}
+
+fn readme_of(m: &Machine) -> String {
+    readme(m)
+}
+
+fn readme(m: &Machine) -> String {
+    m.read(|c| projects::get(c, "speed-edit").unwrap().readme)
+}
+
+fn portflow_says(fake: &FakePortflow, html: &str) {
+    fake.world.lock().unwrap().collections[0].description = Some(html.into());
+}
+
 #[test]
 fn the_reading_guide_goes_to_portflow_only_when_its_write_is_on() {
     let m = Machine::new();
     m.switch(true);
     let semester = m.linked();
-    m.edit(|c| projects::save_readme(c, "speed-edit", "# Reading guide\n\nStart with the **project plan**.").unwrap());
+    study(&m);
     let fake = FakePortflow::new();
+    // The first round takes Portflow's description into the empty guide.
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    m.edit(|c| projects::save_readme(c, "speed-edit", "# Reading guide\n\nStart with the **project plan**.").unwrap());
 
     // Off by default: read only, and the write's own switch off.
     assert!(!m.settings().access.allows(config::GUIDE_WRITE));
@@ -1058,8 +1082,9 @@ fn the_reading_guide_goes_to_portflow_only_when_its_write_is_on() {
     guide_on(&m, false, &[config::GUIDE_WRITE]);
     portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
     assert!(fake.descriptions.lock().unwrap().is_empty());
+    assert!(readme(&m).contains("project plan"), "Ledger's edit waits, it isn't overwritten");
 
-    // On: Ledger's guide replaces the description, and the mirror shows it.
+    // On: Ledger's guide replaces the description. The mirror doesn't keep a copy.
     guide_on(&m, true, &[config::GUIDE_WRITE]);
     let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
     assert_eq!(report.guides_written, 1);
@@ -1068,7 +1093,7 @@ fn the_reading_guide_goes_to_portflow_only_when_its_write_is_on() {
     assert_eq!(sent[0].0, 500);
     assert!(sent[0].1.contains("<strong>project plan</strong>"), "{}", sent[0].1);
     let mirrored = fs::read_to_string(m.root().join(format!("projects/speed-edit/portflow/{semester}.md"))).unwrap();
-    assert!(mirrored.contains("project plan"), "{mirrored}");
+    assert!(!mirrored.contains("project plan") && !mirrored.contains("plan</em>"), "{mirrored}");
 
     // Unchanged: not sent again.
     portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
@@ -1077,15 +1102,148 @@ fn the_reading_guide_goes_to_portflow_only_when_its_write_is_on() {
     m.edit(|c| projects::save_readme(c, "speed-edit", "# Reading guide\n\nStart with the research.").unwrap());
     portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
     assert_eq!(fake.descriptions.lock().unwrap().len(), 2);
-    // Changed in Portflow: Ledger's text wins.
-    fake.world.lock().unwrap().collections[0].description = Some("<p>Edited in Portflow.</p>".into());
-    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
-    assert_eq!(fake.descriptions.lock().unwrap().len(), 3);
-    assert!(fake.descriptions.lock().unwrap()[2].1.contains("research"));
     // An empty guide never empties the description.
     m.edit(|c| projects::save_readme(c, "speed-edit", "  ").unwrap());
     portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
-    assert_eq!(fake.descriptions.lock().unwrap().len(), 3);
+    assert_eq!(fake.descriptions.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn an_empty_guide_takes_the_description_and_a_change_in_portflow_comes_in() {
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    study(&m);
+    let fake = FakePortflow::new();
+
+    // First round, nothing remembered, an empty README: it becomes the description, as markdown.
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(report.guides_read, 1);
+    assert_eq!(readme(&m).trim(), "The *plan*.");
+    assert!(fs::read_to_string(m.root().join("projects/speed-edit/README.md")).unwrap().contains("The *plan*."));
+
+    // Changed in Portflow, Ledger unchanged: it comes in, write switch or not.
+    portflow_says(&fake, "<p>Start with the <strong>research</strong>.</p>");
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(report.guides_read, 1);
+    assert_eq!(readme(&m).trim(), "Start with the **research**.");
+    assert!(fake.descriptions.lock().unwrap().is_empty(), "taking it in sends nothing");
+
+    // Nothing changed: nothing happens.
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!((report.guides_read, report.guides_written), (0, 0));
+
+    // An emptied description doesn't empty the guide.
+    portflow_says(&fake, "<p></p>");
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(readme(&m).trim(), "Start with the **research**.");
+}
+
+#[test]
+fn an_edit_in_ledger_is_kept_and_sent_only_with_the_write_on() {
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    study(&m);
+    let fake = FakePortflow::new();
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+
+    // Edited in Ledger, Portflow unchanged, the write off: kept, nothing sent, no note.
+    m.edit(|c| projects::save_readme(c, "speed-edit", "Mine.").unwrap());
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(readme(&m), "Mine.");
+    assert!(fake.descriptions.lock().unwrap().is_empty());
+    assert!(report.notes.is_empty(), "{:?}", report.notes);
+
+    // Both changed, the write off: Ledger's is kept, and the report says so (once).
+    portflow_says(&fake, "<p>Theirs.</p>");
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(readme(&m), "Mine.");
+    assert!(report.notes.iter().any(|n| n.contains("both changed")), "{:?}", report.notes);
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert!(report.notes.is_empty(), "said once: {:?}", report.notes);
+
+    // The write on: Ledger's text goes to Portflow and wins.
+    guide_on(&m, true, &[config::GUIDE_WRITE]);
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(report.guides_written, 1);
+    assert!(fake.descriptions.lock().unwrap()[0].1.contains("Mine."));
+
+    // Both changed again, the write on: Ledger's wins and is sent.
+    m.edit(|c| projects::save_readme(c, "speed-edit", "Mine, again.").unwrap());
+    portflow_says(&fake, "<p>Theirs, again.</p>");
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(readme(&m), "Mine, again.");
+    assert!(fake.descriptions.lock().unwrap().last().unwrap().1.contains("Mine, again."));
+}
+
+#[test]
+fn what_was_seen_survives_a_restart() {
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    study(&m);
+    let fake = FakePortflow::new();
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    m.edit(|c| projects::save_readme(c, "speed-edit", "Mine.").unwrap());
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert!(m.root().join(".ledger/portflow-guides.json").exists());
+
+    // A restart: the vault is read again from its files, the memory from .ledger/.
+    let m = Machine::at(m.dir);
+    m.switch(true);
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!((report.guides_read, report.guides_written), (0, 0));
+    assert_eq!(readme(&m), "Mine.", "the pending edit is still Ledger's, not overwritten");
+    // Portflow changes after the restart: both changed, so Ledger's is kept.
+    portflow_says(&fake, "<p>Theirs.</p>");
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(readme(&m), "Mine.");
+    assert!(report.notes.iter().any(|n| n.contains("both changed")), "{:?}", report.notes);
+}
+
+#[test]
+fn a_linked_project_that_isnt_a_study_project_is_never_kept_in_step() {
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    guide_on(&m, true, &[config::GUIDE_WRITE]);
+    let fake = FakePortflow::new();
+    // No facts at all, then a hobby project: nothing read, nothing written.
+    for kind in [None, Some("hobby"), Some("company")] {
+        if let Some(kind) = kind {
+            m.edit(|c| crate::project_facts::save(c, "speed-edit", &crate::project_facts::ProjectMeta { kind: kind.into(), goal: "Fun.".into(), ..Default::default() }).unwrap());
+        }
+        m.edit(|c| projects::save_readme(c, "speed-edit", "Mine.").unwrap());
+        portflow_says(&fake, "<p>Theirs.</p>");
+        let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+        assert_eq!((report.guides_read, report.guides_written), (0, 0), "{kind:?}");
+        assert_eq!(readme(&m), "Mine.");
+        assert!(fake.descriptions.lock().unwrap().is_empty());
+        assert!(m.read(|c| store::guide_targets(c, "2026-11-16")).unwrap().is_empty());
+    }
+}
+
+#[test]
+fn an_old_mirror_with_the_description_as_its_body_reads_in_and_loses_it() {
+    let m = Machine::new();
+    m.switch(true);
+    let semester = m.linked();
+    let fake = FakePortflow::new();
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    let file = m.root().join(format!("projects/speed-edit/portflow/{semester}.md"));
+    let mut text = fs::read_to_string(&file).unwrap();
+    text.push_str("\nThe old copy of the description.\n");
+    fs::write(&file, text).unwrap();
+    m.reload();
+    // Read in without it: nothing in Ledger holds the old copy.
+    assert_eq!(m.read(|c| store::project_collections(c, "speed-edit")).unwrap().len(), 1);
+    assert!(!readme(&m).contains("old copy"));
+    // A file on disk isn't rewritten for nothing; the next change to the mirror leaves the body out.
+    fake.world.lock().unwrap().collections[0].name = "Speed edit, renamed".into();
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    let text = fs::read_to_string(&file).unwrap();
+    assert!(text.contains("renamed") && !text.contains("old copy"), "{text}");
 }
 
 #[test]
@@ -1120,6 +1278,7 @@ fn the_guide_goes_to_the_collection_of_the_current_semester() {
         store::link_collection(c, "speed-edit", &ids[1], Some(500)).unwrap();
         store::link_collection(c, "speed-edit", &ids[2], Some(600)).unwrap();
     });
+    study(&m);
     let target = |today: &str| m.read(|c| store::guide_targets(c, today)).unwrap().into_iter().map(|g| g.collection).collect::<Vec<_>>();
     assert_eq!(target("2026-11-16"), vec![500], "the semester that covers today");
     assert_eq!(target("2026-03-10"), vec![400]);

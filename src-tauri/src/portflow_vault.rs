@@ -4,7 +4,8 @@
 //! portflow/outcomes/<id>-<slug>.md          a learning outcome and its sub-goals, mirrored from Portflow
 //! portflow/people.md                        the people the portfolio is shared with, mirrored from Portflow
 //! portflow/sections.md                      the portfolio's sections (its semesters), mirrored from Portflow
-//! projects/<p>/portflow/<semester>.md       a linked collection: name, subtitle, outcomes, and its description
+//! projects/<p>/portflow/<semester>.md       a linked collection: name, subtitle, outcomes (its description is the
+//!                                           project's README.md, the reading guide: kept once, see `portflow_sync`)
 //! projects/<p>/evidence/<slug>.md           an evidence item: its files, thread, outcomes, and Portflow's versions
 //!                                           (by file name; a version that came from Ledger names its deliverable)
 //! ```
@@ -277,12 +278,12 @@ fn export_collections(conn: &Connection, files: &mut BTreeMap<String, String>) -
     })? {
         outcomes.entry((project, semester)).or_default().push(outcome);
     }
-    type Row = (String, String, i64, String, String, String, String, String);
-    for (project, semester, collection, name, subtitle, section, color, description) in query_all::<Row, _>(
+    type Row = (String, String, i64, String, String, String, String);
+    for (project, semester, collection, name, subtitle, section, color) in query_all::<Row, _>(
         conn,
-        "SELECT project_slug, semester_id, collection_id, name, subtitle, section, color, description FROM collection_mirrors",
+        "SELECT project_slug, semester_id, collection_id, name, subtitle, section, color FROM collection_mirrors",
         [],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
     )? {
         let mut meta = Mapping::new();
         frontmatter::set(&mut meta, "mirror", MIRROR_NOTE);
@@ -292,7 +293,7 @@ fn export_collections(conn: &Connection, files: &mut BTreeMap<String, String>) -
         frontmatter::set_opt(&mut meta, "section", Some(&section));
         frontmatter::set_opt(&mut meta, "color", Some(&color));
         set_ints(&mut meta, "outcomes", &outcomes.remove(&(project.clone(), semester.clone())).unwrap_or_default());
-        files.insert(collection_file(&project, &semester), frontmatter::render(&meta, &description));
+        files.insert(collection_file(&project, &semester), frontmatter::render(&meta, ""));
     }
     Ok(())
 }
@@ -460,11 +461,13 @@ fn import_sections(conn: &Connection, source: &Source) -> Result<()> {
 fn import_collections(conn: &Connection, source: &Source, project: &str) -> Result<()> {
     for semester in source.stems(&format!("projects/{project}/portflow")) {
         let rel = collection_file(project, &semester);
-        let Some((meta, description)) = source.parsed(&rel) else { continue };
+        // A file from before the description became the reading guide still has it as its body: it is not read, and the
+        // next write leaves it out.
+        let Some((meta, _)) = source.parsed(&rel) else { continue };
         let Some(collection) = int(&meta, "collection") else { continue };
         conn.execute(
-            "INSERT OR IGNORE INTO collection_mirrors (project_slug, semester_id, collection_id, name, subtitle, section, color, description, synced_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT OR IGNORE INTO collection_mirrors (project_slug, semester_id, collection_id, name, subtitle, section, color, synced_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 project,
                 semester,
@@ -473,7 +476,6 @@ fn import_collections(conn: &Connection, source: &Source, project: &str) -> Resu
                 meta.text("subtitle").unwrap_or_default(),
                 meta.text("section").unwrap_or_default(),
                 meta.text("color").unwrap_or_default(),
-                description,
                 source.stamp(&rel),
             ],
         )?;

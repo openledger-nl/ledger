@@ -3,14 +3,15 @@
 //! looks at, so each machine decides for itself and nothing here is uploaded:
 //!
 //! ```text
-//! .ledger/portflow.json   on or off, read only or read and write (and which writes), the launch address, the portfolio
+//! .ledger/portflow.json          on or off, read only or read and write (and which writes), the launch address, the portfolio
+//! .ledger/portflow-guides.json   what Ledger last saw of each reading guide and its collection's description (hashes)
 //! ```
 //!
 //! The session token is not here, nor anywhere on disk: it lives eight hours and is kept in memory only
 //! (`portflow_auth.rs`). What the vault holds of Portflow (the mirrored outcomes, people, collections and the
 //! evidence items) is plain files under `portflow/` and in the projects, written by the sync (`portflow_store.rs`).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -126,4 +127,40 @@ pub fn check_launch_url(url: &str) -> Result<String> {
         return Err(Error::invalid("The address must start with https://"));
     }
     Ok(url.to_string())
+}
+
+// ---- what Ledger last saw of each reading guide ----------------------------------------------------------
+
+/// A project's reading guide and its collection's description, as they were the last time they agreed: hashes of the
+/// description as Portflow had it (HTML, white space folded) and of the README as it was then. A round compares both
+/// with now to tell which side changed. Bookkeeping for this machine only, so it lives in `.ledger/`, next to the
+/// settings, and survives a restart; lost or unreadable, the next round starts as on a first one.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GuideMemory {
+    /// By `<project>/<collection id>`.
+    #[serde(default)]
+    pub guides: BTreeMap<String, GuideSeen>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GuideSeen {
+    pub description: String,
+    pub readme: String,
+}
+
+fn guides_file(root: &Path) -> PathBuf {
+    root.join(LEDGER_DIR).join("portflow-guides.json")
+}
+
+pub fn read_guides(root: &Path) -> GuideMemory {
+    fs::read_to_string(guides_file(root)).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+}
+
+pub fn write_guides(root: &Path, memory: &GuideMemory) -> Result<()> {
+    let file = guides_file(root);
+    if let Some(dir) = file.parent() {
+        fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
+    }
+    fs::write(&file, serde_json::to_string_pretty(memory).unwrap_or_default()).map_err(|e| Error::io(&file, e))?;
+    settings::ensure_gitignore(root)
 }

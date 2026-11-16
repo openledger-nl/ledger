@@ -689,7 +689,8 @@ pub fn portflow_people(app: State<App>) -> Result<Vec<PersonView>> {
 pub struct ProjectPortflow {
     pub collections: Vec<CollectionView>,
     pub evidence: Vec<EvidenceView>,
-    /// The collection the project's reading guide goes to (the one for the current semester), if it is linked to one.
+    /// The collection whose description the reading guide is (the one for the current semester): only for a study project
+    /// linked to one, `None` otherwise.
     pub guide_collection: Option<i64>,
     /// Whether the guide is written to that collection's description ("Reading guide → collection description" on).
     pub guide_write: bool,

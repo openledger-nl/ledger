@@ -1,6 +1,7 @@
 //! One Portflow round: read what Portflow has and bring the vault in step with it. Pull only, but for one write the
-//! person can switch on: a project's reading guide goes to the description of the collection it is linked to for the
-//! current semester (see [`write_guide`]). Every other write would be refused by the access gate in `portflow_api.rs`.
+//! person can switch on: a study project's reading guide is the description of the collection it is linked to for the
+//! current semester, kept in step both ways (see [`sync_guide`]); it goes back to Portflow only with that write on.
+//! Every other write would be refused by the access gate in `portflow_api.rs`.
 //!
 //! A round reads, in this order: who is signed in; the learning outcomes with their sub-goals and goal sets; the people
 //! the portfolio is shared with; the sections (linked to semesters) and collections; and for every collection linked to a project, its
@@ -15,7 +16,7 @@
 //! step per part, through [`Ledger`].
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use rusqlite::Connection;
@@ -23,6 +24,7 @@ use serde::Serialize;
 
 use crate::error::{Error, Result};
 use crate::portflow_api::{Comment, PResult, Portflow, PortflowError};
+use crate::portflow_config::{GuideMemory, GuideSeen};
 use crate::portflow_config::PortflowSettings;
 use crate::portflow_store::{self as store, CollectionLink, VersionFileRow};
 use crate::state::Core;
@@ -33,6 +35,8 @@ pub trait Ledger: Send + Sync {
     fn read(&self, f: &mut dyn FnMut(&Connection) -> Result<()>) -> Result<()>;
     /// Changes the database and writes the difference to the vault. Returns how many files that touched.
     fn write(&self, f: &mut dyn FnMut(&Connection, &Path) -> Result<()>) -> Result<usize>;
+    /// The vault's folder: its `.ledger/` holds this machine's bookkeeping (see `portflow_config::GuideMemory`).
+    fn root(&self) -> PathBuf;
 }
 
 /// The running app's vault. `changed` tells the GitHub sync there is something to push.
@@ -61,6 +65,10 @@ impl Ledger for CoreLedger {
         }
         Ok(touched)
     }
+
+    fn root(&self) -> PathBuf {
+        self.core.lock().unwrap_or_else(PoisonError::into_inner).vault.root().to_path_buf()
+    }
 }
 
 /// What a round did.
@@ -82,6 +90,8 @@ pub struct Report {
     pub files_touched: usize,
     /// Reading guides written to a collection's description this round.
     pub guides_written: usize,
+    /// Reading guides taken from a collection's description this round (changed in Portflow).
+    pub guides_read: usize,
     /// Things a person should know, such as a linked collection that is gone.
     pub notes: Vec<String>,
 }
@@ -101,6 +111,9 @@ impl Report {
         }
         if self.unplaced > 0 {
             parts.push(format!("{} evidence item{} to put in a thread", self.unplaced, if self.unplaced == 1 { "" } else { "s" }));
+        }
+        if self.guides_read > 0 {
+            parts.push(format!("{} reading guide{} taken from Portflow", self.guides_read, if self.guides_read == 1 { "" } else { "s" }));
         }
         if self.guides_written > 0 {
             parts.push(format!("{} reading guide{} written to Portflow", self.guides_written, if self.guides_written == 1 { "" } else { "s" }));
@@ -163,19 +176,20 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
     let sections: HashMap<i64, String> = section_list.into_iter().map(|s| (s.id, s.name)).collect();
     let collections: HashMap<i64, crate::portflow_api::Collection> = portflow.collections(p)?.into_iter().map(|c| (c.id, c)).collect();
     let mut links = vec![];
-    // Where each reading guide goes, when that write is on; empty (and nothing is written) when it is off.
+    // The collection whose description each study project's reading guide is (see `sync_guide`): always read in, and
+    // written back only with that write on.
     let guide_on = settings.access.allows(crate::portflow_config::GUIDE_WRITE);
     let mut guides: HashMap<i64, store::GuideTarget> = HashMap::new();
     let today = crate::ids::now().chars().take(10).collect::<String>();
     ledger
         .read(&mut |conn| {
             links = store::collection_links(conn)?;
-            if guide_on {
-                guides = store::guide_targets(conn, &today)?.into_iter().map(|g| (g.collection, g)).collect();
-            }
+            guides = store::guide_targets(conn, &today)?.into_iter().map(|g| (g.collection, g)).collect();
             Ok(())
         })
         .map_err(ledger_err)?;
+    let root = ledger.root();
+    let mut memory = crate::portflow_config::read_guides(&root);
 
     for link in &links {
         let Some(found) = collections.get(&link.collection) else {
@@ -184,7 +198,7 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
         };
         let mut collection = found.clone();
         if let Some(guide) = guides.get(&link.collection).filter(|g| g.project == link.project) {
-            write_guide(portflow, ledger, p, guide, &mut collection, &mut report)?;
+            sync_guide(portflow, ledger, p, guide, &mut collection, guide_on, &mut memory, &root, &mut report)?;
         }
         let collection = &collection;
         report.collections += 1;
@@ -200,33 +214,89 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
     Ok(report)
 }
 
-/// Puts the project's reading guide in the collection's description, when it says something the description doesn't:
-/// Ledger's text wins. An empty guide never empties a description. What was sent is remembered, so a guide Portflow
-/// stores in its own way isn't sent again every round. A refused or failed write is a note, not the end of the round.
-fn write_guide(portflow: &dyn Portflow, ledger: &dyn Ledger, p: i64, guide: &store::GuideTarget, collection: &mut crate::portflow_api::Collection, report: &mut Report) -> PResult<()> {
-    if guide.readme.trim().is_empty() {
+/// Keeps a project's reading guide and its collection's description one text: README.md in Ledger, the description in
+/// Portflow. Which side changed since they last agreed is told by what is remembered (`GuideMemory`, in `.ledger/`):
+///
+/// - only Portflow's: the description, as markdown, becomes the README (an emptied description doesn't empty it);
+/// - only Ledger's: with the guide write on, the README goes to Portflow (Ledger's text wins); off, it waits in Ledger;
+/// - both: Ledger's text is kept, and sent with the write on; with it off the report says both changed;
+/// - neither, or both say the same: nothing.
+///
+/// The first time, with nothing remembered, an empty README (or the starter one Ledger writes in a new project) takes the
+/// description, and one that says something else counts as changed in Ledger. An empty guide never empties a description. A refused or failed write is a note, not
+/// the end of the round.
+#[allow(clippy::too_many_arguments)]
+fn sync_guide(
+    portflow: &dyn Portflow,
+    ledger: &dyn Ledger,
+    p: i64,
+    guide: &store::GuideTarget,
+    collection: &mut crate::portflow_api::Collection,
+    write_on: bool,
+    memory: &mut GuideMemory,
+    root: &Path,
+    report: &mut Report,
+) -> PResult<()> {
+    let key = format!("{}/{}", guide.project, collection.id);
+    let description = collection.description.clone().unwrap_or_default();
+    let readme = guide.readme.clone();
+    let now = GuideSeen { description: html_hash(&description), readme: text_hash(&readme) };
+    let seen = memory.guides.get(&key).cloned();
+    let remember = |memory: &mut GuideMemory, agreed: GuideSeen| -> PResult<()> {
+        if memory.guides.get(&key) != Some(&agreed) {
+            memory.guides.insert(key.clone(), agreed);
+            crate::portflow_config::write_guides(root, memory).map_err(ledger_err)?;
+        }
+        Ok(())
+    };
+
+    // Saying the same thing is agreeing, whichever side changed.
+    let blank = |html: &str| crate::portflow_html::to_markdown(html).trim().is_empty();
+    if (readme.trim().is_empty() && blank(&description)) || (!readme.trim().is_empty() && same_text(&crate::markdown::render(&readme), &description)) {
+        return remember(memory, now);
+    }
+    let (in_portflow, in_ledger) = match &seen {
+        Some(s) => (s.description != now.description, s.readme != now.readme),
+        None if readme.trim().is_empty() || readme.trim() == crate::projects::starter_readme(&guide.name).trim() => (true, false),
+        None => (!blank(&description), true),
+    };
+
+    if in_portflow && !in_ledger {
+        let text = crate::portflow_html::to_markdown(&description);
+        if text.trim().is_empty() {
+            return remember(memory, now);
+        }
+        report.files_touched += ledger.write(&mut |conn, _| crate::projects::save_readme(conn, &guide.project, &text).map(|_| ())).map_err(ledger_err)?;
+        report.guides_read += 1;
+        crate::applog::info("portflow", &format!("Took the reading guide of {} from the description of “{}”", guide.project, collection.name));
+        return remember(memory, GuideSeen { description: now.description, readme: text_hash(&text) });
+    }
+    if !in_ledger {
         return Ok(());
     }
-    let html = crate::markdown::render(&guide.readme);
-    let current = collection.description.clone().unwrap_or_default();
-    let mut written = None;
-    ledger
-        .read(&mut |conn| {
-            written = store::guide_written(conn, collection.id)?;
-            Ok(())
-        })
-        .map_err(ledger_err)?;
-    let unchanged = written.as_ref().is_some_and(|(sent, seen)| *sent == html && *seen == current) || same_text(&html, &current);
-    if unchanged {
-        return Ok(());
+    if readme.trim().is_empty() {
+        // Emptied in Ledger: the description stays as it is, and a later change there comes back in.
+        return remember(memory, now);
     }
+    if !write_on {
+        if in_portflow {
+            report.notes.push(format!(
+                "The reading guide of {} and the description of “{}” in Portflow both changed: Ledger's guide is kept. Switch on “Reading guide → collection description” to send it.",
+                guide.project, collection.name
+            ));
+        }
+        // What Portflow has now is seen; Ledger's text stays changed until it is sent.
+        let readme = seen.map(|s| s.readme).unwrap_or_default();
+        return remember(memory, GuideSeen { description: now.description, readme });
+    }
+    let html = crate::markdown::render(&readme);
     match portflow.set_collection_description(p, collection.id, &html) {
         Ok(answer) => {
-            let seen = answer.unwrap_or_else(|| html.clone());
-            ledger.write(&mut |conn, _| store::record_guide_written(conn, collection.id, &html, &seen)).map_err(ledger_err)?;
-            collection.description = Some(seen);
+            let stored = answer.unwrap_or_else(|| html.clone());
             report.guides_written += 1;
             crate::applog::info("portflow", &format!("Wrote the reading guide of {} to the description of “{}”", guide.project, collection.name));
+            remember(memory, GuideSeen { description: html_hash(&stored), readme: now.readme })?;
+            collection.description = Some(stored);
         }
         Err(PortflowError::SignedOut) => return Err(PortflowError::SignedOut),
         Err(e) => report.notes.push(format!("The reading guide of {} didn't go to “{}”: {e}", guide.project, collection.name)),
@@ -234,9 +304,22 @@ fn write_guide(portflow: &dyn Portflow, ledger: &dyn Ledger, p: i64, guide: &sto
     Ok(())
 }
 
+/// A description as Portflow keeps it, white space folded, hashed: what is remembered of it.
+fn html_hash(html: &str) -> String {
+    crate::provenance::sha256_hex(squash(html).as_bytes())
+}
+
+/// A README as Ledger keeps it, hashed.
+fn text_hash(text: &str) -> String {
+    crate::provenance::sha256_hex(text.replace("\r\n", "\n").trim().as_bytes())
+}
+
+fn squash(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ").replace("> <", "><")
+}
+
 /// Whether two bits of HTML hold the same markup once runs of white space are one space.
 fn same_text(a: &str, b: &str) -> bool {
-    let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ").replace("> <", "><");
     squash(a) == squash(b)
 }
 

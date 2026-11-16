@@ -195,25 +195,29 @@ pub fn collection_links(conn: &Connection) -> Result<Vec<CollectionLink>> {
     })
 }
 
-/// Where a project's reading guide goes in Portflow: the collection linked to the project for the semester that covers
-/// today, or else for the latest semester that has started, or else for the first one still to come. One per project;
-/// a past semester's collection keeps the description it was handed in with.
+/// The collection whose description a project's reading guide is: the one linked to the project for the semester that
+/// covers today, or else for the latest semester that has started, or else for the first one still to come. One per
+/// project; a past semester's collection keeps the description it was handed in with. Only a study project (its facts
+/// say `kind: study`) has one: a hobby or company project, or one without facts, is never kept in step, even if linked.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GuideTarget {
     pub project: String,
+    /// The project's name: a guide that is still the starter one Ledger wrote counts as empty.
+    pub name: String,
     pub collection: i64,
     /// The guide, as markdown (the project's README.md).
     pub readme: String,
 }
 
 pub fn guide_targets(conn: &Connection, today: &str) -> Result<Vec<GuideTarget>> {
-    type Row = (String, i64, String, String, String);
+    type Row = (String, String, i64, String, String, String);
     let rows: Vec<Row> = query_all(
         conn,
-        "SELECT l.project_slug, l.collection_id, p.readme, COALESCE(s.start_date, ''), COALESCE(s.end_date, '')
-         FROM project_collections l JOIN projects p ON p.slug = l.project_slug LEFT JOIN semesters s ON s.id = l.semester_id",
+        "SELECT l.project_slug, p.name, l.collection_id, p.readme, COALESCE(s.start_date, ''), COALESCE(s.end_date, '')
+         FROM project_collections l JOIN projects p ON p.slug = l.project_slug LEFT JOIN semesters s ON s.id = l.semester_id
+         WHERE p.kind = 'study'",
         [],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
     )?;
     // Lower ranks first: covering today (latest start first), started (latest first), to come (soonest first).
     let rank = |start: &str, end: &str| -> (u8, String) {
@@ -226,12 +230,12 @@ pub fn guide_targets(conn: &Connection, today: &str) -> Result<Vec<GuideTarget>>
         }
     };
     let mut best: BTreeMap<String, ((u8, String), GuideTarget)> = BTreeMap::new();
-    for (project, collection, readme, start, end) in rows {
+    for (project, name, collection, readme, start, end) in rows {
         let key = rank(&start, &end);
         if best.get(&project).is_some_and(|(k, _)| *k <= key) {
             continue;
         }
-        best.insert(project.clone(), (key, GuideTarget { project, collection, readme }));
+        best.insert(project.clone(), (key, GuideTarget { project, name, collection, readme }));
     }
     Ok(best.into_values().map(|(_, target)| target).collect())
 }
@@ -239,16 +243,6 @@ pub fn guide_targets(conn: &Connection, today: &str) -> Result<Vec<GuideTarget>>
 /// A day ("2026-09-01") turned so that later days sort first.
 fn invert(day: &str) -> String {
     day.chars().map(|c| c.to_digit(10).map_or(c, |d| char::from_digit(9 - d, 10).unwrap_or(c))).collect()
-}
-
-/// What Ledger last wrote to this collection's description, and what Portflow had right after: `(sent, seen)`.
-pub fn guide_written(conn: &Connection, collection: i64) -> Result<Option<(String, String)>> {
-    query_opt(conn, "SELECT sent, seen FROM portflow_guide_writes WHERE collection_id = ?1", [collection], |r| Ok((r.get(0)?, r.get(1)?)))
-}
-
-pub fn record_guide_written(conn: &Connection, collection: i64, sent: &str, seen: &str) -> Result<()> {
-    conn.execute("INSERT OR REPLACE INTO portflow_guide_writes (collection_id, sent, seen) VALUES (?1, ?2, ?3)", params![collection, sent, seen])?;
-    Ok(())
 }
 
 /// Links a project to a collection for one semester, or (no collection) unlinks it. One collection per project per
@@ -285,28 +279,27 @@ pub fn link_collection(conn: &Connection, project: &str, semester: &str, collect
     Ok(())
 }
 
-/// Stores a linked collection as Portflow shows it, with its outcomes.
+/// Stores a linked collection as Portflow shows it, with its outcomes. Not its description: that is the project's
+/// reading guide, one text under two names (see `portflow_sync::sync_guide`), so it isn't kept a second time here.
 pub fn store_collection(conn: &Connection, link: &CollectionLink, collection: &Collection, section: &str, goals: &[CollectionGoal]) -> Result<()> {
-    let description = portflow_html::to_markdown(collection.description.as_deref().unwrap_or_default());
     let row = (
         collection.id,
         collection.name.clone(),
         collection.subtitle.clone().unwrap_or_default(),
         section.to_string(),
         collection.color.clone().unwrap_or_default(),
-        description,
     );
     let current = query_opt(
         conn,
-        "SELECT collection_id, name, subtitle, section, color, description FROM collection_mirrors WHERE project_slug = ?1 AND semester_id = ?2",
+        "SELECT collection_id, name, subtitle, section, color FROM collection_mirrors WHERE project_slug = ?1 AND semester_id = ?2",
         [&link.project, &link.semester],
-        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?)),
+        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?)),
     )?;
     if current.as_ref() != Some(&row) {
         conn.execute(
-            "INSERT OR REPLACE INTO collection_mirrors (project_slug, semester_id, collection_id, name, subtitle, section, color, description, synced_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![link.project, link.semester, row.0, row.1, row.2, row.3, row.4, row.5, ids::now()],
+            "INSERT OR REPLACE INTO collection_mirrors (project_slug, semester_id, collection_id, name, subtitle, section, color, synced_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![link.project, link.semester, row.0, row.1, row.2, row.3, row.4, ids::now()],
         )?;
     }
     let mut ordered: Vec<&CollectionGoal> = goals.iter().collect();
@@ -348,7 +341,6 @@ pub struct CollectionView {
     pub subtitle: String,
     pub section: String,
     pub color: String,
-    pub description_html: String,
     pub outcomes: Vec<OutcomeRef>,
 }
 
@@ -357,7 +349,7 @@ pub fn project_collections(conn: &Connection, project: &str) -> Result<Vec<Colle
     let names = outcome_names(conn)?;
     let rows = query_all(
         conn,
-        "SELECT l.semester_id, s.name, l.collection_id, m.name, m.subtitle, m.section, m.color, m.description, s.start_date
+        "SELECT l.semester_id, s.name, l.collection_id, m.name, m.subtitle, m.section, m.color, s.start_date
          FROM project_collections l
          LEFT JOIN semesters s ON s.id = l.semester_id
          LEFT JOIN collection_mirrors m ON m.project_slug = l.project_slug AND m.semester_id = l.semester_id AND m.collection_id = l.collection_id
@@ -372,12 +364,11 @@ pub fn project_collections(conn: &Connection, project: &str) -> Result<Vec<Colle
                 r.get::<_, Option<String>>(4)?,
                 r.get::<_, Option<String>>(5)?,
                 r.get::<_, Option<String>>(6)?,
-                r.get::<_, Option<String>>(7)?,
             ))
         },
     )?;
     rows.into_iter()
-        .map(|(semester, semester_name, collection, name, subtitle, section, color, description)| {
+        .map(|(semester, semester_name, collection, name, subtitle, section, color)| {
             let outcomes = query_all(
                 conn,
                 "SELECT outcome_id FROM collection_outcomes WHERE project_slug = ?1 AND semester_id = ?2 ORDER BY position",
@@ -395,7 +386,6 @@ pub fn project_collections(conn: &Connection, project: &str) -> Result<Vec<Colle
                 subtitle: subtitle.unwrap_or_default(),
                 section: section.unwrap_or_default(),
                 color: color.unwrap_or_default(),
-                description_html: markdown::render(&description.unwrap_or_default()),
                 outcomes,
             })
         })

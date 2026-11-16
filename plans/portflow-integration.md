@@ -541,10 +541,18 @@ outcomes mirror are part of the Portflow feature, so they use it too.
       collection description" (`guide-description`), off by default and only with read and write on. Each round puts the
       project's README.md, rendered to HTML, in the description of the collection linked for the semester that covers
       today (else the latest that has started, else the first to come) with `PUT portfolios/{p}/collections/{c}`
-      `{"description": html}`; Ledger's text wins, an empty guide never empties a description, and what was sent is
-      remembered in memory so an unchanged guide isn't sent every round. Saving the guide starts a round. Not three-way
-      merged and no mentions: an edit made in Portflow is overwritten by the guide. A machine that had "Edit collection
-      descriptions" on starts with this write off. With the write off the guide is edited in Ledger as always.
+      `{"description": html}`; an empty guide never empties a description. Saving the guide starts a round. A machine that
+      had "Edit collection descriptions" on starts with this write off. With the write off the guide is edited in Ledger
+      as always.
+- [x] **One text, two ways** (2026-11-16): the README *is* the collection description, for a **study project** only
+      (`kind: study`; hobby and company projects are never kept in step, linked or not). Every round, write switch or
+      not, a description changed in Portflow becomes the README (as markdown; an emptied description doesn't empty it);
+      a README changed in Ledger goes back with the write on; both changed: Ledger's text is kept (and sent with the write
+      on, a report note with it off). The first time an empty or starter README takes the description. What both sides
+      last agreed on is remembered per collection as hashes in `.ledger/portflow-guides.json` (this machine only, never
+      synced), so a restart isn't a change. The mirror (`projects/<p>/portflow/<semester>.md`) no longer keeps a copy of
+      the description; an old file's body is ignored and dropped the next time the mirror is written. Still no mentions
+      ⇄ `[[links]]` and no merge within the text: the side that changed wins, Ledger when both did.
 - [ ] **Hand the reading guide in as evidence** by itself: needs `POST …/collections/{c}/evidence` (and a free-text
       version), whose body is still to be captured (phase 0). Until then "Hand in to Portflow…" on the Overview copies
       the guide (HTML and markdown) and opens Portflow to add it there by hand.

@@ -8,7 +8,6 @@
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
 	import type { ProjectPortflow, ThreadSummary } from '$lib/types';
 	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
-	import Markdown from './Markdown.svelte';
 
 	let { project, threads, version }: { project: string; threads: ThreadSummary[]; version: unknown } = $props();
 
@@ -63,7 +62,6 @@
 					{#if c.subtitle}<span class="hint">{c.subtitle}</span>{/if}
 					<span class="badge">{c.semesterName ?? c.semester}</span>
 				</div>
-				{#if c.descriptionHtml}<Markdown html={c.descriptionHtml} />{/if}
 				{#if c.outcomes.length}
 					<div class="chips">
 						{#each c.outcomes as o (o.id)}<a class="chip" href="/epsilon">{o.name}</a>{/each}
