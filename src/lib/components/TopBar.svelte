@@ -66,12 +66,14 @@
 			const list: Crumb = { label: tabs[tab], href: `${base}/${tab}` };
 			if (page.params.thread) return [project, list, { label: data.thread?.title ?? page.params.thread }];
 			if (id.endsWith('/deliverables/view')) {
-				// Its name without the file's extension; opened from a thread (`?thread=<slug>`), the trail goes through it.
+				// Its name without the file's extension; opened from a thread (`?thread=<slug>`), the trail goes through it:
+				// Project / Threads / <thread> / <deliverable>.
 				const d = data.deliverable;
 				const name = { label: d ? (d.evidence ? d.name : d.name.replace(/\.[^./]+$/, '') || d.name) : 'Deliverable' };
 				const from = page.url.searchParams.get('thread');
 				const thread = from ? data.projects?.find((p) => p.slug === slug)?.threads.find((t) => t.slug === from) : undefined;
-				return thread ? [project, { label: thread.title, href: threadUrl(slug, thread.slug) }, name] : [project, list, name];
+				const threads: Crumb = { label: tabs.threads ?? 'Threads', href: `${base}/threads` };
+				return thread ? [project, threads, { label: thread.title, href: threadUrl(slug, thread.slug) }, name] : [project, list, name];
 			}
 			return [project, { label: list.label }];
 		}
