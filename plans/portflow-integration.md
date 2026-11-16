@@ -87,7 +87,7 @@ headers; responses carry an `etag`.
 | Learning outcomes | `GET portfolios/{p}/goal-sets`, `…/goals`, `…/goals/{g}`, `…/goals/{g}/sub-goals` | none (read-only by design) |
 | Progress per outcome | `GET …/goals/{g}/growth`, `…/goals/{g}/timeline`, `…/goals/{g}/feedback-items(/summary)`, `GET dashboard/goal-sets/{id}/progress` | |
 | Collection ↔ outcomes | `GET …/collections/{c}/collection-goals` | |
-| Evidence | `GET portfolios/{p}/evidence`, `…/evidence/{e}`, `…/collections/{c}/evidence`, `…/goals/{g}/evidence/in-collection/{c}` | `POST …/evidence`, `POST …/collections/{c}/evidence` |
+| Evidence | `GET portfolios/{p}/evidence`, `…/evidence/{e}`, `…/collections/{c}/evidence`, `…/goals/{g}/evidence/in-collection/{c}` | `POST …/evidence`, `POST …/collections/{c}/evidence`, `PUT …/evidence/{e}` (description; unverified, modelled on the collection's) |
 | Evidence ↔ outcomes | `GET …/evidence/{e}/goals`, `…/evidence/{e}/sub-goals` | `POST …/evidence/{e}/link-to-goals-and-sub-goals`, `POST …/evidence/{e}/link-to-collections` |
 | Versions | `GET …/evidence/{e}/versions`, `…/versions/latest`, `…/evidence-versions/{v}` | `POST …/evidence/{e}/versions`, `PUT …/evidence-versions/{v}` |
 | Files | `GET …/evidence-version-files/{f}/preview-url` (signed S3 URL, 30 min) | `POST direct-uploads` (see below) |

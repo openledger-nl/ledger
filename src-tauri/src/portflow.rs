@@ -754,6 +754,35 @@ pub fn portflow_place_evidence(
     Ok(out)
 }
 
+/// Saves an evidence item's description: its three parts (What? / Goal? / Why it contributes?), or `text` as it is.
+/// Like a reading guide, a round follows right away when the "Evidence description" write is on and Ledger is signed
+/// in, so Portflow gets it; otherwise it is kept in Ledger.
+#[tauri::command]
+pub fn portflow_save_evidence_description(
+    app: State<App>,
+    syncer: State<PortflowSyncer>,
+    project: String,
+    evidence: String,
+    parts: Option<crate::portflow_evidence_text::Parts>,
+    text: Option<String>,
+) -> Result<Vec<EvidenceView>> {
+    let settings = require_on(&root_of(&app))?;
+    let me = me(&settings);
+    let text = match parts {
+        Some(parts) if [&parts.what, &parts.goal, &parts.why].iter().all(|t| t.trim().is_empty()) => String::new(),
+        Some(parts) => parts.to_markdown(),
+        None => text.unwrap_or_default(),
+    };
+    let out = app.mutate(|conn, _| {
+        store::set_evidence_description(conn, &project, &evidence, &text)?;
+        store::evidence_in_project(conn, &project, me)
+    })?;
+    if settings.access.allows(config::EVIDENCE_WRITE) && syncer.auth.signed_in(now_ms()) {
+        syncer.now();
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 pub fn portflow_recent_feedback(app: State<App>, limit: Option<i64>) -> Result<Vec<RecentFeedback>> {
     let me = me(&require_on(&root_of(&app))?);

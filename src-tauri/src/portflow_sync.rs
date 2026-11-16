@@ -92,6 +92,9 @@ pub struct Report {
     pub guides_written: usize,
     /// Reading guides taken from a collection's description this round (changed in Portflow).
     pub guides_read: usize,
+    /// Evidence descriptions taken from Portflow, and written to it, this round (`portflow_evidence_text`).
+    pub descriptions_read: usize,
+    pub descriptions_written: usize,
     /// Things a person should know, such as a linked collection that is gone.
     pub notes: Vec<String>,
 }
@@ -117,6 +120,12 @@ impl Report {
         }
         if self.guides_written > 0 {
             parts.push(format!("{} reading guide{} written to Portflow", self.guides_written, if self.guides_written == 1 { "" } else { "s" }));
+        }
+        if self.descriptions_read > 0 {
+            parts.push(format!("{} evidence description{} taken from Portflow", self.descriptions_read, if self.descriptions_read == 1 { "" } else { "s" }));
+        }
+        if self.descriptions_written > 0 {
+            parts.push(format!("{} evidence description{} written to Portflow", self.descriptions_written, if self.descriptions_written == 1 { "" } else { "s" }));
         }
         if parts.is_empty() {
             parts.push("Up to date".into());
@@ -190,6 +199,10 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
         .map_err(ledger_err)?;
     let root = ledger.root();
     let mut memory = crate::portflow_config::read_guides(&root);
+    // The projects whose evidence descriptions are kept in step: the same ones as the reading guides (linked, a study
+    // project or one without a kind yet), each with the "Evidence description" write for the way back.
+    let described: std::collections::HashSet<String> = guides.values().map(|g| g.project.clone()).collect();
+    let described_on = settings.access.allows(crate::portflow_config::EVIDENCE_WRITE);
 
     for link in &links {
         let Some(found) = collections.get(&link.collection) else {
@@ -209,6 +222,9 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
         for item in portflow.collection_evidence(p, link.collection)? {
             report.evidence += 1;
             pull_evidence(portflow, ledger, p, me.id, link, &item.evidence, &mut report)?;
+            if described.contains(&link.project) {
+                crate::portflow_evidence_text::round(portflow, ledger, p, &link.project, &item.evidence, described_on, &mut memory, &root, &mut report)?;
+            }
         }
     }
     Ok(report)

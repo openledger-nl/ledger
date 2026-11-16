@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! .ledger/portflow.json          on or off, read only or read and write (and which writes), the launch address, the portfolio
-//! .ledger/portflow-guides.json   what Ledger last saw of each reading guide and its collection's description (hashes)
+//! .ledger/portflow-guides.json   what Ledger last saw of each reading guide and evidence description, both sides (hashes)
 //! ```
 //!
 //! The session token is not here, nor anywhere on disk: it lives eight hours and is kept in memory only
@@ -28,14 +28,19 @@ pub const DEFAULT_LAUNCH_URL: &str = "https://fhict.instructure.com/accounts/1/e
 /// machine that had that switch on starts with this one off.
 pub const GUIDE_WRITE: &str = "guide-description";
 
-/// The kinds of write Ledger could make in Portflow, each with its own switch. None is on until the person turns it on.
-/// The writes this version can make: only these can be switched on; the rest are listed, greyed out, until built.
-pub const BUILT_WRITES: [&str; 1] = [GUIDE_WRITE];
+/// The write that puts an evidence item's description, as kept in Ledger ("What? / Goal? / Why it contributes?"), in
+/// the evidence item in Portflow.
+pub const EVIDENCE_WRITE: &str = "evidence-description";
 
-pub const WRITE_KINDS: [(&str, &str); 7] = [
+/// The writes this version can make: only these can be switched on; the rest are listed, greyed out, until built.
+pub const BUILT_WRITES: [&str; 2] = [GUIDE_WRITE, EVIDENCE_WRITE];
+
+/// The kinds of write Ledger could make in Portflow, each with its own switch. None is on until the person turns it on.
+pub const WRITE_KINDS: [(&str, &str); 8] = [
     ("upload-versions", "Upload versions"),
     ("create-evidence", "Create evidence"),
     (GUIDE_WRITE, "Reading guide → collection description"),
+    (EVIDENCE_WRITE, "Evidence description → evidence item"),
     ("link-outcomes", "Link outcomes"),
     ("reply-feedback", "Reply to feedback"),
     ("ask-feedback", "Ask for feedback"),
@@ -140,6 +145,9 @@ pub struct GuideMemory {
     /// By `<project>/<collection id>`.
     #[serde(default)]
     pub guides: BTreeMap<String, GuideSeen>,
+    /// Evidence descriptions, by `<project>/<evidence id in Portflow>`; there `readme` is Ledger's text of the description.
+    #[serde(default)]
+    pub evidence: BTreeMap<String, GuideSeen>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

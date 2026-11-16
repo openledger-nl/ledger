@@ -169,6 +169,8 @@ struct FakePortflow {
     calls: AtomicUsize,
     /// Every collection description written: (collection, HTML).
     descriptions: Mutex<Vec<(i64, String)>>,
+    /// Every evidence description written: (evidence item, HTML).
+    evidence_descriptions: Mutex<Vec<(i64, String)>>,
 }
 
 fn person(id: i64, name: &str, role: &str) -> Person {
@@ -260,7 +262,7 @@ impl FakePortflow {
             comments: BTreeMap::from([(700, vec![comment(9001, None, teacher.clone(), "<p>Good start, add <strong>risks</strong>.</p>", 2, 1)])]),
             children: BTreeMap::from([(9001, vec![comment(9002, Some(9001), person(ME, "Me Student", "student"), "<p>Done!</p>", 2, 0)])]),
         };
-        FakePortflow { world: Mutex::new(world), calls: AtomicUsize::new(0), descriptions: Mutex::new(vec![]) }
+        FakePortflow { world: Mutex::new(world), calls: AtomicUsize::new(0), descriptions: Mutex::new(vec![]), evidence_descriptions: Mutex::new(vec![]) }
     }
 
     fn call(&self) {
@@ -337,6 +339,18 @@ impl Portflow for FakePortflow {
         self.call();
         self.descriptions.lock().unwrap().push((c, html.to_string()));
         if let Some(found) = self.world.lock().unwrap().collections.iter_mut().find(|x| x.id == c) {
+            found.description = Some(html.to_string());
+        }
+        Ok(Some(html.to_string()))
+    }
+    fn evidence_item(&self, _: i64, e: i64) -> PResult<Evidence> {
+        self.call();
+        self.world.lock().unwrap().evidence.iter().find(|x| x.id == e).cloned().ok_or_else(|| PortflowError::message("no such evidence item"))
+    }
+    fn set_evidence_description(&self, _: i64, e: i64, html: &str) -> PResult<Option<String>> {
+        self.call();
+        self.evidence_descriptions.lock().unwrap().push((e, html.to_string()));
+        if let Some(found) = self.world.lock().unwrap().evidence.iter_mut().find(|x| x.id == e) {
             found.description = Some(html.to_string());
         }
         Ok(Some(html.to_string()))
@@ -1390,4 +1404,148 @@ fn a_guide_taken_in_with_bold_mentions_gets_their_ids() {
     config::write_guides(m.root(), &memory).unwrap();
     portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
     assert_eq!(readme(&m).trim(), "See [@Project plan](portflow:evidence-700).");
+}
+
+// ---- an evidence item's description ---------------------------------------------------------------------------
+
+const TEACHERS_HTML: &str = "<p>Evidence description</p><p>What? A written plan with the main question.</p><p>Goal? To give my expert a clear picture.</p><p>Why it contributes? It shows that I analyse the problem.</p>";
+
+fn portflow_describes(fake: &FakePortflow, evidence: i64, html: &str) {
+    fake.world.lock().unwrap().evidence.iter_mut().find(|e| e.id == evidence).unwrap().description = Some(html.into());
+}
+
+fn described(m: &Machine, evidence: i64) -> String {
+    m.read(|c| c.query_row("SELECT description FROM evidence WHERE portflow_id = ?1", [evidence], |r| r.get::<_, String>(0))).unwrap()
+}
+
+fn describe(m: &Machine, evidence: i64, text: &str) {
+    let slug = m.read(|c| store::evidence_slug_for(c, "speed-edit", evidence)).unwrap().unwrap();
+    m.edit(|c| store::set_evidence_description(c, "speed-edit", &slug, text).unwrap());
+}
+
+#[test]
+fn a_description_in_the_teachers_shape_comes_in_as_its_three_parts() {
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    study(&m);
+    let fake = FakePortflow::new();
+    portflow_describes(&fake, 700, TEACHERS_HTML);
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(report.descriptions_read, 1);
+    let text = described(&m, 700);
+    assert_eq!(
+        text,
+        "**Evidence description**\n\n**What?** A written plan with the main question.\n\n**Goal?** To give my expert a clear picture.\n\n**Why it contributes?** It shows that I analyse the problem."
+    );
+    // The body of the item's file, so it is readable outside Ledger and survives a reload.
+    let slug = m.read(|c| store::evidence_slug_for(c, "speed-edit", 700)).unwrap().unwrap();
+    let file = fs::read_to_string(m.root().join(format!("projects/speed-edit/evidence/{slug}.md"))).unwrap();
+    assert!(file.contains("**What?** A written plan"), "{file}");
+    let parts = crate::portflow_evidence_text::parse(&text).unwrap();
+    assert_eq!(parts.goal, "To give my expert a clear picture.");
+
+    // Unchanged: nothing more. Changed in Portflow only: it comes in.
+    assert_eq!(portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap().descriptions_read, 0);
+    portflow_describes(&fake, 700, "<p>What? A plan, rewritten.</p>");
+    assert_eq!(portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap().descriptions_read, 1);
+    assert_eq!(described(&m, 700), "**Evidence description**\n\n**What?** A plan, rewritten.");
+    assert!(fake.evidence_descriptions.lock().unwrap().is_empty(), "taking it in sends nothing");
+
+    // Free text stays as it is.
+    portflow_describes(&fake, 800, "<p>Just what I found.</p>");
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(described(&m, 800), "Just what I found.");
+}
+
+#[test]
+fn an_edit_in_ledger_goes_to_the_evidence_item_only_with_its_write_on() {
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    study(&m);
+    let fake = FakePortflow::new();
+    portflow_describes(&fake, 700, TEACHERS_HTML);
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    let mine = "**What?** My plan.\n\n**Goal?** Clarity.\n\n**Why it contributes?** Analysing, level 2.";
+    describe(&m, 700, mine);
+
+    // Off, read and write on with another write, or the switch on without read and write: nothing goes out.
+    for (write, kinds) in [(false, vec![]), (true, vec![config::GUIDE_WRITE]), (false, vec![config::EVIDENCE_WRITE])] {
+        guide_on(&m, write, &kinds);
+        let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+        assert_eq!(report.descriptions_written, 0);
+        assert!(report.notes.is_empty(), "{:?}", report.notes);
+    }
+    assert!(fake.evidence_descriptions.lock().unwrap().is_empty());
+    assert_eq!(described(&m, 700), mine, "Ledger's edit waits, it isn't overwritten");
+
+    // On: sent in the shape teachers like.
+    guide_on(&m, true, &[config::EVIDENCE_WRITE]);
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(report.descriptions_written, 1);
+    let sent = fake.evidence_descriptions.lock().unwrap().clone();
+    assert_eq!(sent[0].0, 700);
+    assert!(sent[0].1.starts_with("<p><strong>Evidence description</strong></p>"), "{}", sent[0].1);
+    assert!(sent[0].1.contains("<p><strong>Goal?</strong> Clarity.</p>"), "{}", sent[0].1);
+    // Not sent again while nothing changes; an empty text never empties Portflow's.
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    describe(&m, 700, " ");
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(fake.evidence_descriptions.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn when_both_sides_changed_the_description_ledger_keeps_its_own() {
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    study(&m);
+    let fake = FakePortflow::new();
+    portflow_describes(&fake, 700, TEACHERS_HTML);
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+
+    describe(&m, 700, "**What?** Mine.");
+    portflow_describes(&fake, 700, "<p>What? Theirs.</p>");
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(described(&m, 700), "**What?** Mine.");
+    assert!(report.notes.iter().any(|n| n.contains("changed in Ledger and in Portflow")), "{:?}", report.notes);
+    assert!(portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap().notes.is_empty(), "said once");
+
+    // The write on: Ledger's goes to Portflow.
+    guide_on(&m, true, &[config::EVIDENCE_WRITE]);
+    assert_eq!(portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap().descriptions_written, 1);
+    assert!(fake.evidence_descriptions.lock().unwrap()[0].1.contains("Mine."));
+}
+
+#[test]
+fn a_hobby_project_keeps_its_evidence_descriptions_to_itself() {
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    m.edit(|c| crate::project_facts::save(c, "speed-edit", &crate::project_facts::ProjectMeta { kind: "hobby".into(), goal: "Fun.".into(), ..Default::default() }).unwrap());
+    let fake = FakePortflow::new();
+    portflow_describes(&fake, 700, TEACHERS_HTML);
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(described(&m, 700), "");
+}
+
+#[test]
+fn the_evidence_description_write_is_a_put_on_the_item_and_the_gate_holds_it_back() {
+    let wire = Arc::new(FakeWire::default());
+    let path = format!("/portfolios/{P}/evidence/700");
+    wire.reply(&path, 200, r#"{"id": 700, "description": "<p>Kept.</p>"}"#);
+    let guide_only = client(&wire, gate(true, true, &[config::GUIDE_WRITE]));
+    assert!(matches!(guide_only.set_evidence_description(P, 700, "<p>Mine</p>"), Err(PortflowError::NotAllowed(_))));
+    let read_only = client(&wire, gate(true, false, &[config::EVIDENCE_WRITE]));
+    assert!(matches!(read_only.set_evidence_description(P, 700, "<p>Mine</p>"), Err(PortflowError::NotAllowed(_))));
+    assert!(wire.sent().is_empty(), "nothing reached Portflow: {:?}", wire.sent());
+
+    let on = client(&wire, gate(true, true, &[config::EVIDENCE_WRITE]));
+    assert_eq!(on.set_evidence_description(P, 700, "<p>Mine</p>").unwrap().as_deref(), Some("<p>Kept.</p>"));
+    assert_eq!(wire.sent(), vec![("PUT".to_string(), path)]);
+    assert_eq!(wire.bodies.lock().unwrap()[0], Some(serde_json::json!({ "description": "<p>Mine</p>" })));
+    // Only the item itself: a version upload under it is still its own kind.
+    let request = crate::portflow_api::Request { method: "POST", path: format!("/portfolios/{P}/evidence/700/versions"), query: vec![], body: None };
+    assert_eq!(crate::portflow_api::write_kind(&request), Some("upload-versions"));
 }
