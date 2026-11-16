@@ -5,6 +5,7 @@ node_modules
 /package
 src-tauri/target
 src-tauri/target-test
+src-tauri/target-verify
 src-tauri/gen/schemas
 
 # local
@@ -16,3 +17,6 @@ src-tauri/gen/schemas
 .DS_Store
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Storybook build output
+storybook-static
