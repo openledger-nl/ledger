@@ -1,37 +1,65 @@
-// Timestamps arrive as UTC ISO strings; everything shown to people is in local time, written the European way:
-// day before month ("3 Nov 2026", "03-11-2026") and a 24-hour clock, whatever the system's own locale says.
+// Timestamps arrive as UTC ISO strings; everything shown to people is in Central European time (Amsterdam), written
+// the European way: day-month-year in numbers ("22-2-2022", no leading zeros) and a 24-hour clock ("14:05"), whatever
+// the system's own locale or time zone says.
 
 import type { ThreadSummary } from './types';
 
 /** The locale every date and number is shown in. */
 export const LOCALE = 'en-GB';
 
-const timeFormat = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-const dateFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' });
-const longDayFormat = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
+/** Every moment is shown in this time zone: Central European time, summer time included. */
+export const TIME_ZONE = 'Europe/Amsterdam';
 
-export const time = (iso: string) => timeFormat.format(new Date(iso));
+const timeFormat = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: TIME_ZONE });
+const partsFormat = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: TIME_ZONE });
+const weekdayFormat = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', timeZone: 'UTC' });
 
-export const date = (iso: string) => dateFormat.format(new Date(iso));
-
-export const dateTime = (iso: string) => `${date(iso)}, ${time(iso)}`;
-
-/** Local calendar day, "2026-10-16": what posts are grouped under. */
-export function dayKey(iso: string): string {
-	const d = new Date(iso);
-	const pad = (n: number) => String(n).padStart(2, '0');
-	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** "2026-02-22" → "22-2-2026": the one way a calendar day is written. */
+export function numericDay(day: string): string {
+	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+	return m ? `${+m[3]}-${+m[2]}-${m[1]}` : day;
 }
 
+/** The weekday of a calendar day ("2026-11-04" → "Wednesday"), the same in every time zone. */
+export function weekday(day: string): string {
+	const [y, m, d] = day.split('-').map(Number);
+	return weekdayFormat.format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+/** A moment from an ISO string or a Date; null when it isn't one (a missing or broken date never breaks a page). */
+function moment(iso: string | Date): Date | null {
+	const d = typeof iso === 'string' ? new Date(iso) : iso;
+	return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** "14:05", in Amsterdam; "" for something that isn't a moment. */
+export const time = (iso: string) => {
+	const d = moment(iso);
+	return d ? timeFormat.format(d) : '';
+};
+
+/** "4-11-2026", the day it was in Amsterdam. */
+export const date = (iso: string) => numericDay(dayKey(iso));
+
+export const dateTime = (iso: string) => (moment(iso) ? `${date(iso)}, ${time(iso)}` : '');
+
+/** The calendar day in Amsterdam, "2026-10-16": what posts are grouped under; "" for something that isn't a moment. */
+export function dayKey(iso: string | Date): string {
+	const d = moment(iso);
+	return d ? partsFormat.format(d) : '';
+}
+
+/** Today in Amsterdam, "2026-11-09". */
+export const todayKey = () => dayKey(new Date());
+
+/** A day heading: "Today", "Yesterday", or "Wednesday 4-11-2026". */
 export function dayLabel(key: string): string {
 	const [y, m, d] = key.split('-').map(Number);
-	const day = new Date(y, m - 1, d);
-	const today = new Date();
-	const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-	const diff = Math.round((startOfToday.getTime() - day.getTime()) / 86_400_000);
+	const [ty, tm, td] = todayKey().split('-').map(Number);
+	const diff = Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(y, m - 1, d)) / 86_400_000);
 	if (diff === 0) return 'Today';
 	if (diff === 1) return 'Yesterday';
-	return longDayFormat.format(day) + (y !== today.getFullYear() ? ` ${y}` : '');
+	return `${weekday(key)} ${numericDay(key)}`;
 }
 
 /** Markdown flattened to one line of plain text, for quoting a post. */

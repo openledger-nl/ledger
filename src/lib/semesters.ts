@@ -1,8 +1,8 @@
 // Calendar days and the sprints of a semester, for the screens. A calendar day is "2026-09-01" (how it is stored)
-// and is shown the European way, "01-09-2026" or "1 Sep 2026". The sprint plan mirrors the backend's
+// and is shown the European way, "1-9-2026" (see format.ts). The sprint plan mirrors the backend's
 // (src-tauri/src/semesters.rs), so the editor can show it while you type.
 
-import { LOCALE } from './format';
+import { numericDay, todayKey } from './format';
 import type { Semester, SemesterDraft, Sprint, Vacation } from './types';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -20,12 +20,12 @@ export const toDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-$
 
 export const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 
-export const today = () => toDay(new Date());
+/** Today in Amsterdam (format.ts), "2026-11-09". */
+export const today = () => todayKey();
 
-/** "2026-09-01" → "01-09-2026". */
+/** "2026-09-01" → "1-9-2026". */
 export function european(day: string): string {
-	const d = parseDay(day);
-	return d ? `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}` : day;
+	return parseDay(day) ? numericDay(day) : day;
 }
 
 /** What someone typed — "1-9-2026", "01/09/2026", "1.9.26" — → "2026-09-01"; null when it isn't a day. */
@@ -37,18 +37,12 @@ export function parseEuropean(text: string): string | null {
 	return parseDay(day) ? day : null;
 }
 
-const shortFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' });
-const fullFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' });
+/** "1-9-2026". */
+export const dayLabel = (day: string) => european(day);
 
-/** "1 Sep 2026". */
-export const dayLabel = (day: string) => (parseDay(day) ? fullFormat.format(parseDay(day) as Date) : day);
-
-/** "1 Sep – 21 Sep 2026", or with both years when they differ. */
+/** "1-9-2026 – 21-9-2026". */
 export function spanLabel(start: string, end: string): string {
-	const a = parseDay(start);
-	const b = parseDay(end);
-	if (!a || !b) return `${start} – ${end}`;
-	return a.getFullYear() === b.getFullYear() ? `${shortFormat.format(a)} – ${fullFormat.format(b)}` : `${fullFormat.format(a)} – ${fullFormat.format(b)}`;
+	return `${european(start)} – ${european(end)}`;
 }
 
 /** Days from `start` to `end`, both counted. */

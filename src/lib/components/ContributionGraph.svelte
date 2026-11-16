@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
-	import { dayKey, LOCALE, plural } from '$lib/format';
-	import { nearestSemester, parseDay } from '$lib/semesters';
+	import { dayKey, LOCALE, numericDay, plural, weekday } from '$lib/format';
+	import { nearestSemester, parseDay, toDay } from '$lib/semesters';
 	import type { ActivityEvent, ActivityKind, ProjectSummary, Semester } from '$lib/types';
 
 	// A stretch of days, a square each, shaded by how much was made that day: like GitHub's contribution graph.
@@ -37,8 +37,9 @@
 	const keyOf = (d: Date) => dayKey(d.toISOString());
 	const today = addDays(new Date(), 0);
 	const monthFormat = new Intl.DateTimeFormat(LOCALE, { month: 'short' });
-	const longDate = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-	const shortDate = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' });
+	// Days are written the one way the app writes them: "Wednesday 4-11-2026", "4-11-2026" (format.ts).
+	const longDate = { format: (d: Date) => `${weekday(toDay(d))} ${numericDay(toDay(d))}` };
+	const shortDate = { format: (d: Date) => numericDay(toDay(d)) };
 
 	type Day = { date: Date; key: string; kinds: Partial<Record<ActivityKind, number>>; total: number; level: number; today: boolean; future: boolean };
 

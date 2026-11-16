@@ -9,13 +9,13 @@
 	import Onboarding from '$lib/components/Onboarding.svelte';
 	import PortflowFeedbackWidget from '$lib/components/PortflowFeedbackWidget.svelte';
 	import SyncWidget from '$lib/components/SyncWidget.svelte';
-	import { ago, LOCALE, newest, plural, stamp } from '$lib/format';
+	import { ago, newest, numericDay, plural, stamp, todayKey, weekday } from '$lib/format';
 	import { dashboard, isPinned, togglePin } from '$lib/dashboard.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	const today = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+	const today = `${weekday(todayKey())} ${numericDay(todayKey())}`;
 
 	/** Every project with what it shows, the most recently active first. */
 	const cards = $derived(
