@@ -165,7 +165,7 @@ export const api = {
 	createPromptDeliverable: (project: string, thread: string, id: string, name: string) =>
 		call<Prompt>('create_prompt_deliverable', { project, thread, id, name }),
 
-	// meeting notes: one daily note per day, Daily/<date>.md
+	// meeting notes: one daily note per day, Meetings/<date>.md
 	/** Newest first; with a project or a person tag, only the days with a meeting of theirs. */
 	listDailyNotes: (filter: { project?: string; person?: string } = {}) =>
 		call<DailyNote[]>('list_daily_notes', { project: filter.project ?? null, person: filter.person ?? null }),

@@ -1338,7 +1338,7 @@ export interface MeetingSection {
 }
 
 /**
- * A daily note, `Daily/<day>.md`: one per day, made in Ledger or Obsidian, holding that day's meetings, each under its
+ * A daily note, `Meetings/<day>.md`: one per day, made in Ledger or Obsidian, holding that day's meetings, each under its
  * own heading. Its frontmatter (`type: daily`, `id`, `date`, `tags`) gathers the tags of its meetings, so the day is
  * found by project and by person in Ledger and in Obsidian.
  */

@@ -98,7 +98,7 @@ repo (`build: move to Node 26`).
 
 | Area | Scopes |
 |---|---|
-| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `links` (`[[links]]` between threads, deliverables and feedback, written in any markdown), `dashboard` (the home page and its contribution graph), `onboarding` (the setup guide a new client gets on the home page), `people` (who is in a project: its coach, teammates and client), `meetings` (meeting notes: the daily notes in `Daily/`) |
+| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `links` (`[[links]]` between threads, deliverables and feedback, written in any markdown), `dashboard` (the home page and its contribution graph), `onboarding` (the setup guide a new client gets on the home page), `people` (who is in a project: its coach, teammates and client), `meetings` (meeting notes: one note a day in `Meetings/`) |
 | Data and sync | `vault`, `sync`, `crypto`, `settings` |
 | Integrations | `screenshots`, `trello`, `portflow` (the Fontys portfolio: feedback, evidence, learning outcomes), `claude` (runs with Claude Code) |
 | Across the app | `ui` (shared components, layout, icons), `brand` (logo, tokens, colours), `updates` (installing new releases from inside the app, and a development build taking in what changes in its checkout), `logs` (the error log, debug captures, reporting a problem) |

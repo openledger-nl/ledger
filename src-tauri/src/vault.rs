@@ -24,7 +24,7 @@
 //! projects/<project>/portflow/<semester>.md      a linked Portflow collection, as Portflow shows it
 //! portflow/outcomes/<id>-<slug>.md, people.md,   learning outcomes, people and sections, mirrored from Portflow
 //! portflow/sections.md
-//! Daily/<YYYY-MM-DD>.md                          a day's meeting notes, as Obsidian keeps daily notes (see `daily`)
+//! Meetings/<YYYY-MM-DD>.md                       a day's meeting notes, written as Obsidian writes daily notes (see `daily`)
 //! .ledger/                                       settings and secrets (see `settings`); never pushed
 //! ```
 //!
@@ -134,6 +134,7 @@ impl Vault {
     pub fn load(&mut self) -> Result<Connection> {
         let conn = db::open_in_memory()?;
         move_versions_out_of_deliverables(&self.root);
+        crate::daily::move_out_of_daily(&self.root);
         let listing = managed_listing(&self.root);
         import(&conn, &self.root, &listing)?;
 
@@ -796,7 +797,7 @@ fn import(conn: &Connection, root: &Path, listing: &BTreeMap<String, Fingerprint
     Ok(())
 }
 
-/// Meeting notes: every `Daily/<YYYY-MM-DD>.md`. Other files in `Daily/` are not Ledger's and are left alone.
+/// Meeting notes: every `Meetings/<YYYY-MM-DD>.md`. Other files in `Meetings/` are not Ledger's and are left alone.
 fn import_daily(conn: &Connection, source: &Source) -> Result<()> {
     for stem in source.stems(crate::daily::FOLDER) {
         if !crate::daily::is_day(&stem) {

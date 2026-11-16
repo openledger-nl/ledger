@@ -1,5 +1,6 @@
-//! Meeting notes, kept as daily notes: one file a day, `Daily/<YYYY-MM-DD>.md` at the root of the vault, the way
-//! Obsidian keeps them, so the same note opens in both.
+//! Meeting notes, kept as daily notes: one file a day, `Meetings/<YYYY-MM-DD>.md` at the root of the vault, written
+//! the way Obsidian writes daily notes, so the same note opens in both. Before, they were in `Daily/`, Obsidian's own
+//! folder; `move_out_of_daily` brings them over (see there).
 //!
 //! ```text
 //! ---
@@ -20,6 +21,8 @@
 //! it is and written back.
 
 use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
 
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
@@ -30,8 +33,11 @@ use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
 use crate::ids;
 
-/// The folder of the daily notes, at the vault's root.
-pub const FOLDER: &str = "Daily";
+/// The folder of the meeting notes, at the vault's root.
+pub const FOLDER: &str = "Meetings";
+
+/// Where they were kept before: `Daily/`, the folder of Obsidian's daily notes.
+pub const OLD_FOLDER: &str = "Daily";
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -74,6 +80,64 @@ pub struct ParsedDaily {
     /// Frontmatter keys Ledger doesn't write itself, and plain tags (without a `/`) of your own.
     pub extra: Mapping,
     pub own_tags: Vec<String>,
+}
+
+/// Brings meeting notes over from `Daily/` to `Meetings/`, on every load: a day's note in `Daily/` that holds a
+/// meeting moves; a day without meetings (a journal entry, say) and any other file there are not Ledger's and stay.
+/// When the day is in `Meetings/` already (another machine with an older Ledger wrote it in `Daily/` meanwhile), the
+/// two are put together: the meetings `Meetings/` doesn't have yet are added after its own, and the old note goes.
+/// `Daily/` itself goes once nothing is left in it. A move that fails is tried again on the next load.
+pub fn move_out_of_daily(root: &Path) {
+    let from_dir = root.join(OLD_FOLDER);
+    let Ok(entries) = fs::read_dir(&from_dir) else { return };
+    let read = |path: &Path| -> Option<ParsedDaily> {
+        let text = fs::read_to_string(path).ok()?;
+        let (meta, body) = match frontmatter::parse(&text) {
+            Some(parsed) => (parsed.meta, parsed.body),
+            None => (Mapping::new(), text.trim().to_string()),
+        };
+        Some(parse(&meta, &body))
+    };
+    for entry in entries.flatten() {
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
+        let Some(date) = name.strip_suffix(".md").filter(|stem| is_day(stem)).map(str::to_string) else { continue };
+        if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+            continue;
+        }
+        let from = entry.path();
+        let Some(old) = read(&from).filter(|note| !note.meetings.is_empty()) else { continue };
+        let to = root.join(file(&date));
+        if !to.exists() {
+            if to.parent().is_some_and(|dir| fs::create_dir_all(dir).is_ok()) {
+                let _ = fs::rename(&from, &to);
+            }
+            continue;
+        }
+        let Some(mut note) = read(&to) else { continue };
+        for meeting in old.meetings {
+            if !note.meetings.contains(&meeting) {
+                note.meetings.push(meeting);
+            }
+        }
+        let old_preamble = old.preamble.trim();
+        if !old_preamble.is_empty() && !note.preamble.contains(old_preamble) {
+            note.preamble = [note.preamble.trim(), old_preamble].iter().filter(|p| !p.is_empty()).copied().collect::<Vec<_>>().join("\n\n");
+        }
+        for (key, value) in old.extra {
+            note.extra.entry(key).or_insert(value);
+        }
+        for tag in old.own_tags {
+            if !note.own_tags.contains(&tag) {
+                note.own_tags.push(tag);
+            }
+        }
+        let id = note.id.clone().or(old.id).unwrap_or_else(|| format!("daily-{date}"));
+        let text = render(&date, &id, &note.meetings, &note.preamble, &note.extra, &note.own_tags);
+        if fs::write(&to, text).is_ok() {
+            let _ = fs::remove_file(&from);
+        }
+    }
+    let _ = fs::remove_dir(&from_dir); // only when it is empty
 }
 
 pub fn is_day(text: &str) -> bool {

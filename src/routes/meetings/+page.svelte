@@ -1,6 +1,6 @@
 <script lang="ts">
 	// Meeting notes: one note per day, newest first with today on top. A day holds its meetings, each under its own
-	// heading and coupled to its projects and people. Stored as the day's note in Daily/, so it opens in Obsidian too.
+	// heading and coupled to its projects and people. Stored as the day's note in Meetings/, so it opens in Obsidian too.
 	// Requirements: Meetings, Obsidian (daily notes).
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
