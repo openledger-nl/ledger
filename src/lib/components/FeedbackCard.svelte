@@ -172,18 +172,18 @@
 		</div>
 	{:else}
 		<Markdown html={feedback.html} />
-		<div class="actions">
-			<button class="link accent" onclick={toggle}>{resolved ? 'Reopen' : 'Mark resolved'}</button>
+		<div class="actions fb-actions">
+			<button class="btn small" onclick={toggle}>{resolved ? 'Reopen' : 'Mark resolved'}</button>
 			{#if replies.length}
-				<button class="link accent" onclick={toggleAll}>{allResolved ? 'Reopen all' : 'Resolve all'}</button>
+				<button class="btn small ghost" onclick={toggleAll}>{allResolved ? 'Reopen all' : 'Resolve all'}</button>
 			{/if}
-			<button class="link accent" onclick={() => (prompting = true)}>Create prompt…</button>
+			<button class="btn small ghost" onclick={() => (prompting = true)}>Create prompt</button>
 			{#if !fromPortflow}
-				<button class="link" onclick={startEdit}>Edit</button>
-				<button class="link danger" onclick={remove}>Delete</button>
+				<button class="btn small ghost" onclick={startEdit}>Edit</button>
+				<button class="btn small ghost danger" onclick={remove}>Delete</button>
 			{:else}
 				{#if portflowItem}
-					<button class="link accent" onclick={() => openInPortflow(portflowItem ?? '')}>Open in Portflow</button>
+					<button class="btn small ghost" onclick={() => openInPortflow(portflowItem ?? '')}>Open in Portflow</button>
 				{:else}
 					<span class="hint">From Portflow: answer it there</span>
 				{/if}
@@ -199,8 +199,8 @@
 							{#if r.status === 'resolved'}<span class="hint">resolved</span>{/if}
 						</div>
 						<Markdown html={r.html} />
-						<div class="actions">
-							<button class="link accent" onclick={() => toggleReply(r)}>{r.status === 'resolved' ? 'Reopen' : 'Mark resolved'}</button>
+						<div class="actions fb-actions">
+							<button class="btn small ghost" onclick={() => toggleReply(r)}>{r.status === 'resolved' ? 'Reopen' : 'Mark resolved'}</button>
 						</div>
 					</div>
 				{/each}
@@ -224,6 +224,24 @@
 {/if}
 
 <style>
+	/* Calm: the same thin edge all round, and a line on top only while something in it is still open. */
+	.card.feedback-card {
+		border-left: 1px solid var(--line);
+	}
+	.card.feedback-card:not(.resolved) {
+		border-top: 3px solid var(--amber);
+	}
+	.card.feedback-card.resolved {
+		border-left-color: var(--line);
+	}
+	.card.feedback-card .card-kind {
+		color: var(--muted);
+	}
+	.fb-actions {
+		gap: 6px;
+		align-items: center;
+		margin-top: 2px;
+	}
 	.from {
 		display: inline-flex;
 		align-items: center;
