@@ -46,25 +46,40 @@
 		return [{ label: 'Whole team', tags, title: `Adds ${names}` }];
 	}
 
-	// The meetings as edited here, from the saved note once per day (the page keys this component by day).
+	// The meetings as edited here, from the saved note (the page keys this component by day).
 	let meetings = $state<MeetingSection[]>(untrack(() => structuredClone(note?.meetings ?? [])));
 	const id = untrack(() => note?.id ?? `daily-${date}`);
+	/** The meetings as this editor and the vault last agreed on them: what was loaded, or last saved. */
+	let agreed = untrack(() => JSON.stringify(note?.meetings ?? []));
 
 	// Saved a moment after the last change; a day without meetings has no file.
-	let first = true;
+	let skip = true;
 	$effect(() => {
 		const snapshot = JSON.stringify(meetings);
-		if (first) {
-			first = false;
+		if (skip) {
+			skip = false;
 			return;
 		}
 		const timer = setTimeout(async () => {
 			const list = JSON.parse(snapshot) as MeetingSection[];
 			// A day without meetings (and nothing else in its note) has no file: the backend takes it away.
-			await attempt(() => api.saveDailyNote({ date, id, meetings: list }));
+			const saved = await attempt(() => api.saveDailyNote({ date, id, meetings: list }));
+			if (saved !== undefined) agreed = snapshot;
 			await refresh();
 		}, 700);
 		return () => clearTimeout(timer);
+	});
+
+	// The note changed somewhere else (Obsidian, a sync from another machine): it comes in, unless there is something
+	// typed here that isn't saved yet, which then wins and is saved over it.
+	$effect(() => {
+		const incoming = JSON.stringify(note?.meetings ?? []);
+		untrack(() => {
+			if (incoming === agreed || JSON.stringify(meetings) !== agreed) return;
+			agreed = incoming;
+			skip = true;
+			meetings = structuredClone(note?.meetings ?? []);
+		});
 	});
 
 	function now(): string {

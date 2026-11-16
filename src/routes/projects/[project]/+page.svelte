@@ -46,10 +46,20 @@
 	let editing = $state(false);
 	let draft = $state('');
 	let saving = $state(false);
+	/** The guide as it was when editing began: when the saved one moves on (a Portflow or GitHub sync brought a new
+	 *  version), the editor says so rather than quietly saving over it. */
+	let base = $state('');
+	const movedOn = $derived(editing && project.readme !== base);
 
 	function edit() {
 		draft = project.readme;
+		base = project.readme;
 		editing = true;
+	}
+
+	function loadNewer() {
+		draft = project.readme;
+		base = project.readme;
 	}
 
 	async function save() {
@@ -119,6 +129,13 @@
 			</p>
 		{/if}
 		{#if editing}
+			{#if movedOn}
+				<div class="notice info guide-moved">
+					<span>The reading guide changed while you were editing it{linked ? ' (the collection’s description in Portflow)' : ''}.</span>
+					<button class="link accent" onclick={loadNewer}>Load the new version</button>
+					<button class="link" onclick={() => (base = project.readme)}>Keep mine</button>
+				</div>
+			{/if}
 			<MarkdownEditor
 				bind:value={draft}
 				variant="doc"
@@ -188,5 +205,11 @@
 	.guide-missing span {
 		flex: 1;
 		min-width: 220px;
+	}
+	.guide-moved {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px 12px;
+		align-items: center;
 	}
 </style>
