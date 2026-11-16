@@ -4,6 +4,7 @@
 	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FileText from '@lucide/svelte/icons/file-text';
+	import FlaskConical from '@lucide/svelte/icons/flask-conical';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
 	import TextCursorInput from '@lucide/svelte/icons/text-cursor-input';
@@ -12,6 +13,7 @@
 	import { page } from '$app/state';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import DocSide from '$lib/components/DocSide.svelte';
+	import DotPlanModal from '$lib/components/DotPlanModal.svelte';
 	import EvidenceDescription from '$lib/components/EvidenceDescription.svelte';
 	import FileImage from '$lib/components/FileImage.svelte';
 	import Markdown from '$lib/components/Markdown.svelte';
@@ -78,9 +80,11 @@
 				html = theirHtml;
 				saveState = 'saved';
 				touched = false;
+				void readDotTable(theirs);
 			} else if (!dirty && saveState === 'saved' && Date.now() - lastSaved > 1500 && theirs !== body) {
 				body = theirs;
 				html = theirHtml;
+				void readDotTable(theirs);
 			}
 		});
 	});
@@ -105,8 +109,32 @@
 		saveTimer = setTimeout(flush, 800);
 		clearTimeout(renderTimer);
 		renderTimer = setTimeout(async () => {
-			html = (await attempt(() => api.renderMarkdown(body))) ?? html;
+			const text = body;
+			html = (await attempt(() => api.renderDocument(text))) ?? html;
+			await readDotTable(text);
 		}, 250);
+	}
+
+	// ---- research methods (the DOT framework) --------------------------------------------------
+	// Kept in the document's frontmatter, chosen in their own window; `!dotmethod` on a line of its own shows them as a table,
+	// drawn by the backend for the reading view and handed to the editor for live preview.
+
+	let dotTable = $state<string | null>(null);
+	let dotCount = $state(0);
+	let planningMethods = $state(false);
+
+	async function readDotTable(text: string) {
+		const table = await attempt(() => api.dotTable(text));
+		if (!table) return;
+		dotTable = table.html;
+		dotCount = table.count;
+	}
+
+	/** The methods were changed in their window: the text now holds them, and is saved like typing. */
+	function methodsChanged(next: string) {
+		if (next === body) return;
+		body = next;
+		edited();
 	}
 
 	onDestroy(() => {
@@ -523,6 +551,14 @@
 						<button class:on={mode === m.id} aria-pressed={mode === m.id} onclick={() => setMode(m.id)}><m.icon size={14} />{m.label}</button>
 					{/each}
 				</div>
+				<button
+					class="btn ghost small"
+					onclick={() => (planningMethods = true)}
+					title="The research methods this document uses (DOT framework); write !dotmethod on a line of its own to show them as a table"
+				>
+					<FlaskConical size={14} />
+					Research methods{#if dotCount}<span class="chip plain" style="padding:0 7px;margin-left:2px">{dotCount}</span>{/if}
+				</button>
 			</div>
 			{#if mode === 'reading'}
 				<div class="doc-view">
@@ -541,6 +577,7 @@
 					{marks}
 					onmark={showFeedback}
 					oninput={edited}
+					{dotTable}
 				/>
 			{/if}
 		{:else if doc.kind === 'image'}
@@ -572,6 +609,10 @@
 <SelectionComment root={docArea} oncomment={commentOn} />
 <DocSide bind:this={side} {project} {doc} {provenance} {draft} prompts={data.prompts} {threads} bind:thread={workThread} {threadTitle} bind:pending {lost} {here} onlocate={showPassage} />
 </div>
+
+{#if planningMethods}
+	<DotPlanModal {body} onsave={methodsChanged} onclose={() => (planningMethods = false)} />
+{/if}
 
 {#if renaming}
 	<Modal title="Rename the deliverable" onclose={() => (renaming = false)}>

@@ -17,7 +17,7 @@ use crate::error::{Error, Result};
 use crate::models::{Bump, Delivered, DeliverableSummary, DeliverableView, PublishChoices};
 use crate::posts::{self, AddOptions};
 use crate::provenance::{self, Origin};
-use crate::{feedback, frontmatter, ids, markdown, projects, prompts, uploads};
+use crate::{feedback, ids, markdown, projects, prompts, uploads};
 
 // ---- paths and versions -----------------------------------------------------------------------------
 
@@ -357,7 +357,7 @@ pub fn get(conn: &Connection, project: &str, path: &str) -> Result<DeliverableVi
         });
     };
 
-    let html = body.as_ref().map(|text| markdown::render(&frontmatter::parse(text).map_or_else(|| text.clone(), |p| p.body)));
+    let html = body.as_deref().map(markdown::render_document);
     let (evidence, attachments) = evidence_of(conn, project, &base)?;
     Ok(DeliverableView {
         path: path.to_string(),

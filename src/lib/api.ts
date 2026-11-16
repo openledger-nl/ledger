@@ -6,6 +6,8 @@ import type {
 	ProjectMeta,
 	LabelConfirmation,
 	DeliverableMeta,
+	DotMethod,
+	PlannedMethod,
 	PostKind,
 	EpistemicLabel,
 	ProjectPerson,
@@ -88,6 +90,14 @@ async function callRaw<T>(command: string, body: Uint8Array, headers: Record<str
 
 export const api = {
 	renderMarkdown: (body: string) => call<string>('render_markdown', { body }),
+	/** A whole document: its frontmatter left out, `!dotmethod` shown as its research methods. */
+	renderDocument: (body: string) => call<string>('render_document', { body }),
+	dotMethods: () => call<DotMethod[]>('dot_methods'),
+	dotPlan: (body: string) => call<PlannedMethod[]>('dot_plan', { body }),
+	/** The table `!dotmethod` shows in a document, and how many methods it holds. */
+	dotTable: (body: string) => call<{ html: string; count: number }>('dot_table', { body }),
+	/** The document's text with `plan` as its research methods (not saved: the page saves it as it saves typing). */
+	setDotPlan: (body: string, plan: PlannedMethod[]) => call<string>('set_dot_plan', { body, plan }),
 	/** What a [[link]] in this project's markdown can point at: its threads, deliverables and feedback. */
 	listLinks: (project: string) => call<LinkTarget[]>('list_links', { project }),
 	search: (query: string) => call<SearchHit[]>('search', { query }),

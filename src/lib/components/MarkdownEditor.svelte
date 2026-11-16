@@ -5,7 +5,7 @@
 	import type { Mark } from '$lib/anchors';
 	import type { EvidenceMention } from '$lib/types';
 	import { projectLinks } from '$lib/links.svelte';
-	import { markdownEditor, refreshLinks, revealMark, setSourceMode, showMarks, type MentionOption } from '$lib/markdownEditor';
+	import { markdownEditor, refreshLinks, revealMark, setSourceMode, showDotTable, showMarks, type MentionOption } from '$lib/markdownEditor';
 	import { imageLoader, type ImageBase } from '$lib/vaultImages';
 
 	/**
@@ -31,7 +31,8 @@
 		marks,
 		onmark,
 		mentions,
-		people
+		people,
+		dotTable = null
 	}: {
 		value?: string;
 		placeholder?: string;
@@ -60,6 +61,8 @@
 		mentions?: EvidenceMention[];
 		/** Or the people `@` offers (a meeting's), each written as `[@Name](person:<tag>)`. */
 		people?: MentionOption[];
+		/** In a document with research methods (DOT): the table `!dotmethod` is drawn as. Without it, `!dotmethod` is text. */
+		dotTable?: string | null;
 	} = $props();
 
 	// [[links]] point at the threads, deliverables and feedback of the project the window is in (none outside a project).
@@ -102,6 +105,7 @@
 		});
 		view = new EditorView({ parent: host, state: EditorState.create({ doc: value, extensions }) });
 		pushMarks(marks ?? []);
+		showDotTable(view, dotTable);
 		if (autofocus || focusWhenReady) focus(autofocus);
 		return () => {
 			view?.destroy();
@@ -119,6 +123,12 @@
 		view.setState(EditorState.create({ doc: next, selection: { anchor: head }, extensions }));
 		setSourceMode(view, untrack(() => source));
 		pushMarks(untrack(() => marks) ?? []);
+		showDotTable(view, untrack(() => dotTable));
+	});
+
+	$effect(() => {
+		const table = dotTable;
+		if (view) showDotTable(view, table);
 	});
 
 	$effect(() => pushMarks(marks ?? []));

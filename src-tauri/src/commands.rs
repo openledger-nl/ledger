@@ -21,11 +21,41 @@ use crate::screenshot::{self, Region, ScreenshotSettings};
 use crate::settings::{self, SyncConfig, SyncEnv};
 use crate::state::App;
 use crate::syncer::SyncStatus;
-use crate::{activity, board, semesters, deliverables, feedback, links, markdown, posts, projects, prompts, provenance, search, stories, templates, threads, uploads};
+use crate::{activity, board, semesters, deliverables, dot, feedback, links, markdown, posts, projects, prompts, provenance, search, stories, templates, threads, uploads};
 
 #[tauri::command]
 pub fn render_markdown(body: String) -> String {
     markdown::render(&body)
+}
+
+/// A whole document as the deliverable page shows it: without its frontmatter, `!dotmethod` as its research methods.
+#[tauri::command]
+pub fn render_document(body: String) -> String {
+    markdown::render_document(&body)
+}
+
+/// The cards of the DOT framework's research methods.
+#[tauri::command]
+pub fn dot_methods() -> Vec<dot::DotMethod> {
+    dot::CATALOG.to_vec()
+}
+
+/// The research methods a document's frontmatter plans.
+#[tauri::command]
+pub fn dot_plan(body: String) -> Vec<dot::PlannedMethod> {
+    dot::plan_in(&body)
+}
+
+/// The table `!dotmethod` shows in a document, and how many methods it holds.
+#[tauri::command]
+pub fn dot_table(body: String) -> dot::DotTable {
+    dot::table_of(&body)
+}
+
+/// The document's text with `plan` as its research methods; the page saves it as it saves typing.
+#[tauri::command]
+pub fn set_dot_plan(body: String, plan: Vec<dot::PlannedMethod>) -> Result<String> {
+    dot::with_plan(&body, &plan)
 }
 
 /// What a `[[link]]` in this project's markdown can point at.

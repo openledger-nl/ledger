@@ -1424,3 +1424,25 @@ export interface LabelConfirmation {
 	reason: string;
 	at: string;
 }
+
+// ---- the DOT framework (research methods) ----------------------------------------------------
+
+/** The five research strategies of the DOT framework, and the Joker's "extra". */
+export type DotStrategy = 'library' | 'field' | 'lab' | 'showroom' | 'workshop' | 'extra';
+
+/** A card of the ICT Research Methods pack. */
+export interface DotMethod {
+	name: string;
+	strategy: DotStrategy;
+	/** The card's own "Why?". */
+	why: string;
+}
+
+/** A research method chosen for a document, kept in its frontmatter (`dot:`). */
+export interface PlannedMethod {
+	method: string;
+	/** The card's strategy, or the one given to a method of your own. */
+	strategy: DotStrategy | null;
+	/** Why this document uses it, in your words. */
+	why: string;
+}

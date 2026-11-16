@@ -50,6 +50,15 @@
 	--mmm-handyman: #e5ac23;
 	--mmm-man-made: #e3d6a4;
 	--mmm-ink: #010101; /* the labels' black */
+
+	/* The research strategies of the DOT framework (ictresearchmethods.nl), as chips on dark ink. Fixed, never themed. */
+	--dot-library: #9cc3ee;
+	--dot-field: #a6d9a8;
+	--dot-lab: #f0a3a3;
+	--dot-showroom: #cdb0ea;
+	--dot-workshop: #f2d07e;
+	--dot-extra: var(--brand-rule);
+	--dot-ink: #14161d;
 }
 
 /* ---------- themes ----------
@@ -453,6 +462,14 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 .md table { border-collapse: collapse; margin: 0 0 0.7em; }
 .md th, .md td { border: 1px solid var(--line); padding: 5px 10px; }
 .md th { background: var(--card-2); text-align: left; }
+.md table.dot-plan td:first-child { white-space: nowrap; }
+.md .dot-empty { color: var(--muted); font-style: italic; }
+.dot-strategy { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; color: var(--dot-ink); background: var(--dot-extra); }
+.dot-strategy.dot-library { background: var(--dot-library); }
+.dot-strategy.dot-field { background: var(--dot-field); }
+.dot-strategy.dot-lab { background: var(--dot-lab); }
+.dot-strategy.dot-showroom { background: var(--dot-showroom); }
+.dot-strategy.dot-workshop { background: var(--dot-workshop); }
 .md hr { border: 0; border-top: 1px solid var(--line); margin: 1em 0; }
 .md img { max-width: 100%; border-radius: 6px; }
 /* [[links]] to a thread, a deliverable or feedback (Markdown.svelte); one that points at nothing is drawn faint and dashed. */

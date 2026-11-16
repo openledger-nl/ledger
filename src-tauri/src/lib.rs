@@ -8,6 +8,7 @@ mod db;
 mod daily;
 mod deliverable_facts;
 mod deliverables;
+mod dot;
 mod devupdates;
 mod encrypted_remote;
 mod error;
@@ -191,6 +192,11 @@ pub fn run() {
         .on_window_event(claude_code::on_window_event)
         .invoke_handler(tauri::generate_handler![
             commands::render_markdown,
+            commands::render_document,
+            commands::dot_methods,
+            commands::dot_plan,
+            commands::dot_table,
+            commands::set_dot_plan,
             commands::list_links,
             commands::search,
             commands::list_activity,

@@ -526,6 +526,91 @@ const tables = StateField.define<{ focused: boolean; decorations: DecorationSet 
 	provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
 });
 
+// ---- !dotmethod ------------------------------------------------------------------------------------
+// In a document whose host hands over its research methods table (`showDotTable`), a paragraph saying only `!dotmethod`
+// is drawn as that table in live preview, except where the cursor is, as tables are. The table is the backend's, so it
+// reads as the rendered page does; typing `!` at the start of a line offers it.
+
+const DOT_COMMAND = '!dotmethod';
+const setDotTable = StateEffect.define<string | null>();
+
+class DotTable extends WidgetType {
+	constructor(readonly html: string) {
+		super();
+	}
+	eq(other: DotTable) {
+		return other.html === this.html;
+	}
+	toDOM() {
+		const wrap = document.createElement('div');
+		wrap.className = 'md cm-md-table-widget';
+		wrap.innerHTML = this.html; // made safe by the backend, which escapes everything typed in it
+		return wrap;
+	}
+	ignoreEvent() {
+		return false;
+	}
+}
+
+function dotDecorations(state: EditorState, html: string | null, focused: boolean): DecorationSet {
+	if (html === null || state.facet(inSource)) return Decoration.none;
+	const found: Range<Decoration>[] = [];
+	const ranges = focused ? state.selection.ranges : [];
+	syntaxTree(state).iterate({
+		enter: (node) => {
+			if (node.name === 'Paragraph') {
+				const from = state.doc.lineAt(node.from).from;
+				const to = state.doc.lineAt(node.to).to;
+				const said = state.sliceDoc(node.from, node.to).trim().toLowerCase() === DOT_COMMAND;
+				if (said && !ranges.some((r) => r.from <= to && r.to >= from)) {
+					found.push(Decoration.replace({ widget: new DotTable(html), block: true }).range(from, to));
+				}
+				return false;
+			}
+			return node.name === 'Document';
+		}
+	});
+	return Decoration.set(found);
+}
+
+const dotTables = StateField.define<{ html: string | null; focused: boolean; decorations: DecorationSet }>({
+	create: () => ({ html: null, focused: false, decorations: Decoration.none }),
+	update(value, tr) {
+		let { html, focused } = value;
+		for (const effect of tr.effects) {
+			if (effect.is(setDotTable)) html = effect.value;
+			if (effect.is(focusChanged)) focused = effect.value;
+		}
+		const stale =
+			html !== value.html ||
+			focused !== value.focused ||
+			tr.docChanged ||
+			tr.selection ||
+			tr.startState.facet(inSource) !== tr.state.facet(inSource) ||
+			syntaxTree(tr.startState) !== syntaxTree(tr.state);
+		return stale ? { html, focused, decorations: dotDecorations(tr.state, html, focused) } : value;
+	},
+	provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
+});
+
+/** The research methods table `!dotmethod` is drawn as; `null` leaves `!dotmethod` as text and doesn't offer it. */
+export function showDotTable(view: EditorView, html: string | null) {
+	if (view.state.field(dotTables).html !== html) view.dispatch({ effects: setDotTable.of(html) });
+}
+
+/** `!` at the start of a line, in a document with research methods: `!dotmethod`. */
+function dotCompletions(context: CompletionContext): CompletionResult | null {
+	if (context.state.field(dotTables).html === null) return null;
+	const typed = context.matchBefore(/!\w*$/);
+	if (!typed || notLinkable(context.state, typed.from)) return null;
+	const line = context.state.doc.lineAt(typed.from);
+	if (context.state.sliceDoc(line.from, typed.from).trim()) return null;
+	return {
+		from: typed.from,
+		options: [{ label: DOT_COMMAND, detail: 'Research methods (DOT) as a table', type: 'keyword' }]
+	};
+}
+
 // ---- frontmatter -----------------------------------------------------------------------------------
 // The YAML block at the top of a document (its research methods, an id) is folded into one quiet line in live preview,
 // except where the cursor is: as markdown it would read as a rule and a heading.
@@ -912,7 +997,7 @@ export function markdownEditor(options: MarkdownEditorOptions): Extension {
 	};
 	return [
 		// First, so that while its list is open, Enter picks from it and Escape closes it, before the keys below get them.
-		autocompletion({ override: [wikiCompletions, mentionCompletions], icons: false, maxRenderedOptions: 60 }),
+		autocompletion({ override: [wikiCompletions, mentionCompletions, dotCompletions], icons: false, maxRenderedOptions: 60 }),
 		// Ctrl/⌘+Enter always submits rather than adding a line; without a handler here, a modal's window listener saves.
 		Prec.highest(
 			keymap.of([
@@ -936,6 +1021,7 @@ export function markdownEditor(options: MarkdownEditorOptions): Extension {
 		wikiLinks,
 		wikiBrackets,
 		tables,
+		dotTables,
 		frontmatterFold,
 		markField,
 		EditorView.domEventHandlers({
