@@ -143,48 +143,23 @@
 	}
 
 	// ---- the thread of this page ---------------------------------------------------------------
-	// One thread for everything done here: the note a publish leaves, new feedback, and the prompts made from feedback. It is
-	// chosen in the side window (Feedback) and kept for this deliverable. Opened from a thread (`?thread=<slug>`), it is that
-	// thread. Otherwise: where the last version went (or the prompt that asked for the file was written), or else the
-	// project's first thread.
+	// One thread for everything done here: the note a publish leaves, new feedback, and the prompts made from feedback. It
+	// isn't chosen: it is the thread the deliverable belongs to. That is its evidence item's thread, else where its last
+	// version went, else the thread of the prompt that asked for it, else the thread it was opened from (`?thread=<slug>`),
+	// else the project's first thread.
 
 	let workThread = $state('');
-	let threadKey = '';
 
 	const cameFrom = $derived(page.url.searchParams.get('thread'));
 	$effect(() => {
-		const key = `ledger-doc-thread:${project}:${doc.basePath}`;
 		const options = threads.map((t) => t.slug);
-		const fallback = [provenance.defaultThread, doc.prompts[0]?.threadSlug].find((slug) => slug && options.includes(slug)) ?? options[0] ?? '';
-		const from = cameFrom;
-		untrack(() => {
-			if (key !== threadKey) {
-				threadKey = key;
-				try {
-					workThread = from && options.includes(from) ? from : (localStorage.getItem(key) ?? '');
-				} catch {
-					workThread = from ?? '';
-				}
-			}
-			if (!options.includes(workThread)) workThread = fallback;
-		});
-	});
-
-	// Remembered as soon as it is chosen.
-	$effect(() => {
-		const slug = workThread;
-		untrack(() => {
-			if (!slug || !threadKey) return;
-			try {
-				localStorage.setItem(threadKey, slug);
-			} catch {
-				// Not persisted.
-			}
-		});
+		workThread =
+			[evidence?.thread, provenance.defaultThread, doc.prompts[0]?.threadSlug, cameFrom].find((slug) => slug && options.includes(slug)) ??
+			options[0] ??
+			'';
 	});
 
 	const threadTitle = $derived(threads.find((t) => t.slug === workThread)?.title ?? '');
-	const threadOptions = $derived(threads.map((t) => ({ value: t.slug, label: t.title })));
 
 	// ---- the evidence item it is -----------------------------------------------------------------
 	// A deliverable that is a Portflow evidence item shows the item's description (What? / Goal? / Why it contributes?)
@@ -597,12 +572,6 @@
 			records who made the change{#if workThread}, and leaves a note in <code>{threadTitle}</code>{/if}.
 			{doc.versions.length ? `Latest so far: v${doc.versions.at(-1)}.` : 'This is the first version.'}
 		</p>
-		{#if threadOptions.length > 1}
-			<div class="field">
-				<span>The note goes in the thread</span>
-				<Dropdown bind:value={workThread} options={threadOptions} label="Thread for the note" full />
-			</div>
-		{/if}
 		<label class="check"><input type="radio" bind:group={bump} value="minor" /> Minor — v{preview.minor}</label>
 		<label class="check"><input type="radio" bind:group={bump} value="major" /> Major — v{preview.major}</label>
 		<label class="check">

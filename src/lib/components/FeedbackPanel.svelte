@@ -10,7 +10,6 @@
 	import { listOrder } from '$lib/order.svelte';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
 	import type { Deliverable, Feedback, FeedbackFrom, Prompt, ThreadSummary } from '$lib/types';
-	import Dropdown from './Dropdown.svelte';
 	import PersonPicker from './PersonPicker.svelte';
 	import FeedbackCard from './FeedbackCard.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
@@ -18,7 +17,7 @@
 	import PromptModal from './PromptModal.svelte';
 
 	// What was said about the file: the box to say more, and the list, by thread and, within each, by version (the version
-	// each piece was given on). New feedback goes to the page's thread (`thread`, chosen at the top of the page), on the
+	// each piece was given on). New feedback goes to the deliverable's own thread (`thread`, which the page works out), on the
 	// whole document or, with `pending`, on the passage selected in it. Open feedback can be selected, and the selected ones made
 	// into a prompt, or added to one (`prompts` are the ones about this file). `lost`: the feedback whose passage is no longer
 	// in the text; `onlocate` shows a passage in the document; `here` says whether a piece belongs to what the page shows.
@@ -57,7 +56,8 @@
 	/** Who it is from; left empty, it is yours. */
 	const nobody = (): FeedbackFrom => ({ name: null, portflowUser: null, role: null, given: null });
 	let from = $state<FeedbackFrom>(nobody());
-	const threadOptions = $derived(threads.map((t) => ({ value: t.slug, label: t.title })));
+	/** A Portflow evidence item: its feedback is given in Portflow and comes in with the sync; sending it there isn't built. */
+	const inPortflow = $derived(!!doc.evidence);
 	let editor: MarkdownEditor | undefined = $state();
 
 	// A passage was selected in the document: the box is where to go next.
@@ -146,7 +146,7 @@
 	}
 </script>
 
-{#if thread && !pending}
+{#if thread && !pending && !inPortflow}
 	<span class="hint">Select text in the document to comment on just that passage.</span>
 {/if}
 <div class="field">
@@ -157,6 +157,11 @@
 		<span class="hint">
 			Create a thread first — feedback is written in one. <button class="link accent" onclick={() => newThreadFlow(project)}>Create one</button>
 		</span>
+	{:else if inPortflow}
+		<span class="hint">Feedback on a Portflow item is given in Portflow; it comes in with the sync.</span>
+		<div class="row-end">
+			<button class="btn small primary" disabled title="Sending feedback to Portflow isn't there yet">Add feedback</button>
+		</div>
 	{:else}
 		{#if pending}
 			<div class="quote passage pending">
@@ -175,13 +180,7 @@
 			onsubmit={() => text.trim() && add()}
 		/>
 		<PersonPicker bind:value={from} {project} />
-		<div class="row-end fp-actions">
-			{#if threadOptions.length > 1}
-				<div class="fp-thread" title="Where new feedback, the notes on publishing and the prompts made from feedback go">
-					<span class="hint">Thread</span>
-					<Dropdown bind:value={thread} options={threadOptions} label="Thread for new feedback" />
-				</div>
-			{/if}
+		<div class="row-end">
 			<button class="btn small primary" onclick={add} disabled={busy || !text.trim()}>Add feedback</button>
 		</div>
 	{/if}
@@ -253,15 +252,4 @@
 	/>
 {/if}
 
-<style>
-	.fp-actions {
-		align-items: center;
-	}
-	.fp-thread {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin-right: auto;
-		min-width: 0;
-	}
-</style>
+
