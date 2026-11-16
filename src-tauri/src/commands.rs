@@ -448,6 +448,13 @@ pub fn read_project_file(app: State<App>, project: String, path: String) -> Resu
     Ok(tauri::ipc::Response::new(bytes))
 }
 
+/// A picture in a project's folder, as the window can show it (a JPEG XL one as PNG, see `images`).
+#[tauri::command]
+pub fn read_project_image(app: State<App>, project: String, path: String) -> Result<tauri::ipc::Response> {
+    let file = app.read(|_, root| project_path(root, &project, &path))?;
+    Ok(tauri::ipc::Response::new(crate::images::displayable_file(&file)?))
+}
+
 /// Opens a file in a project's folder with the system's default program, or shows it in the file manager.
 #[tauri::command]
 pub fn open_project_file(app: AppHandle, project: String, path: String, reveal: bool) -> Result<()> {

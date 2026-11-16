@@ -155,10 +155,14 @@ export function mimeOf(name: string): string {
 		svg: 'image/svg+xml',
 		bmp: 'image/bmp',
 		avif: 'image/avif',
+		jxl: 'image/jxl',
 		pdf: 'application/pdf'
 	};
 	return types[ext] ?? 'application/octet-stream';
 }
+
+/** The type of a picture as the backend hands it to the window: a JPEG XL one comes decoded, as PNG (`images.rs`). */
+export const shownMimeOf = (name: string) => (/\.jxl$/i.test(name) ? 'image/png' : mimeOf(name));
 
 export function formatSize(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;

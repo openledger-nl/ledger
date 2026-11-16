@@ -40,6 +40,82 @@ zeroize = "1.9.1"
 hmac = "0.13"
 # Installing new releases from inside the app (`updates.rs`). Registered in release builds only, see `lib.rs`.
 tauri-plugin-updater = "2"
+# JPEG XL pictures, decoded for display (`images.rs`): the web view on Linux has no JPEG XL decoder.
+jxl-oxide = { version = "0.12.6", features = ["image"] }
+
+# The picture decoders are optimised in the development build too (`tauri dev`): unoptimised, decoding one JPEG XL
+# picture takes seconds (`images.rs`). Only these crates; the rest of the build stays as fast to compile as it was.
+[profile.dev.package."jxl-oxide"]
+opt-level = 3
+
+[profile.dev.package."jxl-oxide-common"]
+opt-level = 3
+
+[profile.dev.package."jxl-bitstream"]
+opt-level = 3
+
+[profile.dev.package."jxl-coding"]
+opt-level = 3
+
+[profile.dev.package."jxl-color"]
+opt-level = 3
+
+[profile.dev.package."jxl-frame"]
+opt-level = 3
+
+[profile.dev.package."jxl-grid"]
+opt-level = 3
+
+[profile.dev.package."jxl-image"]
+opt-level = 3
+
+[profile.dev.package."jxl-jbr"]
+opt-level = 3
+
+[profile.dev.package."jxl-modular"]
+opt-level = 3
+
+[profile.dev.package."jxl-render"]
+opt-level = 3
+
+[profile.dev.package."jxl-threadpool"]
+opt-level = 3
+
+[profile.dev.package."jxl-vardct"]
+opt-level = 3
+
+[profile.dev.package."brotli-decompressor"]
+opt-level = 3
+
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
+
+[profile.dev.package.flate2]
+opt-level = 3
+
+[profile.dev.package."miniz_oxide"]
+opt-level = 3
+
+[profile.dev.package.crc32fast]
+opt-level = 3
+
+[profile.dev.package.adler2]
+opt-level = 3
+
+[profile.dev.package."simd-adler32"]
+opt-level = 3
+
+[profile.dev.package.moxcms]
+opt-level = 3
+
+[profile.dev.package.pxfm]
+opt-level = 3
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

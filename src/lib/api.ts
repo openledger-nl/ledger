@@ -205,6 +205,8 @@ export const api = {
 	deleteUpload: (project: string, thread: string, id: string) => call<void>('delete_upload', { project, thread, id }),
 	/** A file in the project's folder ("attachments/…", "deliverables/…"), as raw bytes. */
 	readProjectFile: (project: string, path: string) => call<ArrayBuffer>('read_project_file', { project, path }),
+	/** A picture in a project's folder as the window can show it: a JPEG XL one as PNG (see `shownMimeOf`). */
+	readProjectImage: (project: string, path: string) => call<ArrayBuffer>('read_project_image', { project, path }),
 	openProjectFile: (project: string, path: string, reveal = false) => call<void>('open_project_file', { project, path, reveal }),
 
 	// deliverables
