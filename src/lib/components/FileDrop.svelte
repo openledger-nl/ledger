@@ -11,6 +11,7 @@
 	import { api } from '$lib/api';
 	import { formatSize, newProjectFlow, threadUrl } from '$lib/actions';
 	import { newest, plural } from '$lib/format';
+	import { logError } from '$lib/log.svelte';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
 	import type { ProjectSummary, Upload } from '$lib/types';
 	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
@@ -51,16 +52,45 @@
 	}
 
 	function drop(e: DragEvent) {
-		if (!outside(e)) return;
+		if (!outside(e)) {
+			inside = false;
+			return;
+		}
 		e.preventDefault();
 		e.stopPropagation();
 		clearTimeout(timer);
 		hovering = false;
 		const dropped = droppedOf(e.dataTransfer);
-		if (!dropped) return;
+		if (!dropped) {
+			// Never silently: say so, and log what the system did hand over, so it can be put right.
+			const types = Array.from(e.dataTransfer?.types ?? []).join(', ') || 'nothing';
+			logError('file drop', `A drop gave no file to save (it carried: ${types})`);
+			toast('Ledger got no file from that drop. Try again, or use “Upload files…” in a thread.', true);
+			return;
+		}
 		if (here) void save(here.project, here.thread, here.title, dropped, false);
 		else open(dropped);
 	}
+
+	// The listeners sit on the window in the capture phase, so they hear a drag before anything on the page does (an
+	// editor would paste a dropped file's text). A drag that starts in Ledger sets `inside` until it ends or drops.
+	$effect(() => {
+		const start = () => (inside = true);
+		const end = () => (inside = false);
+		const options = { capture: true };
+		window.addEventListener('dragstart', start, options);
+		window.addEventListener('dragend', end, options);
+		window.addEventListener('dragenter', over, options);
+		window.addEventListener('dragover', over, options);
+		window.addEventListener('drop', drop, options);
+		return () => {
+			window.removeEventListener('dragstart', start, options);
+			window.removeEventListener('dragend', end, options);
+			window.removeEventListener('dragenter', over, options);
+			window.removeEventListener('dragover', over, options);
+			window.removeEventListener('drop', drop, options);
+		};
+	});
 
 	/** What was dropped: the files' paths when the system gives them (file:// URLs; Ledger copies the files itself, so a
 	 *  large one is never read into the page), or else the files' contents. `null` when it held no file at all. */
@@ -162,14 +192,6 @@
 		if (await save(project, slug, name, pending, true)) pending = null;
 	}
 </script>
-
-<svelte:window
-	ondragstartcapture={() => (inside = true)}
-	ondragendcapture={() => (inside = false)}
-	ondragovercapture={over}
-	ondragentercapture={over}
-	ondropcapture={drop}
-/>
 
 {#if hovering}
 	<div class="file-drop" aria-hidden="true">
