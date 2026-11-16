@@ -3,6 +3,7 @@ import type { Anchor } from './anchors';
 import { capture, captureDebug, logError } from './log.svelte';
 import type {
 	ActivityEvent,
+	ProjectMeta,
 	Semester,
 	SemesterDraft,
 	Board,
@@ -82,6 +83,10 @@ export const api = {
 	getProject: (slug: string) => call<ProjectView>('get_project', { slug }),
 	saveReadme: (slug: string, text: string) => call<ProjectView>('save_readme', { slug, text }),
 	deleteProject: (slug: string) => call<void>('delete_project', { slug }),
+	/** A project's kind, goal and end (in its project.md); null while it has none. */
+	getProjectMeta: (slug: string) => call<ProjectMeta | null>('get_project_meta', { slug }),
+	listProjectMeta: () => call<ProjectMeta[]>('list_project_meta'),
+	saveProjectMeta: (meta: ProjectMeta) => call<ProjectMeta>('save_project_meta', { slug: meta.slug, meta }),
 
 	// threads
 	createThread: (project: string, title: string) => call<ThreadSummary>('create_thread', { project, title }),

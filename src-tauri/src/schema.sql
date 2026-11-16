@@ -17,7 +17,18 @@ CREATE TABLE projects (
     readme            TEXT NOT NULL DEFAULT '',
     backlog_column_id TEXT NOT NULL DEFAULT '',
     created_at        TEXT NOT NULL,
-    updated_at        TEXT NOT NULL
+    updated_at        TEXT NOT NULL,
+    -- What the project is (see project_facts.rs): its kind ('study', 'hobby' or 'company') and goal, when it ends
+    -- ('semester', a calendar day, or NULL for no end), the semester it runs in, the AI-use label the work is meant to
+    -- get, a study project's main question and a company project's client. A project without a kind and a goal has
+    -- none of these yet.
+    kind              TEXT,
+    goal              TEXT,
+    project_end       TEXT,
+    semester          TEXT,
+    intended_mmm      TEXT,
+    main_question     TEXT,
+    client            TEXT
 );
 
 CREATE TABLE project_columns (

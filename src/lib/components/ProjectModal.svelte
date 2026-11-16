@@ -5,7 +5,6 @@
 	import { api } from '$lib/api';
 	import { projectUrl } from '$lib/actions';
 	import { mmmInfo } from '$lib/mmm';
-	import { mockApi } from '$lib/mock/api';
 	import { currentSemester, dayLabel, nearestSemester, today, workDays } from '$lib/semesters';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
 	import { daysLeft, daysLeftText, endDay, PROJECT_KINDS } from '$lib/v1';
@@ -72,7 +71,7 @@
 			const renamed = project.slug;
 			await attempt(() => api.renameProject(renamed, name.trim()));
 		}
-		if (slug) await attempt(() => mockApi.saveProjectMeta({ ...meta, slug, tag: slug }));
+		if (slug) await attempt(() => api.saveProjectMeta({ ...meta, slug, tag: slug }));
 		busy = false;
 		if (!slug) return;
 		onclose();

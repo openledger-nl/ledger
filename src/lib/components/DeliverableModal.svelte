@@ -40,7 +40,7 @@
 	$effect(() => {
 		const slug = project;
 		let stale = false;
-		Promise.all([mockApi.getProjectMeta(slug), api.listTemplates(slug).catch(() => []), api.listDeliverables(slug).catch(() => [])]).then(
+		Promise.all([api.getProjectMeta(slug), api.listTemplates(slug).catch(() => []), api.listDeliverables(slug).catch(() => [])]).then(
 			async ([m, t, existing]) => {
 				if (stale) return;
 				meta = m;

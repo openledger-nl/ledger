@@ -14,6 +14,7 @@ use crate::error::{Error, Result};
 use crate::github::GithubRemote;
 use crate::keystore::{self, EncryptionStatus, KeyStore};
 use crate::models::*;
+use crate::project_facts::{self, ProjectMeta};
 use crate::posts::AddOptions;
 use crate::screenshot::{self, Region, ScreenshotSettings};
 use crate::settings::{self, SyncConfig, SyncEnv};
@@ -90,6 +91,22 @@ pub fn get_project(app: State<App>, slug: String) -> Result<ProjectView> {
 #[tauri::command]
 pub fn save_readme(app: State<App>, slug: String, text: String) -> Result<ProjectView> {
     app.mutate(|c, _| projects::save_readme(c, &slug, &text))
+}
+
+/// A project's kind, goal and end; `None` while it has none.
+#[tauri::command]
+pub fn get_project_meta(app: State<App>, slug: String) -> Result<Option<ProjectMeta>> {
+    app.read(|c, _| project_facts::get(c, &slug))
+}
+
+#[tauri::command]
+pub fn list_project_meta(app: State<App>) -> Result<Vec<ProjectMeta>> {
+    app.read(|c, _| project_facts::list(c))
+}
+
+#[tauri::command]
+pub fn save_project_meta(app: State<App>, slug: String, meta: ProjectMeta) -> Result<ProjectMeta> {
+    app.mutate(|c, _| project_facts::save(c, &slug, &meta))
 }
 
 /// Deletes the project and its whole folder, attachments and non-markdown deliverables included.

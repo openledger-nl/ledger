@@ -19,6 +19,7 @@ mod markdown;
 mod models;
 mod onboarding;
 mod posts;
+mod project_facts;
 mod projects;
 mod prompts;
 mod provenance;
@@ -73,6 +74,8 @@ mod tests_devupdates;
 mod tests_onboarding;
 #[cfg(test)]
 mod tests_portflow;
+#[cfg(test)]
+mod tests_v1;
 #[cfg(test)]
 mod tests_provenance;
 #[cfg(test)]
@@ -175,6 +178,9 @@ pub fn run() {
             commands::rename_project,
             commands::get_project,
             commands::save_readme,
+            commands::get_project_meta,
+            commands::list_project_meta,
+            commands::save_project_meta,
             commands::delete_project,
             commands::create_thread,
             commands::rename_thread,

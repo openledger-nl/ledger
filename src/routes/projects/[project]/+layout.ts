@@ -1,5 +1,4 @@
 import { api } from '$lib/api';
-import { mockApi } from '$lib/mock/api';
 import { previews } from '$lib/mock/flag.svelte';
 import type { LayoutLoad } from './$types';
 
@@ -10,7 +9,7 @@ export const load: LayoutLoad = async ({ params }) => {
 		api.getProject(params.project),
 		api.listLinks(params.project),
 		// Preview: the v1 facts (kind, goal, end, intended label) come from the mock data for now.
-		previews.enabled ? mockApi.getProjectMeta(params.project) : Promise.resolve(null),
+		previews.enabled ? api.getProjectMeta(params.project) : Promise.resolve(null),
 		previews.enabled ? api.listSemesters() : Promise.resolve([])
 	]);
 	return { project, links, meta, semesters };

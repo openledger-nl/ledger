@@ -4,7 +4,7 @@
 //! ```text
 //! templates/<id>.md                              a vault-wide template
 //! semesters/<id>.md                              a semester and its sprints, and the Portflow section it is
-//! projects/<project>/project.md                  a project: name, board columns
+//! projects/<project>/project.md                  a project: name, board columns, its kind, goal and end
 //! projects/<project>/README.md                   the project's reading guide
 //! projects/<project>/threads/<thread>/thread.md  a thread
 //!                                    /posts/<id>.md       its posts
@@ -379,6 +379,7 @@ fn export_projects(conn: &Connection, files: &mut BTreeMap<String, String>) -> R
         if let Some(collections) = collections.remove(&slug) {
             frontmatter::set(&mut meta, "portflowCollections", Value::Mapping(collections));
         }
+        crate::project_facts::export(conn, &slug, &mut meta)?;
         files.insert(project_file(&slug), frontmatter::render(&meta, &description));
         files.insert(readme_file(&slug), readme);
     }
@@ -803,6 +804,7 @@ fn import_projects(conn: &Connection, source: &Source) -> Result<Vec<String>> {
                 )?;
             }
         }
+        crate::project_facts::import(conn, slug, &meta)?;
         if seen.is_empty() {
             board::seed_columns(conn, slug)?;
         } else {
