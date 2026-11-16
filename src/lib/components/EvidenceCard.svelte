@@ -1,21 +1,22 @@
 <script lang="ts">
-	// An evidence item in its thread: what is handed in to Portflow (one or more files, versioned together), the
-	// learning outcomes it counts for, and its versions. Version N in Portflow is vN.0 of every file in it. A version
-	// that came from Ledger opens here; one uploaded in Portflow is not copied, and opens in Portflow (in the browser).
+	// An evidence item in its thread's side window: what is handed in to Portflow (one or more files, versioned
+	// together), the learning outcomes it counts for, and its versions. Version N in Portflow is vN.0 of every file in it.
+	// Its name opens its deliverable, where its description is; a version uploaded in Portflow and not copied opens there.
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import { deliverableUrl } from '$lib/actions';
 	import { date, plural } from '$lib/format';
 	import { openInPortflow } from '$lib/portflow.svelte';
 	import type { Evidence } from '$lib/types';
-	import EvidenceDescription from './EvidenceDescription.svelte';
 	import Markdown from './Markdown.svelte';
 
-	let { evidence, onsaved }: { evidence: Evidence; onsaved?: (items: Evidence[]) => void } = $props();
+	let { evidence }: { evidence: Evidence } = $props();
 
 	let open = $state(false);
 	const latest = $derived(evidence.versions[0] ?? null);
 	const KIND: Record<string, string> = { file: 'files', free_text: 'text', url: 'link', video: 'video', lms_submission: 'Canvas submission', badge: 'badge' };
 	const fileName = (path: string) => path.split('/').pop() ?? path;
+	/** The deliverable it is in Ledger: its (first) live file. */
+	const live = $derived(evidence.files[0]?.path ?? null);
 	const open_ = (version: number | null) => openInPortflow(`“${evidence.name}”${version ? `, version ${version}` : ''}`);
 </script>
 
@@ -34,22 +35,19 @@
 {/snippet}
 
 <div class="card evidence-card">
+	{#if live}
+		<a class="ev-name" href={deliverableUrl(evidence.project, live)} title="Open the deliverable">{evidence.name}</a>
+	{:else}
+		<strong class="ev-name">{evidence.name}</strong>
+	{/if}
 	<div class="meta">
-		<span class="card-kind">Evidence</span>
-		<strong>{evidence.name}</strong>
 		{#if evidence.portflowId}<span class="badge accent">Portflow</span>{:else}<span class="badge draft">not in Portflow yet</span>{/if}
 		{#if latest}<span class="badge published">v{latest.number}</span>{/if}
 		<span class="hint">{KIND[evidence.kind] ?? evidence.kind}</span>
-		<span class="spacer-h"></span>
 		{#if evidence.feedbackCount}
-			<span class="hint">{plural(evidence.feedbackCount, 'piece', 'pieces')} of feedback{evidence.openFeedback ? `, ${evidence.openFeedback} open` : ''}</span>
-		{/if}
-		{#if evidence.portflowUrl}
-			<button class="btn small ghost" onclick={() => open_(null)}><ExternalLink size={13} />Open in Portflow</button>
+			<span class="hint">· {plural(evidence.feedbackCount, 'piece', 'pieces')} of feedback{evidence.openFeedback ? `, ${evidence.openFeedback} open` : ''}</span>
 		{/if}
 	</div>
-
-	<EvidenceDescription {evidence} {onsaved} />
 
 	{#if latest && latest.files.length}
 		{@render files(latest)}
@@ -64,6 +62,10 @@
 			Counts for:
 			{#each evidence.outcomes as o, i (o.id)}<a href="/epsilon">{o.name}</a>{i < evidence.outcomes.length - 1 ? ', ' : ''}{/each}
 		</div>
+	{/if}
+
+	{#if evidence.portflowUrl}
+		<button class="btn small ghost portflow" onclick={() => open_(null)}><ExternalLink size={13} />Open in Portflow</button>
 	{/if}
 
 	{#if evidence.versions.length}
@@ -109,7 +111,17 @@
 		padding-left: 12px;
 		border-left: 2px solid var(--line);
 	}
-	.link {
+	.link,
+	.portflow {
 		align-self: flex-start;
+	}
+	.ev-name {
+		font-weight: 700;
+		color: var(--ink);
+		text-decoration: none;
+	}
+	a.ev-name:hover {
+		color: var(--accent);
+		text-decoration: underline;
 	}
 </style>

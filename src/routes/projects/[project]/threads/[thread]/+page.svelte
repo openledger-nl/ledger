@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api, portflowApi } from '$lib/api';
-	import { projectUrl, threadUrl } from '$lib/actions';
+	import { baseName, deliverableUrl, liveDeliverable, projectUrl, threadUrl } from '$lib/actions';
 	import Composer from '$lib/components/Composer.svelte';
 	import EvidenceCard from '$lib/components/EvidenceCard.svelte';
 	import FeedbackCard from '$lib/components/FeedbackCard.svelte';
@@ -54,6 +54,30 @@
 		return () => (stale = true);
 	});
 	const evidenceNames = $derived(Object.fromEntries(evidence.map((e) => [e.slug, e.name])));
+
+	/**
+	 * The thread's other deliverables, for the side window beside the timeline: what its prompts ask for, what its
+	 * feedback is on and what was published into it, each by its live file with the versions seen here; an evidence
+	 * item's own files are shown with that item.
+	 */
+	const otherDeliverables = $derived.by(() => {
+		const ofEvidence = new Set(evidence.flatMap((e) => [...e.files.map((f) => f.path), ...e.versions.flatMap((v) => v.files.map((f) => f.path ?? ''))]));
+		const found = new Map<string, Set<string>>();
+		const add = (path: string, versions: string[] = []) => {
+			const seen = found.get(path) ?? new Set<string>();
+			versions.forEach((v) => seen.add(v));
+			found.set(path, seen);
+		};
+		for (const p of thread.prompts) for (const d of p.deliverables) add(d.path, d.versions);
+		for (const f of thread.feedback) if (f.deliverablePath) add(liveDeliverable(f.deliverablePath, f.deliverableVersion));
+		for (const p of posts) if (p.versionPublished && p.deliverablePath) add(p.deliverablePath, p.deliverableVersion ? [p.deliverableVersion] : []);
+		const byNumber = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+		return [...found]
+			.filter(([path]) => !ofEvidence.has(path))
+			.map(([path, versions]) => ({ path, latest: [...versions].sort(byNumber).at(-1) ?? null }))
+			.sort((a, b) => baseName(a.path).localeCompare(baseName(b.path)));
+	});
+	const sideCount = $derived(evidence.length + otherDeliverables.length);
 	/** What a piece of feedback is on in Portflow, to say where to go there. */
 	function portflowItemOf(f: Feedback): string | null {
 		const item = evidence.find((e) => e.slug === f.evidence);
@@ -256,72 +280,87 @@
 	{/if}
 </div>
 
-<div class="thread" bind:this={scroller}>
-	<div class="thread-inner">
-		{#if evidence.length}
-			<div class="evidence-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-				{#each evidence as item (item.slug)}<EvidenceCard evidence={item} onsaved={(items) => (evidence = items.filter((i) => i.thread === slug))} />{/each}
-			</div>
-		{/if}
-		{#each flow as item (item.entry.key)}
-			{#if item.newDay}<div class="divider">{dayLabel(item.day)}</div>{/if}
-			{@const e = item.entry}
-			{#if e.kind === 'post'}
-				{@const answers = structure.answers.get(e.post.id)}
-				<PostCard {project} thread={slug} post={e.post} {byId} tags={tagsOf(e.post.id)} onreply={(p) => (replyTo = p)} onjump={jump}>
-					{#if answers?.length}
-						<div class="answers">
-							{#each answers as a (a.id)}
-								<PostCard
-									{project}
-									thread={slug}
-									post={a}
-									{byId}
-									variant="answer"
-									quotedElsewhere={e.post.id}
-									onreply={(p) => (replyTo = p)}
-									onjump={jump}
-								/>
-							{/each}
-						</div>
+<div class="thread-body">
+	<div class="thread-main">
+		<div class="thread" bind:this={scroller}>
+			<div class="thread-inner">
+				{#each flow as item (item.entry.key)}
+					{#if item.newDay}<div class="divider">{dayLabel(item.day)}</div>{/if}
+					{@const e = item.entry}
+					{#if e.kind === 'post'}
+						{@const answers = structure.answers.get(e.post.id)}
+						<PostCard {project} thread={slug} post={e.post} {byId} tags={tagsOf(e.post.id)} onreply={(p) => (replyTo = p)} onjump={jump}>
+							{#if answers?.length}
+								<div class="answers">
+									{#each answers as a (a.id)}
+										<PostCard
+											{project}
+											thread={slug}
+											post={a}
+											{byId}
+											variant="answer"
+											quotedElsewhere={e.post.id}
+											onreply={(p) => (replyTo = p)}
+											onjump={jump}
+										/>
+									{/each}
+								</div>
+							{/if}
+						</PostCard>
+					{:else if e.kind === 'prompt'}
+						<PromptCard {project} thread={slug} prompt={e.prompt} onedit={(prompt) => (promptModal = { prompt })} />
+					{:else if e.kind === 'feedback'}
+						<FeedbackCard
+							{project}
+							thread={slug}
+							feedback={e.feedback}
+							replies={feedbackReplies.get(e.feedback.id) ?? []}
+							evidenceName={e.feedback.evidence ? (evidenceNames[e.feedback.evidence] ?? null) : null}
+							portflowItem={e.feedback.portflowComment !== null ? portflowItemOf(e.feedback) : null}
+						/>
+					{:else}
+						<UploadCard {project} thread={slug} upload={e.upload} />
 					{/if}
-				</PostCard>
-			{:else if e.kind === 'prompt'}
-				<PromptCard {project} thread={slug} prompt={e.prompt} onedit={(prompt) => (promptModal = { prompt })} />
-			{:else if e.kind === 'feedback'}
-				<FeedbackCard
-					{project}
-					thread={slug}
-					feedback={e.feedback}
-					replies={feedbackReplies.get(e.feedback.id) ?? []}
-					evidenceName={e.feedback.evidence ? (evidenceNames[e.feedback.evidence] ?? null) : null}
-					portflowItem={e.feedback.portflowComment !== null ? portflowItemOf(e.feedback) : null}
-				/>
-			{:else}
-				<UploadCard {project} thread={slug} upload={e.upload} />
-			{/if}
-		{:else}
-			<div class="empty-state">
-				<h1>Nothing here yet</h1>
-				<p>
-					Write your first note below. Every note is saved on its own with its time. Use <b>Prompt</b> to ask for a deliverable,
-					<b>Feedback</b> to react to one, and <b>Upload</b> to add files.
-				</p>
+				{:else}
+					<div class="empty-state">
+						<h1>Nothing here yet</h1>
+						<p>
+							Write your first note below. Every note is saved on its own with its time. Use <b>Prompt</b> to ask for a deliverable,
+							<b>Feedback</b> to react to one, and <b>Upload</b> to add files.
+						</p>
+					</div>
+				{/each}
 			</div>
-		{/each}
-	</div>
-</div>
+		</div>
 
-<Composer
-	{project}
-	thread={slug}
-	{replyTo}
-	oncancelreply={() => (replyTo = null)}
-	onsent={() => (replyTo = null)}
-	onprompt={() => (promptModal = { prompt: null })}
-	onfeedback={() => (feedbackOpen = true)}
-	onupload={(paths) => (uploadPaths = paths)}
-/>
+		<Composer
+			{project}
+			thread={slug}
+			{replyTo}
+			oncancelreply={() => (replyTo = null)}
+			onsent={() => (replyTo = null)}
+			onprompt={() => (promptModal = { prompt: null })}
+			onfeedback={() => (feedbackOpen = true)}
+			onupload={(paths) => (uploadPaths = paths)}
+		/>
+	</div>
+
+	<!-- The thread's deliverables, beside the timeline as the deliverable's own side window is beside the document. -->
+	{#if sideCount}
+		<aside class="thread-side" aria-label="Deliverables of this thread">
+			<div class="side-head"><h2>Deliverables<span class="side-count">{sideCount}</span></h2></div>
+			<div class="side-body">
+				{#each evidence as item (item.slug)}<EvidenceCard evidence={item} />{/each}
+				{#each otherDeliverables as d (d.path)}
+					<a class="card side-deliverable" href={deliverableUrl(project, d.path)}>
+						<strong>{baseName(d.path)}</strong>
+						{#if d.latest}<span class="badge published">v{d.latest}</span>{:else}<span class="badge draft">not published</span>{/if}
+					</a>
+				{/each}
+			</div>
+		</aside>
+	{/if}
+</div>
 
 {#if promptModal}
 	<PromptModal {project} thread={slug} prompt={promptModal.prompt} onclose={() => (promptModal = null)} />
@@ -388,3 +427,58 @@
 		onclose={() => (storyModal = null)}
 	/>
 {/if}
+
+<style>
+	/* Under the header: the timeline with its note box, and the thread's deliverables beside it. */
+	.thread-body {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+	}
+	.thread-main {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.thread-side {
+		width: 340px;
+		flex-shrink: 0;
+		border-left: 1px solid var(--line);
+		background: var(--panel);
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.side-deliverable {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		color: inherit;
+		text-decoration: none;
+	}
+	.side-deliverable:hover {
+		border-color: var(--accent);
+	}
+	.side-deliverable strong {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+	/* Too narrow to hold it beside the timeline: it sits above it, and scrolls on its own. */
+	@media (max-width: 900px) {
+		.thread-body {
+			flex-direction: column;
+		}
+		.thread-side {
+			order: -1;
+			width: auto;
+			max-height: 32vh;
+			border-left: 0;
+			border-bottom: 1px solid var(--line);
+		}
+	}
+</style>
