@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Package from '@lucide/svelte/icons/package';
 	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -12,6 +13,7 @@
 	import PostCard from '$lib/components/PostCard.svelte';
 	import PromptCard from '$lib/components/PromptCard.svelte';
 	import PromptModal from '$lib/components/PromptModal.svelte';
+	import SideWindow from '$lib/components/SideWindow.svelte';
 	import StoryModal from '$lib/components/StoryModal.svelte';
 	import UploadCard from '$lib/components/UploadCard.svelte';
 	import UploadModal from '$lib/components/UploadModal.svelte';
@@ -78,6 +80,9 @@
 			.sort((a, b) => baseName(a.path).localeCompare(baseName(b.path)));
 	});
 	const sideCount = $derived(evidence.length + otherDeliverables.length);
+	const sideSections = $derived([
+		{ id: 'deliverables', title: 'Deliverables', icon: Package, count: sideCount, headCount: sideCount ? String(sideCount) : undefined }
+	]);
 	/** What a piece of feedback is on in Portflow, to say where to go there. */
 	function portflowItemOf(f: Feedback): string | null {
 		const item = evidence.find((e) => e.slug === f.evidence);
@@ -345,21 +350,22 @@
 		/>
 	</div>
 
-	<!-- The thread's deliverables, beside the timeline as the deliverable's own side window is beside the document. -->
-	{#if sideCount}
-		<aside class="thread-side" aria-label="Deliverables of this thread">
-			<div class="side-head"><h2>Deliverables<span class="side-count">{sideCount}</span></h2></div>
-			<div class="side-body">
-				{#each evidence as item (item.slug)}<EvidenceCard evidence={item} />{/each}
-				{#each otherDeliverables as d (d.path)}
-					<a class="card side-deliverable" href={deliverableUrl(project, d.path, slug)}>
-						<strong>{baseName(d.path)}</strong>
-						{#if d.latest}<span class="badge published">v{d.latest}</span>{:else}<span class="badge draft">not published</span>{/if}
-					</a>
-				{/each}
-			</div>
-		</aside>
-	{/if}
+	<!-- The thread's deliverables, in the same side window as beside a deliverable's document: hidden and shown the same way. -->
+	<SideWindow sections={sideSections} storageKey="ledger-thread-side" label="Side window of this thread">
+		{#snippet panel()}
+			{#each evidence as item (item.slug)}<EvidenceCard evidence={item} />{/each}
+			{#each otherDeliverables as d (d.path)}
+				<a class="card side-deliverable" href={deliverableUrl(project, d.path, slug)}>
+					<strong>{baseName(d.path)}</strong>
+					{#if d.latest}<span class="badge published">v{d.latest}</span>{:else}<span class="badge draft">not published</span>{/if}
+				</a>
+			{:else}
+				{#if !evidence.length}
+					<p class="hint">No deliverables yet. Use <b>Make deliverable</b> below to ask for one; what this thread's prompts, feedback and published versions are about shows here.</p>
+				{/if}
+			{/each}
+		{/snippet}
+	</SideWindow>
 </div>
 
 {#if promptModal}
@@ -434,22 +440,16 @@
 		flex: 1;
 		min-height: 0;
 		display: flex;
+		overflow: hidden;
 	}
+	/* The note box always stays at the bottom: only the timeline above it scrolls. */
 	.thread-main {
 		flex: 1;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
-	}
-	.thread-side {
-		width: 340px;
-		flex-shrink: 0;
-		border-left: 1px solid var(--line);
-		background: var(--panel);
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
+		overflow: hidden;
 	}
 	.side-deliverable {
 		flex-direction: row;
@@ -467,18 +467,5 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		min-width: 0;
-	}
-	/* Too narrow to hold it beside the timeline: it sits above it, and scrolls on its own. */
-	@media (max-width: 900px) {
-		.thread-body {
-			flex-direction: column;
-		}
-		.thread-side {
-			order: -1;
-			width: auto;
-			max-height: 32vh;
-			border-left: 0;
-			border-bottom: 1px solid var(--line);
-		}
 	}
 </style>
