@@ -16,7 +16,7 @@ use crate::models::{FeedbackFrom, SemesterDraft};
 use crate::portflow_api::*;
 use crate::portflow_auth::Session;
 use crate::portflow_config::{self as config, Portfolio};
-use crate::portflow_gamma::{self as gamma, parse_sub_goal};
+use crate::portflow_epsilon::{self as epsilon, parse_sub_goal};
 use crate::portflow_store as store;
 use crate::portflow_sync::{self, CoreLedger};
 use crate::state::Core;
@@ -438,10 +438,10 @@ fn a_round_mirrors_outcomes_people_and_the_linked_collection() {
     assert_eq!(report.new_versions, 3);
     assert_eq!(report.in_portflow_only, 3, "uploaded in Portflow: named, not copied");
 
-    let gamma = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
-    assert_eq!(gamma.columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Analysis", "Design"]);
-    assert_eq!(gamma.cells.iter().filter(|c| c.outcome == 10).count(), 2);
-    let analysis_u = gamma.cells.iter().find(|c| c.outcome == 10 && c.layer == "U").unwrap();
+    let epsilon = m.read(|c| epsilon::epsilon(c, None, "2026-11-04", ME)).unwrap();
+    assert_eq!(epsilon.columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Analysis", "Design"]);
+    assert_eq!(epsilon.cells.iter().filter(|c| c.outcome == 10).count(), 2);
+    let analysis_u = epsilon.cells.iter().find(|c| c.outcome == 10 && c.layer == "U").unwrap();
     assert_eq!(analysis_u.levels[0].evidence[0].name, "Project plan");
     let people = m.read(store::people).unwrap();
     assert_eq!(people.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["Coach Teacher", "Peer Student"], "teachers first");
@@ -529,9 +529,9 @@ fn feedback_lands_once_the_evidence_is_in_a_thread() {
     let again = m.read(|c| feedback::list_for_thread(c, "speed-edit", "plan")).unwrap();
     assert_eq!(again[0].status, "resolved", "a round doesn't reopen what was resolved");
 
-    // And Gamma counts it on the sub-goal the evidence counts for (not the student's own reply).
-    let gamma = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
-    let analysis_u = gamma.cells.iter().find(|c| c.outcome == 10 && c.layer == "U").unwrap();
+    // And Epsilon+ counts it on the sub-goal the evidence counts for (not the student's own reply).
+    let epsilon = m.read(|c| epsilon::epsilon(c, None, "2026-11-04", ME)).unwrap();
+    let analysis_u = epsilon.cells.iter().find(|c| c.outcome == 10 && c.layer == "U").unwrap();
     assert_eq!(analysis_u.feedback_count, 1);
 }
 
@@ -841,7 +841,7 @@ fn real_portflow_read_only_round() {
     );
 }
 
-// ---- semesters, sections and Gamma ---------------------------------------------------------------------
+// ---- semesters, sections and Epsilon+ ---------------------------------------------------------------------
 
 
 #[test]
@@ -862,7 +862,7 @@ fn a_round_links_the_section_to_its_semester_and_fills_the_matrix() {
     portflow_sync::run(&FakePortflow::new(), &m.ledger, &m.settings()).unwrap();
 
     // The section is linked to the semester its import fell in, and that is written in the semester's file.
-    let sections = m.read(gamma::sections).unwrap();
+    let sections = m.read(epsilon::sections).unwrap();
     assert_eq!(sections.len(), 1);
     assert_eq!(sections[0].semester.as_deref(), Some(semester.as_str()));
     let file = fs::read_to_string(m.root().join(format!("semesters/{semester}.md"))).unwrap();
@@ -870,7 +870,7 @@ fn a_round_links_the_section_to_its_semester_and_fills_the_matrix() {
     assert!(m.root().join("portflow/sections.md").is_file());
 
     // The current semester's matrix: activities across, layers down, evidence per cell, the highest level with evidence.
-    let view = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    let view = m.read(|c| epsilon::epsilon(c, None, "2026-11-04", ME)).unwrap();
     assert_eq!(view.semester.as_deref(), Some(semester.as_str()));
     assert!(view.scoped);
     assert_eq!(view.section_name.as_deref(), Some("Semester 3 – Fall 26"));
@@ -882,13 +882,13 @@ fn a_round_links_the_section_to_its_semester_and_fills_the_matrix() {
     assert_eq!((cell("I", 10).evidence_count, cell("I", 10).level), (0, None));
     assert_eq!((cell("U", 20).evidence_count, cell("U", 20).level), (1, Some(1)), "linked in Ledger, not yet counted by Portflow");
     assert_eq!((view.cells_with_evidence, view.cells_total), (2, 3));
-    assert_eq!(view.linked_projects, ["speed-edit"], "where a thread started from Gamma goes first");
+    assert_eq!(view.linked_projects, ["speed-edit"], "where a thread started from Epsilon+ goes first");
     assert_eq!(cell("U", 10).levels[0].description, "Analysis-U1 level", "the level's text, to quote");
     assert_eq!(view.max_level, 1);
 
     // The links survive reading the vault again.
     m.reload();
-    let again = m.read(|c| gamma::gamma(c, Some(&semester), "2026-11-04", ME)).unwrap();
+    let again = m.read(|c| epsilon::epsilon(c, Some(&semester), "2026-11-04", ME)).unwrap();
     assert!(again.scoped);
     assert_eq!(again.cells.iter().map(|c| c.evidence_count).collect::<Vec<_>>(), view.cells.iter().map(|c| c.evidence_count).collect::<Vec<_>>());
 }
@@ -899,10 +899,10 @@ fn a_section_unlinked_by_hand_stays_unlinked() {
     m.switch(true);
     let semester = m.linked();
     portflow_sync::run(&FakePortflow::new(), &m.ledger, &m.settings()).unwrap();
-    m.edit(|c| gamma::link_section(c, &semester, None)).unwrap();
+    m.edit(|c| epsilon::link_section(c, &semester, None)).unwrap();
     portflow_sync::run(&FakePortflow::new(), &m.ledger, &m.settings()).unwrap();
-    assert_eq!(m.read(gamma::sections).unwrap()[0].semester, None, "a known section isn't guessed again");
-    let view = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    assert_eq!(m.read(epsilon::sections).unwrap()[0].semester, None, "a known section isn't guessed again");
+    let view = m.read(|c| epsilon::epsilon(c, None, "2026-11-04", ME)).unwrap();
     assert!(!view.scoped, "without a section, the newest goal set is shown");
     assert_eq!(view.columns.len(), 2);
 }
@@ -929,12 +929,12 @@ fn each_semester_shows_its_own_outcomes_and_levels_only_goals_apart() {
     ];
     m.edit(|c| {
         store::store_outcomes(c, &goals, &[]).unwrap();
-        gamma::store_sections(c, &sections).unwrap();
+        epsilon::store_sections(c, &sections).unwrap();
     });
-    let linked: Vec<_> = m.read(gamma::sections).unwrap().into_iter().map(|s| (s.id, s.semester)).collect();
+    let linked: Vec<_> = m.read(epsilon::sections).unwrap().into_iter().map(|s| (s.id, s.semester)).collect();
     assert_eq!(linked, [(2, Some(fall.clone())), (1, Some(spring.clone()))], "an import shortly before a semester starts belongs to it");
 
-    let fall_view = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    let fall_view = m.read(|c| epsilon::epsilon(c, None, "2026-11-04", ME)).unwrap();
     assert_eq!(fall_view.semester.as_deref(), Some(fall.as_str()));
     assert_eq!(fall_view.columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Analysis"]);
     assert_eq!(fall_view.cells[0].level, Some(2));
@@ -943,10 +943,10 @@ fn each_semester_shows_its_own_outcomes_and_levels_only_goals_apart() {
     assert_eq!((fall_view.skills[0].nickname.as_str(), fall_view.skills[0].evidence_count, fall_view.skills[0].level), ("", 2, Some(1)));
     assert_eq!(fall_view.semesters.iter().map(|s| (s.name.as_str(), s.current)).collect::<Vec<_>>(), [("Fall 26", true), ("Spring 26", false)]);
 
-    let spring_view = m.read(|c| gamma::gamma(c, Some(&spring), "2026-11-04", ME)).unwrap();
+    let spring_view = m.read(|c| epsilon::epsilon(c, Some(&spring), "2026-11-04", ME)).unwrap();
     assert_eq!(spring_view.columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Design"]);
     assert!(spring_view.skills.is_empty());
-    assert!(m.read(|c| gamma::gamma(c, Some("nope"), "2026-11-04", ME)).is_err());
+    assert!(m.read(|c| epsilon::epsilon(c, Some("nope"), "2026-11-04", ME)).is_err());
 }
 
 #[test]
@@ -956,14 +956,14 @@ fn intended_development_marks_the_rows_aimed_for_and_keeps_the_learning_plan() {
     let semester = m.linked();
     portflow_sync::run(&FakePortflow::new(), &m.ledger, &m.settings()).unwrap();
 
-    let goals = gamma::GammaGoals {
+    let goals = epsilon::EpsilonGoals {
         layers: BTreeMap::from([("u".into(), 1), ("I".into(), 2)]),
         goals: BTreeMap::new(),
         learning_plan: Some("speed-edit/project-plan".into()),
         study_guide: Some("https://example.org/study-guide".into()),
     };
-    m.edit(|c| gamma::set_goals(c, &semester, &goals)).unwrap();
-    let view = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    m.edit(|c| epsilon::set_goals(c, &semester, &goals)).unwrap();
+    let view = m.read(|c| epsilon::epsilon(c, None, "2026-11-04", ME)).unwrap();
     assert_eq!(view.rows.iter().map(|r| (r.layer.as_str(), r.target)).collect::<Vec<_>>(), [("U", Some(1)), ("I", Some(2))], "the letter is read in any case");
     let cell = |layer: &str, outcome: i64| view.cells.iter().find(|c| c.layer == layer && c.outcome == outcome).unwrap();
     assert!(cell("U", 10).reached && cell("U", 20).reached);
@@ -974,18 +974,18 @@ fn intended_development_marks_the_rows_aimed_for_and_keeps_the_learning_plan() {
 
     // Kept in the semester's file, and read back from it.
     let file = fs::read_to_string(m.root().join(format!("semesters/{semester}.md"))).unwrap();
-    assert!(file.contains("gamma:") && file.contains("learningPlan: speed-edit/project-plan"), "{file}");
+    assert!(file.contains("epsilon:") && file.contains("learningPlan: speed-edit/project-plan"), "{file}");
     m.reload();
-    assert_eq!(m.read(|c| gamma::goals_of(c, &semester)).unwrap().layers, BTreeMap::from([("U".into(), 1), ("I".into(), 2)]));
+    assert_eq!(m.read(|c| epsilon::goals_of(c, &semester)).unwrap().layers, BTreeMap::from([("U".into(), 1), ("I".into(), 2)]));
 
-    // Nonsense is refused, and clearing everything leaves no `gamma:` behind.
-    let bad = |g: gamma::GammaGoals| m.edit(|c| gamma::set_goals(c, &semester, &g)).is_err();
-    assert!(bad(gamma::GammaGoals { layers: BTreeMap::from([("X".into(), 1)]), ..Default::default() }));
-    assert!(bad(gamma::GammaGoals { layers: BTreeMap::from([("I".into(), 0)]), ..Default::default() }));
-    assert!(bad(gamma::GammaGoals { study_guide: Some("javascript:alert(1)".into()), ..Default::default() }));
-    m.edit(|c| gamma::set_goals(c, &semester, &gamma::GammaGoals::default())).unwrap();
+    // Nonsense is refused, and clearing everything leaves no `epsilon:` behind.
+    let bad = |g: epsilon::EpsilonGoals| m.edit(|c| epsilon::set_goals(c, &semester, &g)).is_err();
+    assert!(bad(epsilon::EpsilonGoals { layers: BTreeMap::from([("X".into(), 1)]), ..Default::default() }));
+    assert!(bad(epsilon::EpsilonGoals { layers: BTreeMap::from([("I".into(), 0)]), ..Default::default() }));
+    assert!(bad(epsilon::EpsilonGoals { study_guide: Some("javascript:alert(1)".into()), ..Default::default() }));
+    m.edit(|c| epsilon::set_goals(c, &semester, &epsilon::EpsilonGoals::default())).unwrap();
     let file = fs::read_to_string(m.root().join(format!("semesters/{semester}.md"))).unwrap();
-    assert!(!file.contains("gamma:"), "{file}");
+    assert!(!file.contains("epsilon:"), "{file}");
 }
 
 #[test]
@@ -1005,10 +1005,10 @@ fn a_level_only_goal_is_aimed_for_by_its_nickname() {
     )];
     m.edit(|c| {
         store::store_outcomes(c, &goals, &[]).unwrap();
-        gamma::store_sections(c, &[Section { id: 2, name: "Semester 3".into(), position: 1, last_import: import.clone() }]).unwrap();
-        gamma::set_goals(c, &fall, &gamma::GammaGoals { goals: BTreeMap::from([("PS".into(), 2)]), ..Default::default() }).unwrap();
+        epsilon::store_sections(c, &[Section { id: 2, name: "Semester 3".into(), position: 1, last_import: import.clone() }]).unwrap();
+        epsilon::set_goals(c, &fall, &epsilon::EpsilonGoals { goals: BTreeMap::from([("PS".into(), 2)]), ..Default::default() }).unwrap();
     });
-    let view = m.read(|c| gamma::gamma(c, None, "2026-11-04", ME)).unwrap();
+    let view = m.read(|c| epsilon::epsilon(c, None, "2026-11-04", ME)).unwrap();
     let ps = &view.skills[0];
     assert_eq!((ps.key.as_str(), ps.target, ps.reached), ("PS", Some(2), false));
     assert_eq!((view.targets_reached, view.targets_total), (0, 1));

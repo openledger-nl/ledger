@@ -596,8 +596,8 @@ fn export_semesters(conn: &Connection, files: &mut BTreeMap<String, String>) -> 
         if let Some(section) = sections.remove(&semester.id) {
             frontmatter::set(&mut meta, "portflowSection", Value::Number(section.into()));
         }
-        if let Some(gamma) = crate::portflow_gamma::export_goals(conn, &semester.id)? {
-            frontmatter::set(&mut meta, "gamma", Value::Mapping(gamma));
+        if let Some(epsilon) = crate::portflow_epsilon::export_goals(conn, &semester.id)? {
+            frontmatter::set(&mut meta, "epsilon", Value::Mapping(epsilon));
         }
         frontmatter::set(&mut meta, "createdAt", semester.created_at);
         frontmatter::set(&mut meta, "updatedAt", semester.updated_at);
@@ -884,8 +884,9 @@ fn import_semesters(conn: &Connection, source: &Source) -> Result<()> {
         if let Some(section) = section {
             conn.execute("INSERT OR IGNORE INTO semester_sections (semester_id, section_id) VALUES (?1, ?2)", params![id, section])?;
         }
-        if let Some(Value::Mapping(gamma)) = meta.get("gamma") {
-            crate::portflow_gamma::import_goals(conn, &id, gamma)?;
+        // Written as `gamma:` before Epsilon+ had its name: read once, and written back as `epsilon:`.
+        if let Some(Value::Mapping(epsilon)) = meta.get("epsilon").or_else(|| meta.get("gamma")) {
+            crate::portflow_epsilon::import_goals(conn, &id, epsilon)?;
         }
     }
     Ok(())

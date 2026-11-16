@@ -888,3 +888,21 @@ fn the_folded_sidebar_is_a_rail_until_the_vault_settings_say_otherwise() {
     assert_eq!(got.layout.sidebar_fold, settings::SidebarFold::Hide);
     assert_eq!(got.screenshot_hotkey.as_deref(), Some("Control+Shift+S"));
 }
+
+#[test]
+fn a_semesters_goals_written_as_gamma_are_read_and_written_back_as_epsilon() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "semesters/fall.md", "---\nname: Fall 2026\nstart: 2026-09-01\nend: 2027-01-31\ngamma:\n  layers:\n    U: 2\n---\n");
+    let (mut vault, conn) = open(root);
+    let goals = crate::portflow_epsilon::goals_of(&conn, "fall").unwrap();
+    assert_eq!(goals.layers.get("U"), Some(&2), "the goals under the old key are kept");
+
+    // The next save of the semester writes them under `epsilon:` and drops `gamma:`.
+    let fall = semesters::list(&conn).unwrap().remove(0);
+    let draft = SemesterDraft { name: fall.name, start: fall.start, end: fall.end, notes: "Renamed.".into(), ..Default::default() };
+    semesters::update(&conn, "fall", &draft).unwrap();
+    vault.persist(&conn).unwrap();
+    let written = read(root, "semesters/fall.md");
+    assert!(written.contains("epsilon:") && !written.contains("gamma:"), "{written}");
+}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Gamma: the HBO-i matrix of one semester, from Portflow: activities
+	// Epsilon+: the HBO-i matrix of one semester, from Portflow: activities
 	// across, architecture layers down, per cell the evidence that counts for it, coloured by the highest level that has
 	// evidence. Goals measured in levels only (PS, PL) stand beside it. Clicking a cell or a level shows what is behind it.
 	// With intended development set, the rows aimed for are marked (and the others dimmed, still there), each cell says
@@ -10,11 +10,11 @@
 	import { deliverableForLevelFlow, threadForLevelFlow, threadUrl, projectUrl } from '$lib/actions';
 	import Markdown from '$lib/components/Markdown.svelte';
 	import { plural } from '$lib/format';
-	import type { Gamma, GammaCell, GammaLevel, GammaSkill, EvidenceRef, ProjectSummary } from '$lib/types';
+	import type { EpsilonView, EpsilonCell, EpsilonLevel, EpsilonSkill, EvidenceRef, ProjectSummary } from '$lib/types';
 
-	let { view }: { view: Gamma } = $props();
+	let { view }: { view: EpsilonView } = $props();
 
-	type Picked = { title: string; levels: GammaLevel[]; target: number | null };
+	type Picked = { title: string; levels: EpsilonLevel[]; target: number | null };
 	let picked = $state<string | null>(null);
 	let showOthers = $state(false);
 
@@ -54,16 +54,16 @@
 		picked = picked === key ? null : key;
 		showOthers = false;
 	};
-	const cellKey = (c: GammaCell) => `cell:${c.layer}:${c.outcome}`;
-	const skillKey = (s: GammaSkill) => `skill:${s.outcome}`;
+	const cellKey = (c: EpsilonCell) => `cell:${c.layer}:${c.outcome}`;
+	const skillKey = (s: EpsilonSkill) => `skill:${s.outcome}`;
 	const evidenceHref = (e: EvidenceRef) => (e.thread ? threadUrl(e.project, e.thread) : projectUrl(e.project));
-	const cellLabel = (c: GammaCell) =>
+	const cellLabel = (c: EpsilonCell) =>
 		`${columnName.get(c.outcome)}, ${rowName.get(c.layer)}: ${plural(c.evidenceCount, 'evidence item', 'evidence items')}${c.level ? `, up to level ${c.level}` : ''}${
 			c.target ? ` · aiming for level ${c.target}${c.reached ? ', reached' : ', not yet'}` : ''
 		}`;
 </script>
 
-<div class="gamma">
+<div class="epsilon">
 	<div class="matrix-wrap">
 		<table class="matrix">
 			<thead>
@@ -136,7 +136,7 @@
 	</div>
 </div>
 
-{#snippet level(l: GammaLevel, open: boolean)}
+{#snippet level(l: EpsilonLevel, open: boolean)}
 	<div class="level-row">
 		<div class="level-head">
 			<span class="level-badge" class:strong={strong(l.evidenceCount ? l.level : null)} style:--shade="{shade(l.evidenceCount ? l.level : null)}%">{l.level}</span>
@@ -207,7 +207,7 @@
 {/if}
 
 <style>
-	.gamma {
+	.epsilon {
 		display: flex;
 		gap: 24px;
 		align-items: flex-start;

@@ -185,7 +185,7 @@ is, it replaces section 2 and nothing else changes, because everything else talk
 Portflow is **off by default**. Settings → Portflow then shows one thing: the switch, with a line on what the feature
 does. Switched off means fully off, in the UI and in what runs:
 
-- **UI**: no Gamma page, no evidence cards in threads, no "Deliver" in the publish dialog, no Portflow section on the
+- **UI**: no Epsilon+ page, no evidence cards in threads, no "Deliver" in the publish dialog, no Portflow section on the
   project overview or beside a deliverable, no person picker fed from Portflow (the "from" field takes a typed name), no
   Portflow card on the dashboard, no Portflow status in the explorer's footer, no Portflow results in search. The
   screens look exactly as they do today. The frontend asks one flag (`portflow.enabled`) and renders none of it.
@@ -254,7 +254,7 @@ note it as feedback, as today, and say **who gave it**:
   `fromRole` (teacher, student, …), plus how it was given (`given: in person | portflow | email | other`) and when.
   Feedback pulled from Portflow fills these in itself, from the comment's author.
 - **What it gives you**: per person, all the feedback they gave you; per learning outcome, who gave feedback on it. The
-  feedback card shows the person, and Gamma and the deliverable's Produced by window show it too.
+  feedback card shows the person, and Epsilon+ and the deliverable's Produced by window show it too.
 - **With "Ask to confirm feedback" on** (read and write), Ledger can also post that feedback to Portflow on the evidence
   version, as your comment ("Feedback from <teacher> on 12-11-2026: …"), and ask that teacher to confirm it through
   Portflow's comment validation. When they confirm (or decline), the next sync shows it on the feedback in Ledger.
@@ -370,7 +370,7 @@ Ledger links:
 - So the mirror is files, `portflow/outcomes/<goal-id>-<slug>.md`, synced to GitHub with the rest. The links are in
   the evidence items (`outcomes:`). With both in the vault, links work offline, on every machine, and in a run.
 - At startup they are read into new tables in `schema.sql` (`outcomes`, `sub_outcomes`, `evidence`, `evidence_files`,
-  `evidence_outcomes`, `evidence_versions`), so Gamma and "which evidence counts for Analysis-S1?" are
+  `evidence_outcomes`, `evidence_versions`), so Epsilon+ and "which evidence counts for Analysis-S1?" are
   quick queries, the same as the rest of Ledger.
 - Only what is about talking to Portflow stays out of the vault, in `.ledger/portflow-sync.json`: etags, the last
   agreed hashes, the time of the last refresh.
@@ -439,7 +439,7 @@ src-tauri/src/
   portflow_html.rs     HTML ⇄ markdown, mentions ⇄ links
   evidence.rs          evidence items: files, thread, outcomes, the major ↔ Portflow version map; Deliver; a store like
                        the others (works signed out and offline; off with the feature)
-  outcomes.rs          the outcomes mirror: read from portflow/outcomes/, queried for Gamma
+  outcomes.rs          the outcomes mirror: read from portflow/outcomes/, queried for Epsilon+
   schema.sql           + outcomes, sub_outcomes, evidence, evidence_files, evidence_outcomes, evidence_versions
   vault.rs             + the new files (lenient import, canonical export), the mirror refused for edits
   portflow_ledger.rs   the vault side, behind a trait (like trello_ledger.rs), never holding the vault lock over a request
@@ -451,7 +451,7 @@ src/lib/
   components/settings/PortflowSettings.svelte    sign in / out, status, portfolio, access (read only / read and
                                                  write, with a switch per write), link projects to collections
   components/PersonPicker.svelte                 who gave the feedback: the people with access, or a typed name
-  routes/gamma/                                  Gamma: the HBO-i matrix of a semester (activities × layers, evidence
+  routes/epsilon/                                  Epsilon+: the HBO-i matrix of a semester (activities × layers, evidence
                                                  and highest level per cell, PS/PL beside it), per sub-goal its evidence
   components/EvidenceCard.svelte                 in a thread: the evidence item's files, outcomes, versions (majors
                                                  with their Portflow status, minors since), Deliver, Ask for feedback
@@ -497,21 +497,21 @@ outcomes mirror are part of the Portflow feature, so they use it too.
       template import falls in (or that starts within a month after it), as `portflowSection` in `semesters/<id>.md`;
       after that the link is changed by hand under Settings → Semesters. A section and its goals share the import id,
       which tells one semester's outcomes from another's.
-- [x] Learning outcomes mirror (`portflow/outcomes/`), goal set per semester. Shown in Gamma (below), which replaced the
+- [x] Learning outcomes mirror (`portflow/outcomes/`), goal set per semester. Shown in Epsilon+ (below), which replaced the
       separate Outcomes page (2026-11-04).
-- [x] **Gamma** (`/gamma`, `portflow_gamma.rs`): the HBO-i competence matrix of a semester (the current one by default),
+- [x] **Epsilon+** (`/epsilon`, `portflow_epsilon.rs`): the HBO-i competence matrix of a semester (the current one by default),
       read from the mirror only, so it opens without a request. Activities across, layers down; a sub-goal
       "Analysis-U2" is Analysis × User Interaction at level 2. A cell counts the evidence for its sub-goals (Portflow's
       `evidence_count`, or the items linked in Ledger when those are more) and is shaded by the highest level with
       evidence; level-only goals (PS, PL) stand beside it. Rebuilt from what Fontys's Epsilon tool shows from Canvas
-      rubric results; this semester's assessment is in Portflow, so Gamma reads Portflow. Growth scores from progress
+      rubric results; this semester's assessment is in Portflow, so Epsilon+ reads Portflow. Growth scores from progress
       reviews (`goals/{g}/growth`) are not read yet: there were none to see the shape of (2026-11-04).
-- [x] **Intended development** (Gamma → "Intended development"): per semester, the level aimed for per layer (a whole
+- [x] **Intended development** (Epsilon+ → "Intended development"): per semester, the level aimed for per layer (a whole
       row) and per level-only goal (PS, PL), with the semester's overview: its learning plan (an evidence item,
-      delivered in Portflow) and its study guide (a link). Kept in `semesters/<id>.md` under `gamma:` whether or not
-      Portflow is on. Gamma keeps the whole grid, marks the rows aimed for (dims the rest), says per cell whether it got
+      delivered in Portflow) and its study guide (a link). Kept in `semesters/<id>.md` under `epsilon:` whether or not
+      Portflow is on. Epsilon+ keeps the whole grid, marks the rows aimed for (dims the rest), says per cell whether it got
       there, and shows only the intended level's description (the other levels fold away).
-- [x] From a level in Gamma's detail: **Start a thread** (its first post says which level it aims at and quotes what
+- [x] From a level in Epsilon+'s detail: **Start a thread** (its first post says which level it aims at and quotes what
       the level asks) or **New deliverable** (a markdown file starting the same way), in a project linked to the
       semester by default.
 - [ ] Later, maybe: push intended development into the study plan in Portflow (complex; not started).

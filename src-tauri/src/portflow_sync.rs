@@ -148,7 +148,7 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
         .write(&mut |conn, _| {
             store::store_outcomes(conn, &with_subs, &sets)?;
             store::store_people(conn, &shares)?;
-            crate::portflow_gamma::store_sections(conn, &section_list)
+            crate::portflow_epsilon::store_sections(conn, &section_list)
         })
         .map_err(ledger_err)?;
     report.people = shares.iter().map(|s| s.invitee.id).collect::<HashSet<_>>().len();

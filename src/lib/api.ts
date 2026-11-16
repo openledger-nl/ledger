@@ -309,8 +309,8 @@ export const trelloApi = {
 import type {
 	Evidence,
 	EvidenceChoice,
-	Gamma,
-	GammaGoals,
+	EpsilonView,
+	EpsilonGoals,
 	PortflowSection,
 	PortflowCollectionChoice,
 	PortflowFeedback,
@@ -350,12 +350,12 @@ export const portflowApi = {
 	open: () => call<void>('portflow_open'),
 	recentFeedback: (limit = 8) => call<PortflowFeedback[]>('portflow_recent_feedback', { limit }),
 	/** The HBO-i matrix of a semester (null: the current one), from the vault's mirror: no request goes to Portflow. */
-	gamma: (semester: string | null = null) => call<Gamma>('portflow_gamma', { semester }),
+	epsilon: (semester: string | null = null) => call<EpsilonView>('portflow_epsilon', { semester }),
 	sections: () => call<PortflowSection[]>('portflow_sections'),
 	/** `section` null: the semester is no section. */
 	linkSection: (semester: string, section: number | null) => call<PortflowSection[]>('portflow_link_section', { semester, section }),
 	/** Replaces a semester's intended development; answers with its matrix. */
-	setIntended: (semester: string, goals: GammaGoals) => call<Gamma>('portflow_set_intended', { semester, goals }),
+	setIntended: (semester: string, goals: EpsilonGoals) => call<EpsilonView>('portflow_set_intended', { semester, goals }),
 	evidenceChoices: () => call<EvidenceChoice[]>('portflow_evidence_choices')
 };
 

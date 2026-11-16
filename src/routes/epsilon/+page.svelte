@@ -1,7 +1,7 @@
 <script module lang="ts">
-	import type { Gamma } from '$lib/types';
+	import type { EpsilonView } from '$lib/types';
 	// The last matrix per semester ('' for "the current one"): shown at once on the way back, refreshed behind it.
-	const shownBefore = new Map<string, Gamma>();
+	const shownBefore = new Map<string, EpsilonView>();
 </script>
 
 <script lang="ts">
@@ -13,16 +13,16 @@
 	import { projectUrl, threadUrl } from '$lib/actions';
 	import { portflowApi } from '$lib/api';
 	import IntendedDevelopmentModal from '$lib/components/IntendedDevelopmentModal.svelte';
-	import GammaIcon from '$lib/components/GammaIcon.svelte';
-	import GammaMatrix from '$lib/components/GammaMatrix.svelte';
+	import EpsilonIcon from '$lib/components/EpsilonIcon.svelte';
+	import EpsilonMatrix from '$lib/components/EpsilonMatrix.svelte';
 	import { ago, plural } from '$lib/format';
 	import { portflow } from '$lib/portflow.svelte';
 
 	let semester = $state('');
-	let view = $state<Gamma | null>(shownBefore.get('') ?? null);
+	let view = $state<EpsilonView | null>(shownBefore.get('') ?? null);
 	let error = $state<string | null>(null);
 
-	// Gamma reads the vault's mirror of Portflow: nothing goes over the network, so it is there at once. It is read again
+	// Epsilon+ reads the vault's mirror of Portflow: nothing goes over the network, so it is there at once. It is read again
 	// when another semester is picked, a Portflow sync finishes or the vault changes.
 	$effect(() => {
 		void page.data;
@@ -34,7 +34,7 @@
 		}
 		view = shownBefore.get(key) ?? view;
 		let stale = false;
-		portflowApi.gamma(key || null).then(
+		portflowApi.epsilon(key || null).then(
 			(fresh) => {
 				shownBefore.set(key, fresh);
 				if (stale) return;
@@ -60,19 +60,19 @@
 			: []
 	);
 
-	function saved(fresh: Gamma) {
+	function saved(fresh: EpsilonView) {
 		shownBefore.set(semester, fresh);
 		view = fresh;
 		editing = false;
 	}
 </script>
 
-<svelte:head><title>Gamma · Ledger</title></svelte:head>
+<svelte:head><title>Epsilon+ · Ledger</title></svelte:head>
 
 <div class="header-wrap flat">
 	<div class="header-top">
 		<div>
-			<h1 class="gamma-title"><span class="gamma-mark"><GammaIcon size={20} /></span>Gamma</h1>
+			<h1 class="epsilon-title"><span class="epsilon-mark"><EpsilonIcon size={20} /></span>Epsilon+</h1>
 			<div class="sub">
 				Your HBO-i competences for a semester: activities across, layers down. Each cell counts the evidence for it and is shaded by
 				the highest level with evidence. Comes from Portflow, linked to the semester through its section.
@@ -105,7 +105,7 @@
 		{#if !portflow.enabled}
 			<div class="empty-state">
 				<h1>Portflow is off</h1>
-				<p>Gamma reads your learning outcomes from Portflow. Switch it on under <a href="/settings/sync">Settings → Sync &amp; external → Portflow</a>.</p>
+				<p>Epsilon+ reads your learning outcomes from Portflow. Switch it on under <a href="/settings/sync">Settings → Sync &amp; external → Portflow</a>.</p>
 			</div>
 		{:else if error}
 			<div class="notice bad">{error}</div>
@@ -115,7 +115,7 @@
 				<p>They come in with the first Portflow sync after you sign in (Settings → Sync &amp; external → Portflow).</p>
 			</div>
 		{:else if view}
-			<div class="gamma-head">
+			<div class="epsilon-head">
 				<h2>{view.sectionName ?? 'Newest goal set'}</h2>
 				<span class="hint">
 					{plural(view.evidenceCount, 'evidence item', 'evidence items')} · {view.cellsWithEvidence} of {view.cellsTotal} cells with evidence{view.goalSet
@@ -161,7 +161,7 @@
 					{/if}
 				</div>
 			{/if}
-			<GammaMatrix {view} />
+			<EpsilonMatrix {view} />
 		{:else}
 			<div class="hint">Loading…</div>
 		{/if}
@@ -214,12 +214,12 @@
 		font: inherit;
 		text-align: left;
 	}
-	.gamma-title {
+	.epsilon-title {
 		display: flex;
 		align-items: center;
 		gap: 10px;
 	}
-	.gamma-mark {
+	.epsilon-mark {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -229,14 +229,14 @@
 		background: var(--accent-soft);
 		color: var(--accent);
 	}
-	.gamma-head {
+	.epsilon-head {
 		display: flex;
 		align-items: baseline;
 		gap: 12px;
 		flex-wrap: wrap;
 		margin-bottom: 12px;
 	}
-	.gamma-head h2 {
+	.epsilon-head h2 {
 		margin: 0;
 		font-size: 16px;
 	}

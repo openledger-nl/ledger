@@ -18,7 +18,7 @@
 	import { sidebar } from '$lib/sidebar.svelte';
 	import { portflow } from '$lib/portflow.svelte';
 	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
-	import GammaIcon from '$lib/components/GammaIcon.svelte';
+	import EpsilonIcon from '$lib/components/EpsilonIcon.svelte';
 	import Wordmark from '$lib/components/Wordmark.svelte';
 
 	let { projects }: { projects: ProjectSummary[] } = $props();
@@ -134,7 +134,7 @@
 
 	<a class="nav-item" class:active={path === '/'} href="/"><span class="nav-ico"><House size={16} /></span>Home</a>
 	{#if portflow.enabled}
-		<a class="nav-item" class:active={on('/gamma')} href="/gamma"><span class="nav-ico"><GammaIcon size={16} /></span>Gamma</a>
+		<a class="nav-item" class:active={on('/epsilon')} href="/epsilon"><span class="nav-ico"><EpsilonIcon size={16} /></span>Epsilon+</a>
 	{/if}
 
 	<div class="section-head">

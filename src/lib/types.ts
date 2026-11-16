@@ -1123,7 +1123,7 @@ export interface PortflowImported {
 	threads: number;
 }
 
-// ---- Portflow: semesters, sections and Gamma, the competence matrix (see portflow_gamma.rs) ------
+// ---- Portflow: semesters, sections and Epsilon+, the competence matrix (see portflow_epsilon.rs) ------
 
 /** A section of the Portflow portfolio: one semester. */
 export interface PortflowSection {
@@ -1136,7 +1136,7 @@ export interface PortflowSection {
 	semesterName: string | null;
 }
 
-export interface GammaSemester {
+export interface EpsilonSemester {
 	id: string;
 	name: string;
 	start: string;
@@ -1147,7 +1147,7 @@ export interface GammaSemester {
 }
 
 /** One sub-goal: one level of an activity in a layer ("Analysis-U2"), or of a goal like PS ("PS-2"). */
-export interface GammaLevel {
+export interface EpsilonLevel {
 	id: number;
 	name: string;
 	level: number;
@@ -1159,7 +1159,7 @@ export interface GammaLevel {
 	description: string;
 }
 
-export interface GammaCell {
+export interface EpsilonCell {
 	/** U, S, O, H or I. */
 	layer: string;
 	/** The goal that is this cell's activity. */
@@ -1168,13 +1168,13 @@ export interface GammaCell {
 	feedbackCount: number;
 	/** The highest level that has evidence. */
 	level: number | null;
-	levels: GammaLevel[];
+	levels: EpsilonLevel[];
 	/** The level aimed for (its row's), and whether evidence reaches it. */
 	target: number | null;
 	reached: boolean;
 }
 
-export interface GammaSkill {
+export interface EpsilonSkill {
 	outcome: number;
 	/** What intended development calls it: its nickname, or its name ("PS"). */
 	key: string;
@@ -1182,13 +1182,13 @@ export interface GammaSkill {
 	nickname: string;
 	evidenceCount: number;
 	level: number | null;
-	levels: GammaLevel[];
+	levels: EpsilonLevel[];
 	target: number | null;
 	reached: boolean;
 }
 
 /** A semester's intended development: a level per layer (a whole row) and per level-only goal, and its overview. */
-export interface GammaGoals {
+export interface EpsilonGoals {
 	layers: Record<string, number>;
 	goals: Record<string, number>;
 	/** The learning plan, an evidence item: "<project>/<evidence slug>". */
@@ -1196,7 +1196,7 @@ export interface GammaGoals {
 	studyGuide: string | null;
 }
 
-export interface GammaPlan {
+export interface EpsilonPlan {
 	project: string;
 	projectName: string;
 	evidence: string;
@@ -1212,8 +1212,8 @@ export interface EvidenceChoice {
 	projectName: string;
 }
 
-export interface Gamma {
-	semesters: GammaSemester[];
+export interface EpsilonView {
+	semesters: EpsilonSemester[];
 	semester: string | null;
 	section: number | null;
 	sectionName: string | null;
@@ -1222,16 +1222,16 @@ export interface Gamma {
 	scoped: boolean;
 	columns: { outcome: number; name: string }[];
 	rows: { layer: string; name: string; target: number | null }[];
-	cells: GammaCell[];
-	skills: GammaSkill[];
+	cells: EpsilonCell[];
+	skills: EpsilonSkill[];
 	maxLevel: number;
 	evidenceCount: number;
 	cellsWithEvidence: number;
 	cellsTotal: number;
-	goals: GammaGoals;
+	goals: EpsilonGoals;
 	targetsTotal: number;
 	targetsReached: number;
-	plan: GammaPlan | null;
+	plan: EpsilonPlan | null;
 	/** The projects linked to a collection in this semester. */
 	linkedProjects: string[];
 }

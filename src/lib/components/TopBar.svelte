@@ -48,7 +48,7 @@
 			deliverable?: { name: string };
 		};
 		if (id === '/') return [{ label: 'Home' }];
-		if (id.startsWith('/gamma')) return [{ label: 'Gamma' }];
+		if (id.startsWith('/epsilon')) return [{ label: 'Epsilon+' }];
 		if (id.startsWith('/search')) return [{ label: 'Search' }];
 		if (id.startsWith('/settings')) {
 			const group = groups.find((g) => path.startsWith(`/settings/${g.id}`));

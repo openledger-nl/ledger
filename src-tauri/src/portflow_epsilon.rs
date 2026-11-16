@@ -1,4 +1,4 @@
-//! Semesters and Portflow's sections, and Gamma: the competence matrix of a semester.
+//! Semesters and Portflow's sections, and Epsilon+: the competence matrix of a semester.
 //!
 //! **Sections are semesters.** Every semester the portfolio gets a new section ("Open Learning FT Semester 3 – Fall 26")
 //! with new collections and a new goal set, all from that semester's template, in one import. The section and the goals
@@ -6,18 +6,18 @@
 //! semester is linked to one section (`portflowSection` in `semesters/<id>.md`); a section that is new to Ledger is linked
 //! to the semester its import falls in, once, after which the link is the student's to change.
 //!
-//! **Gamma** is the HBO-i competence matrix, built from Portflow, where the assessment of this semester lives: the
+//! **Epsilon+** is the HBO-i competence matrix, built from Portflow, where the assessment of this semester lives: the
 //! activities (Analysis, Advise, Design, Realise, Manage & Control) across the architecture layers (User Interaction,
 //! Software, Organisational Processes, Hardware Interfacing, Infrastructure). A
 //! sub-goal named "Analysis-U2" is that goal's activity in the User Interaction layer at level 2. Per cell: how many
 //! evidence items count for it, and the highest level that has evidence. Goals whose sub-goals have a level but no layer
 //! (Professional standard "PS-1", Personal leadership "PL-1") are shown as levels on their own.
 //!
-//! **Goals.** The student says what they aim for this semester (in Gamma, "Set goals"): a level per layer, which is
+//! **Goals.** The student says what they aim for this semester (in Epsilon+, "Set goals"): a level per layer, which is
 //! a whole row ("Infrastructure, level 2"), and a level per level-only goal (PS, PL). The grid stays whole; the rows
 //! aimed for are marked, each cell says whether it got there, and a cell's detail shows that level's description only.
 //! With the goals comes the semester's overview: its learning plan (an evidence item, delivered in Portflow) and its
-//! study guide (a link). All of it is the student's own, kept in `semesters/<id>.md` under `gamma:`.
+//! study guide (a link). All of it is the student's own, kept in `semesters/<id>.md` under `epsilon:`.
 //!
 //! Everything is read from the database (the vault's mirror of Portflow), so opening the screen sends nothing anywhere
 //! and takes a few queries: the sync keeps the mirror fresh in the background.
@@ -134,7 +134,7 @@ pub fn sections(conn: &Connection) -> Result<Vec<SectionView>> {
 /// What a semester aims for, and its overview. Keys: a layer's letter ("I"); a level-only goal's nickname or name ("PS").
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct GammaGoals {
+pub struct EpsilonGoals {
     pub layers: BTreeMap<String, i64>,
     pub goals: BTreeMap<String, i64>,
     /// The learning plan: an evidence item, as "<project>/<evidence slug>".
@@ -144,8 +144,8 @@ pub struct GammaGoals {
 
 const MAX_LEVEL: i64 = 9;
 
-pub fn goals_of(conn: &Connection, semester: &str) -> Result<GammaGoals> {
-    let mut goals = GammaGoals::default();
+pub fn goals_of(conn: &Connection, semester: &str) -> Result<EpsilonGoals> {
+    let mut goals = EpsilonGoals::default();
     for (kind, key, level) in query_all(conn, "SELECT kind, key, level FROM semester_targets WHERE semester_id = ?1 ORDER BY kind, key", [semester], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
     })? {
@@ -164,11 +164,11 @@ pub fn goals_of(conn: &Connection, semester: &str) -> Result<GammaGoals> {
 }
 
 /// Checks goals and keeps what they say, leaving out what says nothing (a level of 0, an empty link).
-fn checked(goals: &GammaGoals) -> Result<GammaGoals> {
+fn checked(goals: &EpsilonGoals) -> Result<EpsilonGoals> {
     let level = |what: &str, l: i64| {
         if (1..=MAX_LEVEL).contains(&l) { Ok(l) } else { Err(Error::invalid(format!("The level for {what} must be 1 to {MAX_LEVEL}"))) }
     };
-    let mut out = GammaGoals::default();
+    let mut out = EpsilonGoals::default();
     for (key, l) in &goals.layers {
         let key = key.trim().to_uppercase();
         if !LAYERS.iter().any(|(k, _)| *k == key) {
@@ -197,7 +197,7 @@ fn checked(goals: &GammaGoals) -> Result<GammaGoals> {
     Ok(out)
 }
 
-fn store_goals(conn: &Connection, semester: &str, goals: &GammaGoals) -> Result<()> {
+fn store_goals(conn: &Connection, semester: &str, goals: &EpsilonGoals) -> Result<()> {
     conn.execute("DELETE FROM semester_targets WHERE semester_id = ?1", [semester])?;
     conn.execute("DELETE FROM semester_plans WHERE semester_id = ?1", [semester])?;
     for (kind, map) in [("layer", &goals.layers), ("goal", &goals.goals)] {
@@ -216,15 +216,15 @@ fn store_goals(conn: &Connection, semester: &str, goals: &GammaGoals) -> Result<
 }
 
 /// Replaces a semester's goals.
-pub fn set_goals(conn: &Connection, semester: &str, goals: &GammaGoals) -> Result<()> {
+pub fn set_goals(conn: &Connection, semester: &str, goals: &EpsilonGoals) -> Result<()> {
     crate::semesters::get(conn, semester)?;
     store_goals(conn, semester, &checked(goals)?)
 }
 
-/// The `gamma:` block of a semester's file, or `None` when it has no goals.
+/// The `epsilon:` block of a semester's file, or `None` when it has no goals.
 pub fn export_goals(conn: &Connection, semester: &str) -> Result<Option<Mapping>> {
     let goals = goals_of(conn, semester)?;
-    if goals == GammaGoals::default() {
+    if goals == EpsilonGoals::default() {
         return Ok(None);
     }
     let levels = |map: &BTreeMap<String, i64>| Value::Mapping(map.iter().map(|(k, l)| (Value::String(k.clone()), Value::Number((*l).into()))).collect());
@@ -240,7 +240,7 @@ pub fn export_goals(conn: &Connection, semester: &str) -> Result<Option<Mapping>
     Ok(Some(meta))
 }
 
-/// Reads a semester file's `gamma:` block, leniently: what doesn't hold is left out.
+/// Reads a semester file's `epsilon:` block, leniently: what doesn't hold is left out.
 pub fn import_goals(conn: &Connection, semester: &str, meta: &Mapping) -> Result<()> {
     let levels = |key: &str| -> BTreeMap<String, i64> {
         let Some(Value::Mapping(map)) = meta.get(key) else { return BTreeMap::new() };
@@ -255,21 +255,21 @@ pub fn import_goals(conn: &Connection, semester: &str, meta: &Mapping) -> Result
             })
             .collect()
     };
-    let raw = GammaGoals { layers: levels("layers"), goals: levels("goals"), learning_plan: meta.text("learningPlan"), study_guide: meta.text("studyGuide") };
+    let raw = EpsilonGoals { layers: levels("layers"), goals: levels("goals"), learning_plan: meta.text("learningPlan"), study_guide: meta.text("studyGuide") };
     // One bad entry shouldn't cost the rest: check each part on its own.
-    let mut goals = GammaGoals::default();
+    let mut goals = EpsilonGoals::default();
     for (key, level) in raw.layers {
-        if let Ok(one) = checked(&GammaGoals { layers: BTreeMap::from([(key, level)]), ..GammaGoals::default() }) {
+        if let Ok(one) = checked(&EpsilonGoals { layers: BTreeMap::from([(key, level)]), ..EpsilonGoals::default() }) {
             goals.layers.extend(one.layers);
         }
     }
     for (key, level) in raw.goals {
-        if let Ok(one) = checked(&GammaGoals { goals: BTreeMap::from([(key, level)]), ..GammaGoals::default() }) {
+        if let Ok(one) = checked(&EpsilonGoals { goals: BTreeMap::from([(key, level)]), ..EpsilonGoals::default() }) {
             goals.goals.extend(one.goals);
         }
     }
-    goals.learning_plan = checked(&GammaGoals { learning_plan: raw.learning_plan, ..GammaGoals::default() }).ok().and_then(|g| g.learning_plan);
-    goals.study_guide = checked(&GammaGoals { study_guide: raw.study_guide, ..GammaGoals::default() }).ok().and_then(|g| g.study_guide);
+    goals.learning_plan = checked(&EpsilonGoals { learning_plan: raw.learning_plan, ..EpsilonGoals::default() }).ok().and_then(|g| g.learning_plan);
+    goals.study_guide = checked(&EpsilonGoals { study_guide: raw.study_guide, ..EpsilonGoals::default() }).ok().and_then(|g| g.study_guide);
     store_goals(conn, semester, &goals)
 }
 
@@ -444,7 +444,7 @@ pub struct Skill {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GammaView {
+pub struct EpsilonView {
     pub semesters: Vec<SemesterChoice>,
     /// The semester shown, if there is one.
     pub semester: Option<String>,
@@ -465,7 +465,7 @@ pub struct GammaView {
     pub cells_with_evidence: i64,
     pub cells_total: i64,
     /// The semester's goals (empty without a semester), and how many of the cells and goals aimed for are reached.
-    pub goals: GammaGoals,
+    pub goals: EpsilonGoals,
     pub targets_total: i64,
     pub targets_reached: i64,
     /// The learning plan, when it is set and its evidence item is known.
@@ -504,9 +504,9 @@ fn feedback_counts(conn: &Connection, me: i64) -> Result<HashMap<i64, i64>> {
     .collect())
 }
 
-/// Gamma, the competence matrix of `semester`, or of the current one (the semester today falls in). `today`: "2026-11-04".
+/// Epsilon+, the competence matrix of `semester`, or of the current one (the semester today falls in). `today`: "2026-11-04".
 /// `me`: the student's Portflow id, whose own comments don't count as feedback.
-pub fn gamma(conn: &Connection, semester: Option<&str>, today: &str, me: i64) -> Result<GammaView> {
+pub fn epsilon(conn: &Connection, semester: Option<&str>, today: &str, me: i64) -> Result<EpsilonView> {
     let semesters = semester_choices(conn, today)?;
     let chosen = match semester.filter(|s| !s.is_empty()) {
         Some(id) => Some(semesters.iter().find(|s| s.id == id).ok_or_else(|| Error::not_found("Semester not found"))?),
@@ -515,7 +515,7 @@ pub fn gamma(conn: &Connection, semester: Option<&str>, today: &str, me: i64) ->
     let section = chosen.and_then(|s| s.section);
     let semester_goals = match chosen {
         Some(s) => goals_of(conn, &s.id)?,
-        None => GammaGoals::default(),
+        None => EpsilonGoals::default(),
     };
     let import: Option<i64> = match section {
         Some(section) => query_opt(conn, "SELECT import_id FROM portflow_sections WHERE id = ?1", [section], |r| r.get::<_, Option<i64>>(0))?.flatten(),
@@ -638,7 +638,7 @@ pub fn gamma(conn: &Connection, semester: Option<&str>, today: &str, me: i64) ->
         None => None,
     };
 
-    Ok(GammaView {
+    Ok(EpsilonView {
         semester: chosen.map(|s| s.id.clone()),
         section,
         section_name: chosen.and_then(|s| s.section_name.clone()),

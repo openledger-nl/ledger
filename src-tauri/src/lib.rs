@@ -49,7 +49,7 @@ mod trello_sync;
 mod portflow;
 mod portflow_api;
 mod portflow_auth;
-mod portflow_gamma;
+mod portflow_epsilon;
 mod portflow_config;
 mod portflow_html;
 mod portflow_store;
@@ -288,7 +288,7 @@ pub fn run() {
             portflow::portflow_thread_evidence,
             portflow::portflow_place_evidence,
             portflow::portflow_recent_feedback,
-            portflow::portflow_gamma,
+            portflow::portflow_epsilon,
             portflow::portflow_sections,
             portflow::portflow_link_section,
             portflow::portflow_set_intended,

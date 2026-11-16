@@ -11,7 +11,7 @@
 	import { portflow } from '$lib/portflow.svelte';
 	import { sync, syncFooter } from '$lib/ui.svelte';
 	import type { ProjectSummary } from '$lib/types';
-	import GammaIcon from '$lib/components/GammaIcon.svelte';
+	import EpsilonIcon from '$lib/components/EpsilonIcon.svelte';
 	import Wordmark from '$lib/components/Wordmark.svelte';
 
 	let { projects }: { projects: ProjectSummary[] } = $props();
@@ -42,7 +42,7 @@
 	<nav class="rail-group" aria-label="Pages">
 		<a class="rail-item" class:active={path === '/'} href="/" data-tip="Home" aria-label="Home"><House size={18} /></a>
 		{#if portflow.enabled}
-			<a class="rail-item" class:active={on('/gamma')} href="/gamma" data-tip="Gamma" aria-label="Gamma"><GammaIcon size={18} /></a>
+			<a class="rail-item" class:active={on('/epsilon')} href="/epsilon" data-tip="Epsilon+" aria-label="Epsilon+"><EpsilonIcon size={18} /></a>
 		{/if}
 		<a class="rail-item" class:active={on('/settings')} href="/settings" data-tip="Settings" aria-label="Settings"><Settings size={18} /></a>
 	</nav>

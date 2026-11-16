@@ -38,20 +38,20 @@ export async function newThreadFlow(project: string) {
 	await goto(threadUrl(project, created.slug));
 }
 
-/** A learning outcome's level, as Gamma shows it: what a thread or deliverable started from it aims at. */
+/** A learning outcome's level, as Epsilon+ shows it: what a thread or deliverable started from it aims at. */
 interface AimedLevel {
 	name: string;
 	level: number;
 	description: string;
 }
 
-/** The opening of something started from a level in Gamma: which level it aims at, and what that level asks. */
+/** The opening of something started from a level in Epsilon+: which level it aims at, and what that level asks. */
 function aimNote(aim: AimedLevel): string {
 	const asks = aim.description.trim();
 	return `Working towards **${aim.name}** (level ${aim.level}).${asks ? `\n\n${asks.split('\n').map((line) => `> ${line}`.trimEnd()).join('\n')}` : ''}`;
 }
 
-/** From Gamma: asks for a title, creates a thread in the project whose first post says which level it aims at and what
+/** From Epsilon+: asks for a title, creates a thread in the project whose first post says which level it aims at and what
  *  that level asks, and opens it. */
 export async function threadForLevelFlow(project: string, aim: AimedLevel) {
 	const title = await promptDialog({
@@ -68,7 +68,7 @@ export async function threadForLevelFlow(project: string, aim: AimedLevel) {
 	await goto(threadUrl(project, created.slug));
 }
 
-/** From Gamma: asks for a file name, creates the deliverable starting with which level it aims at (a markdown file; any
+/** From Epsilon+: asks for a file name, creates the deliverable starting with which level it aims at (a markdown file; any
  *  other kind starts empty), and opens it. */
 export async function deliverableForLevelFlow(project: string, aim: AimedLevel) {
 	const slug = aim.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'deliverable';

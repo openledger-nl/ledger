@@ -334,7 +334,7 @@ CREATE TABLE semester_sections (
     section_id  INTEGER NOT NULL UNIQUE
 );
 
--- Gamma: what the student aims for in a semester (`gamma:` in semesters/<id>.md, kept whether or not Portflow is on).
+-- Epsilon+: what the student aims for in a semester (`epsilon:` in semesters/<id>.md, kept whether or not Portflow is on).
 -- `kind` 'layer': a whole row of the matrix (`key` U, S, O, H or I) at `level`; 'goal': a goal measured in levels only
 -- (`key` its nickname, or its name: "PS").
 CREATE TABLE semester_targets (
@@ -345,7 +345,7 @@ CREATE TABLE semester_targets (
     PRIMARY KEY (semester_id, kind, key)
 );
 
--- The semester's overview in Gamma: the learning plan (an evidence item, by project and slug) and the study guide (a link).
+-- The semester's overview in Epsilon+: the learning plan (an evidence item, by project and slug) and the study guide (a link).
 CREATE TABLE semester_plans (
     semester_id   TEXT PRIMARY KEY REFERENCES semesters(id) ON DELETE CASCADE,
     plan_project  TEXT,

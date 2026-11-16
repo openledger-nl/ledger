@@ -1,15 +1,15 @@
 <script lang="ts">
-	// Intended development: what the student aims for this semester. A level per layer (a whole row of Gamma's grid) and
+	// Intended development: what the student aims for this semester. A level per layer (a whole row of Epsilon+'s grid) and
 	// per level-only goal (PS, PL), and the semester's overview: its learning plan (an evidence item, delivered in
-	// Portflow) and its study guide. Kept in the semester's file; Gamma marks the rows aimed for and shows only that level's
+	// Portflow) and its study guide. Kept in the semester's file; Epsilon+ marks the rows aimed for and shows only that level's
 	// description.
 	import { untrack } from 'svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import { portflowApi } from '$lib/api';
 	import { attempt } from '$lib/ui.svelte';
-	import type { EvidenceChoice, Gamma } from '$lib/types';
+	import type { EvidenceChoice, EpsilonView } from '$lib/types';
 
-	let { view, semesterName, onclose, onsaved }: { view: Gamma; semesterName: string; onclose: () => void; onsaved: (view: Gamma) => void } = $props();
+	let { view, semesterName, onclose, onsaved }: { view: EpsilonView; semesterName: string; onclose: () => void; onsaved: (view: EpsilonView) => void } = $props();
 
 	// The five layers of HBO-i, in Fontys's order; those not in this semester's goal set are left out.
 	const ALL_LAYERS = [
@@ -61,7 +61,7 @@
 
 <Modal title="Intended development · {semesterName}" wide {onclose}>
 	<p class="hint intro">
-		The level you aim for this semester. A layer counts for its whole row; Gamma keeps showing the whole grid, marks what you aim
+		The level you aim for this semester. A layer counts for its whole row; Epsilon+ keeps showing the whole grid, marks what you aim
 		for and shows only that level's description.
 	</p>
 

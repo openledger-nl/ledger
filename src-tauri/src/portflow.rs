@@ -23,7 +23,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::error::{Error, Result};
 use crate::portflow_api::{Gate, HttpPortflow, PResult, Portflow, PortflowError};
 use crate::portflow_auth::{self as auth, Auth, Session};
-use crate::portflow_gamma::{self as gamma, EvidenceChoice, GammaGoals, GammaView, SectionView};
+use crate::portflow_epsilon::{self as epsilon, EvidenceChoice, EpsilonGoals, EpsilonView, SectionView};
 use crate::portflow_config::{self as config, Portfolio, PortflowSettings, WRITE_KINDS};
 use crate::portflow_store::{self as store, CollectionView, EvidenceView, Imported, PersonView, RecentFeedback};
 use crate::portflow_sync::{self, CoreLedger, Report};
@@ -709,22 +709,22 @@ pub fn portflow_recent_feedback(app: State<App>, limit: Option<i64>) -> Result<V
     app.read(|conn, _| store::open_portflow_feedback(conn, limit.unwrap_or(8).clamp(1, 50), me))
 }
 
-// ---- commands: semesters, sections and Gamma (the competence matrix) ----------------------------------
+// ---- commands: semesters, sections and Epsilon+ (the competence matrix) ----------------------------------
 
-/// Gamma, the competence matrix of a semester (the current one when none is given), from the vault's mirror of Portflow: no
+/// Epsilon+, the competence matrix of a semester (the current one when none is given), from the vault's mirror of Portflow: no
 /// request is sent, so it answers at once.
 #[tauri::command]
-pub fn portflow_gamma(app: State<App>, semester: Option<String>) -> Result<GammaView> {
+pub fn portflow_epsilon(app: State<App>, semester: Option<String>) -> Result<EpsilonView> {
     let me = me(&require_on(&root_of(&app))?);
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    app.read(|conn, _| gamma::gamma(conn, semester.as_deref(), &today, me))
+    app.read(|conn, _| epsilon::epsilon(conn, semester.as_deref(), &today, me))
 }
 
 /// The portfolio's sections (its semesters), as last synced, with the Ledger semester each is.
 #[tauri::command]
 pub fn portflow_sections(app: State<App>) -> Result<Vec<SectionView>> {
     require_on(&root_of(&app))?;
-    app.read(|conn, _| gamma::sections(conn))
+    app.read(|conn, _| epsilon::sections(conn))
 }
 
 /// Says which Portflow section a semester is, or that it is none (`section` null).
@@ -732,19 +732,19 @@ pub fn portflow_sections(app: State<App>) -> Result<Vec<SectionView>> {
 pub fn portflow_link_section(app: State<App>, semester: String, section: Option<i64>) -> Result<Vec<SectionView>> {
     require_on(&root_of(&app))?;
     app.mutate(|conn, _| {
-        gamma::link_section(conn, &semester, section)?;
-        gamma::sections(conn)
+        epsilon::link_section(conn, &semester, section)?;
+        epsilon::sections(conn)
     })
 }
 
-/// Sets a semester's intended development (Gamma's goals and overview) and answers with its matrix.
+/// Sets a semester's intended development (Epsilon+'s goals and overview) and answers with its matrix.
 #[tauri::command]
-pub fn portflow_set_intended(app: State<App>, semester: String, goals: GammaGoals) -> Result<GammaView> {
+pub fn portflow_set_intended(app: State<App>, semester: String, goals: EpsilonGoals) -> Result<EpsilonView> {
     let me = me(&require_on(&root_of(&app))?);
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     app.mutate(|conn, _| {
-        gamma::set_goals(conn, &semester, &goals)?;
-        gamma::gamma(conn, Some(&semester), &today, me)
+        epsilon::set_goals(conn, &semester, &goals)?;
+        epsilon::epsilon(conn, Some(&semester), &today, me)
     })
 }
 
@@ -752,5 +752,5 @@ pub fn portflow_set_intended(app: State<App>, semester: String, goals: GammaGoal
 #[tauri::command]
 pub fn portflow_evidence_choices(app: State<App>) -> Result<Vec<EvidenceChoice>> {
     require_on(&root_of(&app))?;
-    app.read(|conn, _| gamma::evidence_choices(conn))
+    app.read(|conn, _| epsilon::evidence_choices(conn))
 }
