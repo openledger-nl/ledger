@@ -94,6 +94,16 @@ const theme = EditorView.theme({
 	'.cm-md-picture img': { maxWidth: '100%', borderRadius: '6px', verticalAlign: 'bottom' },
 	'.cm-md-picture.missing': { color: 'var(--faint)', fontStyle: 'italic' },
 	'.cm-md-table-widget': { padding: '2px 0 6px', overflowX: 'auto' },
+	'.cm-md-frontmatter': {
+		display: 'inline-block',
+		margin: '0 0 6px',
+		padding: '1px 8px',
+		borderRadius: '6px',
+		backgroundColor: 'var(--card-2)',
+		color: 'var(--muted)',
+		fontSize: '12px',
+		cursor: 'text'
+	},
 	'&.cm-md-source .cm-scroller': { fontFamily: 'var(--font-mono)', fontSize: '13px' }
 });
 
@@ -516,6 +526,50 @@ const tables = StateField.define<{ focused: boolean; decorations: DecorationSet 
 	provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
 });
 
+// ---- frontmatter -----------------------------------------------------------------------------------
+// The YAML block at the top of a document (its research methods, an id) is folded into one quiet line in live preview,
+// except where the cursor is: as markdown it would read as a rule and a heading.
+
+const FRONTMATTER = /^\uFEFF?---\r?\n[\s\S]*?\r?\n---[ \t]*(?=\r?\n|$)/;
+
+class Frontmatter extends WidgetType {
+	constructor(readonly keys: string) {
+		super();
+	}
+	eq(other: Frontmatter) {
+		return other.keys === this.keys;
+	}
+	toDOM() {
+		const line = document.createElement('div');
+		line.append(span('cm-md-frontmatter', this.keys ? `Properties: ${this.keys}` : 'Properties'));
+		return line;
+	}
+	ignoreEvent() {
+		return false;
+	}
+}
+
+function frontmatterDecorations(state: EditorState, focused: boolean): DecorationSet {
+	if (state.facet(inSource)) return Decoration.none;
+	const block = FRONTMATTER.exec(state.sliceDoc(0, Math.min(state.doc.length, 20_000)))?.[0];
+	if (!block) return Decoration.none;
+	const to = block.length;
+	if (focused && state.selection.ranges.some((r) => r.from <= to)) return Decoration.none;
+	const keys = [...block.matchAll(/^([A-Za-z_][\w-]*):/gm)].map((m) => m[1]).join(', ');
+	return Decoration.set([Decoration.replace({ widget: new Frontmatter(keys), block: true }).range(0, to)]);
+}
+
+const frontmatterFold = StateField.define<{ focused: boolean; decorations: DecorationSet }>({
+	create: (state) => ({ focused: false, decorations: frontmatterDecorations(state, false) }),
+	update(value, tr) {
+		let focused = value.focused;
+		for (const effect of tr.effects) if (effect.is(focusChanged)) focused = effect.value;
+		const stale = tr.docChanged || tr.selection || focused !== value.focused || tr.startState.facet(inSource) !== tr.state.facet(inSource);
+		return stale ? { focused, decorations: frontmatterDecorations(tr.state, focused) } : value;
+	},
+	provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
+});
+
 // ---- [[links]] -------------------------------------------------------------------------------------
 // As in Obsidian: `[[Thread]]` and `[[report|the report]]` read as links in both modes. In live preview the brackets (and
 // the target in front of the words shown instead) fade away except where the cursor is; a link that points at nothing is
@@ -882,6 +936,7 @@ export function markdownEditor(options: MarkdownEditorOptions): Extension {
 		wikiLinks,
 		wikiBrackets,
 		tables,
+		frontmatterFold,
 		markField,
 		EditorView.domEventHandlers({
 			click: (event, view) => {
