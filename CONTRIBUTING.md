@@ -24,6 +24,10 @@ the browser's developer tools. The tab has no backend of its own: each call goes
 (`src/lib/browserRelay.ts`, `scripts/browser-relay.mjs`), so the window has to stay open. `pnpm run dev:web` starts the
 dev server alone, which is what `tauri dev` runs first.
 
+`pnpm storybook` (http://localhost:6006) shows every UI component and the main pages on sample data, without the app.
+A new component gets its stories in the same change: `src/stories/<area>/<Component>.stories.svelte`, with the sample
+data in `src/stories/fixtures.ts` and any backend call it makes answered in `src/stories/backend.ts`.
+
 ## Before you push
 
 ```bash

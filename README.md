@@ -185,6 +185,12 @@ What belongs to the window stays there: a file is dropped on the window, a dialo
 it, and global shortcuts are the app's. Anyone with that dev page open can act on the vault, as in the window. Only the
 development server has this; Ledger as installed is the desktop app alone.
 
+The UI is also in [Storybook](https://storybook.js.org): `pnpm storybook` serves it at http://localhost:6006 (no app or
+backend needed), `pnpm build-storybook` builds it into `storybook-static/`. Every component in `src/lib/components` has
+its stories in `src/stories/<area>/`, and the main pages are there under **Pages**, drawn with their own layouts and
+load functions. The data is a made-up vault (`src/stories/fixtures.ts`), and Tauri's IPC mock answers each backend call
+from it (`src/stories/backend.ts`).
+
 A local `tauri build` makes the installers but not the updater's signatures: those need the private key, which only CI has.
 
 Checks:
