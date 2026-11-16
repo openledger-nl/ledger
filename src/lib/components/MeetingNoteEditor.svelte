@@ -11,6 +11,7 @@
 	import { attempt, confirmDialog, refresh } from '$lib/ui.svelte';
 	import { teamTags } from '$lib/v1';
 	import type { DailyNote, MeetingSection, ProjectPerson } from '$lib/types';
+	import type { MentionOption } from '$lib/markdownEditor';
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	import TagPicker, { type TagOption, type TagQuickPick } from './TagPicker.svelte';
 	import TimeInput from './TimeInput.svelte';
@@ -36,6 +37,22 @@
 	function peopleFor(m: MeetingSection): TagOption[] {
 		const own = new Set(people.filter((p) => m.projects.includes(p.project)).map((p) => p.tag));
 		return [...peopleOptions.filter((o) => own.has(o.value)), ...peopleOptions.filter((o) => !own.has(o.value))];
+	}
+
+	/** Who `@` in a meeting's notes offers: the same people as "With", in the same order. */
+	function mentionsFor(m: MeetingSection): MentionOption[] {
+		return peopleFor(m).map((o) => ({ id: o.value, label: o.label, detail: o.hint ?? o.value, link: `person:${o.value}` }));
+	}
+
+	/** The people mentioned in a meeting's notes (`[@Frank](person:coach/frank)`). */
+	const mentionedIn = (body: string) => [...body.matchAll(/\]\(person:([^)\s]+)\)/g)].map((match) => decodeURIComponent(match[1]));
+
+	/** New notes: whoever is newly mentioned in them was at the meeting too, and joins "With". */
+	function setBody(m: MeetingSection, body: string) {
+		const before = new Set(mentionedIn(m.body));
+		m.body = body;
+		const added = mentionedIn(body).filter((tag) => !before.has(tag) && !m.people.includes(tag));
+		if (added.length) m.people = [...m.people, ...added];
 	}
 
 	/** "Whole team": every teammate of the meeting's projects, in one click. */
@@ -134,7 +151,13 @@
 						<TagPicker bind:value={m.people} options={peopleFor(m)} quick={quickFor(m)} label="With" placeholder="Who was there" />
 					</div>
 				</div>
-				<MarkdownEditor bind:value={m.body} rows={4} label="Notes" placeholder="What was said, decided, to do…" />
+				<MarkdownEditor
+					bind:value={() => m.body, (v) => setBody(m, v)}
+					rows={4}
+					label="Notes"
+					placeholder="What was said, decided, to do… Type @ to mention someone."
+					people={mentionsFor(m)}
+				/>
 			</article>
 		{:else}
 			<div class="empty-state">
