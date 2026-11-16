@@ -6,7 +6,6 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { untrack } from 'svelte';
-	import { dailyTags } from '$lib/daily';
 	import { api } from '$lib/api';
 	import { dayLabel } from '$lib/semesters';
 	import { attempt, confirmDialog, refresh } from '$lib/ui.svelte';
@@ -50,11 +49,6 @@
 	// The meetings as edited here, from the saved note once per day (the page keys this component by day).
 	let meetings = $state<MeetingSection[]>(untrack(() => structuredClone(note?.meetings ?? [])));
 	const id = untrack(() => note?.id ?? `daily-${date}`);
-	const tags = $derived(dailyTags({ meetings }));
-	const nameOf = (tag: string) =>
-		tag.startsWith('project/')
-			? (projectOptions.find((o) => o.value === tag.slice(8))?.label ?? tag.slice(8))
-			: (peopleOptions.find((o) => o.value === tag)?.label ?? tag);
 
 	// Saved a moment after the last change; a day without meetings has no file.
 	let first = true;
@@ -107,13 +101,6 @@
 			<button class="btn small primary" onclick={add}><Plus size={14} />Add meeting</button>
 		</div>
 	</header>
-
-	{#if tags.length}
-		<div class="dn-tags" title="The frontmatter's tags: gathered from the meetings">
-			<span class="hint">tags</span>
-			{#each tags as t (t)}<span class="chip plain" title="#{t}">{nameOf(t)}</span>{/each}
-		</div>
-	{/if}
 
 	{#each meetings as m, i (i)}
 			<article class="dn-meeting">

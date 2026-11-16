@@ -23,7 +23,7 @@
 	// projects and people of a meeting, who gave feedback. With `max={1}` it holds one tag. `quick` adds buttons that put
 	// several tags in at once (the whole team); one whose tags are all in already is left out.
 	import Plus from '@lucide/svelte/icons/plus';
-	import Hash from '@lucide/svelte/icons/hash';
+	import Search from '@lucide/svelte/icons/search';
 	import Users from '@lucide/svelte/icons/users';
 	import X from '@lucide/svelte/icons/x';
 	import { tick } from 'svelte';
@@ -78,7 +78,7 @@
 		const matching = q ? free.filter((o) => `${o.label} ${prefix}${o.value} ${o.hint ?? ''}`.toLowerCase().includes(q)) : free;
 		const items = matching.map((o) => ({ ...o, isNew: false }));
 		if (allowNew && typed && !known.has(typed) && !value.includes(typed)) {
-			items.push({ value: typed, label: `Add #${prefix}${typed}`, hint: 'A new tag', isNew: true });
+			items.push({ value: typed, label: `Add “${query.trim().replace(/^#/, '') || typed}”`, isNew: true });
 		}
 		return items;
 	});
@@ -162,7 +162,7 @@
 
 <div class="tag-picker" class:open bind:this={root}>
 	{#each value as tag (tag)}
-		<span class="chip plain" title="#{prefix}{tag}">
+		<span class="chip plain">
 			{known.get(tag)?.label ?? tag}
 			<button type="button" class="x" aria-label="Remove {known.get(tag)?.label ?? tag}" onclick={() => remove(tag)}><X size={12} /></button>
 		</span>
@@ -189,12 +189,12 @@
 			{onkeydown}
 		>
 			<label class="dd-search">
-				<Hash size={13} />
+				<Search size={13} />
 				<input
 					bind:this={search}
 					bind:value={query}
 					oninput={() => (active = 0)}
-					placeholder="Search or type a new tag"
+					placeholder="Search, or type a new one"
 					aria-label="Search {label.toLowerCase()}"
 					autocomplete="off"
 					spellcheck="false"
@@ -213,14 +213,14 @@
 						onpointerenter={() => (active = i)}
 						onclick={() => pick(i)}
 					>
-						<span class="dd-icon">{#if o.isNew}<Plus size={14} />{:else}<Hash size={14} />{/if}</span>
+						{#if o.isNew}<span class="dd-icon"><Plus size={14} /></span>{/if}
 						<span class="dd-text">
 							<span class="dd-label">{o.label}</span>
 							{#if o.hint}<span class="dd-hint">{o.hint}</span>{/if}
 						</span>
 					</div>
 				{:else}
-					<div class="dd-none">{options.length ? 'Nothing matches.' : 'No tags yet: type one.'}</div>
+					<div class="dd-none">{options.length ? 'Nothing matches.' : 'Nothing yet: type a name.'}</div>
 				{/each}
 			</div>
 		</div>

@@ -91,7 +91,6 @@
 							<li>
 								<span class="people-name">{person.name}</span>
 								{#if person.portflowUser !== null}<span class="badge" title="Someone in Portflow">Portflow</span>{/if}
-								<span class="mono hint">#{person.tag}</span>
 								<span class="spacer-h"></span>
 								<a class="btn small ghost" href="/feedback?from={encodeURIComponent(person.tag)}" title="The feedback {person.name} gave"><Inbox size={14} />Feedback</a>
 								<div style="width:160px">

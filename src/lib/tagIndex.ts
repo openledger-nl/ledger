@@ -25,7 +25,7 @@ export function projectTagOptions(projects: ProjectSummary[], meta: ProjectMeta[
 		.map(([value, label]) => ({
 			value,
 			label,
-			hint: `#project/${value}${uses.get(value) ? ` · ${plural(uses.get(value) ?? 0, 'use')}` : ''}${inVault.has(value) ? '' : ' · not in this vault'}`
+			hint: [uses.get(value) ? plural(uses.get(value) ?? 0, 'use') : '', inVault.has(value) ? '' : 'not in this vault'].filter(Boolean).join(' · ')
 		}))
 		.sort((a, b) => Number(inVault.has(b.value)) - Number(inVault.has(a.value)) || a.label.localeCompare(b.label));
 }
@@ -48,11 +48,11 @@ export function personTagOptions(notes: DailyNote[] = [], feedback: InboxFeedbac
 	const own = [...listed].map(([value, of]) => ({
 		value,
 		label: of[0].name,
-		hint: `#${value} · ${roleName(of[0].role)} in ${of.map((p) => p.project).join(', ')}${uses.get(value) ? ` · ${plural(uses.get(value) ?? 0, 'use')}` : ''}`
+		hint: `${roleName(of[0].role)} in ${of.map((p) => p.project).join(', ')}${uses.get(value) ? ` · ${plural(uses.get(value) ?? 0, 'use')}` : ''}`
 	}));
 	const others = [...uses]
 		.filter(([value]) => !listed.has(value))
 		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-		.map(([value, n]) => ({ value, label: named.get(value) ?? personName(value), hint: `#${value} · ${personRole(value)} · ${plural(n, 'use')}` }));
+		.map(([value, n]) => ({ value, label: named.get(value) ?? personName(value), hint: `${personRole(value)} · ${plural(n, 'use')}` }));
 	return [...own, ...others];
 }

@@ -69,7 +69,7 @@
 	];
 	const personOptions = $derived([
 		{ value: '', label: 'From anyone' },
-		...people.map(([tag, f]) => ({ value: tag, label: f.from ?? tag, hint: `${roleName((f.fromRole as FeedbackRole) || 'other')} · #${tag}` }))
+		...people.map(([tag, f]) => ({ value: tag, label: f.from ?? tag, hint: roleName((f.fromRole as FeedbackRole) || 'other') }))
 	]);
 	const projectOptions = $derived([{ value: '', label: 'Every project' }, ...projectsWithFeedback.map(([slug, name]) => ({ value: slug, label: name }))]);
 
