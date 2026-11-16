@@ -154,6 +154,7 @@ fn clean(quote: Option<&Quote>) -> Result<Option<Quote>> {
 
 /// Feedback on `deliverable_path`, which must exist (live, or a published "<name>@v1.0.<ext>"); on the passage `quote`,
 /// or on the whole document without one.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn add(conn: &Connection, project: &str, thread: &str, deliverable_path: &str, body: &str, quote: Option<&Quote>) -> Result<FeedbackView> {
     add_with(conn, project, thread, deliverable_path, body, quote, &FeedbackFrom::default())
 }
@@ -161,6 +162,7 @@ pub fn add(conn: &Connection, project: &str, thread: &str, deliverable_path: &st
 pub const GIVEN: [&str; 4] = ["in person", "portflow", "email", "other"];
 
 /// Feedback on the whole document, saying who gave it and how.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn add_from(conn: &Connection, project: &str, thread: &str, deliverable_path: &str, body: &str, from: &FeedbackFrom) -> Result<FeedbackView> {
     add_with(conn, project, thread, deliverable_path, body, None, from)
 }
