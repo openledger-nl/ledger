@@ -299,6 +299,7 @@ pub fn run() {
             portflow::portflow_status,
             portflow::portflow_set_enabled,
             portflow::portflow_set_launch_url,
+            portflow::portflow_set_access,
             portflow::portflow_sign_in,
             portflow::portflow_sign_out,
             portflow::portflow_sync_now,

@@ -390,6 +390,8 @@ export const portflowApi = {
 	setEnabled: (enabled: boolean, forget = false) => call<PortflowView>('portflow_set_enabled', { enabled, forget }),
 	/** Blank means the default (Fontys ICT's Canvas). */
 	setLaunchUrl: (url: string) => call<PortflowView>('portflow_set_launch_url', { url }),
+	/** Read only, or read and write with these writes on (only the ones this version can make are kept). */
+	setAccess: (write: boolean, writes: string[]) => call<PortflowView>('portflow_set_access', { write, writes }),
 	/** Opens the sign-in window and resolves once Portflow handed over its session. */
 	signIn: () => call<PortflowView>('portflow_sign_in'),
 	signOut: (forget = false) => call<PortflowView>('portflow_sign_out', { forget }),

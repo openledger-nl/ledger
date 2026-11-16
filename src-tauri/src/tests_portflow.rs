@@ -1137,3 +1137,10 @@ fn a_machine_that_had_edit_descriptions_on_starts_with_the_guide_write_off() {
     assert!(!settings.access.allows(config::GUIDE_WRITE));
     assert!(!settings.access.writes.contains("edit-descriptions"));
 }
+
+#[test]
+fn only_writes_that_are_listed_can_be_built_and_switched_on() {
+    for built in crate::portflow_config::BUILT_WRITES {
+        assert!(crate::portflow_config::WRITE_KINDS.iter().any(|(id, _)| *id == built), "{built} is built but not listed");
+    }
+}

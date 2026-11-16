@@ -28,6 +28,9 @@ pub const DEFAULT_LAUNCH_URL: &str = "https://fhict.instructure.com/accounts/1/e
 pub const GUIDE_WRITE: &str = "guide-description";
 
 /// The kinds of write Ledger could make in Portflow, each with its own switch. None is on until the person turns it on.
+/// The writes this version can make: only these can be switched on; the rest are listed, greyed out, until built.
+pub const BUILT_WRITES: [&str; 1] = [GUIDE_WRITE];
+
 pub const WRITE_KINDS: [(&str, &str); 7] = [
     ("upload-versions", "Upload versions"),
     ("create-evidence", "Create evidence"),

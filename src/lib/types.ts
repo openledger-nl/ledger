@@ -1023,7 +1023,8 @@ export interface PortflowView {
 	launchUrl: string;
 	defaultLaunchUrl: string;
 	write: boolean;
-	writes: { id: string; label: string; on: boolean }[];
+	/** Each kind of write and whether it is on; `available` says whether this version can make it at all. */
+	writes: { id: string; label: string; on: boolean; available: boolean }[];
 	writesAvailable: boolean;
 	portfolio: { id: number; userId: number; userName: string } | null;
 	status: PortflowStatus;

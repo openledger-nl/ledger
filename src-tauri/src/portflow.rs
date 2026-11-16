@@ -328,6 +328,8 @@ pub struct WriteKind {
     pub id: String,
     pub label: String,
     pub on: bool,
+    /// Whether this version can make it; one that isn't built can't be switched on.
+    pub available: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -350,7 +352,7 @@ pub struct PortflowView {
     /// Read only (false) or read and write.
     pub write: bool,
     pub writes: Vec<WriteKind>,
-    /// Whether writing can be switched on in this version (not yet: phase 1 only reads).
+    /// Whether writing can be switched on in this version: true once any kind of write is built.
     pub writes_available: bool,
     pub portfolio: Option<Portfolio>,
     pub status: PortflowStatus,
@@ -386,8 +388,16 @@ fn view(app: &App, syncer: &PortflowSyncer) -> Result<PortflowView> {
         launch_url: settings.launch_url.clone(),
         default_launch_url: config::DEFAULT_LAUNCH_URL.to_string(),
         write: settings.access.write,
-        writes: WRITE_KINDS.iter().map(|(id, label)| WriteKind { id: id.to_string(), label: label.to_string(), on: settings.access.writes.contains(*id) }).collect(),
-        writes_available: false,
+        writes: WRITE_KINDS
+            .iter()
+            .map(|(id, label)| WriteKind {
+                id: id.to_string(),
+                label: label.to_string(),
+                on: settings.access.writes.contains(*id),
+                available: config::BUILT_WRITES.contains(id),
+            })
+            .collect(),
+        writes_available: !config::BUILT_WRITES.is_empty(),
         portfolio: settings.portfolio.clone(),
         status: syncer.status(),
         links,
@@ -466,6 +476,22 @@ pub fn portflow_set_launch_url(app: State<App>, syncer: State<PortflowSyncer>, u
     require_on(&root)?;
     let url = if url.trim().is_empty() { config::DEFAULT_LAUNCH_URL.to_string() } else { config::check_launch_url(&url)? };
     config::update_settings(&root, |s| s.launch_url = url)?;
+    view(&app, &syncer)
+}
+
+/// Read only, or read and write with the writes switched on. Only writes this version can make are kept; the core's
+/// gate (`portflow_api::Gate`) refuses everything else whatever is saved here.
+#[tauri::command]
+pub fn portflow_set_access(app: State<App>, syncer: State<PortflowSyncer>, write: bool, writes: Vec<String>) -> Result<PortflowView> {
+    let root = root_of(&app);
+    require_on(&root)?;
+    let writes: std::collections::BTreeSet<String> = writes.into_iter().filter(|w| config::BUILT_WRITES.contains(&w.as_str())).collect();
+    config::update_settings(&root, |s| {
+        s.access.write = write;
+        s.access.writes = writes.clone();
+    })?;
+    syncer.reconfigure();
+    crate::applog::info("portflow", if write { "Portflow set to read and write" } else { "Portflow set to read only" });
     view(&app, &syncer)
 }
 

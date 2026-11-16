@@ -142,6 +142,31 @@
 		collections = null;
 	}
 
+	// ---- access -------------------------------------------------------------------------------
+	// Read only, or read and write with the kinds of write switched on one by one. Going to read and write asks first:
+	// from then on Ledger can change the real portfolio.
+
+	async function setAccess(write: boolean, writes: string[]) {
+		if (!view) return;
+		if (write && !view.write) {
+			const ok = await confirmDialog({
+				title: 'Let Ledger write to Portflow?',
+				message: 'Ledger will then make the changes you switch on below in your real portfolio. Each kind of write has its own switch, and all start off.',
+				confirmLabel: 'Allow writing',
+				// Red: from here Ledger can change the real portfolio.
+				danger: true
+			});
+			if (!ok) return;
+		}
+		busy = 'access';
+		const saved = await attempt(() => portflowApi.setAccess(write, writes));
+		busy = null;
+		if (saved) view = saved;
+	}
+
+	const onWrites = () => (view?.writes ?? []).filter((w) => w.on).map((w) => w.id);
+	const toggleWrite = (id: string, on: boolean) => setAccess(true, on ? [...onWrites(), id] : onWrites().filter((w) => w !== id));
+
 	async function saveUrl() {
 		const saved = await attempt(() => portflowApi.setLaunchUrl(launchUrl));
 		if (!saved) return;
@@ -334,16 +359,23 @@
 		<div class="sync-detail">
 			<h3 style="font-size:14px">Access</h3>
 			<label class="choice">
-				<input type="radio" checked={!view.write} disabled />
+				<input type="radio" name="portflow-access" checked={!view.write} disabled={busy !== null} onchange={() => setAccess(false, onWrites())} />
 				<span><strong>Read only</strong> · Ledger reads your portfolio and never changes anything in it.</span>
 			</label>
 			<label class="choice">
-				<input type="radio" checked={view.write} disabled={!view.writesAvailable} />
+				<input type="radio" name="portflow-access" checked={view.write} disabled={!view.writesAvailable || busy !== null} onchange={() => setAccess(true, onWrites())} />
 				<span><strong>Read and write</strong> · also make the changes you switch on, one kind at a time.</span>
 			</label>
 			<div class="writes">
 				{#each view.writes as w (w.id)}
-					<label class="choice small"><input type="checkbox" checked={w.on} disabled={!view.writesAvailable} />{w.label}</label>
+					<label class="choice small" class:off={!w.available} title={w.available ? '' : 'Not built yet: Ledger can’t make this change in this version'}>
+						<input
+							type="checkbox"
+							checked={w.on && w.available}
+							disabled={!view.write || !w.available || busy !== null}
+							onchange={(e) => toggleWrite(w.id, e.currentTarget.checked)}
+						/>{w.label}{#if !w.available}<span class="hint"> · not built yet</span>{/if}
+					</label>
 				{/each}
 			</div>
 			{#if !view.writesAvailable}
@@ -512,6 +544,10 @@
 	.choice.small {
 		font-size: 12px;
 		align-items: center;
+	}
+	/* A kind of write this version can’t make yet: listed, but greyed out. */
+	.choice.off {
+		opacity: 0.6;
 	}
 	.writes {
 		display: grid;
