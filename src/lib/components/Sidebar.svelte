@@ -19,7 +19,7 @@
 	import { sync, syncFooter } from '$lib/ui.svelte';
 	import { layout, toggleSidebar } from '$lib/layout.svelte';
 	import { sidebar } from '$lib/sidebar.svelte';
-	import { portflow } from '$lib/portflow.svelte';
+	import { portflow, portflowFooter } from '$lib/portflow.svelte';
 	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
 	import EpsilonIcon from '$lib/components/EpsilonIcon.svelte';
 	import Wordmark from '$lib/components/Wordmark.svelte';
@@ -115,6 +115,10 @@
 	const footer = $derived.by(() => {
 		void tick;
 		return syncFooter(sync.status);
+	});
+	const pf = $derived.by(() => {
+		void tick;
+		return portflowFooter(portflow.status);
 	});
 
 	// On a narrow window the drawer closes after every choice (but not after folding a project).
@@ -249,6 +253,17 @@
 		<div class="sync-sub" title={footer.where}>{footer.where}</div>
 		{#if footer.encryption}<div class="sync-sub">{footer.encryption}</div>{/if}
 		{#if footer.error}<div class="sync-sub error">{footer.error}</div>{/if}
+		{#if portflow.enabled}
+			<!-- Portflow and its sign-in through Canvas; a click opens its settings. -->
+			<a class="sync-part" href="/settings/sync#portflow" title="Portflow settings">
+				<div class="sync-line">
+					<span class="dot {pf.dot}"></span><span>{pf.title}</span>
+					{#if pf.when}<span class="sync-when">· {pf.when}</span>{/if}
+				</div>
+				<div class="sync-sub" title={pf.canvas}>{pf.canvas}</div>
+				{#if pf.error}<div class="sync-sub error">{pf.error}</div>{/if}
+			</a>
+		{/if}
 	</div>
 
 	<a class="nav-item" class:active={on('/settings')} href="/settings"><span class="nav-ico"><Settings size={16} /></span>Settings</a>

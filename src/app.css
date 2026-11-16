@@ -176,6 +176,9 @@ details[open] > summary .disclosure { transform: rotate(90deg); }
 .sync-line .sync-when { color: var(--side-muted); font-weight: 400; white-space: nowrap; }
 .sync-sub { font-size: 11px; color: var(--side-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sync-sub.error { color: var(--side-error); white-space: normal; }
+/* A second service under the vault's sync (Portflow and its Canvas sign-in), set off by a rule. */
+.sync-part { display: flex; flex-direction: column; gap: 6px; margin: 4px -12px -12px; padding: 10px 12px 12px; border-top: 1px solid var(--side-edge); border-radius: 0 0 10px 10px; color: inherit; text-decoration: none; }
+.sync-part:hover { background: var(--side-hover); }
 .version { font-size: 10.5px; color: var(--side-dim); margin-top: 2px; }
 
 .scrim { display: none; }
@@ -208,6 +211,7 @@ details[open] > summary .disclosure { transform: rotate(90deg); }
 .rail-project.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .rail-rule { width: 28px; height: 1px; background: var(--side-edge); margin: 8px 0; flex-shrink: 0; }
 .rail-sync { margin-top: 6px; }
+.rail-sync-2 { margin-top: 0; }
 .rail-sync:hover { background: var(--side-hover); }
 .rail-tip {
 	position: fixed; z-index: 60; left: 62px; transform: translateY(-50%); pointer-events: none;
