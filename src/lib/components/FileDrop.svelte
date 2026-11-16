@@ -6,6 +6,7 @@
 	// it, whatever it says it carries (a file manager on Linux says "text/uri-list", not "Files", while it hovers):
 	// otherwise the window would open the dropped file itself instead of Ledger, and an editor would paste its text.
 	import FileUp from '@lucide/svelte/icons/file-up';
+	import { getCurrentWebview } from '@tauri-apps/api/webview';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
@@ -78,6 +79,44 @@
 		if (here) void save(here.project, here.thread, here.title, dropped, false);
 		else open(dropped);
 	}
+
+	// On Linux and macOS the window lets Tauri take files dropped on it (dragDropEnabled in tauri.linux.conf.json and
+	// tauri.macos.conf.json; those repeat the window of tauri.conf.json, keep them alike): it hands over the files' real
+	// paths, which the web view there doesn't. Windows keeps it off, as the board's drag and drop needs that there, and
+	// its web view gives the page the files itself (below).
+	$effect(() => {
+		let alive = true;
+		let unlisten: (() => void) | undefined;
+		try {
+			getCurrentWebview()
+				.onDragDropEvent((event) => {
+					const p = event.payload;
+					if (p.type === 'enter' || p.type === 'over') {
+						hovering = true;
+						clearTimeout(timer);
+						timer = setTimeout(() => (hovering = false), 1500);
+					} else if (p.type === 'leave') {
+						clearTimeout(timer);
+						hovering = false;
+					} else if (p.type === 'drop') {
+						clearTimeout(timer);
+						hovering = false;
+						if (!p.paths.length) return;
+						const dropped: Dropped = { kind: 'paths', paths: p.paths };
+						if (here) void save(here.project, here.thread, here.title, dropped, false);
+						else open(dropped);
+					}
+				})
+				.then((fn) => (alive ? (unlisten = fn) : fn()))
+				.catch(() => {});
+		} catch {
+			// Not in Ledger's window (a plain browser): only the page's own drops below.
+		}
+		return () => {
+			alive = false;
+			unlisten?.();
+		};
+	});
 
 	// The listeners sit on the window in the capture phase, so they hear a drag before anything on the page does (an
 	// editor would paste a dropped file's text). A drag that starts in Ledger sets `inside` until it ends or drops.
