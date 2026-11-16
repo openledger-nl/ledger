@@ -172,7 +172,7 @@ fn checked(goals: &EpsilonGoals) -> Result<EpsilonGoals> {
     for (key, l) in &goals.layers {
         let key = key.trim().to_uppercase();
         if !LAYERS.iter().any(|(k, _)| *k == key) {
-            return Err(Error::invalid(format!("There is no layer “{key}”")));
+            return Err(Error::invalid(format!("There is no layer \"{key}\"")));
         }
         out.layers.insert(key.clone(), level(&key, *l)?);
     }
@@ -192,7 +192,7 @@ fn checked(goals: &EpsilonGoals) -> Result<EpsilonGoals> {
     out.study_guide = match goals.study_guide.as_deref().map(str::trim).filter(|g| !g.is_empty()) {
         None => None,
         Some(url) if url.starts_with("https://") || url.starts_with("http://") => Some(url.to_string()),
-        Some(_) => return Err(Error::invalid("The study guide is a web address (https://…)")),
+        Some(_) => return Err(Error::invalid("The study guide is a web address (https://...)")),
     };
     Ok(out)
 }

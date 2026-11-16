@@ -479,7 +479,7 @@ Example: At the end of January the bakery's twelve staff see their shifts on the
 %% What: what someone might expect but you won't do, each with a word on why. Why: when someone asks why it isn't in, the answer is already here. %%
 
 ## Result
-%% What: what you hand over, each with when it counts as done ("Done when: …", something you can check). Why: done is something you check, not something you feel. %%
+%% What: what you hand over, each with when it counts as done ("Done when: ...", something you can check). Why: done is something you check, not something you feel. %%
 
 ## Approach and planning
 %% What: the steps or sprints in order, each with a date or a week and what it delivers. Name the moments someone else looks at the work (a review, a demo, an assessment). Why: a plan without dates is a wish. %%

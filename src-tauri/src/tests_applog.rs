@@ -31,7 +31,7 @@ fn an_unknown_level_is_info_and_a_long_message_is_cut_off() {
     let entry = &log.read(1)[0];
     assert_eq!(entry.level, "info");
     assert!(entry.message.len() < 9_000);
-    assert!(entry.message.ends_with('…'));
+    assert!(entry.message.ends_with("..."));
 }
 
 #[test]

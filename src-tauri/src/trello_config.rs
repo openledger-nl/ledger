@@ -109,7 +109,7 @@ pub fn write_credentials(root: &Path, credentials: &Credentials) -> Result<()> {
 /// The last four characters of a secret, for telling which one is saved. Nothing for a short one.
 pub fn hint(secret: &str) -> String {
     if secret.chars().count() >= 8 {
-        format!("…{}", secret.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<String>())
+        format!("...{}", secret.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<String>())
     } else {
         String::new()
     }

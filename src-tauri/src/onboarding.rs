@@ -73,7 +73,7 @@ pub fn status(config_dir: &Path, vault_has_content: bool) -> Result<OnboardingVi
 /// Puts a step off. Only the steps that can wait can be.
 pub fn skip(config_dir: &Path, step: &str) -> Result<OnboardingView> {
     if !SKIPPABLE.contains(&step) {
-        return Err(Error::invalid(format!("The step “{step}” can't be skipped")));
+        return Err(Error::invalid(format!("The step \"{step}\" can't be skipped")));
     }
     settings::update_config(config_dir, |c| {
         if !c.onboarding.skipped.iter().any(|s| s == step) {

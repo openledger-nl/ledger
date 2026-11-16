@@ -39,8 +39,8 @@ pub const BUILT_WRITES: [&str; 2] = [GUIDE_WRITE, EVIDENCE_WRITE];
 pub const WRITE_KINDS: [(&str, &str); 8] = [
     ("upload-versions", "Upload versions"),
     ("create-evidence", "Create evidence"),
-    (GUIDE_WRITE, "Reading guide → collection description"),
-    (EVIDENCE_WRITE, "Evidence description → evidence item"),
+    (GUIDE_WRITE, "Reading guide to collection description"),
+    (EVIDENCE_WRITE, "Evidence description to evidence item"),
     ("link-outcomes", "Link outcomes"),
     ("reply-feedback", "Reply to feedback"),
     ("ask-feedback", "Ask for feedback"),

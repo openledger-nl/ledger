@@ -224,7 +224,7 @@ pub fn sync(portflow: &dyn Portflow, p: i64, item: &Item, write_on: bool, memory
             return Ok(Outcome::default());
         }
         remember(memory, GuideSeen { description: now.description, readme: text_hash(&pulled) })?;
-        crate::applog::info("portflow", format!("Took the description of the evidence item “{}” in {} from Portflow", item.name, item.project));
+        crate::applog::info("portflow", format!("Took the description of the evidence item \"{}\" in {} from Portflow", item.name, item.project));
         return Ok(Outcome { take: Some(pulled), ..Default::default() });
     }
     if !in_ledger || ledger.is_empty() {
@@ -235,7 +235,7 @@ pub fn sync(portflow: &dyn Portflow, p: i64, item: &Item, write_on: bool, memory
     if !write_on {
         let note = in_portflow.then(|| {
             format!(
-                "The description of the evidence item “{}” in {} changed in Ledger and in Portflow: Ledger's is kept. Switch on “Evidence description → evidence item” to send it.",
+                "The description of the evidence item \"{}\" in {} changed in Ledger and in Portflow: Ledger's is kept. Switch on \"Evidence description to evidence item\" to send it.",
                 item.name, item.project
             )
         });
@@ -249,11 +249,11 @@ pub fn sync(portflow: &dyn Portflow, p: i64, item: &Item, write_on: bool, memory
         Ok(answer) => {
             let stored = answer.unwrap_or_else(|| html.clone());
             remember(memory, GuideSeen { description: html_hash(&stored), readme: now.readme })?;
-            crate::applog::info("portflow", format!("Wrote the description of the evidence item “{}” in {} to Portflow", item.name, item.project));
+            crate::applog::info("portflow", format!("Wrote the description of the evidence item \"{}\" in {} to Portflow", item.name, item.project));
             Ok(Outcome { written: true, ..Default::default() })
         }
         Err(PortflowError::SignedOut) => Err(PortflowError::SignedOut),
-        Err(e) => Ok(Outcome { note: Some(format!("The description of the evidence item “{}” in {} didn't go to Portflow: {e}", item.name, item.project)), ..Default::default() }),
+        Err(e) => Ok(Outcome { note: Some(format!("The description of the evidence item \"{}\" in {} didn't go to Portflow: {e}", item.name, item.project)), ..Default::default() }),
     }
 }
 

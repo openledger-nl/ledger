@@ -106,7 +106,7 @@ pub fn block(conn: &Connection, project: &str, item: &FeedbackView) -> Result<St
         None => format!("the live file (deliverables/{live}), as it stands"),
     };
     let thread = query_opt(conn, "SELECT title FROM threads WHERE project_slug = ?1 AND slug = ?2", [project, item.thread_slug.as_str()], |r| r.get::<_, String>(0))?;
-    let from = thread.map(|t| format!(", from the thread “{t}”")).unwrap_or_default();
+    let from = thread.map(|t| format!(", from the thread \"{t}\"")).unwrap_or_default();
     let passage = item.quote.as_ref().map(|q| format!("\n\n> {q}")).unwrap_or_default();
     Ok(format!("### On {on}{from}{passage}\n\n{}", item.body.trim()))
 }

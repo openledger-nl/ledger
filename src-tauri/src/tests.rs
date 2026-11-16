@@ -306,7 +306,7 @@ fn a_templates_guiding_questions_are_answered_with_the_prompt_not_in_the_thread(
         GuidingAnswer { question: "Why?".into(), answer: " ".into() },
     ];
     let answered = prompts::create(&c, &p, &t, &NewPrompt { base: "Write it.".into(), template_id: Some("interview".into()), answers, ..Default::default() }).unwrap();
-    assert_eq!(answered.base, "Write it.\n\nAnswers to the guiding questions of the template “Interview”:\n\n**Who?**\nAna, the buyer.");
+    assert_eq!(answered.base, "Write it.\n\nAnswers to the guiding questions of the template \"Interview\":\n\n**Who?**\nAna, the buyer.");
     let skipped = vec![GuidingAnswer { question: "Who?".into(), answer: String::new() }];
     let all_skipped = prompts::create(&c, &p, &t, &NewPrompt { base: "Write it.".into(), template_id: Some("interview".into()), answers: skipped, ..Default::default() }).unwrap();
     assert_eq!(all_skipped.base, "Write it.");
@@ -622,8 +622,8 @@ fn feedback_goes_into_a_prompts_base_with_the_version_it_was_given_on() {
     let spec = BaseSpec { template_id: None, feedback: vec![early.id.clone(), late.id.clone()] };
     let base = prompts::suggest_base(&c, &p, &spec).unwrap();
     assert!(base.starts_with("Please resolve the following feedback on plan.md."), "{base}");
-    assert!(base.contains("### On v1.0 (versions/plan@v1.0.md), from the thread “Calls”\n\n> Plan\n\nTighten this."), "{base}");
-    assert!(base.contains("### On the live file (deliverables/plan.md), as it stands, from the thread “Calls”\n\nAdd owners."), "{base}");
+    assert!(base.contains("### On v1.0 (versions/plan@v1.0.md), from the thread \"Calls\"\n\n> Plan\n\nTighten this."), "{base}");
+    assert!(base.contains("### On the live file (deliverables/plan.md), as it stands, from the thread \"Calls\"\n\nAdd owners."), "{base}");
     assert_eq!(prompts::suggest_base(&c, &p, &BaseSpec::default()).unwrap(), "", "nothing to fill it in from");
 
     // A prompt that is written already gets the pieces it hasn't got added to its base, once each, and keeps its own words.
@@ -949,7 +949,7 @@ fn semesters_are_checked_and_do_not_share_days() {
     let second = semesters::create(&c, &semester("Semester 2", "2027-02-01", "2027-07-31")).unwrap();
     assert_eq!(
         message(semesters::create(&c, &semester("Overlap", "2027-01-15", "2027-03-01")).unwrap_err()),
-        "It overlaps “Semester 1” (01-09-2026 to 31-01-2027); semesters can't share days"
+        "It overlaps \"Semester 1\" (01-09-2026 to 31-01-2027); semesters can't share days"
     );
     // Changing a semester doesn't clash with itself; listing goes by start.
     semesters::update(&c, &first.id, &semester("Semester 1", "2026-08-31", "2027-01-31")).unwrap();
@@ -1026,7 +1026,7 @@ fn search_spans_posts_prompts_feedback_and_deliverables_across_projects() {
 fn snippets_are_cut_on_character_boundaries() {
     let long = format!("{}needle{}", "é".repeat(100), "ü".repeat(100));
     let s = search::snippet(&long, "NEEDLE").unwrap();
-    assert!(s.starts_with('…') && s.ends_with('…'));
+    assert!(s.starts_with("...") && s.ends_with("..."));
     assert!(s.contains("needle"));
     assert_eq!(search::snippet("short needle here", "needle").unwrap(), "short needle here");
     assert_eq!(search::snippet("İstanbul", "stanbul").unwrap(), "İstanbul");
@@ -1093,7 +1093,7 @@ fn links_list_what_a_project_can_point_at() {
     // Newest feedback first; a long one is cut to 60 characters, and a heading's mark isn't part of a name.
     assert_eq!((summary[2].0, summary[2].1, summary[2].3, summary[2].4), ("feedback", long.id.as_str(), "on pricing-brief.md, resolved", "pricing-brief.md"));
     assert_eq!(summary[2].2.chars().count(), 60, "{}", summary[2].2);
-    assert!(summary[2].2.starts_with("word word") && summary[2].2.ends_with('…'), "{}", summary[2].2);
+    assert!(summary[2].2.starts_with("word word") && summary[2].2.ends_with("..."), "{}", summary[2].2);
     assert_eq!(summary[3], ("feedback", note.id.as_str(), "Too long", "on pricing-brief.md", "pricing-brief.md"));
 }
 

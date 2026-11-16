@@ -721,7 +721,7 @@ fn view(app: &App) -> SettingsView {
         (root, core.vault_from_env, env, core.keys.clone())
     };
     let token_hint = if env.token.chars().count() >= 8 {
-        format!("…{}", env.token.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<String>())
+        format!("...{}", env.token.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<String>())
     } else {
         String::new()
     };

@@ -303,7 +303,7 @@ fn sync_guide(
         None if !blank(&description) => {
             set_aside(root, &guide.project, &readme).map_err(ledger_err)?;
             report.notes.push(format!(
-                "The reading guide of {} now is the description of “{}” in Portflow; the guide it had is kept in .ledger/conflicts/.",
+                "The reading guide of {} now is the description of \"{}\" in Portflow; the guide it had is kept in .ledger/conflicts/.",
                 guide.project, collection.name
             ));
             (true, false)
@@ -318,7 +318,7 @@ fn sync_guide(
         }
         report.files_touched += ledger.write(&mut |conn, _| crate::projects::save_readme(conn, &guide.project, &text).map(|_| ())).map_err(ledger_err)?;
         report.guides_read += 1;
-        crate::applog::info("portflow", &format!("Took the reading guide of {} from the description of “{}”", guide.project, collection.name));
+        crate::applog::info("portflow", &format!("Took the reading guide of {} from the description of \"{}\"", guide.project, collection.name));
         return remember(memory, GuideSeen { description: now.description, readme: text_hash(&text) });
     }
     if !in_ledger {
@@ -331,7 +331,7 @@ fn sync_guide(
     if !write_on {
         if in_portflow {
             report.notes.push(format!(
-                "The reading guide of {} and the description of “{}” in Portflow both changed: Ledger's guide is kept. Switch on “Reading guide → collection description” to send it.",
+                "The reading guide of {} and the description of \"{}\" in Portflow both changed: Ledger's guide is kept. Switch on \"Reading guide to collection description\" to send it.",
                 guide.project, collection.name
             ));
         }
@@ -344,12 +344,12 @@ fn sync_guide(
         Ok(answer) => {
             let stored = answer.unwrap_or_else(|| html.clone());
             report.guides_written += 1;
-            crate::applog::info("portflow", &format!("Wrote the reading guide of {} to the description of “{}”", guide.project, collection.name));
+            crate::applog::info("portflow", &format!("Wrote the reading guide of {} to the description of \"{}\"", guide.project, collection.name));
             remember(memory, GuideSeen { description: html_hash(&stored), readme: now.readme })?;
             collection.description = Some(stored);
         }
         Err(PortflowError::SignedOut) => return Err(PortflowError::SignedOut),
-        Err(e) => report.notes.push(format!("The reading guide of {} didn't go to “{}”: {e}", guide.project, collection.name)),
+        Err(e) => report.notes.push(format!("The reading guide of {} didn't go to \"{}\": {e}", guide.project, collection.name)),
     }
     Ok(())
 }
@@ -414,7 +414,7 @@ fn deliver_evidence(portflow: &dyn Portflow, ledger: &dyn Ledger, p: i64, projec
             Err(PortflowError::SignedOut) => return Err(PortflowError::SignedOut),
             Err(e) => {
                 report.in_portflow_only += 1;
-                report.notes.push(format!("“{}” (version {}) of {project} didn't download: {e}. Syncing tries again.", file.name, file.number));
+                report.notes.push(format!("\"{}\" (version {}) of {project} didn't download: {e}. Syncing tries again.", file.name, file.number));
                 continue;
             }
         };

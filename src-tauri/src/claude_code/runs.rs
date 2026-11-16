@@ -253,7 +253,7 @@ impl Sink {
             String::new()
         } else if state.output.len() + text.len() > MAX_OUTPUT_BYTES {
             state.truncated = true;
-            "… The output is cut here.\n".to_string()
+            "... The output is cut here.\n".to_string()
         } else {
             text
         };

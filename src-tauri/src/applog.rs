@@ -158,7 +158,7 @@ impl Log {
                 end -= 1;
             }
             message.truncate(end);
-            message.push_str(" …");
+            message.push_str(" ...");
         }
         let level = match level {
             "error" | "warn" | "info" | "debug" => level,

@@ -285,7 +285,7 @@ impl PortflowError {
 impl fmt::Display for PortflowError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PortflowError::Off => f.write_str("Portflow is switched off. Switch it on under Settings → Sync & external → Portflow."),
+            PortflowError::Off => f.write_str("Portflow is switched off. Switch it on under Settings > Sync & external > Portflow."),
             PortflowError::SignedOut => f.write_str("Sign in to Portflow again: the session ended."),
             PortflowError::NotAllowed(text) | PortflowError::Message(text) => f.write_str(text),
             PortflowError::Changed(what) => write!(
@@ -388,9 +388,9 @@ impl Gate {
             None => Ok(()),
             Some(kind) if self.write && self.writes.contains(kind) => Ok(()),
             Some(_) if !self.write => Err(PortflowError::NotAllowed(
-                "Portflow is read only: Ledger doesn't change anything there. Switch on read and write under Settings → Portflow to allow it.".into(),
+                "Portflow is read only: Ledger doesn't change anything there. Switch on read and write under Settings > Portflow to allow it.".into(),
             )),
-            Some(_) => Err(PortflowError::NotAllowed("That kind of change in Portflow isn't switched on under Settings → Portflow.".into())),
+            Some(_) => Err(PortflowError::NotAllowed("That kind of change in Portflow isn't switched on under Settings > Portflow.".into())),
         }
     }
 }

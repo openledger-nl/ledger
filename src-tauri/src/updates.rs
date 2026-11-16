@@ -137,7 +137,7 @@ pub fn readiness(activity: &Activity, choice: RunsChoice) -> Readiness {
 }
 
 fn quoted(titles: &[String]) -> String {
-    let titles: Vec<String> = titles.iter().map(|t| format!("“{}”", if t.trim().is_empty() { "a prompt" } else { t.trim() })).collect();
+    let titles: Vec<String> = titles.iter().map(|t| format!("\"{}\"", if t.trim().is_empty() { "a prompt" } else { t.trim() })).collect();
     match titles.as_slice() {
         [] => String::new(),
         [one] => one.clone(),
@@ -506,7 +506,7 @@ struct Progress {
 async fn ensure_downloaded(app: &AppHandle) -> Result<()> {
     let updates = app.state::<Updates>();
     let update = match &*lock(&updates.found) {
-        None => return Err(Error::update("There is no update to install. Look for updates under Settings → About.")),
+        None => return Err(Error::update("There is no update to install. Look for updates under Settings > About.")),
         // Nothing is downloaded for a development build: the runner has the new version already.
         Some(Found::Branch(_) | Found::Real { bytes: Some(_), .. }) => return Ok(()),
         Some(Found::Real { update, .. }) => (**update).clone(),

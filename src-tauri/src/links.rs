@@ -57,6 +57,7 @@ fn excerpt(body: &str) -> String {
     if line.chars().count() <= MAX_TITLE {
         return line;
     }
-    let cut: String = line.chars().take(MAX_TITLE).collect();
-    format!("{}…", cut.trim_end())
+    // Three characters fewer, so the cut with its three dots stays within MAX_TITLE.
+    let cut: String = line.chars().take(MAX_TITLE.saturating_sub(3)).collect();
+    format!("{}...", cut.trim_end())
 }

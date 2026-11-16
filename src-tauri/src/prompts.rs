@@ -105,7 +105,7 @@ fn fence_for(text: &str) -> String {
 /// The base of a prompt for a new deliverable that starts from this template: its name, its readers and its structure.
 fn template_text(conn: &Connection, project: &str, id: &str) -> Result<String> {
     let template = templates::find(conn, project, id).map_err(|_| Error::invalid("Template not found"))?;
-    let mut intro = format!("Create the deliverable from the template “{}”.", one_line(&template.name));
+    let mut intro = format!("Create the deliverable from the template \"{}\".", one_line(&template.name));
     // Who it is for, so it is written for them; in the base, so a prompt can name other readers than its template.
     let readers = templates::resolve(conn, Some(project), &template.readers)?;
     if !readers.is_empty() {
@@ -166,7 +166,7 @@ fn answers_text(template: &str, answers: &[GuidingAnswer]) -> String {
     if answered.is_empty() {
         return String::new();
     }
-    let of = if template.is_empty() { String::new() } else { format!(" of the template “{}”", one_line(template)) };
+    let of = if template.is_empty() { String::new() } else { format!(" of the template \"{}\"", one_line(template)) };
     format!("Answers to the guiding questions{of}:\n\n{}", answered.join("\n\n"))
 }
 

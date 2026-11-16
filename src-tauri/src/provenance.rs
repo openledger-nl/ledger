@@ -638,9 +638,9 @@ pub struct Provenance {
 
 fn excerpt(text: &str) -> String {
     let line = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
-    let mut out: String = line.chars().take(140).collect();
+    let mut out: String = line.chars().take(137).collect(); // at most 140 with the three dots
     if line.chars().count() > 140 {
-        out = format!("{}…", out.trim_end());
+        out = format!("{}...", out.trim_end());
     }
     out
 }
