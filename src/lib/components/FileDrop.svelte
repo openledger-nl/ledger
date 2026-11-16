@@ -64,8 +64,15 @@
 		if (!dropped) {
 			// Never silently: say so, and log what the system did hand over, so it can be put right.
 			const types = Array.from(e.dataTransfer?.types ?? []).join(', ') || 'nothing';
-			logError('file drop', `A drop gave no file to save (it carried: ${types})`);
-			toast('Ledger got no file from that drop. Try again, or use “Upload files…” in a thread.', true);
+			const schemes = schemesOf(e.dataTransfer);
+			logError('file drop', `A drop gave no file to save (it carried: ${types}; addresses: ${schemes})`);
+			const web = /\bhttps?\b/.test(schemes);
+			toast(
+				web
+					? 'That was a link from a web page, not a file. Download it first, then drop the file from your folder.'
+					: 'Ledger got no file from that drop. Try again, or use “Upload files…” in a thread.',
+				true
+			);
 			return;
 		}
 		if (here) void save(here.project, here.thread, here.title, dropped, false);
@@ -97,10 +104,8 @@
 	type Dropped = { kind: 'paths'; paths: string[] } | { kind: 'files'; files: File[] };
 	function droppedOf(data: DataTransfer | null): Dropped | null {
 		if (!data) return null;
-		const paths = (data.getData('text/uri-list') || '')
-			.split(/\r?\n/)
-			.map((line) => line.trim())
-			.filter((line) => line.startsWith('file://'))
+		const paths = urisOf(data)
+			.filter((uri) => /^file:/i.test(uri))
 			.map(pathOf)
 			.filter((p): p is string => !!p);
 		if (paths.length) return { kind: 'paths', paths };
@@ -108,7 +113,25 @@
 		return files.length ? { kind: 'files', files } : null;
 	}
 
-	/** `file:///home/me/a%20b.pdf` → `/home/me/a b.pdf`; `file:///C:/x.pdf` → `C:/x.pdf`. */
+	/** The addresses a drop holds: its uri-list (comments left out), or a plain-text one that is a file address. */
+	function urisOf(data: DataTransfer): string[] {
+		const lines = (text: string) => text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
+		const listed = lines(data.getData('text/uri-list') || '');
+		return listed.length ? listed : lines(data.getData('text/plain') || '').filter((line) => /^file:/i.test(line));
+	}
+
+	/** What kinds of address a drop held, for the log: their schemes and how many, never the addresses themselves. */
+	function schemesOf(data: DataTransfer | null): string {
+		if (!data) return 'none';
+		const counts = new Map<string, number>();
+		for (const uri of urisOf(data)) {
+			const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(uri)?.[1]?.toLowerCase() ?? 'no scheme';
+			counts.set(scheme, (counts.get(scheme) ?? 0) + 1);
+		}
+		return counts.size ? [...counts].map(([s, n]) => `${n}× ${s}`).join(', ') : 'none';
+	}
+
+	/** `file:///home/me/a%20b.pdf`, `file:/home/me/x.pdf`, `file://localhost/…` → the path; `file:///C:/x.pdf` → `C:/x.pdf`. */
 	function pathOf(uri: string): string | null {
 		try {
 			const path = decodeURIComponent(new URL(uri).pathname);
