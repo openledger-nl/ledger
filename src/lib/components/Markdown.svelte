@@ -3,7 +3,7 @@
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { goto } from '$app/navigation';
 	import { locate, plain, rangeIn, textOf, type Mark } from '$lib/anchors';
-	import { threadUrl } from '$lib/actions';
+	import { deliverableUrl, threadUrl } from '$lib/actions';
 	import { linkUrl, projectLinks } from '$lib/links.svelte';
 	import { openInPortflow } from '$lib/portflow.svelte';
 	import type { EvidenceMention } from '$lib/types';
@@ -26,7 +26,7 @@
 		images?: ImageBase;
 		marks?: Mark[];
 		onmark?: (id: string) => void;
-		/** The evidence items a Portflow reading guide's `@` mentions can be: a mention of one leads to its thread. */
+		/** The evidence items a Portflow reading guide's `@` mentions can be: a mention of one leads to its deliverable. */
 		mentions?: EvidenceMention[];
 	} = $props();
 
@@ -77,7 +77,7 @@
 
 	// ---- @ mentions --------------------------------------------------------------------------------
 	// A Portflow mention (`[@Analysis](portflow:evidence-2110705)`) arrives as <a class="mention" data-mention="…">. One
-	// of an evidence item placed in a thread leads there; any other opens Portflow, where it is.
+	// of an evidence item leads to its deliverable (or, until that's in Ledger, its thread); any other opens Portflow.
 
 	/** The number at the end of a mention's id: `evidence-2110705` → 2110705. */
 	const numberOf = (id: string) => Number(/(\d+)$/.exec(id)?.[1] ?? NaN);
@@ -88,7 +88,10 @@
 		for (const a of root.querySelectorAll<HTMLAnchorElement>('a.mention')) {
 			const id = a.dataset.mention ?? '';
 			const item = a.dataset.mentionType === 'evidence' || id.startsWith('evidence') ? mentions?.find((m) => m.portflowId === numberOf(id)) : undefined;
-			if (item?.thread && project) {
+			if (item?.deliverable && project) {
+				a.href = deliverableUrl(project, item.deliverable);
+				a.title = `${item.name}: open the deliverable`;
+			} else if (item?.thread && project) {
 				a.href = threadUrl(project, item.thread);
 				a.title = `${item.name}: its thread “${item.threadTitle ?? item.thread}”`;
 			} else {

@@ -539,9 +539,9 @@ CREATE TABLE evidence_versions (
     FOREIGN KEY (project_slug, evidence_slug) REFERENCES evidence(project_slug, slug) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
--- The files of each version, by Portflow's name. Ledger doesn't copy Portflow's files: a version that came from Ledger
--- points at the deliverable it is (a published "<name>@vN.0.<ext>", `path`); one uploaded in Portflow has no `path`
--- and is opened in Portflow.
+-- The files of each version, by Portflow's name, in Portflow's order. `path` is the published version in Ledger it is
+-- ("<name>@vN.0.<ext>"): one Ledger handed in, or one downloaded (in a study project). With no `path` the file is in
+-- Portflow only: in a study project it is downloaded on the next sync; elsewhere it is opened in Portflow.
 CREATE TABLE evidence_version_files (
     project_slug  TEXT NOT NULL,
     evidence_slug TEXT NOT NULL,

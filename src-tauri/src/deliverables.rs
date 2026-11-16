@@ -134,6 +134,71 @@ pub fn versions_of(conn: &Connection, project: &str, base: &str) -> Result<Vec<S
     Ok(versions.into_iter().map(|(_, _, v)| v).collect())
 }
 
+/// The deliverables that are Portflow evidence items. An item is one deliverable: its first file, named after the item;
+/// its other files (downloaded into a folder beside it, `Plan.pdf` → `Plan/…`) are its attachments.
+#[derive(Default)]
+pub struct EvidenceRoles {
+    /// Base path of each item's deliverable → the item's name.
+    pub names: HashMap<String, String>,
+    /// Base path of each item's deliverable → its attachments.
+    pub attachments: HashMap<String, Vec<String>>,
+    /// Every attachment, to leave out of the list.
+    pub folded: std::collections::HashSet<String>,
+}
+
+/// The folder an item's attachments sit in: its deliverable's path without the extension.
+pub fn attachment_dir(base: &str) -> String {
+    match base.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() && !ext.contains('/') => stem.to_string(),
+        _ => base.to_string(),
+    }
+}
+
+/// Which of an item's files is the item: the one whose name has most of the item's words (`02-workflow-report.pdf` for
+/// "Workflow report", not `02-interview.pdf`), the first of those that tie. Named after the item, it always is.
+pub fn main_of(item: &str, names: &[&str]) -> usize {
+    let words = |text: &str| -> std::collections::HashSet<String> {
+        ids::slugify_as(text, "x").split('-').filter(|w| !w.is_empty() && w.parse::<u64>().is_err()).map(str::to_string).collect()
+    };
+    let wanted = words(item);
+    let mut best = (0, 0);
+    for (i, name) in names.iter().enumerate() {
+        let stem = file_name(name).rsplit_once('.').map_or(file_name(name), |(stem, _)| stem);
+        let score = words(stem).intersection(&wanted).count();
+        if score > best.1 {
+            best = (i, score);
+        }
+    }
+    best.0
+}
+
+pub fn evidence_roles(conn: &Connection, project: &str) -> Result<EvidenceRoles> {
+    let rows: Vec<(String, String, String)> = query_all(
+        conn,
+        "SELECT f.evidence_slug, f.path, e.name FROM evidence_files f
+         JOIN evidence e ON e.project_slug = f.project_slug AND e.slug = f.evidence_slug
+         WHERE f.project_slug = ?1 ORDER BY f.evidence_slug, f.position",
+        [project],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    let mut items: BTreeMap<String, (String, Vec<String>)> = BTreeMap::new();
+    for (item, path, name) in rows {
+        items.entry(item).or_insert_with(|| (name, vec![])).1.push(path);
+    }
+    let mut roles = EvidenceRoles::default();
+    for (_, (name, paths)) in items {
+        let main = main_of(&name, &paths.iter().map(String::as_str).collect::<Vec<_>>());
+        for (i, path) in paths.iter().enumerate() {
+            if i != main {
+                roles.attachments.entry(paths[main].clone()).or_default().push(path.clone());
+                roles.folded.insert(path.clone());
+            }
+        }
+        roles.names.insert(paths[main].clone(), name);
+    }
+    Ok(roles)
+}
+
 #[derive(Default)]
 struct Group {
     live: Option<(i64, String)>,
@@ -216,8 +281,10 @@ pub fn list(conn: &Connection, project: &str) -> Result<Vec<DeliverableSummary>>
         }
     }
 
+    let mut roles = evidence_roles(conn, project)?;
     let mut out: Vec<DeliverableSummary> = groups
         .into_iter()
+        .filter(|(base, _)| !roles.folded.contains(base))
         .map(|(base, mut group)| {
             group.snapshots.sort();
             let (size, modified) = group
@@ -225,8 +292,11 @@ pub fn list(conn: &Connection, project: &str) -> Result<Vec<DeliverableSummary>>
                 .clone()
                 .or_else(|| group.snapshots.last().map(|s| (s.3, s.4.clone())))
                 .unwrap_or_default();
+            let evidence = roles.names.remove(&base);
             DeliverableSummary {
-                name: file_name(&base).to_string(),
+                name: evidence.clone().unwrap_or_else(|| file_name(&base).to_string()),
+                attachments: roles.attachments.remove(&base).unwrap_or_default(),
+                evidence,
                 kind: kind_of(&base).to_string(),
                 size,
                 modified,
@@ -266,9 +336,12 @@ pub fn get(conn: &Connection, project: &str, path: &str) -> Result<DeliverableVi
             [project, &snapshot_path(&base, newest)],
             |r| r.get(0),
         )?;
+        let (evidence, attachments) = evidence_of(conn, project, &base)?;
         return Ok(DeliverableView {
             path: path.to_string(),
-            name: file_name(&base).to_string(),
+            name: evidence.clone().unwrap_or_else(|| file_name(&base).to_string()),
+            evidence,
+            attachments,
             kind: kind_of(&base).to_string(),
             editable: false,
             versions,
@@ -285,9 +358,12 @@ pub fn get(conn: &Connection, project: &str, path: &str) -> Result<DeliverableVi
     };
 
     let html = body.as_ref().map(|text| markdown::render(&frontmatter::parse(text).map_or_else(|| text.clone(), |p| p.body)));
+    let (evidence, attachments) = evidence_of(conn, project, &base)?;
     Ok(DeliverableView {
         path: path.to_string(),
-        name: file_name(&base).to_string(),
+        name: evidence.clone().unwrap_or_else(|| file_name(&base).to_string()),
+        evidence,
+        attachments,
         kind: kind_of(&base).to_string(),
         editable: version.is_none() && body.is_some(),
         versions: versions_of(conn, project, &base)?,
@@ -303,7 +379,111 @@ pub fn get(conn: &Connection, project: &str, path: &str) -> Result<DeliverableVi
     })
 }
 
+/// The evidence item a deliverable is (its name) and the item's attachments.
+fn evidence_of(conn: &Connection, project: &str, base: &str) -> Result<(Option<String>, Vec<String>)> {
+    let mut roles = evidence_roles(conn, project)?;
+    Ok((roles.names.remove(base), roles.attachments.remove(base).unwrap_or_default()))
+}
+
 // ---- writing ----------------------------------------------------------------------------------------
+
+/// Moves one published version (`from`, a snapshot path) to another deliverable as `to`, with what points at it: its
+/// record, the feedback on it, the notes about it and the Portflow version it is. Refused when `to` is taken.
+pub fn move_version(conn: &Connection, root: &Path, project: &str, from: &str, to: &str) -> Result<()> {
+    let ((from_base, Some(from_version)), (to_base, Some(to_version))) = (split_version(from), split_version(to)) else {
+        return Err(Error::invalid("Only a published version can be moved"));
+    };
+    if exists(conn, project, to)? {
+        return Err(Error::invalid(format!("There is already a version {to}")));
+    }
+    let binary: Option<bool> = query_opt(conn, "SELECT body IS NULL FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, from], |r| r.get(0))?;
+    let Some(binary) = binary else { return Err(Error::not_found("Version not found")) };
+    if binary {
+        let (a, b) = (file_of(root, project, from), file_of(root, project, to));
+        if a.exists() {
+            if let Some(dir) = b.parent() {
+                fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
+            }
+            fs::rename(&a, &b).map_err(|e| Error::io(&b, e))?;
+            if let Some(dir) = a.parent().filter(|d| *d != versions_dir(root, project)) {
+                let _ = fs::remove_dir(dir);
+            }
+        }
+    }
+    conn.execute("UPDATE deliverables SET path = ?3 WHERE project_slug = ?1 AND path = ?2", params![project, from, to])?;
+    conn.execute(
+        "UPDATE version_records SET deliverable_path = ?4, version = ?5 WHERE project_slug = ?1 AND deliverable_path = ?2 AND version = ?3",
+        params![project, from_base, from_version, to_base, to_version],
+    )?;
+    conn.execute(
+        "UPDATE posts SET deliverable_path = ?4, deliverable_version = ?5 WHERE project_slug = ?1 AND deliverable_path = ?2 AND deliverable_version = ?3",
+        params![project, from_base, from_version, to_base, to_version],
+    )?;
+    conn.execute("UPDATE feedback SET deliverable_path = ?3 WHERE project_slug = ?1 AND deliverable_path = ?2", params![project, from, to])?;
+    conn.execute("UPDATE evidence_version_files SET path = ?3 WHERE project_slug = ?1 AND path = ?2", params![project, from, to])?;
+    Ok(())
+}
+
+/// Renames a deliverable: its live file and every published version (on disk too, for a file that isn't markdown), and
+/// everything that points at it — its facts, prompts, runs, posts, feedback, version records and Portflow evidence.
+/// Refused when `to` is already a deliverable.
+pub fn rename_base(conn: &Connection, root: &Path, project: &str, from: &str, to: &str) -> Result<()> {
+    if from == to {
+        return Ok(());
+    }
+    if exists(conn, project, to)? || !versions_of(conn, project, to)?.is_empty() {
+        return Err(Error::invalid(format!("There is already a deliverable called {to}")));
+    }
+    let rows: Vec<(String, bool)> =
+        query_all(conn, "SELECT path, body IS NULL FROM deliverables WHERE project_slug = ?1", [project], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    let moves: Vec<(String, String, bool)> = rows
+        .into_iter()
+        .filter_map(|(path, binary)| match split_version(&path) {
+            (base, None) if base == from => Some((path, to.to_string(), binary)),
+            (base, Some(v)) if base == from => Some((path.clone(), snapshot_path(to, &v), binary)),
+            _ => None,
+        })
+        .collect();
+    if moves.is_empty() {
+        return Err(Error::not_found("Deliverable not found"));
+    }
+    for (old, new, binary) in &moves {
+        if *binary {
+            let (a, b) = (file_of(root, project, old), file_of(root, project, new));
+            if a.exists() {
+                if let Some(dir) = b.parent() {
+                    fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
+                }
+                fs::rename(&a, &b).map_err(|e| Error::io(&b, e))?;
+                // A folder left empty by the move goes too.
+                if let Some(dir) = a.parent().filter(|d| *d != deliverables_dir(root, project) && *d != versions_dir(root, project)) {
+                    let _ = fs::remove_dir(dir);
+                }
+            }
+        }
+        conn.execute("UPDATE deliverables SET path = ?3 WHERE project_slug = ?1 AND path = ?2", params![project, old, new])?;
+        // What points at the file or at one of its versions.
+        for sql in [
+            "UPDATE feedback SET deliverable_path = ?3 WHERE project_slug = ?1 AND deliverable_path = ?2",
+            "UPDATE evidence_version_files SET path = ?3 WHERE project_slug = ?1 AND path = ?2",
+            "UPDATE claude_run_files SET path = ?3 WHERE path = ?2 AND run_id IN (SELECT id FROM claude_runs WHERE project_slug = ?1)",
+        ] {
+            conn.execute(sql, params![project, old, new])?;
+        }
+    }
+    for sql in [
+        "UPDATE deliverable_facts SET path = ?3 WHERE project_slug = ?1 AND path = ?2",
+        "UPDATE version_records SET deliverable_path = ?3 WHERE project_slug = ?1 AND deliverable_path = ?2",
+        "UPDATE posts SET deliverable_path = ?3 WHERE project_slug = ?1 AND deliverable_path = ?2",
+        "UPDATE evidence_files SET path = ?3 WHERE project_slug = ?1 AND path = ?2",
+        "UPDATE feedback SET deliverable_path = ?3 WHERE project_slug = ?1 AND deliverable_path = ?2",
+        "UPDATE prompt_deliverables SET path = ?3 WHERE path = ?2 AND prompt_id IN (SELECT id FROM prompts WHERE project_slug = ?1)",
+        "UPDATE claude_run_files SET path = ?3 WHERE path = ?2 AND run_id IN (SELECT id FROM claude_runs WHERE project_slug = ?1)",
+    ] {
+        conn.execute(sql, params![project, from, to])?;
+    }
+    Ok(())
+}
 
 /// Records a file found in the deliverables folder (or written there by this app).
 pub fn upsert(conn: &Connection, project: &str, path: &str, size: i64, modified: &str, body: Option<&str>) -> Result<()> {

@@ -21,7 +21,7 @@
 
 	const shown = $derived.by(() => {
 		const q = filter.trim().toLowerCase();
-		return q ? data.deliverables.filter((d) => d.path.toLowerCase().includes(q)) : data.deliverables;
+		return q ? data.deliverables.filter((d) => (d.path.toLowerCase().includes(q) || (d.evidence ?? '').toLowerCase().includes(q))) : data.deliverables;
 	});
 
 	const KIND = { markdown: 'Markdown', image: 'Image', other: 'File' } as const;
@@ -82,7 +82,7 @@
 				<div class="doc-list">
 					{#each shown as d (d.path)}
 						<a class="doc-row all" href={deliverableUrl(project, target(d))}>
-							<span class="doc-title" title={d.path}>{d.path}</span>
+							<span class="doc-title" title={d.path}>{d.evidence ?? d.path}</span>
 							<span class="doc-space">
 								{#if d.versions.length}
 									<span class="badge published">v{d.versions.at(-1)}</span>
@@ -93,6 +93,7 @@
 								{#if d.mmm}<MmmBadge level={d.mmm} />{/if}
 								{#if !d.exists}<span class="badge">live file removed</span>{/if}
 								{#if d.openFeedback}<span class="badge draft">{d.openFeedback} open</span>{/if}
+								{#if d.attachments.length}<span class="badge" title={d.attachments.join('\n')}>+{plural(d.attachments.length, 'file')}</span>{/if}
 							</span>
 							<span class="doc-space">{plural(d.promptCount, 'prompt')}</span>
 							<span class="badge type">{KIND[d.kind]} · {formatSize(d.size)}</span>

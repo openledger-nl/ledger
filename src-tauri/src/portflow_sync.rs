@@ -79,9 +79,14 @@ pub struct Report {
     pub people: usize,
     pub collections: usize,
     pub evidence: usize,
-    /// Versions recorded this round, and how many of their files are in Portflow only (uploaded there; not copied).
+    /// Versions recorded this round, and how many of their files are in Portflow only (uploaded there; not copied:
+    /// a project that isn't a study one, or a download that didn't work yet).
     pub new_versions: usize,
     pub in_portflow_only: usize,
+    /// Files downloaded from Portflow this round, each now a published version of a deliverable.
+    pub downloaded: usize,
+    /// Deliverables renamed this round to follow their evidence item's name.
+    pub renamed: usize,
     /// Comments from others that arrived as feedback this round.
     pub new_feedback: usize,
     /// Evidence items that are in no thread yet, so their feedback waits.
@@ -108,6 +113,12 @@ impl Report {
         }
         if self.new_versions > 0 {
             parts.push(format!("{} new version{}", self.new_versions, if self.new_versions == 1 { "" } else { "s" }));
+        }
+        if self.downloaded > 0 {
+            parts.push(format!("{} file{} downloaded as deliverables", self.downloaded, if self.downloaded == 1 { "" } else { "s" }));
+        }
+        if self.renamed > 0 {
+            parts.push(format!("{} deliverable{} renamed after {} evidence item", self.renamed, if self.renamed == 1 { "" } else { "s" }, if self.renamed == 1 { "its" } else { "their" }));
         }
         if self.unplaced > 0 {
             parts.push(format!("{} evidence item{} to put in a thread", self.unplaced, if self.unplaced == 1 { "" } else { "s" }));
@@ -180,11 +191,14 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
     // written back only with that write on.
     let guide_on = settings.access.allows(crate::portflow_config::GUIDE_WRITE);
     let mut guides: HashMap<i64, store::GuideTarget> = HashMap::new();
+    // The projects whose evidence comes in as deliverables (see `deliver_evidence`).
+    let mut delivering = std::collections::BTreeSet::new();
     let today = crate::ids::now().chars().take(10).collect::<String>();
     ledger
         .read(&mut |conn| {
             links = store::collection_links(conn)?;
             guides = store::guide_targets(conn, &today)?.into_iter().map(|g| (g.collection, g)).collect();
+            delivering = store::delivering_projects(conn)?;
             Ok(())
         })
         .map_err(ledger_err)?;
@@ -208,7 +222,7 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
 
         for item in portflow.collection_evidence(p, link.collection)? {
             report.evidence += 1;
-            pull_evidence(portflow, ledger, p, me.id, link, &item.evidence, &mut report)?;
+            pull_evidence(portflow, ledger, p, me.id, link, &item.evidence, delivering.contains(&link.project), &mut report)?;
         }
     }
     Ok(report)
@@ -222,9 +236,9 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
 /// - both: Ledger's text is kept, and sent with the write on; with it off the report says both changed;
 /// - neither, or both say the same: nothing.
 ///
-/// The first time, with nothing remembered, an empty README (or the starter one Ledger writes in a new project) takes the
-/// description, and one that says something else counts as changed in Ledger. An empty guide never empties a description. A refused or failed write is a note, not
-/// the end of the round.
+/// The first time, with nothing remembered, the description comes in; a README that said something else is set aside in
+/// `.ledger/conflicts/` first. An empty guide never empties a description. A refused or failed write is a note, not the
+/// end of the round.
 #[allow(clippy::too_many_arguments)]
 fn sync_guide(
     portflow: &dyn Portflow,
@@ -360,6 +374,76 @@ fn set_aside(root: &Path, project: &str, readme: &str) -> crate::error::Result<(
     std::fs::write(&file, readme).map_err(|e| crate::error::Error::io(&file, e))
 }
 
+/// Makes an evidence item a deliverable, named after the item: each file of its versions that isn't in Ledger yet is
+/// downloaded once and stored as published version N.0 (the newest also as the live file, unless that was changed in
+/// Ledger), and a deliverable that came from Portflow follows the item's name when it is renamed there. A download that
+/// doesn't work is a note, and is tried again next round; signed out ends the round, as anywhere.
+fn deliver_evidence(portflow: &dyn Portflow, ledger: &dyn Ledger, p: i64, project: &str, slug: &str, report: &mut Report) -> PResult<()> {
+    let mut open = vec![];
+    let mut newest = 0;
+    ledger
+        .read(&mut |conn| {
+            open = store::open_files(conn, project, slug)?;
+            newest = conn.query_row(
+                "SELECT COALESCE(MAX(number), 0) FROM evidence_versions WHERE project_slug = ?1 AND evidence_slug = ?2 AND kind = 'file'",
+                [project, slug],
+                |r| r.get(0),
+            )?;
+            Ok(())
+        })
+        .map_err(ledger_err)?;
+    for file in open {
+        let bytes = match portflow.file_url(p, file.portflow_file).and_then(|url| portflow.download(&url)) {
+            Ok(bytes) => bytes,
+            Err(PortflowError::SignedOut) => return Err(PortflowError::SignedOut),
+            Err(e) => {
+                report.in_portflow_only += 1;
+                report.notes.push(format!("“{}” (version {}) of {project} didn't download: {e}. Syncing tries again.", file.name, file.number));
+                continue;
+            }
+        };
+        let mut kept = None;
+        report.files_touched += ledger
+            .write(&mut |conn, root| {
+                let base = store::base_for_download(conn, project, slug, &file)?;
+                if store::store_download(conn, root, project, slug, &file, &base, &bytes, file.number == newest)? == store::Live::Kept {
+                    kept = Some(base);
+                }
+                Ok(())
+            })
+            .map_err(ledger_err)?;
+        report.downloaded += 1;
+        if let Some(base) = kept {
+            report.notes.push(format!(
+                "{project}: {base} was changed in Ledger, so it stays; Portflow's version {} is beside it as v{}.0.",
+                file.number, file.number
+            ));
+        }
+    }
+    // Asked first, so that a round with nothing to settle writes nothing.
+    let mut wanted = false;
+    ledger
+        .read(&mut |conn| {
+            wanted = store::needs_settling(conn, project, slug)?;
+            Ok(())
+        })
+        .map_err(ledger_err)?;
+    if wanted {
+        let mut moved = vec![];
+        report.files_touched += ledger
+            .write(&mut |conn, root| {
+                moved = store::settle_name(conn, root, project, slug)?;
+                Ok(())
+            })
+            .map_err(ledger_err)?;
+        for (from, to) in moved {
+            report.renamed += 1;
+            crate::applog::info("portflow", format!("Renamed {from} to {to} in {project}, after its evidence item"));
+        }
+    }
+    Ok(())
+}
+
 /// A description as Portflow keeps it, white space folded, hashed: what is remembered of it.
 fn html_hash(html: &str) -> String {
     crate::provenance::sha256_hex(squash(html).as_bytes())
@@ -386,6 +470,7 @@ fn pull_evidence(
     me: i64,
     link: &CollectionLink,
     evidence: &crate::portflow_api::Evidence,
+    deliver: bool,
     report: &mut Report,
 ) -> PResult<()> {
     // The outcomes it counts for: goals and sub-goals, by id.
@@ -412,8 +497,9 @@ fn pull_evidence(
         })
         .map_err(ledger_err)?;
 
-    // Versions Ledger hasn't recorded yet, oldest first. Nothing is downloaded: a version that came from Ledger is linked
-    // to its deliverables (the same name at major N), and one uploaded in Portflow is only named, and opened there.
+    // Versions Ledger hasn't recorded yet, oldest first. A version that came from Ledger is linked to its deliverables
+    // (the same name at major N); one uploaded in Portflow is downloaded below in a study project, and otherwise only
+    // named, and opened there.
     let mut versions = portflow.versions(p, evidence.id)?;
     versions.sort_by_key(|v| v.version_number);
     for listed in versions {
@@ -443,10 +529,15 @@ fn pull_evidence(
             })
             .map_err(ledger_err)?;
         report.new_versions += 1;
-        report.in_portflow_only += in_portflow;
+        if !deliver {
+            report.in_portflow_only += in_portflow;
+        }
     }
     // Majors published in Ledger since a version was recorded are linked to it now.
     report.files_touched += ledger.write(&mut |conn, _| store::relink_versions(conn, &link.project, &slug)).map_err(ledger_err)?;
+    if deliver {
+        deliver_evidence(portflow, ledger, p, &link.project, &slug, report)?;
+    }
 
     // Comments become feedback once the item is in a thread; until then they wait in Portflow.
     let Some(thread) = thread else {

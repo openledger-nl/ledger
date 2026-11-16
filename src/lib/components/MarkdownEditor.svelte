@@ -88,7 +88,7 @@
 			},
 			markClicked: (id) => onmark?.(id),
 			links: { index: () => links.index, open: (target) => links.open(target) },
-			mentions: () => (mentions ?? []).map((m) => ({ id: `evidence-${m.portflowId}`, label: m.name, detail: m.threadTitle ?? 'Not in a thread' })),
+			mentions: () => (mentions ?? []).map((m) => ({ id: `evidence-${m.portflowId}`, label: m.name, detail: m.deliverable ? 'Deliverable' : (m.threadTitle ?? 'Not in Ledger yet') })),
 			changed: (update) => {
 				if (!update.docChanged) return;
 				held = update.state.doc.toString();

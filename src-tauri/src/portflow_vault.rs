@@ -557,6 +557,16 @@ fn import_evidence(conn: &Connection, source: &Source, project: &str) -> Result<
                     params![project, slug, number, name, int(file, "portflowFile"), file.text("deliverable")],
                 )?;
             }
+            // An older mirror listed them as `<file>: <its published version>`, without Portflow's names.
+            if let Some(Value::Mapping(files)) = version.get("files") {
+                for (base, snapshot) in files {
+                    let (Some(base), Some(snapshot)) = (base.as_str(), snapshot.as_str()) else { continue };
+                    conn.execute(
+                        "INSERT OR IGNORE INTO evidence_version_files (project_slug, evidence_slug, number, name, portflow_file, path) VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
+                        params![project, slug, number, crate::deliverables::file_name(base), snapshot],
+                    )?;
+                }
+            }
         }
     }
     Ok(())

@@ -174,7 +174,7 @@ fn place(root: &Path, project: &str, name: &str) -> Result<(PathBuf, String)> {
 }
 
 /// A file name that is safe on every platform.
-fn sanitize(name: &str) -> String {
+pub(crate) fn sanitize(name: &str) -> String {
     let cleaned: String = name.chars().map(|c| if c.is_control() || "<>:\"/\\|?*".contains(c) { '_' } else { c }).collect();
     let cleaned = cleaned.trim().trim_matches('.').chars().take(120).collect::<String>();
     if cleaned.is_empty() { "file".to_string() } else { cleaned }

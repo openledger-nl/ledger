@@ -340,11 +340,19 @@ number, so the two can't drift.
   changelog in Ledger too.
 - **The publish dialog guards the rule.** For a file in a linked evidence item, "major" and a custom version whose major
   isn't the current one are replaced by Deliver; a minor is always allowed.
-- **Ledger never copies Portflow's files** (decided 2026-11-04: pulling everything would swamp the vault). A version
-  is recorded with its number, description and file names. If Ledger published that major itself (the same file name
-  at vN.0), the version links to those deliverables and opens in Ledger. A version uploaded in Portflow by hand stays
-  there: Ledger shows its file names and **Open in Portflow**, which opens Portflow through Canvas in the default
-  browser and says which item to go to. A direct address
+- **An evidence item is a deliverable** (decided 2026-11-16, replacing "Ledger never copies Portflow's files" of
+  2026-11-04). In a linked study project (or one without a kind), each version's files are downloaded once:
+  `GET …/evidence-version-files/{f}/preview-url` through the gate (a read), then the signed S3 address with a client of
+  its own that never has the session (https only, at most 200 MB). The item is one deliverable named after it
+  (`<item>.<ext>`); Portflow version N is its published `vN.0`, recorded "From Portflow, version N" in the item's
+  thread; the newest is the live file unless that changed in Ledger. Of a version's files, the one named most like the
+  item (by Portflow's names) is the deliverable, the rest are attachments in `<item>/`. Renamed in Portflow, the
+  deliverable follows (with its versions, records, feedback and links); one Ledger made keeps its name. If Ledger
+  published that major itself (the same file name at vN.0), the version links to it instead of downloading. A failed
+  download is a note and is retried next round. Verified against the real API on 2026-11-16 (the preview-url answer
+  parsed, a 10-page PDF came down). In a hobby or company project a version uploaded in Portflow stays there: Ledger
+  shows its file names and **Open in Portflow**, which opens Portflow through Canvas in the default browser and says
+  which item to go to. A direct address
   (`portfolio.drieam.app/portfolio/collections/<c>/evidence/<e>/versions/<v>`) doesn't work outside Canvas's launch,
   not even with Portflow open in another tab (tried 2026-11-04). A major published in Ledger later is linked on the
   next sync.
@@ -587,7 +595,7 @@ outcomes mirror are part of the Portflow feature, so they use it too.
 | The API is internal and undocumented; Drieam can change it any day | Lenient parsing; contract tests on fixtures; a change shows up as "Portflow changed; sync paused" instead of corrupt files; never delete in the vault because of a missing field. |
 | Using the student's own session by program may be against the AUP | Read it first (phase 0), ask Fontys; keep traffic low and human-paced; only the student's own portfolio. |
 | The token lives 8 hours; the Canvas session ends sooner or later | Silent refresh; a clear "sign in again" state; the sync pauses, nothing is lost. |
-| Signed S3 URLs expire after 30 minutes | Not needed while Ledger copies nothing; for uploads (phase 2), ask right before. |
+| Signed S3 URLs expire after 30 minutes | Asked for right before each download (and, in phase 2, each upload); a failed download is retried next round. |
 | HTML round trips change text and cause endless pushes | Normalise before comparing; round-trip tests on real descriptions. |
 | A bug or a sync round writes to Portflow when it shouldn't | Read only is the default; one gate checks every request against the access setting; tests prove that read only sends no write. |
 | A version uploaded twice (retry after a timeout) | Before uploading, list the versions and match by file checksum and description; record the Portflow version id in `versions/<id>.md` as soon as it exists. |

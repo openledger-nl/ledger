@@ -1278,3 +1278,14 @@ button.pt-label { padding: 3px 9px; }
 .file-drop-list { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
 .file-drop-list li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
 .file-drop-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* The other files of a Portflow evidence item, under its deliverable's title. */
+.doc-attachments {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 10px;
+	margin: 6px 0 0;
+	font-size: 12.5px;
+	color: var(--muted);
+}

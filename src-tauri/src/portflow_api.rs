@@ -11,8 +11,9 @@
 //! - **Read and write**: also the kinds of write the person switched on, one by one.
 //!
 //! The session token goes in an `Authorization: Bearer …` header and nowhere else: never in a URL, a body, an error
-//! message or a log (it is kept on disk only in the vault's `.ledger/.env`, see `portflow_auth.rs`). Nothing here
-//! downloads Portflow's files: what was uploaded in Portflow stays there, and is opened there. `LEDGER_PORTFLOW_API` points the client at another API base, for testing.
+//! message or a log (it is kept on disk only in the vault's `.ledger/.env`, see `portflow_auth.rs`). Portflow's files
+//! are downloaded (a read): `…/evidence-version-files/{f}/preview-url` gives a signed address at S3, which is fetched
+//! by a separate client that never has the session (see [`plain_fetch`]), so the token can't leave for another host. `LEDGER_PORTFLOW_API` points the client at another API base, for testing.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -488,6 +489,15 @@ pub trait Portflow: Send + Sync {
     fn evidence_comments(&self, portfolio: i64, evidence: i64) -> PResult<Vec<Comment>>;
     fn comment_children(&self, portfolio: i64, comment: i64) -> PResult<Vec<Comment>>;
 
+    /// The signed address (at S3, valid for about half an hour) a file of a version is downloaded from.
+    fn file_url(&self, _portfolio: i64, _file: i64) -> PResult<String> {
+        Err(PortflowError::message("This Portflow client can't download files."))
+    }
+    /// The bytes at a signed address from [`Portflow::file_url`]: fetched without the Portflow session.
+    fn download(&self, _url: &str) -> PResult<Vec<u8>> {
+        Err(PortflowError::message("This Portflow client can't download files."))
+    }
+
     /// Writes a collection's description (HTML) and answers with the description Portflow now has, when it says.
     /// A write ("guide-description"): refused by the gate unless read and write and that switch are on.
     fn set_collection_description(&self, _portfolio: i64, _collection: i64, _html: &str) -> PResult<Option<String>> {
@@ -497,11 +507,46 @@ pub trait Portflow: Send + Sync {
 
 pub type Sleeper = Arc<dyn Fn(Duration) + Send + Sync>;
 
+/// Fetches the bytes at an address. It is handed only the address: never the Portflow session.
+pub type Fetch = Arc<dyn Fn(&str) -> std::result::Result<Vec<u8>, String> + Send + Sync>;
+
+/// The largest file Ledger downloads from Portflow.
+pub const MAX_DOWNLOAD: u64 = 200 * 1024 * 1024;
+
+/// A client of its own for the signed addresses Portflow hands out: no session header, no cookies, https only, and
+/// nothing larger than [`MAX_DOWNLOAD`].
+pub fn plain_fetch() -> Fetch {
+    Arc::new(|url: &str| {
+        if !url.starts_with("https://") {
+            return Err("Portflow gave a file address that isn't https".into());
+        }
+        let client = Client::builder()
+            .user_agent(concat!("ledger/", env!("CARGO_PKG_VERSION")))
+            .timeout(Duration::from_secs(300))
+            .build()
+            .map_err(|e| format!("Could not set up the download: {e}"))?;
+        let response = client.get(url).send().map_err(|e| format!("Could not download the file: {}", e.without_url()))?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(format!("The file's address answered {}", status.as_u16()));
+        }
+        if response.content_length().is_some_and(|n| n > MAX_DOWNLOAD) {
+            return Err("The file is larger than Ledger downloads (200 MB)".into());
+        }
+        let bytes = response.bytes().map_err(|e| format!("Could not download the file: {}", e.without_url()))?;
+        if bytes.len() as u64 > MAX_DOWNLOAD {
+            return Err("The file is larger than Ledger downloads (200 MB)".into());
+        }
+        Ok(bytes.to_vec())
+    })
+}
+
 pub struct HttpPortflow<W: Wire> {
     wire: W,
     gate: Gate,
     sleep: Sleeper,
     last: Mutex<Option<Instant>>,
+    fetch: Fetch,
 }
 
 impl HttpPortflow<ReqwestWire> {
@@ -515,7 +560,14 @@ impl HttpPortflow<ReqwestWire> {
 
 impl<W: Wire> HttpPortflow<W> {
     pub fn with_wire(wire: W, gate: Gate, sleep: Sleeper) -> Self {
-        HttpPortflow { wire, gate, sleep, last: Mutex::new(None) }
+        HttpPortflow { wire, gate, sleep, last: Mutex::new(None), fetch: plain_fetch() }
+    }
+
+    /// The same client, downloading files with `fetch` (for testing).
+    #[cfg(test)]
+    pub fn with_fetch(mut self, fetch: Fetch) -> Self {
+        self.fetch = fetch;
+        self
     }
 
     fn pace(&self) {
@@ -662,6 +714,21 @@ impl<W: Wire> Portflow for HttpPortflow<W> {
 
     fn evidence_comments(&self, p: i64, e: i64) -> PResult<Vec<Comment>> {
         self.get_all(format!("/portfolios/{p}/evidence/{e}/comments"), "comments")
+    }
+
+    fn file_url(&self, p: i64, f: i64) -> PResult<String> {
+        // The answer's shape hasn't been recorded from the real API: a bare string, or an object naming the address.
+        let answer = self.send(&Request::get(format!("/portfolios/{p}/evidence-version-files/{f}/preview-url"), &[]))?;
+        let url = match &answer {
+            Value::String(url) => Some(url.clone()),
+            Value::Object(_) => ["url", "preview_url", "previewUrl", "signed_url", "download_url"].iter().find_map(|k| answer[*k].as_str().map(str::to_string)),
+            _ => None,
+        };
+        url.filter(|u| u.starts_with("https://")).ok_or_else(|| PortflowError::Changed("a file's download address".into()))
+    }
+
+    fn download(&self, url: &str) -> PResult<Vec<u8>> {
+        (self.fetch)(url).map_err(PortflowError::Message)
     }
 
     fn set_collection_description(&self, p: i64, c: i64, html: &str) -> PResult<Option<String>> {

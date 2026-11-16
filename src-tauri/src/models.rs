@@ -274,6 +274,10 @@ pub struct DeliverableSummary {
     pub latest_at: Option<String>,
     /// The newest version of the evidence item it is in that is in Portflow, and when it was delivered there.
     pub delivered: Option<Delivered>,
+    /// The Portflow evidence item this deliverable is (its name), when it is one: shown as its name.
+    pub evidence: Option<String>,
+    /// The item's other files (base paths, in a folder beside it), folded into it rather than listed on their own.
+    pub attachments: Vec<String>,
 }
 
 /// A version delivered to Portflow: its number (Ledger's major) and when Portflow got it.
@@ -313,6 +317,9 @@ pub struct DeliverableView {
     pub editable: bool,
     pub prompts: Vec<DeliverablePrompt>,
     pub feedback: Vec<FeedbackView>,
+    /// See [`DeliverableSummary::evidence`] and [`DeliverableSummary::attachments`].
+    pub evidence: Option<String>,
+    pub attachments: Vec<String>,
 }
 
 // ---- templates --------------------------------------------------------------------------------------

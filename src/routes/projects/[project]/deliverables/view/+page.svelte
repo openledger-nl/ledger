@@ -5,6 +5,7 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import MessagesSquare from '@lucide/svelte/icons/messages-square';
+	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
 	import Trash from '@lucide/svelte/icons/trash';
 	import { goto, replaceState } from '$app/navigation';
@@ -419,11 +420,20 @@
 				{#if provenance.summary.label}<MmmBadge level={provenance.summary.label.level} />{/if}
 				{#if deliverableMeta?.mmm}<span class="pj-intended">Its label <MmmBadge level={deliverableMeta.mmm} /></span>{/if}
 				{#if deliverableMeta?.mmm === 'man-made'}<span class="hint">AI writing is off for it</span>{/if}
-				{#if doc.path.includes('/')}<span class="mono">{doc.path}</span>{/if}
+				{#if doc.evidence || doc.path.includes('/')}<span class="mono" title={doc.evidence ? 'Its file; the deliverable is the Portflow evidence item it is named after' : undefined}>{doc.path}</span>{/if}
 				{#if isMarkdown && !snapshot && doc.exists}
 					<span class="save-state">{saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Unsaved changes'}</span>
 				{/if}
 			</div>
+			{#if doc.attachments.length}
+				<p class="doc-attachments">
+					<Paperclip size={13} />
+					<span>With it in Portflow:</span>
+					{#each doc.attachments as file (file)}
+						<a href={deliverableUrl(project, file)} class="mono">{file.split('/').at(-1)}</a>
+					{/each}
+				</p>
+			{/if}
 		</div>
 		<div class="header-actions">
 			<div class="thread-box" title="Notes on publishing, new feedback and the prompts made from feedback go to this thread">

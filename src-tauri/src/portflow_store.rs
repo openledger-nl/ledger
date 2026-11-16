@@ -221,18 +221,27 @@ pub struct EvidenceMention {
     pub name: String,
     pub thread: Option<String>,
     pub thread_title: Option<String>,
+    /// The deliverable the item is (its first file, the live path under deliverables/), once it is in Ledger.
+    pub deliverable: Option<String>,
 }
 
 /// The project's evidence items that are in Portflow, by name.
 pub fn evidence_mentions(conn: &Connection, project: &str) -> Result<Vec<EvidenceMention>> {
     query_all(
         conn,
-        "SELECT e.portflow_id, e.name, t.slug, t.title FROM evidence e
+        "SELECT e.portflow_id, e.name, t.slug, t.title, e.slug
+         FROM evidence e
          LEFT JOIN threads t ON t.project_slug = e.project_slug AND t.slug = e.thread_slug
          WHERE e.project_slug = ?1 AND e.portflow_id IS NOT NULL ORDER BY e.name COLLATE NOCASE",
         [project],
-        |r| Ok(EvidenceMention { portflow_id: r.get(0)?, name: r.get(1)?, thread: r.get(2)?, thread_title: r.get(3)? }),
-    )
+        |r| Ok((EvidenceMention { portflow_id: r.get(0)?, name: r.get(1)?, thread: r.get(2)?, thread_title: r.get(3)?, deliverable: None }, r.get::<_, String>(4)?)),
+    )?
+    .into_iter()
+    .map(|(mut mention, slug)| {
+        mention.deliverable = item_deliverable(conn, project, &slug)?;
+        Ok(mention)
+    })
+    .collect()
 }
 
 pub fn guide_targets(conn: &Connection, today: &str) -> Result<Vec<GuideTarget>> {
@@ -562,7 +571,14 @@ pub fn base_for_file(conn: &Connection, project: &str, evidence: &str, file_name
     let wanted = ext.as_ref().map_or_else(|| stem.clone(), |ext| format!("{stem}.{ext}"));
     let files: Vec<String> =
         query_all(conn, "SELECT path FROM evidence_files WHERE project_slug = ?1 AND evidence_slug = ?2 ORDER BY position", [project, evidence], |r| r.get(0))?;
-    if let Some(found) = files.iter().find(|p| crate::deliverables::file_name(p).eq_ignore_ascii_case(&wanted)) {
+    let slugged = |path: &str| {
+        let name = crate::deliverables::file_name(path);
+        match name.rsplit_once('.') {
+            Some((stem, ext)) if !stem.is_empty() => format!("{}.{}", ids::slugify_as(stem, "file"), ext.to_ascii_lowercase()),
+            _ => ids::slugify_as(name, "file"),
+        }
+    };
+    if let Some(found) = files.iter().find(|p| slugged(p) == wanted) {
         return Ok(found.clone());
     }
     Ok(format!("{evidence}/{wanted}"))
@@ -611,6 +627,15 @@ pub fn store_version(conn: &Connection, project: &str, evidence: &str, version: 
             version.created_at.clone().unwrap_or_else(ids::now)
         ],
     )?;
+    // A file already in Ledger (downloaded, or linked) keeps its place when the version is recorded again.
+    let had: HashMap<i64, String> = query_all(
+        conn,
+        "SELECT portflow_file, path FROM evidence_version_files WHERE project_slug = ?1 AND evidence_slug = ?2 AND number = ?3 AND portflow_file IS NOT NULL AND path IS NOT NULL",
+        params![project, evidence, version.version_number],
+        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+    )?
+    .into_iter()
+    .collect();
     conn.execute(
         "DELETE FROM evidence_version_files WHERE project_slug = ?1 AND evidence_slug = ?2 AND number = ?3",
         params![project, evidence, version.version_number],
@@ -623,7 +648,7 @@ pub fn store_version(conn: &Connection, project: &str, evidence: &str, version: 
     for file in files {
         conn.execute(
             "INSERT OR REPLACE INTO evidence_version_files (project_slug, evidence_slug, number, name, portflow_file, path) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![project, evidence, version.version_number, file.name, file.portflow_file, file.path],
+            params![project, evidence, version.version_number, file.name, file.portflow_file, file.path.as_ref().or(had.get(&file.portflow_file))],
         )?;
         // A Ledger file that went to Portflow belongs to the evidence item (unless another one has it).
         if let Some(path) = &file.path {
@@ -636,6 +661,465 @@ pub fn store_version(conn: &Connection, project: &str, evidence: &str, version: 
         }
     }
     Ok(())
+}
+
+// ---- evidence as deliverables ----------------------------------------------------------------------------
+// In a study project linked to Portflow (or one without facts yet: being linked makes it part of a portfolio), every
+// evidence item is a deliverable: its files are downloaded once, each Portflow version N becomes the published version
+// N.0, and the newest is the live file. A file with a `path` in `evidence_version_files` is in Ledger; one without is
+// downloaded on the next round (and on every round after, until that works).
+
+/// The projects whose evidence comes in as deliverables: linked to a collection, and a study project or one without a
+/// kind (a hobby or company project keeps its files in Portflow).
+pub fn delivering_projects(conn: &Connection) -> Result<BTreeSet<String>> {
+    Ok(query_all(
+        conn,
+        "SELECT DISTINCT l.project_slug FROM project_collections l JOIN projects p ON p.slug = l.project_slug
+         WHERE COALESCE(p.kind, '') IN ('study', '')",
+        [],
+        |r| r.get::<_, String>(0),
+    )?
+    .into_iter()
+    .collect())
+}
+
+/// A file of a recorded version that isn't in Ledger yet.
+#[derive(Debug, Clone)]
+pub struct OpenFile {
+    pub number: i64,
+    pub name: String,
+    pub portflow_file: i64,
+    /// Whether it is the file of its version that is the item (see [`crate::deliverables::main_of`]): that one is the
+    /// version of the item's deliverable; the others are its attachments.
+    pub first: bool,
+}
+
+/// The files of the item's file versions that aren't in Ledger yet, oldest version first.
+pub fn open_files(conn: &Connection, project: &str, evidence: &str) -> Result<Vec<OpenFile>> {
+    let item: String = conn.query_row("SELECT name FROM evidence WHERE project_slug = ?1 AND slug = ?2", [project, evidence], |r| r.get(0))?;
+    let all: Vec<(i64, String)> = query_all(
+        conn,
+        "SELECT number, name FROM evidence_version_files WHERE project_slug = ?1 AND evidence_slug = ?2 ORDER BY number, rowid",
+        [project, evidence],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    let mut by_version: BTreeMap<i64, Vec<String>> = BTreeMap::new();
+    for (number, name) in all {
+        by_version.entry(number).or_default().push(name);
+    }
+    let main: HashMap<i64, String> = by_version
+        .into_iter()
+        .map(|(number, names)| {
+            let i = crate::deliverables::main_of(&item, &names.iter().map(String::as_str).collect::<Vec<_>>());
+            (number, names[i].clone())
+        })
+        .collect();
+    let rows: Vec<(i64, String, Option<i64>)> = query_all(
+        conn,
+        "SELECT f.number, f.name, f.portflow_file
+         FROM evidence_version_files f
+         JOIN evidence_versions v ON v.project_slug = f.project_slug AND v.evidence_slug = f.evidence_slug AND v.number = f.number
+         WHERE f.project_slug = ?1 AND f.evidence_slug = ?2 AND f.path IS NULL AND v.kind = 'file'
+         ORDER BY f.number, f.rowid",
+        [project, evidence],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(number, name, file)| {
+            let first = main.get(&number) == Some(&name);
+            file.map(|portflow_file| OpenFile { number, name, portflow_file, first })
+        })
+        .collect())
+}
+
+/// The file name an evidence item's deliverable gets: the item's name, made safe for a file, with the file's extension.
+pub fn item_file_name(item: &str, file_name: &str) -> String {
+    // An `@` could read as a version ("Plan@v2.0"); a dot at the end would lose the extension.
+    let name = crate::uploads::sanitize(&item.replace('@', "_"));
+    match crate::deliverables::file_name(file_name).rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() => format!("{name}.{}", ext.to_ascii_lowercase()),
+        _ => name,
+    }
+}
+
+/// `path`, or the first of `path-2`, `path-3`… (before the extension) that isn't a deliverable yet.
+fn free_path(conn: &Connection, project: &str, path: &str) -> Result<String> {
+    let taken = |p: &str| -> Result<bool> { Ok(crate::deliverables::exists(conn, project, p)? || !crate::deliverables::versions_of(conn, project, p)?.is_empty()) };
+    if !taken(path)? {
+        return Ok(path.to_string());
+    }
+    let (stem, ext) = match path.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() && !ext.contains('/') => (stem.to_string(), format!(".{ext}")),
+        _ => (path.to_string(), String::new()),
+    };
+    let mut n = 2;
+    loop {
+        let candidate = format!("{stem}-{n}{ext}");
+        if !taken(&candidate)? {
+            return Ok(candidate);
+        }
+        n += 1;
+    }
+}
+
+/// The item's files from Portflow, by version, in Portflow's order: (number, Portflow's name, its version in Ledger).
+fn version_rows(conn: &Connection, project: &str, evidence: &str) -> Result<BTreeMap<i64, Vec<(String, String)>>> {
+    let rows: Vec<(i64, String, String)> = query_all(
+        conn,
+        "SELECT f.number, f.name, f.path FROM evidence_version_files f
+         JOIN evidence_versions v ON v.project_slug = f.project_slug AND v.evidence_slug = f.evidence_slug AND v.number = f.number
+         WHERE f.project_slug = ?1 AND f.evidence_slug = ?2 AND v.kind = 'file' AND f.path IS NOT NULL
+         ORDER BY f.number, f.rowid",
+        [project, evidence],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    let mut out: BTreeMap<i64, Vec<(String, String)>> = BTreeMap::new();
+    for (number, name, path) in rows {
+        out.entry(number).or_default().push((name, path));
+    }
+    Ok(out)
+}
+
+/// Of a version's files, the one that is the item, by Portflow's names (which a rename in Ledger doesn't change).
+fn main_row<'a>(item: &str, files: &'a [(String, String)]) -> &'a (String, String) {
+    &files[crate::deliverables::main_of(item, &files.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>())]
+}
+
+/// The item's deliverable: the file its newest version in Ledger is a version of (that version's file that is the item,
+/// by Portflow's names); with no version in Ledger, the item's file named most like it. `None` while it has none.
+pub fn item_deliverable(conn: &Connection, project: &str, evidence: &str) -> Result<Option<String>> {
+    let item: String = conn.query_row("SELECT name FROM evidence WHERE project_slug = ?1 AND slug = ?2", [project, evidence], |r| r.get(0))?;
+    let paths: Vec<String> =
+        query_all(conn, "SELECT path FROM evidence_files WHERE project_slug = ?1 AND evidence_slug = ?2 ORDER BY position", [project, evidence], |r| r.get(0))?;
+    if let Some((_, files)) = version_rows(conn, project, evidence)?.into_iter().next_back() {
+        let base = crate::deliverables::split_version(&main_row(&item, &files).1).0;
+        if paths.contains(&base) {
+            return Ok(Some(base));
+        }
+    }
+    if paths.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(paths[crate::deliverables::main_of(&item, &paths.iter().map(String::as_str).collect::<Vec<_>>())].clone()))
+}
+
+/// The extension of a path, lowercased (`""` for none).
+fn ext_of(path: &str) -> String {
+    crate::deliverables::file_name(path).rsplit_once('.').filter(|(stem, _)| !stem.is_empty()).map(|(_, ext)| ext.to_ascii_lowercase()).unwrap_or_default()
+}
+
+/// Where a downloaded file lives (its base path, without a version). An evidence item is one deliverable, named after
+/// the item: `deliverables/<item>.<ext>`. The first file of each Portflow version is that version of it, whatever the
+/// file was called. A version's other files are its attachments, beside it in `deliverables/<item>/<file>`, and so is a
+/// first file of another kind (a .pptx where the deliverable is a .pdf). A name another deliverable has gets a number.
+pub fn base_for_download(conn: &Connection, project: &str, evidence: &str, file: &OpenFile) -> Result<String> {
+    let main = item_deliverable(conn, project, evidence)?;
+    if let Some(main) = main.as_ref().filter(|m| file.first && ext_of(m) == ext_of(&file.name)) {
+        let version = format!("{}.0", file.number);
+        if !crate::deliverables::versions_of(conn, project, main)?.contains(&version) {
+            return Ok(main.clone());
+        }
+    }
+    // Came in before, under the same name.
+    let before: Option<String> = query_opt(
+        conn,
+        "SELECT path FROM evidence_version_files WHERE project_slug = ?1 AND evidence_slug = ?2 AND name = ?3 AND path IS NOT NULL ORDER BY number DESC LIMIT 1",
+        params![project, evidence, file.name],
+        |r| r.get(0),
+    )?;
+    if let Some(path) = before {
+        return Ok(crate::deliverables::split_version(&path).0);
+    }
+    // A file of the item already (Ledger handed it in under that name).
+    let found = base_for_file(conn, project, evidence, &file.name)?;
+    let owned: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM evidence_files WHERE project_slug = ?1 AND evidence_slug = ?2 AND path = ?3)", params![project, evidence, found], |r| r.get(0))?;
+    if owned {
+        return Ok(found);
+    }
+    let item: String = conn.query_row("SELECT name FROM evidence WHERE project_slug = ?1 AND slug = ?2", [project, evidence], |r| r.get(0))?;
+    match main {
+        None if file.first => free_path(conn, project, &item_file_name(&item, &file.name)),
+        main => {
+            let dir = main.map_or_else(|| crate::uploads::sanitize(&item.replace('@', "_")), |m| crate::deliverables::attachment_dir(&m));
+            let name = crate::uploads::sanitize(&crate::deliverables::file_name(&file.name).replace('@', "_"));
+            free_path(conn, project, &format!("{dir}/{name}"))
+        }
+    }
+}
+
+/// Whether a deliverable came from Portflow (Ledger didn't make it): a version of it was recorded as downloaded.
+fn came_from_portflow(conn: &Connection, project: &str, base: &str) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM version_records WHERE project_slug = ?1 AND deliverable_path = ?2
+                       AND (note LIKE 'From Portflow, version %' OR note LIKE 'Version % in Portflow'))",
+        [project, base],
+        |r| r.get(0),
+    )?)
+}
+
+/// Versions of the item that came from Portflow under another file than its deliverable (an earlier Ledger put each
+/// differently named file of a new version beside the first): `(version path now, the path it should have)`.
+fn versions_to_fold(conn: &Connection, project: &str, evidence: &str, main: &str) -> Result<Vec<(String, String)>> {
+    let item: String = conn.query_row("SELECT name FROM evidence WHERE project_slug = ?1 AND slug = ?2", [project, evidence], |r| r.get(0))?;
+    let have = crate::deliverables::versions_of(conn, project, main)?;
+    let mut out = vec![];
+    for (number, files) in version_rows(conn, project, evidence)? {
+        let path = &main_row(&item, &files).1;
+        let (base, version) = crate::deliverables::split_version(path);
+        let wanted = format!("{number}.0");
+        if base == main || version.as_deref() != Some(wanted.as_str()) || ext_of(&base) != ext_of(main) || have.contains(&wanted) {
+            continue;
+        }
+        if came_from_portflow(conn, project, &base)? && crate::deliverables::exists(conn, project, path)? {
+            out.push((path.clone(), crate::deliverables::snapshot_path(main, &wanted)));
+        }
+    }
+    Ok(out)
+}
+
+/// The renames that make the item's files look like one deliverable named after it, in the order to make them: each
+/// attachment from Portflow into `<item>/` under Portflow's name for it, then the deliverable to `<item>.<ext>` (both
+/// only for files that came from Portflow; Ledger's own keep their names, and are still shown by the item's).
+/// Each is `(from, to, whether it is the deliverable itself)`.
+fn renames_to_settle(conn: &Connection, project: &str, evidence: &str) -> Result<Vec<(String, String, bool)>> {
+    let Some(main) = item_deliverable(conn, project, evidence)? else { return Ok(vec![]) };
+    let item: String = conn.query_row("SELECT name FROM evidence WHERE project_slug = ?1 AND slug = ?2", [project, evidence], |r| r.get(0))?;
+    let main_from_portflow = came_from_portflow(conn, project, &main)?;
+    let wanted = if main_from_portflow { item_file_name(&item, &main) } else { main.clone() };
+    let dir = crate::deliverables::attachment_dir(&wanted);
+    // Portflow's name for each of the item's files: the newest version it is in.
+    let mut names: HashMap<String, String> = HashMap::new();
+    for (_, files) in version_rows(conn, project, evidence)? {
+        for (name, path) in files {
+            names.insert(crate::deliverables::split_version(&path).0, name);
+        }
+    }
+    let mut out = vec![];
+    let others: Vec<String> =
+        query_all(conn, "SELECT path FROM evidence_files WHERE project_slug = ?1 AND evidence_slug = ?2 ORDER BY position", [project, evidence], |r| r.get(0))?;
+    for path in others.into_iter().filter(|p| *p != main) {
+        if path.starts_with(&format!("{dir}/")) || !came_from_portflow(conn, project, &path)? {
+            continue;
+        }
+        let name = names.get(&path).map_or_else(|| crate::deliverables::file_name(&path).to_string(), Clone::clone);
+        out.push((path, format!("{dir}/{}", crate::uploads::sanitize(&crate::deliverables::file_name(&name).replace('@', "_"))), false));
+    }
+    if main != wanted {
+        out.push((main, wanted, true));
+    }
+    Ok(out)
+}
+
+/// Whether [`settle_name`] has anything to do for the item.
+pub fn needs_settling(conn: &Connection, project: &str, evidence: &str) -> Result<bool> {
+    if let Some(main) = item_deliverable(conn, project, evidence)?
+        && !versions_to_fold(conn, project, evidence, &main)?.is_empty()
+    {
+        return Ok(true);
+    }
+    Ok(!renames_to_settle(conn, project, evidence)?.is_empty())
+}
+
+/// Keeps an item one deliverable, named after the item. Versions from Portflow that sit under another file are moved
+/// onto it (and that file goes once nothing of it is left); its attachments from Portflow go into `<item>/`; and a
+/// deliverable that came from Portflow is renamed — with its versions — to `<item>.<ext>` when the item was renamed in
+/// Portflow or came in under another name. A name that is taken is left as it is. Returns the renames made.
+pub fn settle_name(conn: &Connection, root: &std::path::Path, project: &str, evidence: &str) -> Result<Vec<(String, String)>> {
+    if let Some(main) = item_deliverable(conn, project, evidence)? {
+        fold_versions(conn, root, project, evidence, &main)?;
+    }
+    let mut done = vec![];
+    for (from, to, is_main) in renames_to_settle(conn, project, evidence)? {
+        let taken = |p: &str| -> Result<bool> { Ok(crate::deliverables::exists(conn, project, p)? || !crate::deliverables::versions_of(conn, project, p)?.is_empty()) };
+        // An attachment gets a number when its name is taken; the deliverable waits for its name.
+        let to = if taken(&to)? {
+            if is_main {
+                continue;
+            }
+            free_path(conn, project, &to)?
+        } else {
+            to
+        };
+        crate::deliverables::rename_base(conn, root, project, &from, &to)?;
+        done.push((from, to));
+    }
+    Ok(done)
+}
+
+/// Moves the versions [`versions_to_fold`] finds onto the item's deliverable; a file left with no versions goes (its
+/// live copy too, when that is one of them), and the deliverable's live file becomes its newest version unless it was
+/// changed in Ledger.
+fn fold_versions(conn: &Connection, root: &std::path::Path, project: &str, evidence: &str, main: &str) -> Result<()> {
+    use crate::deliverables::{exists, file_of, split_version, versions_of};
+    let moves = versions_to_fold(conn, project, evidence, main)?;
+    if moves.is_empty() {
+        return Ok(());
+    }
+    let sha_of = |path: &str| -> Result<Option<String>> {
+        let body: Option<Option<String>> = query_opt(conn, "SELECT body FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, path], |r| r.get(0))?;
+        Ok(match body {
+            None => None,
+            Some(Some(text)) => Some(crate::provenance::sha256_hex(text.as_bytes())),
+            Some(None) => std::fs::read(file_of(root, project, path)).ok().map(|b| crate::provenance::sha256_hex(&b)),
+        })
+    };
+    // The live file as it was, and whether it matched a version (then it follows the newest).
+    let live_before = sha_of(main)?;
+    let mut version_shas = vec![];
+    for v in versions_of(conn, project, main)? {
+        version_shas.extend(sha_of(&crate::deliverables::snapshot_path(main, &v))?);
+    }
+    let follows = live_before.as_ref().is_none_or(|sha| version_shas.contains(sha));
+    for (from, to) in &moves {
+        let moved_sha = sha_of(from)?;
+        crate::deliverables::move_version(conn, root, project, from, to)?;
+        let base = split_version(from).0;
+        if versions_of(conn, project, &base)?.is_empty() {
+            // Its live copy goes when it is just that version (else it was changed in Ledger, and stays).
+            if exists(conn, project, &base)? && sha_of(&base)? == moved_sha {
+                let binary: bool = conn.query_row("SELECT body IS NULL FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, &base], |r| r.get(0))?;
+                conn.execute("DELETE FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, &base])?;
+                if binary {
+                    let file = file_of(root, project, &base);
+                    std::fs::remove_file(&file).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(Error::io(&file, e)) })?;
+                }
+            }
+            if !exists(conn, project, &base)? {
+                conn.execute("DELETE FROM evidence_files WHERE project_slug = ?1 AND evidence_slug = ?2 AND path = ?3", [project, evidence, &base])?;
+            }
+        }
+    }
+    if follows
+        && let Some(newest) = versions_of(conn, project, main)?.last()
+    {
+        let snapshot = crate::deliverables::snapshot_path(main, newest);
+        let body: Option<String> = query_opt(conn, "SELECT body FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, &snapshot], |r| r.get(0))?.flatten();
+        let at = ids::now();
+        match body {
+            Some(text) => crate::deliverables::upsert(conn, project, main, text.len() as i64, &at, Some(&text))?,
+            None => {
+                let (from, to) = (file_of(root, project, &snapshot), file_of(root, project, main));
+                if let Some(dir) = to.parent() {
+                    std::fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
+                }
+                let size = std::fs::copy(&from, &to).map_err(|e| Error::io(&to, e))?;
+                crate::deliverables::upsert(conn, project, main, size as i64, &at, None)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// What became of the live file when a downloaded version was stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Live {
+    /// Not the newest version: the live file isn't its business.
+    Untouched,
+    /// The live file is now this version.
+    Written,
+    /// The live file was changed in Ledger since it last matched a version: it stays, and the version is beside it.
+    Kept,
+}
+
+/// Stores a downloaded file as published version `N.0` of `base` (with the record of where it came from), links the
+/// Portflow file to it, makes `base` one of the item's files, and, for the newest version, makes it the live file too —
+/// unless the live file was changed in Ledger since it last matched a published version.
+#[allow(clippy::too_many_arguments)]
+pub fn store_download(
+    conn: &Connection,
+    root: &std::path::Path,
+    project: &str,
+    evidence: &str,
+    file: &OpenFile,
+    base: &str,
+    bytes: &[u8],
+    newest: bool,
+) -> Result<Live> {
+    use crate::deliverables::{file_of, is_markdown, snapshot_path, upsert, versions_of};
+    let version = format!("{}.0", file.number);
+    let snapshot = snapshot_path(base, &version);
+    let at = ids::now();
+    let markdown = is_markdown(base);
+    let text = markdown.then(|| String::from_utf8_lossy(bytes).into_owned());
+    let sha256 = crate::provenance::sha256_hex(text.as_deref().map_or(bytes, str::as_bytes));
+    // What the live file was last published as, before this version: to tell whether it was changed in Ledger since.
+    let previous = versions_of(conn, project, base)?.into_iter().last();
+    let previous_sha: Option<String> = match &previous {
+        Some(v) => query_opt(
+            conn,
+            "SELECT sha256 FROM version_records WHERE project_slug = ?1 AND deliverable_path = ?2 AND version = ?3",
+            params![project, base, v],
+            |r| r.get::<_, Option<String>>(0),
+        )?
+        .flatten(),
+        None => None,
+    };
+
+    let write = |path: &str| -> Result<()> {
+        match &text {
+            Some(text) => upsert(conn, project, path, text.len() as i64, &at, Some(text)),
+            None => {
+                let to = file_of(root, project, path);
+                if let Some(dir) = to.parent() {
+                    std::fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
+                }
+                std::fs::write(&to, bytes).map_err(|e| Error::io(&to, e))?;
+                upsert(conn, project, path, bytes.len() as i64, &at, None)
+            }
+        }
+    };
+    write(&snapshot)?;
+    let thread: Option<String> =
+        query_opt(conn, "SELECT thread_slug FROM evidence WHERE project_slug = ?1 AND slug = ?2", [project, evidence], |r| r.get::<_, Option<String>>(0))?.flatten();
+    let origin = crate::provenance::Origin {
+        cause: crate::provenance::Cause::Manual,
+        thread,
+        ai: false,
+        prompt: None,
+        run: None,
+        mmm: None,
+        note: format!("From Portflow, version {}", file.number),
+    };
+    crate::provenance::insert_record(conn, project, base, &version, &origin, &sha256, &at)?;
+    conn.execute(
+        "UPDATE evidence_version_files SET path = ?5 WHERE project_slug = ?1 AND evidence_slug = ?2 AND number = ?3 AND name = ?4",
+        params![project, evidence, file.number, file.name, snapshot],
+    )?;
+    let owned: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM evidence_files WHERE project_slug = ?1 AND path = ?2)", [project, base], |r| r.get(0))?;
+    if !owned {
+        let position: i64 = conn.query_row(
+            "SELECT COALESCE(MAX(position) + 1, 0) FROM evidence_files WHERE project_slug = ?1 AND evidence_slug = ?2",
+            [project, evidence],
+            |r| r.get(0),
+        )?;
+        conn.execute("INSERT INTO evidence_files (project_slug, evidence_slug, position, path) VALUES (?1, ?2, ?3, ?4)", params![project, evidence, position, base])?;
+    }
+
+    if !newest {
+        return Ok(Live::Untouched);
+    }
+    // The live file as it is now: missing, the same as the last published version, or changed in Ledger since.
+    let live_sha: Option<String> = if crate::deliverables::exists(conn, project, base)? {
+        let body: Option<String> = query_opt(conn, "SELECT body FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, base], |r| r.get(0))?.flatten();
+        Some(match body {
+            Some(body) => crate::provenance::sha256_hex(body.as_bytes()),
+            None => {
+                let from = file_of(root, project, base);
+                crate::provenance::sha256_hex(&std::fs::read(&from).map_err(|e| Error::io(&from, e))?)
+            }
+        })
+    } else {
+        None
+    };
+    match live_sha {
+        Some(current) if current == sha256 => Ok(Live::Written),
+        Some(current) if previous_sha.as_deref() != Some(current.as_str()) => Ok(Live::Kept),
+        _ => {
+            write(base)?;
+            Ok(Live::Written)
+        }
+    }
 }
 
 /// Links files of recorded versions that Ledger has published since (they were only in Portflow before).

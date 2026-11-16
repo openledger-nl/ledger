@@ -276,6 +276,10 @@ export interface DeliverableSummary {
 	latestAt: string | null;
 	/** The newest version of its evidence item that is in Portflow (Portflow on only), and when it was delivered there. */
 	delivered: { number: number; at: string } | null;
+	/** The Portflow evidence item this deliverable is (its name), when it is one: it is shown by that name. */
+	evidence: string | null;
+	/** The item's other files (base paths, in a folder beside it), folded into it rather than listed on their own. */
+	attachments: string[];
 }
 
 export interface DeliverablePrompt {
@@ -301,6 +305,10 @@ export interface Deliverable {
 	editable: boolean;
 	prompts: DeliverablePrompt[];
 	feedback: Feedback[];
+	/** The Portflow evidence item this deliverable is (its name), when it is one: it is shown by that name. */
+	evidence: string | null;
+	/** The item's other files (base paths, in a folder beside it), folded into it rather than listed on their own. */
+	attachments: string[];
 }
 
 // ---- how versions came to be ------------------------------------------------------------------------
@@ -1122,9 +1130,11 @@ export interface ProjectPortflow {
 export interface EvidenceMention {
 	portflowId: number;
 	name: string;
-	/** The Ledger thread it is placed in, if any: a mention leads there. */
+	/** The Ledger thread it is placed in, if any. */
 	thread: string | null;
 	threadTitle: string | null;
+	/** The deliverable it is in Ledger (its live file), once its files are downloaded: a mention leads there first. */
+	deliverable: string | null;
 }
 
 export interface PortflowFeedback {
