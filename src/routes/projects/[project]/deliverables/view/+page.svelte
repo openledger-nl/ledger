@@ -4,14 +4,15 @@
 	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FileText from '@lucide/svelte/icons/file-text';
-	import MessagesSquare from '@lucide/svelte/icons/messages-square';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
+	import TextCursorInput from '@lucide/svelte/icons/text-cursor-input';
 	import Trash from '@lucide/svelte/icons/trash';
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import DocSide from '$lib/components/DocSide.svelte';
+	import EvidenceDescription from '$lib/components/EvidenceDescription.svelte';
 	import FileImage from '$lib/components/FileImage.svelte';
 	import Markdown from '$lib/components/Markdown.svelte';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
@@ -19,17 +20,18 @@
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import SelectionComment from '$lib/components/SelectionComment.svelte';
-	import { api } from '$lib/api';
-	import { deliverableFile, deliverableUrl, formatSize, newThreadFlow, nextVersion, snapshotPath } from '$lib/actions';
+	import { api, portflowApi } from '$lib/api';
+	import { portflow } from '$lib/portflow.svelte';
+	import { deliverableFile, deliverableUrl, nextVersion, snapshotPath } from '$lib/actions';
 	import { locate, plain, type Anchor, type Mark } from '$lib/anchors';
 	import { sha256Hex } from '$lib/hash';
-	import { ago, dateTime } from '$lib/format';
+	import { dateTime } from '$lib/format';
 	import { MMM, mmmInfo } from '$lib/mmm';
 	import MmmPicker from '$lib/components/MmmPicker.svelte';
 	import { dirOf } from '$lib/vaultImages';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import { beforeRestart } from '$lib/updates.svelte';
-	import type { Bump, Feedback, MmmLevel, ProvenanceDraft, ProvenanceVersion } from '$lib/types';
+	import type { Bump, Evidence, Feedback, MmmLevel, ProvenanceDraft, ProvenanceVersion } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -41,6 +43,8 @@
 	const snapshot = $derived(doc.version !== null);
 	const isMarkdown = $derived(doc.kind === 'markdown');
 	const file = $derived(deliverableFile(doc.path));
+	/** How the deliverable reads: its name without the file's extension (an evidence item's name is shown as it is). */
+	const title = $derived(doc.evidence ? doc.name : doc.name.replace(/\.[^./]+$/, '') || doc.name);
 	// Pictures in it are looked for beside the live file, also in a version (which is kept in versions/, apart from them).
 	const images = $derived({ project, dir: dirOf(deliverableFile(doc.basePath)) });
 
@@ -140,23 +144,26 @@
 
 	// ---- the thread of this page ---------------------------------------------------------------
 	// One thread for everything done here: the note a publish leaves, new feedback, and the prompts made from feedback. It is
-	// chosen once, at the top, and kept for this deliverable. Until then: where the last version went (or the prompt that
-	// asked for the file was written), or else the project's first thread.
+	// chosen in the side window (Feedback) and kept for this deliverable. Opened from a thread (`?thread=<slug>`), it is that
+	// thread. Otherwise: where the last version went (or the prompt that asked for the file was written), or else the
+	// project's first thread.
 
 	let workThread = $state('');
 	let threadKey = '';
 
+	const cameFrom = $derived(page.url.searchParams.get('thread'));
 	$effect(() => {
 		const key = `ledger-doc-thread:${project}:${doc.basePath}`;
 		const options = threads.map((t) => t.slug);
 		const fallback = [provenance.defaultThread, doc.prompts[0]?.threadSlug].find((slug) => slug && options.includes(slug)) ?? options[0] ?? '';
+		const from = cameFrom;
 		untrack(() => {
 			if (key !== threadKey) {
 				threadKey = key;
 				try {
-					workThread = localStorage.getItem(key) ?? '';
+					workThread = from && options.includes(from) ? from : (localStorage.getItem(key) ?? '');
 				} catch {
-					workThread = '';
+					workThread = from ?? '';
 				}
 			}
 			if (!options.includes(workThread)) workThread = fallback;
@@ -178,6 +185,57 @@
 
 	const threadTitle = $derived(threads.find((t) => t.slug === workThread)?.title ?? '');
 	const threadOptions = $derived(threads.map((t) => ({ value: t.slug, label: t.title })));
+
+	// ---- the evidence item it is -----------------------------------------------------------------
+	// A deliverable that is a Portflow evidence item shows the item's description (What? / Goal? / Why it contributes?)
+	// under the document, to read and edit here rather than in the thread.
+
+	let evidence = $state<Evidence | null>(null);
+	const isEvidenceFile = (e: Evidence) => e.files.some((f) => f.path === doc.basePath || f.path === `deliverables/${doc.basePath}`);
+	$effect(() => {
+		const wanted = doc.evidence;
+		const slug = project;
+		void doc.basePath;
+		evidence = null;
+		if (!wanted || !portflow.enabled) return;
+		let stale = false;
+		portflowApi
+			.project(slug)
+			.then((view) => {
+				if (!stale) evidence = view.evidence.find(isEvidenceFile) ?? view.evidence.find((e) => e.name === wanted) ?? null;
+			})
+			.catch(() => {});
+		return () => (stale = true);
+	});
+	const evidenceSaved = (items: Evidence[]) => (evidence = items.find((e) => e.slug === evidence?.slug) ?? evidence);
+
+	// ---- renaming ------------------------------------------------------------------------------
+	// The live file gets another name (its extension stays) and its versions and feedback follow; the page moves along. An
+	// evidence item is named after the item in Portflow, so it is renamed there.
+
+	let renaming = $state(false);
+	let newName = $state('');
+	let renameBusy = $state(false);
+
+	function startRenaming() {
+		newName = title;
+		renaming = true;
+	}
+
+	async function rename() {
+		if (!newName.trim() || renameBusy) return;
+		renameBusy = true;
+		await flush();
+		const to = await attempt(() => api.renameDeliverable(project, doc.path, newName.trim()));
+		renameBusy = false;
+		if (!to) return;
+		renaming = false;
+		dirty = false;
+		await refresh();
+		const url = new URL(deliverableUrl(project, to), page.url);
+		if (cameFrom) url.searchParams.set('thread', cameFrom);
+		await goto(url.pathname + url.search, { replaceState: true });
+	}
 
 	// ---- actions -------------------------------------------------------------------------------
 
@@ -287,6 +345,7 @@
 	// What else can be done with it, behind the ⋯ next to Publish. Delete only for the live file; a version is kept.
 	const more = $derived<MenuItem[]>([
 		// Copy, Open and Show in folder are buttons of their own beside it.
+		...(!snapshot && doc.exists && !doc.evidence ? [{ id: 'rename', label: 'Rename…', icon: TextCursorInput }] : []),
 		...(!snapshot && doc.exists ? [{ id: 'delete', label: 'Delete deliverable', icon: Trash, danger: true, rule: true }] : [])
 	]);
 
@@ -294,6 +353,7 @@
 		if (id === 'copy') void copyMarkdown();
 		else if (id === 'open') void open(false);
 		else if (id === 'reveal') void open(true);
+		else if (id === 'rename') startRenaming();
 		else if (id === 'delete') void remove();
 	}
 
@@ -391,13 +451,13 @@
 	);
 </script>
 
-<svelte:head><title>{doc.name} · Ledger</title></svelte:head>
+<svelte:head><title>{title} · Ledger</title></svelte:head>
 
 <div class="header-wrap">
 	<div class="header-top">
 		<div style="flex:1;min-width:0">
 			<h1 title={doc.path}>
-				{doc.name}
+				{title}
 				<span class="thread-box deliverable-pill" title="The deliverable this page is about, and which of its versions is open">
 					<FileText size={15} />
 					<span class="tb-label">Deliverable</span>
@@ -407,24 +467,6 @@
 			{#if deliverableMeta}
 				<p class="pj-goal"><span><strong>Goal</strong> {deliverableMeta.goal}</span></p>
 			{/if}
-			<div class="subline">
-				<span class="badge type">{doc.kind === 'markdown' ? 'Markdown' : doc.kind === 'image' ? 'Image' : 'File'}</span>
-				{#if snapshot}
-					<span class="badge published">v{doc.version}</span>
-				{:else if draft || !latest}
-					<span class="badge draft">{draft?.since ? `Draft after v${draft.since}` : 'Draft'}</span>
-				{:else}
-					<span class="badge published">Same as v{latest}</span>
-				{/if}
-				<span>{formatSize(doc.size)}</span>
-				{#if provenance.summary.label}<MmmBadge level={provenance.summary.label.level} />{/if}
-				{#if deliverableMeta?.mmm}<span class="pj-intended">Its label <MmmBadge level={deliverableMeta.mmm} /></span>{/if}
-				{#if deliverableMeta?.mmm === 'man-made'}<span class="hint">AI writing is off for it</span>{/if}
-				{#if doc.evidence || doc.path.includes('/')}<span class="mono" title={doc.evidence ? 'Its file; the deliverable is the Portflow evidence item it is named after' : undefined}>{doc.path}</span>{/if}
-				{#if isMarkdown && !snapshot && doc.exists}
-					<span class="save-state">{saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Unsaved changes'}</span>
-				{/if}
-			</div>
 			{#if doc.attachments.length}
 				<p class="doc-attachments">
 					<Paperclip size={13} />
@@ -436,25 +478,16 @@
 			{/if}
 		</div>
 		<div class="header-actions">
-			<div class="thread-box" title="Notes on publishing, new feedback and the prompts made from feedback go to this thread">
-				<MessagesSquare size={15} />
-				<span class="tb-label">Thread</span>
-				{#if threadOptions.length}
-					<Dropdown bind:value={workThread} options={threadOptions} label="Thread for this page" align="end" />
-				{:else}
-					<button class="link accent" onclick={() => newThreadFlow(project)}>Create one</button>
-				{/if}
-			</div>
 			{#if isMarkdown}<button class="btn ghost small" onclick={copyMarkdown}>Copy markdown</button>{/if}
 			{#if doc.exists}
 				<button class="btn ghost small" onclick={() => open(false)}>Open</button>
 				<button class="btn ghost small" onclick={() => open(true)}>Show in folder</button>
 			{/if}
 			{#if !snapshot && doc.exists}
-				<button class="btn primary" onclick={startPublishing}>Publish version…</button>
+				<button class="btn primary small" onclick={startPublishing}>Publish version</button>
 			{/if}
 			{#if more.length}
-				<Menu class="btn ghost icon-only" label="More actions" items={more} onpick={doMore} align="end"><Ellipsis size={18} /></Menu>
+				<Menu class="btn ghost small icon-only" label="More actions" items={more} onpick={doMore} align="end"><Ellipsis size={16} /></Menu>
 			{/if}
 		</div>
 	</div>
@@ -490,7 +523,6 @@
 						<button class:on={mode === m.id} aria-pressed={mode === m.id} onclick={() => setMode(m.id)}><m.icon size={14} />{m.label}</button>
 					{/each}
 				</div>
-				<span class="hint">Last changed {ago(doc.modified)}. Changes save automatically.</span>
 			</div>
 			{#if mode === 'reading'}
 				<div class="doc-view">
@@ -528,12 +560,34 @@
 				</div>
 			</div>
 		{/if}
+
+		{#if evidence}
+			<section class="card doc-evidence" aria-label="Evidence description">
+				<EvidenceDescription {evidence} onsaved={evidenceSaved} />
+			</section>
+		{/if}
 	</div>
 </div>
 
 <SelectionComment root={docArea} oncomment={commentOn} />
-<DocSide bind:this={side} {project} {doc} {provenance} {draft} prompts={data.prompts} {threads} thread={workThread} {threadTitle} bind:pending {lost} {here} onlocate={showPassage} />
+<DocSide bind:this={side} {project} {doc} {provenance} {draft} prompts={data.prompts} {threads} bind:thread={workThread} {threadTitle} bind:pending {lost} {here} onlocate={showPassage} />
 </div>
+
+{#if renaming}
+	<Modal title="Rename the deliverable" onclose={() => (renaming = false)}>
+		<label class="field">
+			Name
+			<!-- svelte-ignore a11y_autofocus -->
+			<input bind:value={newName} autofocus onkeydown={(e) => e.key === 'Enter' && !e.isComposing && rename()} />
+			<span class="hint">Its versions and feedback keep belonging to it.</span>
+		</label>
+		{#snippet footer()}
+			<span class="spacer-h"></span>
+			<button class="btn ghost" onclick={() => (renaming = false)}>Cancel</button>
+			<button class="btn primary" onclick={rename} disabled={renameBusy || !newName.trim()}>Rename</button>
+		{/snippet}
+	</Modal>
+{/if}
 
 {#if publishing}
 	<Modal title="Publish a version" onclose={() => (publishing = false)}>
@@ -542,6 +596,12 @@
 			records who made the change{#if workThread}, and leaves a note in <code>{threadTitle}</code>{/if}.
 			{doc.versions.length ? `Latest so far: v${doc.versions.at(-1)}.` : 'This is the first version.'}
 		</p>
+		{#if threadOptions.length > 1}
+			<div class="field">
+				<span>The note goes in the thread</span>
+				<Dropdown bind:value={workThread} options={threadOptions} label="Thread for the note" full />
+			</div>
+		{/if}
 		<label class="check"><input type="radio" bind:group={bump} value="minor" /> Minor — v{preview.minor}</label>
 		<label class="check"><input type="radio" bind:group={bump} value="major" /> Major — v{preview.major}</label>
 		<label class="check">
@@ -621,3 +681,17 @@
 		{/snippet}
 	</Modal>
 {/if}
+
+<style>
+	/* The document takes nearly all the room beside the side window: a narrow margin instead of the page's usual one. */
+	.doc-body > .page {
+		padding: 14px 16px;
+	}
+	/* Writing on white (the card colour: white in the light themes, the card's own in a dark one). */
+	.page-inner :global(.md-editor.md-doc) {
+		background: var(--card);
+	}
+	.doc-evidence {
+		padding: 14px 18px;
+	}
+</style>

@@ -14,7 +14,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
-	import { projectUrl } from '$lib/actions';
+	import { projectUrl, threadUrl } from '$lib/actions';
 	import { prettyHotkey } from '$lib/hotkey';
 	import { layout, toggleSidebar } from '$lib/layout.svelte';
 	import { attempt } from '$lib/ui.svelte';
@@ -45,7 +45,8 @@
 		const data = page.data as {
 			project?: { name: string };
 			thread?: { title: string };
-			deliverable?: { name: string };
+			deliverable?: { name: string; evidence: string | null };
+			projects?: { slug: string; threads: { slug: string; title: string }[] }[];
 		};
 		if (id === '/') return [{ label: 'Home' }];
 		if (id.startsWith('/epsilon')) return [{ label: 'Epsilon+' }];
@@ -64,7 +65,14 @@
 			if (!tab || !tabs[tab]) return [{ label: project.label }];
 			const list: Crumb = { label: tabs[tab], href: `${base}/${tab}` };
 			if (page.params.thread) return [project, list, { label: data.thread?.title ?? page.params.thread }];
-			if (id.endsWith('/deliverables/view')) return [project, list, { label: data.deliverable?.name ?? 'Deliverable' }];
+			if (id.endsWith('/deliverables/view')) {
+				// Its name without the file's extension; opened from a thread (`?thread=<slug>`), the trail goes through it.
+				const d = data.deliverable;
+				const name = { label: d ? (d.evidence ? d.name : d.name.replace(/\.[^./]+$/, '') || d.name) : 'Deliverable' };
+				const from = page.url.searchParams.get('thread');
+				const thread = from ? data.projects?.find((p) => p.slug === slug)?.threads.find((t) => t.slug === from) : undefined;
+				return thread ? [project, { label: thread.title, href: threadUrl(slug, thread.slug) }, name] : [project, list, name];
+			}
 			return [project, { label: list.label }];
 		}
 		return [];
