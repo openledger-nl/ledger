@@ -15,13 +15,12 @@
 	import StoryModal from '$lib/components/StoryModal.svelte';
 	import UploadCard from '$lib/components/UploadCard.svelte';
 	import UploadModal from '$lib/components/UploadModal.svelte';
-	import { date, dayKey, dayLabel, plural } from '$lib/format';
+	import { dayKey, dayLabel, plural } from '$lib/format';
 	import { orderFlow } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { portflow } from '$lib/portflow.svelte';
 	import { attempt, confirmDialog, promptDialog, refresh } from '$lib/ui.svelte';
-	import type { EpistemicLabel, Evidence, Feedback, Post, PostKind, Prompt, Story, Upload } from '$lib/types';
-	import { LABELS, POST_KINDS } from '$lib/v1';
+	import type { Evidence, Feedback, Post, Prompt, Story, Upload } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -32,16 +31,9 @@
 	const posts = $derived(thread.posts);
 	const byId = $derived(Object.fromEntries(posts.map((p) => [p.id, p])));
 
-	// Each post's kind and labels (wireframe C1), and the timeline filtered by them.
+	// Each post's kind and labels (wireframe C1), shown on the post; finding posts by them is the search's.
 	const tagsById = $derived(new Map(data.postMeta.map((m) => [m.postId, m])));
 	const tagsOf = (id: string) => tagsById.get(id) ?? null;
-	let kindFilter = $state<PostKind | ''>('');
-	let labelFilter = $state<EpistemicLabel | ''>('');
-	const filtering = $derived(kindFilter !== '' || labelFilter !== '');
-	const matches = (p: Post) => {
-		const t = tagsById.get(p.id);
-		return (!kindFilter || t?.kind === kindFilter) && (!labelFilter || !!t?.labels.includes(labelFilter));
-	};
 	const siblings = $derived((data.projects.find((p) => p.slug === project)?.threads ?? []).filter((t) => t.slug !== slug));
 	const linked = $derived(new Set(thread.linkedThreads.map((t) => t.slug)));
 
@@ -126,8 +118,7 @@
 
 	/** The same entries read the way Settings says (oldest or newest first), each day under its own heading. */
 	const flow = $derived.by(() => {
-		const shown = filtering ? chronological.filter((e) => e.kind === 'post' && matches(e.post)) : chronological;
-		const entries = orderFlow(shown, listOrder.order);
+		const entries = orderFlow(chronological, listOrder.order);
 		return entries.map((entry, i) => ({
 			entry,
 			day: dayKey(entry.at),
@@ -224,8 +215,6 @@
 	}
 
 	const storyIds = $derived(new Set(thread.stories.map((s) => s.id)));
-	// From the oldest-first list: the last item of `flow` is the oldest when posts read newest first.
-	const lastActivity = $derived(chronological.at(-1)?.at ?? thread.createdAt);
 </script>
 
 <svelte:head><title>{thread.title} · Ledger</title></svelte:head>
@@ -234,10 +223,6 @@
 	<div class="header-top">
 		<div>
 			<h1>{thread.title} <span class="badge accent">Thread</span></h1>
-			<div class="sub">
-				{plural(posts.length, 'post')} · {plural(thread.prompts.length, 'prompt')} · {plural(thread.feedback.length, 'feedback item', 'feedback items')} ·
-				{plural(thread.uploads.length, 'upload')} · last activity {date(lastActivity)}
-			</div>
 		</div>
 		<div class="header-actions">
 			<button class="btn ghost small" onclick={rename}>Rename</button>
@@ -278,24 +263,6 @@
 				{#each evidence as item (item.slug)}<EvidenceCard evidence={item} onsaved={(items) => (evidence = items.filter((i) => i.thread === slug))} />{/each}
 			</div>
 		{/if}
-		<div class="filter-bar pt-filter">
-			<div class="seg small" role="group" aria-label="Kind of post">
-				<button class:on={kindFilter === ''} aria-pressed={kindFilter === ''} onclick={() => (kindFilter = '')}>All</button>
-				{#each POST_KINDS as k (k.kind)}
-					<button class:on={kindFilter === k.kind} aria-pressed={kindFilter === k.kind} onclick={() => (kindFilter = k.kind)}>{k.name}</button>
-				{/each}
-			</div>
-			{#each LABELS as l (l.label)}
-				<button
-					class="pt-label {l.label}"
-					class:off={labelFilter !== l.label}
-					aria-pressed={labelFilter === l.label}
-					title="Only posts labelled {l.name}"
-					onclick={() => (labelFilter = labelFilter === l.label ? '' : l.label)}
-				>{l.name}</button>
-			{/each}
-		</div>
-		{#if filtering && flow.length === 0}<p class="hint">No post matches. Set a post's kind and labels with the tag button on it.</p>{/if}
 		{#each flow as item (item.entry.key)}
 			{#if item.newDay}<div class="divider">{dayLabel(item.day)}</div>{/if}
 			{@const e = item.entry}
