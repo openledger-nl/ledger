@@ -32,7 +32,7 @@
 		onreply: (post: Post) => void;
 		onjump: (domId: string) => void;
 		children?: Snippet;
-		/** Preview: the post's kind and labels; undefined leaves them out (previews off). */
+		/** The post's kind and labels (null: none said yet); undefined leaves the tag button out. */
 		tags?: PostMeta | null;
 	} = $props();
 

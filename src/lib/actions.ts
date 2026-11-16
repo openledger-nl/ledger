@@ -2,32 +2,16 @@ import { goto } from '$app/navigation';
 import { api } from './api';
 import { attempt, confirmDialog, promptDialog, refresh } from './ui.svelte';
 import type { Bump, DeliverableSummary, Prompt } from './types';
-import { previews } from './mock/flag.svelte';
-import { previewDialogs } from './mock/dialogs.svelte';
+import { projectDialogs } from './dialogs.svelte';
 
 export const projectUrl = (project: string) => `/projects/${project}`;
 export const threadUrl = (project: string, thread: string) => `/projects/${project}/threads/${thread}`;
 export const deliverableUrl = (project: string, path: string) =>
 	`/projects/${project}/deliverables/view?path=${encodeURIComponent(path)}`;
 
-/** Asks for a name, creates the project and opens it. */
-export async function newProjectFlow() {
-	// Preview: the v1 dialog, which asks for the kind, the goal and the end first.
-	if (previews.enabled) {
-		previewDialogs.project = 'new';
-		return;
-	}
-	const name = await promptDialog({
-		title: 'New project',
-		label: 'What is it called?',
-		placeholder: 'e.g. Pricing overhaul',
-		confirmLabel: 'Create'
-	});
-	if (!name) return;
-	const created = await attempt(() => api.createProject(name));
-	if (!created) return;
-	await refresh();
-	await goto(projectUrl(created.slug));
+/** Opens New project, which asks for the kind, the goal and the end first. */
+export function newProjectFlow() {
+	projectDialogs.project = 'new';
 }
 
 /** Asks for a title, creates the thread in the project and opens it. */
@@ -94,24 +78,9 @@ export async function deliverableForLevelFlow(project: string, aim: AimedLevel) 
 	await goto(deliverableUrl(project, made.path));
 }
 
-/** Asks for a file name, creates an empty deliverable in the project and opens it. (The Deliverables tab can also start one from a template.) */
-export async function newDeliverableFlow(project: string) {
-	// Preview: the v1 dialog, goal first, numbered.
-	if (previews.enabled) {
-		previewDialogs.deliverable = { project };
-		return;
-	}
-	const name = await promptDialog({
-		title: 'New deliverable',
-		label: 'File name',
-		placeholder: 'e.g. pricing-brief.md',
-		confirmLabel: 'Create'
-	});
-	if (!name) return;
-	const made = await attempt(() => api.createDeliverable(project, name));
-	if (!made) return;
-	await refresh();
-	await goto(deliverableUrl(project, made.path));
+/** Opens New deliverable, which starts from its goal and numbers it. (The Deliverables tab can also start one from a template.) */
+export function newDeliverableFlow(project: string) {
+	projectDialogs.deliverable = { project };
 }
 
 export async function renameProjectFlow(slug: string, current: string) {

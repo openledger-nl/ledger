@@ -1141,11 +1141,7 @@ details.more p { margin: 0; }
 	.sem-sprints .when { grid-column: 2; white-space: normal; }
 }
 
-/* ---------- v1 preview screens (mock data until the backend has them; see src/lib/mock) ---------- */
-.preview-badge {
-	display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
-	text-transform: uppercase; color: var(--amber); background: var(--amber-soft); border-radius: 999px; padding: 2px 8px; cursor: help;
-}
+/* ---------- v1: tags, meeting notes, the feedback inbox, project and deliverable facts, post kinds ---------- */
 .tag-picker {
 	display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 6px; min-height: 38px;
 	border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
@@ -1251,7 +1247,6 @@ button.pt-label { padding: 3px 9px; }
 .pub-confront { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px dashed var(--amber); border-radius: 10px; background: var(--amber-soft); }
 .pub-confront-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
 .pub-reason { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
-.preview-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); margin-left: auto; flex-shrink: 0; }
 .time-input { position: relative; display: inline-flex; align-items: center; min-width: 0; }
 .time-input input { width: 92px; padding: 6px 28px 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-variant-numeric: tabular-nums; }
 .time-input input:focus { outline: none; border-color: var(--accent); }

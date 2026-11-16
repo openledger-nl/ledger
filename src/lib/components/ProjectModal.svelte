@@ -15,7 +15,6 @@
 	import DateInput from './DateInput.svelte';
 	import Modal from './Modal.svelte';
 	import MmmPicker from './MmmPicker.svelte';
-	import PreviewBadge from './PreviewBadge.svelte';
 
 	let {
 		project = null,
@@ -202,7 +201,6 @@
 	</div>
 
 	{#snippet footer()}
-		<PreviewBadge text="Preview: goal, kind and end" />
 		<span class="spacer-h"></span>
 		<button class="btn ghost" onclick={onclose}>Cancel</button>
 		<button class="btn primary" onclick={save} disabled={!ready || busy}>{project ? 'Save' : 'Create project'}</button>

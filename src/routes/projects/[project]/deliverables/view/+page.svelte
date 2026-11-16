@@ -24,7 +24,6 @@
 	import { sha256Hex } from '$lib/hash';
 	import { ago, dateTime } from '$lib/format';
 	import { MMM, mmmInfo } from '$lib/mmm';
-	import PreviewBadge from '$lib/components/PreviewBadge.svelte';
 	import MmmPicker from '$lib/components/MmmPicker.svelte';
 	import { dirOf } from '$lib/vaultImages';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
@@ -197,7 +196,7 @@
 	const manMadeConflict = $derived(level === 'man-made' && (aiMade || provenance.historyHasAi));
 	const suggestManMade = $derived(!aiMade && !provenance.historyHasAi && !level);
 
-	// Preview (wireframe D5): the project's intended label is offered, a study project's version needs a label, and a
+	// Wireframe D5: the project's intended label is offered, a study project's version needs a label, and a
 	// label other than the intended one asks you to confirm it honestly. It never blocks: confirm or change it.
 	const projectMeta = $derived(data.meta);
 	const deliverableMeta = $derived(data.deliverableMeta);
@@ -420,7 +419,6 @@
 				{#if provenance.summary.label}<MmmBadge level={provenance.summary.label.level} />{/if}
 				{#if deliverableMeta?.mmm}<span class="pj-intended">Its label <MmmBadge level={deliverableMeta.mmm} /></span>{/if}
 				{#if deliverableMeta?.mmm === 'man-made'}<span class="hint">AI writing is off for it</span>{/if}
-				{#if deliverableMeta}<PreviewBadge />{/if}
 				{#if doc.path.includes('/')}<span class="mono">{doc.path}</span>{/if}
 				{#if isMarkdown && !snapshot && doc.exists}
 					<span class="save-state">{saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Unsaved changes'}</span>
@@ -592,7 +590,6 @@
 					<MmmBadge level={intended} />
 					<span>and you chose</span>
 					<MmmBadge level={level} />
-					<PreviewBadge />
 				</div>
 				<p class="hint" style="margin:0">{mmmInfo(level)?.meaning} Keep it if it is true; your answer is kept with the version.</p>
 				<label class="check"><input type="checkbox" bind:checked={confirmed} /> I choose {mmmInfo(level)?.name} honestly for this version</label>
@@ -600,7 +597,7 @@
 				<button class="link accent" style="align-self:flex-start" onclick={() => (level = intended ?? '')}>Use {mmmInfo(intended)?.name} instead</button>
 			</div>
 		{:else if labelRequired && !level}
-			<p class="pv-warn" style="margin:0">A study project's published version needs an AI-use label. <PreviewBadge /></p>
+			<p class="pv-warn" style="margin:0">A study project's published version needs an AI-use label.</p>
 		{/if}
 		<div class="field">
 			<span>Changelog (optional)</span>

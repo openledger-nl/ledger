@@ -1,5 +1,4 @@
 import { api } from '$lib/api';
-import { previews } from '$lib/mock/flag.svelte';
 import type { DeliverableSummary } from '$lib/types';
 import type { PageLoad } from './$types';
 
@@ -16,8 +15,8 @@ export const load: PageLoad = async ({ parent }) => {
 		api.listSemesters(),
 		// The guide's sync step is the settings' own form.
 		onboarding.active ? api.getSettings() : Promise.resolve(null),
-		// Preview: each project's goal and end (A1), from the mock data.
-		previews.enabled ? api.listProjectMeta() : Promise.resolve([]),
+		// Each project's goal and end (A1).
+		api.listProjectMeta(),
 		Promise.all(
 			projects.map(async (p) => {
 				const [deliverables, view] = await Promise.all([api.listDeliverables(p.slug), api.getProject(p.slug)]);

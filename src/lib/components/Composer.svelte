@@ -6,7 +6,6 @@
 	import { attempt, refresh } from '$lib/ui.svelte';
 	import type { Post } from '$lib/types';
 	import MarkdownEditor from './MarkdownEditor.svelte';
-	import { previews } from '$lib/mock/flag.svelte';
 	import { LABELS, POST_KINDS } from '$lib/v1';
 	import type { EpistemicLabel, PostKind } from '$lib/types';
 
@@ -33,7 +32,7 @@
 
 	let text = $state('');
 	let sending = $state(false);
-	// Preview: the kind and labels the next post gets; the kind stays for the next one, the labels don't.
+	// The kind and labels the next post gets; the kind stays for the next one, the labels don't.
 	let kind = $state<PostKind>('thought');
 	let labels = $state<EpistemicLabel[]>([]);
 	let input: MarkdownEditor;
@@ -53,7 +52,7 @@
 		const post = await attempt(() => api.addPost(project, thread, body, replyTo?.id ?? null));
 		sending = false;
 		if (!post) return;
-		if (previews.enabled) await attempt(() => api.setPostMeta(project, thread, post.id, kind, labels));
+		await attempt(() => api.setPostMeta(project, thread, post.id, kind, labels));
 		labels = [];
 		text = '';
 		await refresh();
@@ -81,23 +80,21 @@
 		<button class="btn small chip-ai" onclick={onprompt} title="Ask for a deliverable">Prompt…</button>
 		<button class="btn small chip-own" onclick={onfeedback} title="Give feedback on a deliverable">Feedback…</button>
 		<button class="btn small" onclick={pickFiles} title="Attach files to this thread">Upload files…</button>
-		{#if previews.enabled}
-			<span class="spacer-h"></span>
-			<div class="seg small" role="group" aria-label="Kind of post">
-				{#each POST_KINDS as k (k.kind)}
-					<button class:on={kind === k.kind} aria-pressed={kind === k.kind} onclick={() => (kind = k.kind)}>{k.name}</button>
-				{/each}
-			</div>
-			{#each LABELS as l (l.label)}
-				<button
-					class="pt-label {l.label}"
-					class:off={!labels.includes(l.label)}
-					aria-pressed={labels.includes(l.label)}
-					title={l.hint}
-					onclick={() => (labels = labels.includes(l.label) ? labels.filter((x) => x !== l.label) : [...labels, l.label])}
-				>{l.name}</button>
+		<span class="spacer-h"></span>
+		<div class="seg small" role="group" aria-label="Kind of post">
+			{#each POST_KINDS as k (k.kind)}
+				<button class:on={kind === k.kind} aria-pressed={kind === k.kind} onclick={() => (kind = k.kind)}>{k.name}</button>
 			{/each}
-		{/if}
+		</div>
+		{#each LABELS as l (l.label)}
+			<button
+				class="pt-label {l.label}"
+				class:off={!labels.includes(l.label)}
+				aria-pressed={labels.includes(l.label)}
+				title={l.hint}
+				onclick={() => (labels = labels.includes(l.label) ? labels.filter((x) => x !== l.label) : [...labels, l.label])}
+			>{l.name}</button>
+		{/each}
 	</div>
 	<div class="input-row">
 		<MarkdownEditor

@@ -41,7 +41,7 @@
 
 	type Card = (typeof cards)[number];
 
-	/** Preview: a project's goal and days left, the most important things it has (A1). */
+	/** A project's goal and days left, the most important things it has (A1). */
 	function goal(slug: string) {
 		const m = data.meta.find((x) => x.slug === slug);
 		return m ? { text: m.goal, left: daysLeftText(daysLeft(endDay(m, data.semesters))) } : null;

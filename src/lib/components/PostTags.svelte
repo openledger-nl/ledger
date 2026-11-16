@@ -25,7 +25,7 @@
 	<span class="pt-kind">{postKindName(meta.kind)}</span>
 	{#each meta.labels as l (l)}<span class="pt-label {l}">{labelName(l)}</span>{/each}
 {/if}
-<button class="pt-edit" class:on={open} title="Kind and labels (preview)" aria-label="Kind and labels" aria-expanded={open} onclick={() => (open = !open)}>
+<button class="pt-edit" class:on={open} title="Kind and labels" aria-label="Kind and labels" aria-expanded={open} onclick={() => (open = !open)}>
 	<Tag size={12} />
 </button>
 
@@ -43,6 +43,5 @@
 				</button>
 			{/each}
 		</div>
-		<span class="preview-badge">Preview</span>
 	</div>
 {/if}

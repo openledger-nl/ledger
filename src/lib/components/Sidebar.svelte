@@ -5,7 +5,6 @@
 	import House from '@lucide/svelte/icons/house';
 	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
 	import Inbox from '@lucide/svelte/icons/inbox';
-	import { previews } from '$lib/mock/flag.svelte';
 	import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Settings from '@lucide/svelte/icons/settings';
@@ -143,10 +142,8 @@
 	{#if portflow.enabled}
 		<a class="nav-item" class:active={on('/epsilon')} href="/epsilon"><span class="nav-ico"><EpsilonIcon size={16} /></span>Epsilon+</a>
 	{/if}
-	{#if previews.enabled}
-		<a class="nav-item" class:active={on('/feedback')} href="/feedback"><span class="nav-ico"><Inbox size={16} /></span>Feedback<span class="preview-dot" title="Preview"></span></a>
-		<a class="nav-item" class:active={on('/meetings')} href="/meetings"><span class="nav-ico"><NotebookPen size={16} /></span>Meeting notes<span class="preview-dot" title="Preview"></span></a>
-	{/if}
+	<a class="nav-item" class:active={on('/feedback')} href="/feedback"><span class="nav-ico"><Inbox size={16} /></span>Feedback</a>
+	<a class="nav-item" class:active={on('/meetings')} href="/meetings"><span class="nav-ico"><NotebookPen size={16} /></span>Meeting notes</a>
 
 	<div class="section-head">
 		<span>Projects</span>

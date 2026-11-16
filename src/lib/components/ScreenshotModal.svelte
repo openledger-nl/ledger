@@ -118,12 +118,7 @@
 		{#if projects.length === 0}
 			<p class="notice">A screenshot is attached to a thread in a project, and there are no projects yet.</p>
 			<div class="row-end">
-				<button
-					class="btn"
-					onclick={async () => {
-						await newProjectFlow();
-					}}>New project</button
-				>
+				<button class="btn" onclick={newProjectFlow}>New project</button>
 			</div>
 		{:else if compact}
 			<div class="shot-target">

@@ -13,7 +13,6 @@
 	import CircleHelp from '@lucide/svelte/icons/circle-help';
 	import Modal from './Modal.svelte';
 	import MmmPicker from './MmmPicker.svelte';
-	import PreviewBadge from './PreviewBadge.svelte';
 
 	let {
 		project,
@@ -142,7 +141,6 @@
 	</div>
 
 	{#snippet footer()}
-		<PreviewBadge text="Preview: goal, number, label" />
 		<span class="spacer-h"></span>
 		<button class="btn ghost" onclick={onclose}>Cancel</button>
 		<button class="btn primary" onclick={create} disabled={!ready || busy}>Create deliverable</button>

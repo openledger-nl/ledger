@@ -1245,10 +1245,10 @@ export interface EpsilonView {
 	linkedProjects: string[];
 }
 
-// ---- v1 (preview) ------------------------------------------------------------------------------------
-// What the v1 vault adds (Requirements 0.27; the LoFi wireframes in Penpot). The backend doesn't have these yet: until it
-// does, the screens that use them read and write src/lib/mock (behind Settings › Features › Preview screens). The shapes
-// are the contract the backend will fill, camelCase on the wire like the rest.
+// ---- v1 ---------------------------------------------------------------------------------------------
+// What the v1 vault adds (Requirements 0.27; the LoFi wireframes in Penpot): a project's kind, goal, end and people,
+// a post's kind and labels, meeting notes as daily notes, feedback from the inbox, a deliverable's number and goal.
+// camelCase on the wire like the rest.
 
 /** Every project is one of three kinds, in the same vault and the same layout; the study parts are optional extras. */
 export type ProjectKind = 'study' | 'hobby' | 'company';

@@ -21,7 +21,6 @@
 	import { portflow } from '$lib/portflow.svelte';
 	import { attempt, confirmDialog, promptDialog, refresh } from '$lib/ui.svelte';
 	import type { EpistemicLabel, Evidence, Feedback, Post, PostKind, Prompt, Story, Upload } from '$lib/types';
-	import PreviewBadge from '$lib/components/PreviewBadge.svelte';
 	import { LABELS, POST_KINDS } from '$lib/v1';
 	import type { PageData } from './$types';
 
@@ -33,14 +32,14 @@
 	const posts = $derived(thread.posts);
 	const byId = $derived(Object.fromEntries(posts.map((p) => [p.id, p])));
 
-	// Preview: each post's kind and labels (wireframe C1), and the timeline filtered by them. Undefined with previews off.
-	const tagsById = $derived(data.postMeta ? new Map(data.postMeta.map((m) => [m.postId, m])) : null);
-	const tagsOf = (id: string) => (tagsById ? (tagsById.get(id) ?? null) : undefined);
+	// Each post's kind and labels (wireframe C1), and the timeline filtered by them.
+	const tagsById = $derived(new Map(data.postMeta.map((m) => [m.postId, m])));
+	const tagsOf = (id: string) => tagsById.get(id) ?? null;
 	let kindFilter = $state<PostKind | ''>('');
 	let labelFilter = $state<EpistemicLabel | ''>('');
-	const filtering = $derived(!!tagsById && (kindFilter !== '' || labelFilter !== ''));
+	const filtering = $derived(kindFilter !== '' || labelFilter !== '');
 	const matches = (p: Post) => {
-		const t = tagsById?.get(p.id);
+		const t = tagsById.get(p.id);
 		return (!kindFilter || t?.kind === kindFilter) && (!labelFilter || !!t?.labels.includes(labelFilter));
 	};
 	const siblings = $derived((data.projects.find((p) => p.slug === project)?.threads ?? []).filter((t) => t.slug !== slug));
@@ -279,28 +278,24 @@
 				{#each evidence as item (item.slug)}<EvidenceCard evidence={item} />{/each}
 			</div>
 		{/if}
-		{#if tagsById}
-			<div class="filter-bar pt-filter">
-				<div class="seg small" role="group" aria-label="Kind of post">
-					<button class:on={kindFilter === ''} aria-pressed={kindFilter === ''} onclick={() => (kindFilter = '')}>All</button>
-					{#each POST_KINDS as k (k.kind)}
-						<button class:on={kindFilter === k.kind} aria-pressed={kindFilter === k.kind} onclick={() => (kindFilter = k.kind)}>{k.name}</button>
-					{/each}
-				</div>
-				{#each LABELS as l (l.label)}
-					<button
-						class="pt-label {l.label}"
-						class:off={labelFilter !== l.label}
-						aria-pressed={labelFilter === l.label}
-						title="Only posts labelled {l.name}"
-						onclick={() => (labelFilter = labelFilter === l.label ? '' : l.label)}
-					>{l.name}</button>
+		<div class="filter-bar pt-filter">
+			<div class="seg small" role="group" aria-label="Kind of post">
+				<button class:on={kindFilter === ''} aria-pressed={kindFilter === ''} onclick={() => (kindFilter = '')}>All</button>
+				{#each POST_KINDS as k (k.kind)}
+					<button class:on={kindFilter === k.kind} aria-pressed={kindFilter === k.kind} onclick={() => (kindFilter = k.kind)}>{k.name}</button>
 				{/each}
-				<span class="spacer-h"></span>
-				<PreviewBadge />
 			</div>
-			{#if filtering && flow.length === 0}<p class="hint">No post matches. Set a post's kind and labels with the tag button on it.</p>{/if}
-		{/if}
+			{#each LABELS as l (l.label)}
+				<button
+					class="pt-label {l.label}"
+					class:off={labelFilter !== l.label}
+					aria-pressed={labelFilter === l.label}
+					title="Only posts labelled {l.name}"
+					onclick={() => (labelFilter = labelFilter === l.label ? '' : l.label)}
+				>{l.name}</button>
+			{/each}
+		</div>
+		{#if filtering && flow.length === 0}<p class="hint">No post matches. Set a post's kind and labels with the tag button on it.</p>{/if}
 		{#each flow as item (item.entry.key)}
 			{#if item.newDay}<div class="divider">{dayLabel(item.day)}</div>{/if}
 			{@const e = item.entry}
