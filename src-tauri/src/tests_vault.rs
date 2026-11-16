@@ -239,6 +239,33 @@ fn a_templates_kinds_and_readers_are_kept_in_its_frontmatter() {
 }
 
 #[test]
+fn the_shipped_project_plan_is_offered_until_the_vault_has_its_own() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let plan = templates::get(&conn, "", templates::BUILTIN_PLAN).unwrap();
+    assert!(plan.builtin && !plan.customised_builtin && plan.name == "Project plan" && plan.kinds.is_empty());
+    vault.persist(&conn).unwrap();
+    assert!(!root.join("templates/project-plan.md").exists(), "the shipped template is not a file of the vault");
+    assert!(templates::delete(&conn, "", templates::BUILTIN_PLAN).is_err(), "and it can't be deleted");
+    assert_eq!(templates::create(&conn, "", &TemplateDraft::basic("Project plan", "", &[], "")).unwrap().id, "project-plan-2", "its id stays free");
+
+    // Changed, it is the vault's own, and stays so.
+    let mine = templates::update(&conn, "", "project-plan", &TemplateDraft { body: "# My plan\n".into(), ..templates::draft_of(&plan) }).unwrap();
+    assert!(!mine.builtin && mine.customised_builtin);
+    vault.persist(&conn).unwrap();
+    assert!(read(root, "templates/project-plan.md").contains("# My plan"));
+    let (mut again, reloaded) = open(root);
+    assert_eq!(templates::get(&reloaded, "", "project-plan").unwrap().body, "# My plan");
+
+    // Deleting the vault's copy brings the shipped one back.
+    templates::delete(&reloaded, "", "project-plan").unwrap();
+    assert!(templates::get(&reloaded, "", "project-plan").unwrap().builtin);
+    again.persist(&reloaded).unwrap();
+    assert!(!root.join("templates/project-plan.md").exists());
+}
+
+#[test]
 fn things_made_in_the_same_instant_keep_their_order_after_a_reload() {
     let dir = tempdir().unwrap();
     let root = dir.path();

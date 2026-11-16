@@ -557,7 +557,8 @@ fn export_templates(conn: &Connection, files: &mut BTreeMap<String, String>) -> 
     let mut scopes: Vec<String> = vec![String::new()];
     scopes.extend(query_all(conn, "SELECT DISTINCT scope FROM templates WHERE scope <> ''", [], |r| r.get::<_, String>(0))?);
     for scope in scopes {
-        for template in templates::list(conn, &scope)? {
+        // The shipped template is not the vault's until it is changed.
+        for template in templates::list(conn, &scope)?.into_iter().filter(|t| !t.builtin) {
             let mut meta = Mapping::new();
             frontmatter::set(&mut meta, "name", template.name.clone());
             frontmatter::set_opt(&mut meta, "trigger", Some(&template.trigger));
@@ -769,6 +770,7 @@ fn import(conn: &Connection, root: &Path, listing: &BTreeMap<String, Fingerprint
     let tx = conn.unchecked_transaction()?;
 
     import_templates(&tx, &source, "")?;
+    templates::add_builtins(&tx)?;
     import_semesters(&tx, &source)?;
     import_daily(&tx, &source)?;
     let projects = import_projects(&tx, &source)?;

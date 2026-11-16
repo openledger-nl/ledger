@@ -3,6 +3,10 @@
 //! vault-wide template (`templates/<id>.md`, scope "") is available in every project of its kinds; a project's own
 //! (`projects/<p>/templates/<id>.md`) is available there, and replaces a vault-wide one with the same id.
 //!
+//! The app ships one template of its own, a basic project plan (`BUILTIN_PLAN`). It is not a file: it is put in the
+//! database when the vault is read, unless the vault has a template of the same id. Changing it writes it to the
+//! vault, where it is then the vault's own; deleting that copy brings the shipped one back.
+//!
 //! The readers are told to Claude in a prompt's base, and written into a new deliverable as a `%% Readers: … %%` note
 //! (only seen in source mode), with a visible `**Readers:**` line as well when the template says so.
 
@@ -16,22 +20,27 @@ use crate::frontmatter::{self, MetaExt};
 use crate::models::{TemplateDraft, TemplateReader, TemplateView};
 use crate::{ids, project_facts, projects};
 
-const SELECT: &str = "SELECT scope, id, name, \"trigger\", body, kinds, readers, readers_shown, created_at, updated_at FROM templates";
+const SELECT: &str = "SELECT scope, id, name, \"trigger\", body, kinds, readers, readers_shown, builtin, created_at, updated_at FROM templates";
 
 fn from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<TemplateView> {
     let kinds: String = r.get(5)?;
     let readers: String = r.get(6)?;
+    let id: String = r.get(1)?;
+    let scope: String = r.get(0)?;
+    let builtin: bool = r.get(8)?;
     Ok(TemplateView {
-        scope: r.get(0)?,
-        id: r.get(1)?,
+        customised_builtin: !builtin && scope.is_empty() && builtin_template(&id).is_some(),
+        scope,
+        id,
         name: r.get(2)?,
         trigger: r.get(3)?,
         body: r.get(4)?,
         kinds: kinds.split(',').filter(|k| !k.is_empty()).map(str::to_string).collect(),
         readers: serde_json::from_str(&readers).unwrap_or_default(),
         readers_shown: r.get(7)?,
-        created_at: r.get(8)?,
-        updated_at: r.get(9)?,
+        builtin,
+        created_at: r.get(9)?,
+        updated_at: r.get(10)?,
         questions: vec![],
         overridden: false,
     })
@@ -134,15 +143,15 @@ pub fn create(conn: &Connection, scope: &str, draft: &TemplateDraft) -> Result<T
     }
     let id = unique_id(conn, scope, name)?;
     let tx = conn.unchecked_transaction()?;
-    insert(&tx, scope, &id, &TemplateDraft { name: name.to_string(), ..draft.clone() }, &ids::now())?;
+    insert(&tx, scope, &id, &TemplateDraft { name: name.to_string(), ..draft.clone() }, false, &ids::now())?;
     tx.commit()?;
     get(conn, scope, &id)
 }
 
-fn insert(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft, at: &str) -> Result<()> {
+fn insert(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft, builtin: bool, at: &str) -> Result<()> {
     conn.execute(
-        "INSERT INTO templates (scope, id, name, \"trigger\", body, kinds, readers, readers_shown, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
+        "INSERT INTO templates (scope, id, name, \"trigger\", body, kinds, readers, readers_shown, builtin, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
         params![
             scope,
             id,
@@ -152,6 +161,7 @@ fn insert(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft, at: &
             clean_kinds(&draft.kinds),
             readers_json(&draft.readers),
             draft.readers_shown,
+            builtin,
             at
         ],
     )?;
@@ -179,12 +189,12 @@ pub fn override_global(conn: &Connection, project: &str, id: &str) -> Result<Tem
         return Err(Error::invalid("This project already has its own version of that template"));
     }
     let tx = conn.unchecked_transaction()?;
-    insert(&tx, project, id, &draft_of(&global), &ids::now())?;
+    insert(&tx, project, id, &draft_of(&global), false, &ids::now())?;
     tx.commit()?;
     get(conn, project, id)
 }
 
-/// Replaces what the template says.
+/// Replaces what the template says. The shipped template, changed, becomes the vault's own.
 pub fn update(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft) -> Result<TemplateView> {
     get(conn, scope, id)?; // not found if it does not exist
     let name = draft.name.trim();
@@ -193,7 +203,7 @@ pub fn update(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft) -
     }
     let tx = conn.unchecked_transaction()?;
     tx.execute(
-        "UPDATE templates SET name = ?3, \"trigger\" = ?4, body = ?5, kinds = ?6, readers = ?7, readers_shown = ?8, updated_at = ?9
+        "UPDATE templates SET name = ?3, \"trigger\" = ?4, body = ?5, kinds = ?6, readers = ?7, readers_shown = ?8, builtin = 0, updated_at = ?9
          WHERE scope = ?1 AND id = ?2",
         params![
             scope,
@@ -212,9 +222,16 @@ pub fn update(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft) -
     get(conn, scope, id)
 }
 
-/// Prompts that were started from a template keep what they were given, so a template can always be deleted.
+/// Prompts that were started from a template keep what they were given, so a template can always be deleted. The
+/// shipped one can't be: deleting the vault's copy of it brings it back as it was shipped.
 pub fn delete(conn: &Connection, scope: &str, id: &str) -> Result<()> {
+    if get(conn, scope, id).is_ok_and(|t| t.builtin) {
+        return Err(Error::invalid("This template comes with Ledger and can't be deleted; change it to make it your own"));
+    }
     conn.execute("DELETE FROM templates WHERE scope = ?1 AND id = ?2", [scope, id])?;
+    if scope.is_empty() {
+        add_builtins(conn)?;
+    }
     Ok(())
 }
 
@@ -235,7 +252,9 @@ fn unique_id(conn: &Connection, scope: &str, name: &str) -> Result<String> {
     let base = ids::slugify_as(name, "template");
     let mut id = base.clone();
     let mut n = 2;
-    while query_opt(conn, "SELECT 1 FROM templates WHERE scope = ?1 AND id = ?2", [scope, &id], |_| Ok(()))?.is_some() {
+    while query_opt(conn, "SELECT 1 FROM templates WHERE scope = ?1 AND id = ?2", [scope, &id], |_| Ok(()))?.is_some()
+        || (scope.is_empty() && builtin_template(&id).is_some())
+    {
         id = format!("{base}-{n}");
         n += 1;
     }
@@ -431,4 +450,78 @@ pub fn skeleton(conn: &Connection, project: &str, template: &TemplateView) -> Re
 /// The skeleton a new deliverable in the project starts from, for the template the project means by `id`.
 pub fn skeleton_for(conn: &Connection, project: &str, id: &str) -> Result<String> {
     skeleton(conn, project, &find(conn, project, id)?)
+}
+
+// ---- the shipped template ---------------------------------------------------------------------------
+
+pub const BUILTIN_PLAN: &str = "project-plan";
+/// When the shipped template counts as made: it has no file to take a date from.
+const BUILTIN_AT: &str = "2026-11-16T00:00:00.000Z";
+
+const PLAN_BODY: &str = r#"# Project plan
+
+**Version:** 0.1, concept
+
+%% What: what you are going to do, how, when, with whom and with what. Write it once the goal is clear; keep it to three pages at most.
+Why: it is what you, and anyone who joins, fall back on when it isn't clear what comes next. Each heading is a short paragraph or a list; a heading that doesn't apply says "Not applicable." so the reader sees you thought about it. %%
+
+## Goal
+%% What: in two or three sentences, what is true at the end that isn't true now, and for whom. Why: every choice below is checked against this.
+Example: At the end of January the bakery's twelve staff see their shifts on their phones, and the owner no longer fills in a spreadsheet on Sunday evenings. %%
+
+## Background
+%% What: how it goes now, and why that no longer works. Facts, not opinions. Why: without the problem nobody can judge whether the plan solves it. %%
+
+## Scope
+%% What: what is in, as a short list. Why: the scope is the line you fall back on when "surely that was part of it too?" comes up. %%
+
+### Out of scope
+%% What: what someone might expect but you won't do, each with a word on why. Why: when someone asks why it isn't in, the answer is already here. %%
+
+## Result
+%% What: what you hand over, each with when it counts as done ("Done when: …", something you can check). Why: done is something you check, not something you feel. %%
+
+## Approach and planning
+%% What: the steps or sprints in order, each with a date or a week and what it delivers. Name the moments someone else looks at the work (a review, a demo, an assessment). Why: a plan without dates is a wish. %%
+
+## People and roles
+%% What: who is involved, what each does and who decides. Why: most delays are someone waiting for a decision nobody knew was theirs. %%
+
+## Risks
+%% What: what could go wrong, how likely it is, and what you do about it. Think of time, money, people who drop out and things you depend on. Why: a risk that is written down is one you can still do something about. %%
+
+## Communication
+%% What: how and how often you keep each other informed, and where things are written down. Why: it saves the "I didn't know" at the end. %%
+"#;
+
+/// The template the app ships with this id, if it ships one.
+fn builtin_template(id: &str) -> Option<TemplateDraft> {
+    (id == BUILTIN_PLAN).then(|| TemplateDraft {
+        name: "Project plan".into(),
+        trigger: "a project starts, or its goal has just become clear".into(),
+        questions: vec![
+            "What should be true at the end that isn't now, and for whom?".into(),
+            "What is the deadline, and what happens if it slips?".into(),
+            "Who decides when it is done?".into(),
+        ],
+        body: PLAN_BODY.into(),
+        kinds: vec![],
+        readers: vec![
+            TemplateReader { who: "people".into(), ..Default::default() },
+            TemplateReader { who: "me".into(), ..Default::default() },
+        ],
+        readers_shown: false,
+    })
+}
+
+/// Puts the shipped templates the vault has no template of its own for in the database.
+pub fn add_builtins(conn: &Connection) -> Result<()> {
+    for id in [BUILTIN_PLAN] {
+        if get(conn, "", id).is_err()
+            && let Some(draft) = builtin_template(id)
+        {
+            insert(conn, "", id, &draft, true, BUILTIN_AT)?;
+        }
+    }
+    Ok(())
 }
