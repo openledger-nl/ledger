@@ -50,7 +50,6 @@
 	// The meetings as edited here, from the saved note once per day (the page keys this component by day).
 	let meetings = $state<MeetingSection[]>(untrack(() => structuredClone(note?.meetings ?? [])));
 	const id = untrack(() => note?.id ?? `daily-${date}`);
-	let saveState = $state<'saved' | 'saving' | 'unsaved'>('saved');
 	const tags = $derived(dailyTags({ meetings }));
 	const nameOf = (tag: string) =>
 		tag.startsWith('project/')
@@ -65,13 +64,10 @@
 			first = false;
 			return;
 		}
-		saveState = 'unsaved';
 		const timer = setTimeout(async () => {
-			saveState = 'saving';
 			const list = JSON.parse(snapshot) as MeetingSection[];
 			// A day without meetings (and nothing else in its note) has no file: the backend takes it away.
-			const saved = await attempt(() => api.saveDailyNote({ date, id, meetings: list }));
-			saveState = saved === undefined ? 'unsaved' : 'saved';
+			await attempt(() => api.saveDailyNote({ date, id, meetings: list }));
 			await refresh();
 		}, 700);
 		return () => clearTimeout(timer);
@@ -106,7 +102,6 @@
 	<header class="dn-head">
 		<div>
 			<h2>{dayLabel(date)}</h2>
-			<div class="dn-path"><code>Daily/{date}.md</code> · {saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Unsaved changes'}</div>
 		</div>
 		<div class="header-actions">
 			<button class="btn small primary" onclick={add}><Plus size={14} />Add meeting</button>
