@@ -43,9 +43,10 @@
 	<div class="meta">
 		{#if evidence.portflowId}<span class="badge accent">Portflow</span>{:else}<span class="badge draft">not in Portflow yet</span>{/if}
 		{#if latest}<span class="badge published">v{latest.number}</span>{/if}
-		<span class="hint">{KIND[evidence.kind] ?? evidence.kind}</span>
+		<!-- Files show as chips below; only another kind (text, a link, a video…) is worth a word. -->
+		{#if evidence.kind !== 'file'}<span class="hint">{KIND[evidence.kind] ?? evidence.kind}</span>{/if}
 		{#if evidence.feedbackCount}
-			<span class="hint">· {plural(evidence.feedbackCount, 'piece', 'pieces')} of feedback{evidence.openFeedback ? `, ${evidence.openFeedback} open` : ''}</span>
+			<span class="hint">{plural(evidence.feedbackCount, 'piece', 'pieces')} of feedback{evidence.openFeedback ? `, ${evidence.openFeedback} open` : ''}</span>
 		{/if}
 	</div>
 
