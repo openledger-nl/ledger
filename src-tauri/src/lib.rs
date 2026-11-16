@@ -188,6 +188,7 @@ pub fn run() {
             commands::list_deliverable_meta,
             commands::save_deliverable_meta,
             commands::next_deliverable_number,
+            commands::confirm_label,
             commands::save_project_people,
             commands::delete_project,
             commands::create_thread,

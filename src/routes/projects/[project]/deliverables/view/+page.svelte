@@ -24,7 +24,6 @@
 	import { sha256Hex } from '$lib/hash';
 	import { ago, dateTime } from '$lib/format';
 	import { MMM, mmmInfo } from '$lib/mmm';
-	import { mockApi } from '$lib/mock/api';
 	import PreviewBadge from '$lib/components/PreviewBadge.svelte';
 	import MmmPicker from '$lib/components/MmmPicker.svelte';
 	import { dirOf } from '$lib/vaultImages';
@@ -242,7 +241,7 @@
 		if (!published) return;
 		if (differs && intended && level) {
 			await attempt(() =>
-				mockApi.confirmLabel({
+				api.confirmLabel({
 					project,
 					path: doc.path,
 					version: published.versions.at(-1) ?? '',

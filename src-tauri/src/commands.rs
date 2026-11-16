@@ -100,6 +100,12 @@ pub fn set_post_meta(app: State<App>, project: String, thread: String, id: Strin
     app.mutate(|c, _| posts::set_meta(c, &project, &thread, &id, kind.as_deref(), &labels))
 }
 
+/// Keeps with a published version that it got another label than the project's intended one, and why.
+#[tauri::command]
+pub fn confirm_label(app: State<App>, project: String, path: String, version: String, intended: String, reason: String) -> Result<()> {
+    app.mutate(|c, _| provenance::confirm_label(c, &project, &path, &version, &intended, &reason))
+}
+
 /// A deliverable's number, goal, own label, question and template; `None` for one made without them.
 #[tauri::command]
 pub fn get_deliverable_meta(app: State<App>, project: String, path: String) -> Result<Option<DeliverableMeta>> {

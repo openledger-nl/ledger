@@ -275,3 +275,37 @@ fn hand_written_deliverable_facts_are_read_leniently() {
     assert_eq!(list[0].mmm, None);
     assert_eq!(deliverable_facts::next_number(&conn, "acme").unwrap(), 5);
 }
+
+// ---- the label a published version was meant to get -------------------------------------------------
+
+#[test]
+fn a_version_published_with_another_label_keeps_the_intended_one_and_why() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let project = projects::create(&conn, "Acme").unwrap().slug;
+    let plan = deliverables::create(&conn, &project, "Plan.md", "# Plan").unwrap().path;
+    let published = deliverables::publish(&conn, root, &project, &plan, crate::models::Bump::Minor, None).unwrap();
+    let version = published.versions.last().unwrap().clone();
+
+    crate::provenance::confirm_label(&conn, &project, &plan, &version, "man-made", "  I wrote it myself.  ").unwrap();
+    assert!(crate::provenance::confirm_label(&conn, &project, &plan, "9.9", "man-made", "").is_err(), "only a version that is there");
+    assert!(crate::provenance::confirm_label(&conn, &project, &plan, &version, "robot", "").is_err());
+    vault.persist(&conn).unwrap();
+
+    let records: Vec<_> = fs::read_dir(root.join(format!("projects/{project}/versions")))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "md") && !p.file_name().unwrap().to_string_lossy().contains("@v"))
+        .collect();
+    assert_eq!(records.len(), 1);
+    let text = fs::read_to_string(&records[0]).unwrap();
+    let meta = frontmatter::parse(&text).unwrap().meta;
+    assert_eq!(meta.text("intendedMmm").as_deref(), Some("man-made"));
+    assert_eq!(meta.text("labelReason").as_deref(), Some("I wrote it myself."));
+
+    // It loads back, and is written again the same.
+    let (mut vault, again) = open(root);
+    vault.persist(&again).unwrap();
+    assert_eq!(fs::read_to_string(&records[0]).unwrap(), text);
+}

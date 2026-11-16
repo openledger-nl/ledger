@@ -689,6 +689,12 @@ fn export_version_records(conn: &Connection, files: &mut BTreeMap<String, String
         frontmatter::set_opt(&mut meta, "by", Some(&author));
         frontmatter::set_opt(&mut meta, "mmm", mmm.as_deref());
         frontmatter::set_opt(&mut meta, "sha256", sha256.as_deref());
+        if let Some((intended, reason)) = crate::db::query_opt(conn, "SELECT intended_mmm, label_reason FROM version_records WHERE id = ?1 AND intended_mmm IS NOT NULL", [&id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+        })? {
+            frontmatter::set(&mut meta, "intendedMmm", intended);
+            frontmatter::set_opt(&mut meta, "labelReason", reason.as_deref());
+        }
         frontmatter::set(&mut meta, "createdAt", created_at);
         files.insert(version_file(&project, &id), frontmatter::render(&meta, &note));
     }
@@ -1189,6 +1195,12 @@ fn import_version_records(conn: &Connection, source: &Source, project: &str) -> 
                 created_at
             ],
         )?;
+        if let Some(intended) = meta.text("intendedMmm").and_then(|m| provenance::level(&m).map(str::to_string)) {
+            conn.execute(
+                "UPDATE version_records SET intended_mmm = ?2, label_reason = ?3 WHERE id = ?1",
+                params![id, intended, meta.text("labelReason")],
+            )?;
+        }
     }
     Ok(())
 }

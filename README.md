@@ -35,7 +35,8 @@ projects/<project>/deliverables/                    what prompts produce — any
 projects/<project>/versions/                        the published versions, tagged name@v0.1.ext, each at the same place
                                                     under versions/ as its live file is under deliverables/
 projects/<project>/versions/<id>.md                 how a published version came to be: who made it, the thread, prompt
-                                                    and run behind it, its AI-use label
+                                                    and run behind it, its AI-use label (and the intended one, with why,
+                                                    when they differ)
 projects/<project>/attachments/                     files uploaded to a thread, screenshots included
 projects/<project>/templates/<id>.md                templates for this project
 templates/<id>.md                                   templates for every project

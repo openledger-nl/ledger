@@ -4,6 +4,7 @@ import { capture, captureDebug, logError } from './log.svelte';
 import type {
 	ActivityEvent,
 	ProjectMeta,
+	LabelConfirmation,
 	DeliverableMeta,
 	PostKind,
 	EpistemicLabel,
@@ -95,6 +96,9 @@ export const api = {
 	getDeliverableMeta: (project: string, path: string) => call<DeliverableMeta | null>('get_deliverable_meta', { project, path }),
 	listDeliverableMeta: (project: string) => call<DeliverableMeta[]>('list_deliverable_meta', { project }),
 	saveDeliverableMeta: (meta: DeliverableMeta) => call<DeliverableMeta>('save_deliverable_meta', { meta }),
+	/** A version published with another label than the project's intended one: the intended label and why, kept with it. */
+	confirmLabel: (c: LabelConfirmation) =>
+		call<void>('confirm_label', { project: c.project, path: c.path, version: c.version, intended: c.intended, reason: c.reason }),
 	/** The number the project's next deliverable gets: never one given before. */
 	nextDeliverableNumber: (project: string) => call<number>('next_deliverable_number', { project }),
 	/** The people of one project (coach, teammates, client…), or of every project with null. */

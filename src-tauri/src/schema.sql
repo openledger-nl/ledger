@@ -244,6 +244,9 @@ CREATE TABLE version_records (
     sha256           TEXT,
     note             TEXT NOT NULL DEFAULT '',
     created_at       TEXT NOT NULL,
+    -- Published with another label than the project's intended one: that label, and why (in your words, maybe '').
+    intended_mmm     TEXT,
+    label_reason     TEXT,
     UNIQUE (project_slug, deliverable_path, version)
 );
 
