@@ -128,7 +128,7 @@
 	<!-- The guide keeps its place when the first project arrives (it is not drawn twice), or a vault pulled in from GitHub would
 	     restart it instead of closing it. -->
 	<div class="page">
-		<div class="page-inner" class:wide={data.projects.length > 0}>
+		<div class="page-inner">
 			{#if data.onboarding.active}{@render guide()}{/if}
 			{#if data.projects.length > 0}
 				{#if dashboard.showActivity}

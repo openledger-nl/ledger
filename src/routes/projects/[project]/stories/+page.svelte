@@ -16,7 +16,7 @@
 <svelte:head><title>Stories · {data.project.name} · Ledger</title></svelte:head>
 
 <div class="page">
-	<div class="page-inner wide">
+	<div class="page-inner">
 		<div class="panel">
 			<div class="header-top">
 				<div>

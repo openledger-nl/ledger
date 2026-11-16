@@ -52,7 +52,7 @@
 <svelte:head><title>Attachments · {data.project.name} · Ledger</title></svelte:head>
 
 <div class="page">
-	<div class="page-inner wide">
+	<div class="page-inner">
 		<div class="panel">
 			<div class="header-top">
 				<h2>{plural(data.uploads.length, 'attachment')}</h2>

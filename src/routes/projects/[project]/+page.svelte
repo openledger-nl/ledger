@@ -36,7 +36,7 @@
 </script>
 
 <div class="page">
-	<div class="page-inner wide">
+	<div class="page-inner">
 		{#if summary}
 			<section class="panel" aria-label="Latest">
 				<div class="latest-cols">

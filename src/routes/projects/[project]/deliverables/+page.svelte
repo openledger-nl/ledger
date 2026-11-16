@@ -45,7 +45,7 @@
 <svelte:head><title>Deliverables · {data.project.name} · Ledger</title></svelte:head>
 
 <div class="page">
-	<div class="page-inner wide">
+	<div class="page-inner">
 		<div class="panel">
 			<h2>New deliverable</h2>
 			<p class="sub" style="margin:0">

@@ -419,7 +419,7 @@
 
 <div class="doc-body">
 <div class="page">
-	<div class="page-inner wide" bind:this={docArea}>
+	<div class="page-inner" bind:this={docArea}>
 		{#if snapshot}
 			<div class="notice info">
 				Published version {doc.version}, {dateTime(doc.modified)} — read-only.

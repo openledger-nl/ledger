@@ -15,7 +15,7 @@
 <svelte:head><title>Threads · {project.name} · Ledger</title></svelte:head>
 
 <div class="page">
-	<div class="page-inner wide">
+	<div class="page-inner">
 		<section class="panel">
 			<div class="header-top">
 				<div>
