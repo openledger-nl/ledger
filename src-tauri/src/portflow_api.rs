@@ -172,6 +172,9 @@ pub struct Evidence {
     /// The outcomes it counts for, when the list includes them (otherwise asked for separately).
     pub goals: Option<Vec<Named>>,
     pub sub_goals: Option<Vec<Named>>,
+    /// HTML: what it shows, in the student's words (teachers like "What? / Goal? / Why it contributes?"). Not every list
+    /// carries it; `evidence_item` asks for it then.
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -339,6 +342,10 @@ pub fn write_kind(request: &Request) -> Option<&'static str> {
     if request.method == "POST" && path.ends_with("/mentions") {
         return None;
     }
+    // Editing an evidence item itself: `PUT …/evidence/{e}`, nothing after the id.
+    if request.method == "PUT" && path.rsplit_once("/evidence/").is_some_and(|(_, rest)| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit())) {
+        return Some(crate::portflow_config::EVIDENCE_WRITE);
+    }
     Some(if path.contains("/direct-uploads") || (path.contains("/evidence/") && path.ends_with("/versions")) {
         "upload-versions"
     } else if path.ends_with("/evidence") {
@@ -488,6 +495,10 @@ pub trait Portflow: Send + Sync {
     fn version(&self, portfolio: i64, version: i64) -> PResult<Version>;
     fn evidence_comments(&self, portfolio: i64, evidence: i64) -> PResult<Vec<Comment>>;
     fn comment_children(&self, portfolio: i64, comment: i64) -> PResult<Vec<Comment>>;
+    /// One evidence item, with its description.
+    fn evidence_item(&self, _portfolio: i64, _evidence: i64) -> PResult<Evidence> {
+        Err(PortflowError::message("This Portflow client can't read one evidence item."))
+    }
 
     /// The signed address (at S3, valid for about half an hour) a file of a version is downloaded from.
     fn file_url(&self, _portfolio: i64, _file: i64) -> PResult<String> {
@@ -502,6 +513,12 @@ pub trait Portflow: Send + Sync {
     /// A write ("guide-description"): refused by the gate unless read and write and that switch are on.
     fn set_collection_description(&self, _portfolio: i64, _collection: i64, _html: &str) -> PResult<Option<String>> {
         Err(PortflowError::NotAllowed("This Portflow client can't write collection descriptions.".into()))
+    }
+
+    /// Writes an evidence item's description (HTML) and answers with the description Portflow now has, when it says.
+    /// A write ("evidence-description"): refused by the gate unless read and write and that switch are on.
+    fn set_evidence_description(&self, _portfolio: i64, _evidence: i64, _html: &str) -> PResult<Option<String>> {
+        Err(PortflowError::NotAllowed("This Portflow client can't write evidence descriptions.".into()))
     }
 }
 
@@ -741,5 +758,17 @@ impl<W: Wire> Portflow for HttpPortflow<W> {
 
     fn comment_children(&self, p: i64, c: i64) -> PResult<Vec<Comment>> {
         self.get(format!("/portfolios/{p}/comments/{c}/children"), "replies")
+    }
+
+    fn evidence_item(&self, p: i64, e: i64) -> PResult<Evidence> {
+        self.get(format!("/portfolios/{p}/evidence/{e}"), "an evidence item")
+    }
+
+    fn set_evidence_description(&self, p: i64, e: i64, html: &str) -> PResult<Option<String>> {
+        // Unverified: no call that edits an evidence item has been captured. This follows the collection's
+        // (`PUT …/collections/{c}` with a bare `description`, which Rails wraps itself); a refusal is a note in the report.
+        let request = Request { method: "PUT", path: format!("/portfolios/{p}/evidence/{e}"), query: vec![], body: Some(serde_json::json!({ "description": html })) };
+        let answer = self.send(&request)?;
+        Ok(answer["description"].as_str().map(str::to_string))
     }
 }

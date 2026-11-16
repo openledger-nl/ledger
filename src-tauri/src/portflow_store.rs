@@ -1210,6 +1210,9 @@ pub struct EvidenceView {
     pub thread_title: Option<String>,
     pub portflow_id: Option<i64>,
     pub kind: String,
+    /// The description as Ledger keeps it (markdown), and its What? / Goal? / Why it contributes? when it has that shape.
+    pub description: String,
+    pub description_parts: Option<crate::portflow_evidence_text::Parts>,
     pub description_html: String,
     pub files: Vec<EvidenceFileView>,
     pub outcomes: Vec<OutcomeRef>,
@@ -1288,6 +1291,8 @@ fn evidence_views(conn: &Connection, project: &str, filter: &str, arg: Option<&s
                 portflow_id,
                 kind,
                 description_html: markdown::render(&description),
+                description_parts: crate::portflow_evidence_text::parse(&description),
+                description,
                 files,
                 outcomes,
                 versions,
@@ -1450,4 +1455,16 @@ pub fn open_portflow_feedback(conn: &Connection, limit: i64, me: i64) -> Result<
             })
         },
     )
+}
+
+/// Sets an evidence item's description, as Ledger keeps it (`portflow_evidence_text`): the body of its file.
+pub fn set_evidence_description(conn: &Connection, project: &str, evidence: &str, text: &str) -> Result<()> {
+    let changed = conn.execute(
+        "UPDATE evidence SET description = ?3, updated_at = ?4 WHERE project_slug = ?1 AND slug = ?2 AND description != ?3",
+        params![project, evidence, text.trim(), ids::now()],
+    )?;
+    if changed == 0 && query_opt(conn, "SELECT 1 FROM evidence WHERE project_slug = ?1 AND slug = ?2", [project, evidence], |r| r.get::<_, i64>(0))?.is_none() {
+        return Err(Error::not_found("Evidence item not found"));
+    }
+    Ok(())
 }

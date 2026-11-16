@@ -53,6 +53,7 @@ mod portflow;
 mod portflow_api;
 mod portflow_auth;
 mod portflow_epsilon;
+mod portflow_evidence_text;
 mod portflow_config;
 mod portflow_html;
 mod portflow_store;
@@ -332,6 +333,7 @@ pub fn run() {
             portflow::portflow_project,
             portflow::portflow_thread_evidence,
             portflow::portflow_place_evidence,
+            portflow::portflow_save_evidence_description,
             portflow::portflow_recent_feedback,
             portflow::portflow_epsilon,
             portflow::portflow_sections,
