@@ -4,6 +4,7 @@ import { capture, captureDebug, logError } from './log.svelte';
 import type {
 	ActivityEvent,
 	ProjectMeta,
+	DeliverableMeta,
 	PostKind,
 	EpistemicLabel,
 	ProjectPerson,
@@ -90,6 +91,12 @@ export const api = {
 	getProjectMeta: (slug: string) => call<ProjectMeta | null>('get_project_meta', { slug }),
 	listProjectMeta: () => call<ProjectMeta[]>('list_project_meta'),
 	saveProjectMeta: (meta: ProjectMeta) => call<ProjectMeta>('save_project_meta', { slug: meta.slug, meta }),
+	/** A deliverable's number, goal, own label, question and template (in its project's project.md); null without. */
+	getDeliverableMeta: (project: string, path: string) => call<DeliverableMeta | null>('get_deliverable_meta', { project, path }),
+	listDeliverableMeta: (project: string) => call<DeliverableMeta[]>('list_deliverable_meta', { project }),
+	saveDeliverableMeta: (meta: DeliverableMeta) => call<DeliverableMeta>('save_deliverable_meta', { meta }),
+	/** The number the project's next deliverable gets: never one given before. */
+	nextDeliverableNumber: (project: string) => call<number>('next_deliverable_number', { project }),
 	/** The people of one project (coach, teammates, client…), or of every project with null. */
 	listProjectPeople: (slug: string | null = null) => call<ProjectPerson[]>('list_project_people', { slug }),
 	/** Replaces the project's people. */

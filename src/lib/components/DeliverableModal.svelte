@@ -5,7 +5,6 @@
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { deliverableUrl } from '$lib/actions';
-	import { mockApi } from '$lib/mock/api';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
 	import type { MmmLevel, ProjectMeta, Template } from '$lib/types';
 	import Dropdown from './Dropdown.svelte';
@@ -40,15 +39,13 @@
 	$effect(() => {
 		const slug = project;
 		let stale = false;
-		Promise.all([api.getProjectMeta(slug), api.listTemplates(slug).catch(() => []), api.listDeliverables(slug).catch(() => [])]).then(
-			async ([m, t, existing]) => {
-				if (stale) return;
-				meta = m;
-				templates = t;
-				if (m?.intendedMmm && !mmm) mmm = m.intendedMmm;
-				number = await mockApi.nextDeliverableNumber(slug, existing.map((d) => d.path));
-			}
-		);
+		Promise.all([api.getProjectMeta(slug), api.listTemplates(slug).catch(() => []), api.nextDeliverableNumber(slug).catch(() => 1)]).then(([m, t, next]) => {
+			if (stale) return;
+			meta = m;
+			templates = t;
+			if (m?.intendedMmm && !mmm) mmm = m.intendedMmm;
+			number = next;
+		});
 		return () => (stale = true);
 	});
 
@@ -81,7 +78,7 @@
 		const made = await attempt(() => api.createDeliverable(project, fileName, body));
 		if (made) {
 			await attempt(() =>
-				mockApi.saveDeliverableMeta({ project, path: made.path, number, goal: goal.trim(), mmm: mmm || null, answers: answer || null, template: template || null })
+				api.saveDeliverableMeta({ project, path: made.path, number, goal: goal.trim(), mmm: mmm || null, answers: answer || null, template: template || null })
 			);
 		}
 		busy = false;

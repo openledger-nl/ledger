@@ -28,7 +28,22 @@ CREATE TABLE projects (
     semester          TEXT,
     intended_mmm      TEXT,
     main_question     TEXT,
-    client            TEXT
+    client            TEXT,
+    -- The number the project's next deliverable gets (see deliverable_facts.rs); 0 before any was numbered.
+    next_deliverable  INTEGER NOT NULL DEFAULT 0
+);
+
+-- What a deliverable is for (see deliverable_facts.rs), by its live path: its number, goal, own AI-use label, the
+-- question it answers and the template it started from.
+CREATE TABLE deliverable_facts (
+    project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    path         TEXT NOT NULL,
+    number       INTEGER NOT NULL,
+    goal         TEXT NOT NULL,
+    mmm          TEXT,
+    answers      TEXT,
+    template     TEXT,
+    PRIMARY KEY (project_slug, path)
 );
 
 -- The people of a project (see project_facts.rs): its coach, teammates, client…, in the order they are listed.

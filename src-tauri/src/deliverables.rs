@@ -467,6 +467,7 @@ pub fn delete(conn: &Connection, root: &Path, project: &str, path: &str) -> Resu
     }
     let tx = conn.unchecked_transaction()?;
     tx.execute("DELETE FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, path])?;
+    crate::deliverable_facts::forget(&tx, project, path)?;
     tx.execute(
         "DELETE FROM prompt_deliverables WHERE path = ?2 AND prompt_id IN (SELECT id FROM prompts WHERE project_slug = ?1)",
         [project, path],

@@ -14,6 +14,7 @@ use crate::error::{Error, Result};
 use crate::github::GithubRemote;
 use crate::keystore::{self, EncryptionStatus, KeyStore};
 use crate::models::*;
+use crate::deliverable_facts::{self, DeliverableMeta};
 use crate::project_facts::{self, ProjectMeta, ProjectPerson};
 use crate::posts::AddOptions;
 use crate::screenshot::{self, Region, ScreenshotSettings};
@@ -97,6 +98,28 @@ pub fn save_readme(app: State<App>, slug: String, text: String) -> Result<Projec
 #[tauri::command]
 pub fn set_post_meta(app: State<App>, project: String, thread: String, id: String, kind: Option<String>, labels: Vec<String>) -> Result<PostView> {
     app.mutate(|c, _| posts::set_meta(c, &project, &thread, &id, kind.as_deref(), &labels))
+}
+
+/// A deliverable's number, goal, own label, question and template; `None` for one made without them.
+#[tauri::command]
+pub fn get_deliverable_meta(app: State<App>, project: String, path: String) -> Result<Option<DeliverableMeta>> {
+    app.read(|c, _| deliverable_facts::get(c, &project, &path))
+}
+
+#[tauri::command]
+pub fn list_deliverable_meta(app: State<App>, project: String) -> Result<Vec<DeliverableMeta>> {
+    app.read(|c, _| deliverable_facts::list(c, &project))
+}
+
+#[tauri::command]
+pub fn save_deliverable_meta(app: State<App>, meta: DeliverableMeta) -> Result<DeliverableMeta> {
+    app.mutate(|c, _| deliverable_facts::save(c, &meta))
+}
+
+/// The number the project's next deliverable gets.
+#[tauri::command]
+pub fn next_deliverable_number(app: State<App>, project: String) -> Result<i64> {
+    app.read(|c, _| deliverable_facts::next_number(c, &project))
 }
 
 /// A project's kind, goal and end; `None` while it has none.

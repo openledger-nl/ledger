@@ -1,6 +1,5 @@
 import { error } from '@sveltejs/kit';
 import { api } from '$lib/api';
-import { mockApi } from '$lib/mock/api';
 import { previews } from '$lib/mock/flag.svelte';
 import type { PageLoad } from './$types';
 
@@ -13,8 +12,8 @@ export const load: PageLoad = async ({ params, url }) => {
 			api.getProvenance(params.project, path),
 			api.listDeliverablePrompts(params.project, path)
 		]);
-		// Preview: the deliverable's goal, number and own label come from the mock data for now.
-		const deliverableMeta = previews.enabled ? await mockApi.getDeliverableMeta(params.project, deliverable.basePath || path) : null;
+		// Preview: the deliverable's goal, number and own label, from its project's project.md.
+		const deliverableMeta = previews.enabled ? await api.getDeliverableMeta(params.project, deliverable.basePath || path) : null;
 		return { deliverable, provenance, prompts, deliverableMeta };
 	} catch (e) {
 		error(404, e instanceof Error ? e.message : 'Deliverable not found');

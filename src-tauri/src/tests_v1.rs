@@ -10,7 +10,8 @@ use tempfile::tempdir;
 
 use crate::frontmatter::{self, MetaExt};
 use crate::project_facts::{self, ProjectMeta, ProjectPerson};
-use crate::projects;
+use crate::deliverable_facts::{self, DeliverableMeta};
+use crate::{deliverables, projects};
 use crate::vault::Vault;
 
 fn write(root: &Path, rel: &str, text: &str) {
@@ -182,4 +183,95 @@ fn a_posts_kind_and_labels_are_kept_in_its_file() {
     let (_vault, again) = open(root);
     let loaded = crate::posts::list(&again, &project, &thread).unwrap().remove(0);
     assert_eq!((loaded.kind.as_deref(), loaded.labels), (Some("devlog"), vec!["to-check".to_string()]));
+}
+
+// ---- a deliverable's facts --------------------------------------------------------------------------
+
+fn facts(project: &str, path: &str, number: i64) -> DeliverableMeta {
+    DeliverableMeta {
+        project: project.into(),
+        path: path.into(),
+        number,
+        goal: " Agree on what is built first. ".into(),
+        mmm: Some("cyborg".into()),
+        answers: Some("main".into()),
+        template: Some("plan".into()),
+    }
+}
+
+#[test]
+fn a_deliverables_facts_are_kept_in_its_project_file_and_load_back() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let project = projects::create(&conn, "Acme").unwrap().slug;
+    assert_eq!(deliverable_facts::next_number(&conn, &project).unwrap(), 1);
+    let plan = deliverables::create(&conn, &project, "01 Project plan.md", "# Plan").unwrap().path;
+    let saved = deliverable_facts::save(&conn, &facts(&project, &plan, 1)).unwrap();
+    assert_eq!(saved.goal, "Agree on what is built first.");
+    assert!(deliverable_facts::save(&conn, &facts(&project, "missing.md", 2)).is_err(), "only for a deliverable that is there");
+    assert!(deliverable_facts::save(&conn, &DeliverableMeta { mmm: Some("robot".into()), ..facts(&project, &plan, 1) }).is_err());
+    vault.persist(&conn).unwrap();
+
+    let meta = frontmatter::parse(&read(root, &format!("projects/{project}/project.md"))).unwrap().meta;
+    assert_eq!(meta.text("nextDeliverable").as_deref(), Some("2"));
+    assert_eq!(meta.maps("deliverables")[0].text("path").as_deref(), Some("01-project-plan.md"));
+
+    let (_vault, again) = open(root);
+    assert_eq!(deliverable_facts::get(&again, &project, &plan).unwrap(), Some(saved));
+    assert_eq!(deliverable_facts::next_number(&again, &project).unwrap(), 2);
+}
+
+#[test]
+fn a_deliverables_number_is_never_given_twice() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (_vault, conn) = open(root);
+    let project = projects::create(&conn, "Acme").unwrap().slug;
+    let plan = deliverables::create(&conn, &project, "01 Plan.md", "# Plan").unwrap().path;
+    deliverable_facts::save(&conn, &facts(&project, &plan, 1)).unwrap();
+    let old = deliverables::create(&conn, &project, "07 Old notes.md", "# Notes").unwrap().path;
+    assert_eq!(deliverable_facts::next_number(&conn, &project).unwrap(), 8, "past a numbered file already there");
+
+    deliverables::delete(&conn, root, &project, &plan).unwrap();
+    assert_eq!(deliverable_facts::get(&conn, &project, &plan).unwrap(), None, "deleting drops the facts");
+    deliverables::delete(&conn, root, &project, &old).unwrap();
+    assert_eq!(deliverable_facts::next_number(&conn, &project).unwrap(), 2, "a deleted one's number stays given");
+}
+
+#[test]
+fn facts_follow_a_deliverable_renamed_outside_ledger() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let project = projects::create(&conn, "Acme").unwrap().slug;
+    let plan = deliverables::create(&conn, &project, "01 Plan.md", "# Plan").unwrap().path;
+    deliverable_facts::save(&conn, &facts(&project, &plan, 1)).unwrap();
+    vault.persist(&conn).unwrap();
+    drop((vault, conn));
+
+    let folder = root.join(format!("projects/{project}/deliverables"));
+    fs::rename(folder.join(&plan), folder.join("01 Project plan.md")).unwrap();
+    let (_vault, conn) = open(root);
+    let moved = deliverable_facts::get(&conn, &project, "01 Project plan.md").unwrap().expect("the facts followed the file");
+    assert_eq!(moved.number, 1);
+    assert_eq!(deliverable_facts::get(&conn, &project, &plan).unwrap(), None);
+}
+
+#[test]
+fn hand_written_deliverable_facts_are_read_leniently() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(
+        root,
+        "projects/acme/project.md",
+        "---\nname: Acme\ndeliverables:\n- path: 03 Brief.md\n  goal: A brief.\n  mmm: robot\n- goal: No path.\n- path: Loose.md\n  goal: Loose.\n---\n",
+    );
+    write(root, "projects/acme/deliverables/03 Brief.md", "# Brief\n");
+    write(root, "projects/acme/deliverables/Loose.md", "# Loose\n");
+    let (_vault, conn) = open(root);
+    let list = deliverable_facts::list(&conn, "acme").unwrap();
+    assert_eq!(list.iter().map(|f| (f.path.as_str(), f.number)).collect::<Vec<_>>(), [("03 Brief.md", 3), ("Loose.md", 4)]);
+    assert_eq!(list[0].mmm, None);
+    assert_eq!(deliverable_facts::next_number(&conn, "acme").unwrap(), 5);
 }

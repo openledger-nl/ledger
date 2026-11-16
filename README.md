@@ -21,7 +21,7 @@ This is the rewrite of the original ASP.NET ledger, which is kept in the author'
 ### The vault
 
 ```
-projects/<project>/project.md                       a project (name, board columns; its kind, goal, end and intended AI-use label; its people)
+projects/<project>/project.md                       a project (name, board columns; its kind, goal, end and intended AI-use label; its people; each deliverable's number, goal and own label)
 projects/<project>/README.md                        the project's reading guide — where to start
 projects/<project>/threads/<thread>/thread.md       a thread
 projects/<project>/threads/<thread>/posts/<id>.md       its posts, each with its kind and labels when you set them

@@ -5,6 +5,7 @@ mod claude_code;
 mod commands;
 mod crypto;
 mod db;
+mod deliverable_facts;
 mod deliverables;
 mod devupdates;
 mod encrypted_remote;
@@ -183,6 +184,10 @@ pub fn run() {
             commands::save_project_meta,
             commands::list_project_people,
             commands::set_post_meta,
+            commands::get_deliverable_meta,
+            commands::list_deliverable_meta,
+            commands::save_deliverable_meta,
+            commands::next_deliverable_number,
             commands::save_project_people,
             commands::delete_project,
             commands::create_thread,

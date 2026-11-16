@@ -381,6 +381,7 @@ fn export_projects(conn: &Connection, files: &mut BTreeMap<String, String>) -> R
         }
         crate::project_facts::export(conn, &slug, &mut meta)?;
         crate::project_facts::export_people(conn, &slug, &mut meta)?;
+        crate::deliverable_facts::export(conn, &slug, &mut meta)?;
         files.insert(project_file(&slug), frontmatter::render(&meta, &description));
         files.insert(readme_file(&slug), readme);
     }
@@ -758,6 +759,7 @@ fn import(conn: &Connection, root: &Path, listing: &BTreeMap<String, Fingerprint
         import_templates(&tx, &source, project)?;
         let threads = import_threads(&tx, &source, project)?;
         import_deliverables(&tx, &source, project)?;
+        crate::deliverable_facts::reattach(&tx, project)?;
         import_version_records(&tx, &source, project)?;
         import_stories(&tx, &source, project, &threads)?;
         import_tasks(&tx, &source, project, &threads)?;
@@ -809,6 +811,7 @@ fn import_projects(conn: &Connection, source: &Source) -> Result<Vec<String>> {
         }
         crate::project_facts::import(conn, slug, &meta)?;
         crate::project_facts::import_people(conn, slug, &meta)?;
+        crate::deliverable_facts::import(conn, slug, &meta)?;
         if seen.is_empty() {
             board::seed_columns(conn, slug)?;
         } else {
