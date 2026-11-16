@@ -453,7 +453,8 @@
 
 <svelte:head><title>{title} · Ledger</title></svelte:head>
 
-<div class="header-wrap">
+<!-- No tabs under it, so it keeps its own space below the buttons (`flat`), like the other pages' headers. -->
+<div class="header-wrap flat">
 	<div class="header-top">
 		<div style="flex:1;min-width:0">
 			<h1 title={doc.path}>
