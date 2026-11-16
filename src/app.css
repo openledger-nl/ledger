@@ -55,6 +55,8 @@
 /* ---------- themes ----------
    Matched on any element, not just the root, so a theme can be previewed inside another (the settings swatches). */
 :root, [data-theme='dark'] {
+	/* What you type in: inputs, pickers, editors. White on the light themes; on the dark ones the darkest tone, set in. */
+	--field: var(--bg);
 	--bg: #12141b;
 	--panel: #191c25;
 	--card: #1f2330;
@@ -93,6 +95,7 @@
 	--side: #0a111a; --side-hover: #152234;
 }
 [data-theme='sepia'] {
+	--field: #fffdf8;
 	--bg: #f4ecdc; --panel: #fbf5e9; --card: #fffaf0; --card-2: #f1e7d4; --line: #e2d4b9;
 	--ink: #3b2f22; --muted: #7a6a55; --faint: #a3927a; --accent: #b0602c; --accent-ink: #ffffff; --accent-soft: #f3e1cf;
 	--green: #4f7a3a; --green-soft: #e4ecd6; --amber: #a26a14; --amber-soft: #f5e6c8; --red: #b0403a; --red-soft: #f3dcd6;
@@ -100,6 +103,7 @@
 	color-scheme: light;
 }
 [data-theme='light'] {
+	--field: #ffffff;
 	--bg: #f6f6f3; --panel: #ffffff; --card: #ffffff; --card-2: #f3f3f0; --line: #e4e4df;
 	--ink: var(--brand-ink); --muted: var(--brand-muted); --faint: #9aa0ae; --accent: var(--brand-indigo-deep); --accent-soft: #eeeefc;
 	--green: #1f9d6b; --green-soft: #e5f5ee; --amber: #b7791f; --amber-soft: #fbf1de; --red: #c24141; --red-soft: #f9e3e3;
@@ -241,7 +245,7 @@ a.tb-crumb:hover { color: var(--accent); }
 .tb-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .tb-search {
 	display: flex; align-items: center; gap: 8px; width: 280px; padding: 0 6px 0 10px; height: 34px;
-	background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--faint);
+	background: var(--field); border: 1px solid var(--line); border-radius: 8px; color: var(--faint);
 }
 .tb-search:focus-within { border-color: var(--accent); }
 .tb-search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 13px; padding: 0; }
@@ -301,12 +305,12 @@ a.tb-crumb:hover { color: var(--accent); }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 500; }
 .field.grow { flex: 1; min-width: 160px; }
 .field input, .field select, select.inline {
-	padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); min-width: 150px; width: 100%;
+	padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); min-width: 150px; width: 100%;
 }
 .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
 .field input, .field select { font-weight: 400; }
 .field input[type='checkbox'], .field input[type='radio'] { width: auto; min-width: 0; padding: 0; }
-select { color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+select { color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .check input { accent-color: var(--accent); width: 16px; height: 16px; }
 .hint { color: var(--faint); font-size: 12px; }
@@ -468,7 +472,7 @@ mark { background: var(--highlight); color: inherit; border-radius: 3px; padding
    The box around MarkdownEditor.svelte; inside it, CodeMirror is styled in lib/markdownEditor.ts, from these tokens. */
 .md-editor {
 	--md-pad-y: 8px; --md-pad-x: 10px; --md-max-height: 50vh;
-	width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+	width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--field);
 	color: var(--ink); font-size: 14px; font-weight: 400; cursor: text;
 }
 .md-editor:focus-within { border-color: var(--accent); }
@@ -486,7 +490,7 @@ mark { background: var(--highlight); color: inherit; border-radius: 3px; padding
 .doc-space { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .title-input { font-size: 20px; font-weight: 700; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 2px 8px; margin-left: -8px; width: 100%; min-width: 0; color: var(--ink); }
 .title-input:hover { border-color: var(--line); }
-.title-input:focus { outline: none; border-color: var(--accent); background: var(--bg); }
+.title-input:focus { outline: none; border-color: var(--accent); background: var(--field); }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .seg button {
 	background: var(--card); border: 0; color: var(--muted); padding: 7px 12px; font-size: 12px; font-weight: 600;
@@ -514,7 +518,7 @@ mark { background: var(--highlight); color: inherit; border-radius: 3px; padding
 
 /* ---------- planboard ---------- */
 .board-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 32px 0; }
-.board-tools input[type='search'] { width: 260px; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); padding: 7px 10px; font-size: 13px; }
+.board-tools input[type='search'] { width: 260px; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); padding: 7px 10px; font-size: 13px; }
 .board-tools input[type='search']:focus { outline: none; border-color: var(--accent); }
 .board { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding: 14px 32px 20px; flex: 1; min-height: 0; scroll-snap-type: x proximity; }
 .col { background: var(--card-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 0 0 280px; min-height: 120px; max-height: 100%; scroll-snap-align: start; min-width: 0; }
@@ -544,7 +548,7 @@ mark { background: var(--highlight); color: inherit; border-radius: 3px; padding
 .story-row:last-child { border-bottom: 0; }
 .story-row:hover .k-title { color: var(--accent); }
 .crit-row { display: flex; gap: 8px; align-items: center; }
-.crit-row input[type='text'] { flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
+.crit-row input[type='text'] { flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); }
 .crit-row input[type='text']:focus { outline: none; border-color: var(--accent); }
 .crit-row input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px; }
 .crit-row.done input[type='text'] { text-decoration: line-through; color: var(--muted); }
@@ -716,7 +720,7 @@ details.more p { margin: 0; }
 /* ---------- screenshots ---------- */
 .shot-view { display: flex; flex-direction: column; gap: 14px; }
 .shot-view img { max-width: 100%; border-radius: var(--radius); border: 1px solid var(--line); background: var(--card-2); align-self: flex-start; }
-.link-box { flex: 1; min-width: 240px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
+.link-box { flex: 1; min-width: 240px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); }
 
 /* ---------- sidebar: projects and their threads ---------- */
 .folder-row { display: flex; align-items: center; border-radius: 8px; }
@@ -938,10 +942,10 @@ details.more p { margin: 0; }
 .dd.full { display: flex; width: 100%; }
 .dd-trigger {
 	display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 240px;
-	background: var(--card-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px 6px 12px;
+	background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px 6px 12px;
 	font-size: 12.5px; font-weight: 500; color: var(--ink); text-align: left;
 }
-.dd-trigger.dd-field { max-width: none; width: 100%; background: var(--bg); padding: 8px 10px; font-size: 14px; font-weight: 400; }
+.dd-trigger.dd-field { max-width: none; width: 100%; background: var(--field); padding: 8px 10px; font-size: 14px; font-weight: 400; }
 .dd-trigger.empty .dd-value { color: var(--faint); }
 .dd-trigger:hover:not(:disabled) { border-color: var(--accent); }
 .dd-trigger:disabled { opacity: 0.55; cursor: default; }
@@ -1024,7 +1028,7 @@ details.more p { margin: 0; }
 
 /* ---------- a date, the European way: typed or picked ---------- */
 .date-input { position: relative; display: flex; align-items: stretch; min-width: 0; }
-.date-input input { flex: 1; min-width: 0; width: 100%; padding: 8px 34px 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-variant-numeric: tabular-nums; font-weight: 400; }
+.date-input input { flex: 1; min-width: 0; width: 100%; padding: 8px 34px 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); font-variant-numeric: tabular-nums; font-weight: 400; }
 .date-input input:focus { outline: none; border-color: var(--accent); }
 .date-input.invalid input { border-color: var(--red); }
 .date-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: 0; padding: 4px; border-radius: 6px; color: var(--muted); display: inline-flex; }
@@ -1116,7 +1120,7 @@ details.more p { margin: 0; }
 .sprint-name { grid-area: name; font-weight: 600; }
 .sprint-goal { grid-area: goal; font-size: 12.5px; }
 .sprint-row .sem-weeks { grid-area: weeks; }
-.sprint-row input.sprint-name, .sprint-row input.sprint-goal, .vac-row input.vac-name { min-width: 0; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
+.sprint-row input.sprint-name, .sprint-row input.sprint-goal, .vac-row input.vac-name { min-width: 0; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); }
 .sprint-row input:focus, .vac-row input.vac-name:focus { outline: none; border-color: var(--accent); }
 .sprint-x { background: none; border: 0; padding: 4px; border-radius: 6px; color: var(--faint); display: inline-flex; justify-content: center; }
 .sprint-x:hover { background: var(--red-soft); color: var(--red); }
@@ -1151,7 +1155,7 @@ details.more p { margin: 0; }
 /* ---------- v1: tags, meeting notes, the feedback inbox, project and deliverable facts, post kinds ---------- */
 .tag-picker {
 	display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 6px; min-height: 38px;
-	border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+	border: 1px solid var(--line); border-radius: 8px; background: var(--field);
 }
 .tag-picker.open { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .tp-add {
@@ -1182,7 +1186,7 @@ details.more p { margin: 0; }
 .dn-heading { display: flex; align-items: center; gap: 8px; }
 .dn-title { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid transparent; border-radius: 8px; background: none; font-size: 16px; font-weight: 600; }
 .dn-title:hover { border-color: var(--line); }
-.dn-title:focus { outline: none; border-color: var(--accent); background: var(--bg); }
+.dn-title:focus { outline: none; border-color: var(--accent); background: var(--field); }
 .dn-couple { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @container (max-width: 720px) {
 	.dn-split { grid-template-columns: 1fr; }
@@ -1214,7 +1218,7 @@ details.more p { margin: 0; }
 .pj-mq { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pj-unset { margin-top: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .req { font-size: 10.5px; font-weight: 600; color: var(--faint); text-transform: uppercase; letter-spacing: 0.04em; margin-left: 4px; }
-.field textarea { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); resize: vertical; font: inherit; color: var(--ink); }
+.field textarea { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); resize: vertical; font: inherit; color: var(--ink); }
 .field textarea:focus { outline: none; border-color: var(--accent); }
 .pm-ends { display: flex; flex-direction: column; gap: 6px; }
 .pm-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -1251,9 +1255,9 @@ button.pt-label { padding: 3px 9px; }
 /* Publishing with another label than the intended one (D5) */
 .pub-confront { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px dashed var(--amber); border-radius: 10px; background: var(--amber-soft); }
 .pub-confront-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
-.pub-reason { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
+.pub-reason { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); }
 .time-input { position: relative; display: inline-flex; align-items: center; min-width: 0; }
-.time-input input { width: 92px; padding: 6px 28px 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-variant-numeric: tabular-nums; }
+.time-input input { width: 92px; padding: 6px 28px 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); font-variant-numeric: tabular-nums; }
 .time-input input:focus { outline: none; border-color: var(--accent); }
 .time-input.invalid input { border-color: var(--red); }
 .time-input svg { position: absolute; right: 9px; color: var(--faint); pointer-events: none; }

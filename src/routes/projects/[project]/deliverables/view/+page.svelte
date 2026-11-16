@@ -689,7 +689,7 @@
 	}
 	/* Writing on white (the card colour: white in the light themes, the card's own in a dark one). */
 	.page-inner :global(.md-editor.md-doc) {
-		background: var(--card);
+		background: var(--field);
 	}
 	.doc-evidence {
 		padding: 14px 18px;
