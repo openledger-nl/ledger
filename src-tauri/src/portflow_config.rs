@@ -22,11 +22,16 @@ use crate::settings::{self, LEDGER_DIR};
 /// Where Fontys ICT students open Portflow: the Canvas page that launches it.
 pub const DEFAULT_LAUNCH_URL: &str = "https://fhict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation";
 
+/// The write that puts a project's reading guide (its README.md) in the description of the collection it is linked to
+/// for the current semester. Replaces "edit-descriptions": the guide is how a description is edited in Ledger, so a
+/// machine that had that switch on starts with this one off.
+pub const GUIDE_WRITE: &str = "guide-description";
+
 /// The kinds of write Ledger could make in Portflow, each with its own switch. None is on until the person turns it on.
 pub const WRITE_KINDS: [(&str, &str); 7] = [
     ("upload-versions", "Upload versions"),
     ("create-evidence", "Create evidence"),
-    ("edit-descriptions", "Edit collection descriptions"),
+    (GUIDE_WRITE, "Reading guide → collection description"),
     ("link-outcomes", "Link outcomes"),
     ("reply-feedback", "Reply to feedback"),
     ("ask-feedback", "Ask for feedback"),
@@ -40,6 +45,13 @@ pub struct Access {
     /// Off (the default): read only. On: the kinds in `writes` are allowed.
     pub write: bool,
     pub writes: BTreeSet<String>,
+}
+
+impl Access {
+    /// Whether this kind of write may be made: read and write is on, and so is the kind's own switch.
+    pub fn allows(&self, kind: &str) -> bool {
+        self.write && self.writes.contains(kind)
+    }
 }
 
 /// The portfolio Ledger reads: found at sign-in, kept so the next session doesn't need to look for it again.

@@ -1110,6 +1110,10 @@ export interface Evidence {
 export interface ProjectPortflow {
 	collections: PortflowCollection[];
 	evidence: Evidence[];
+	/** The collection the reading guide goes to (the one for the current semester); null when none is linked. */
+	guideCollection: number | null;
+	/** Whether the guide is written to that collection's description (Settings → Portflow, off by default). */
+	guideWrite: boolean;
 }
 
 export interface PortflowFeedback {

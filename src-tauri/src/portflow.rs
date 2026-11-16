@@ -663,15 +663,36 @@ pub fn portflow_people(app: State<App>) -> Result<Vec<PersonView>> {
 pub struct ProjectPortflow {
     pub collections: Vec<CollectionView>,
     pub evidence: Vec<EvidenceView>,
+    /// The collection the project's reading guide goes to (the one for the current semester), if it is linked to one.
+    pub guide_collection: Option<i64>,
+    /// Whether the guide is written to that collection's description ("Reading guide → collection description" on).
+    pub guide_write: bool,
 }
 
 #[tauri::command]
 pub fn portflow_project(app: State<App>, project: String) -> Result<ProjectPortflow> {
-    let me = me(&require_on(&root_of(&app))?);
+    let settings = require_on(&root_of(&app))?;
+    let me = me(&settings);
+    let today = ids::now().chars().take(10).collect::<String>();
     app.read(|conn, _| {
         crate::projects::require(conn, &project)?;
-        Ok(ProjectPortflow { collections: store::project_collections(conn, &project)?, evidence: store::evidence_in_project(conn, &project, me)? })
+        let guide_collection = store::guide_targets(conn, &today)?.into_iter().find(|g| g.project == project).map(|g| g.collection);
+        Ok(ProjectPortflow {
+            collections: store::project_collections(conn, &project)?,
+            evidence: store::evidence_in_project(conn, &project, me)?,
+            guide_collection,
+            guide_write: settings.access.allows(config::GUIDE_WRITE),
+        })
     })
+}
+
+/// After a reading guide was saved: a round right away when guides go to Portflow and Ledger is signed in, so the
+/// collection's description follows. Otherwise nothing happens: the guide is edited in Ledger either way.
+pub fn guide_saved(app: &App, syncer: &PortflowSyncer) {
+    let settings = config::read_settings(&root_of(app));
+    if settings.enabled && settings.access.allows(config::GUIDE_WRITE) && syncer.auth.signed_in(now_ms()) {
+        syncer.now();
+    }
 }
 
 #[tauri::command]

@@ -220,7 +220,7 @@ does. Switched off means fully off, in the UI and in what runs:
   |---|---|
   | Upload versions | a new version of an evidence item when you publish (also asked in the publish dialog) |
   | Create evidence | a new evidence item for a deliverable that has none |
-  | Edit collection descriptions | your edits to the semester's collection description |
+  | Reading guide → collection description | the project's reading guide (README.md) as the description of the collection linked for the current semester (replaces "Edit collection descriptions"; built, 2026-11-16) |
   | Link outcomes | which sub-goals an evidence item counts for |
   | Reply to feedback | your reply under a coach's comment |
   | Ask for feedback | a feedback request on a version, to someone with access |
@@ -537,6 +537,17 @@ outcomes mirror are part of the Portflow feature, so they use it too.
 ### Phase 3: two-way
 
 - [ ] Collection description editable in Ledger, three-way merged, mentions ⇄ links.
+- [x] **The reading guide is the collection description** (2026-11-16): a write of its own, "Reading guide →
+      collection description" (`guide-description`), off by default and only with read and write on. Each round puts the
+      project's README.md, rendered to HTML, in the description of the collection linked for the semester that covers
+      today (else the latest that has started, else the first to come) with `PUT portfolios/{p}/collections/{c}`
+      `{"description": html}`; Ledger's text wins, an empty guide never empties a description, and what was sent is
+      remembered in memory so an unchanged guide isn't sent every round. Saving the guide starts a round. Not three-way
+      merged and no mentions: an edit made in Portflow is overwritten by the guide. A machine that had "Edit collection
+      descriptions" on starts with this write off. With the write off the guide is edited in Ledger as always.
+- [ ] **Hand the reading guide in as evidence** by itself: needs `POST …/collections/{c}/evidence` (and a free-text
+      version), whose body is still to be captured (phase 0). Until then "Hand in to Portflow…" on the Overview copies
+      the guide (HTML and markdown) and opens Portflow to add it there by hand.
 - [ ] Outcome links made in Ledger go to Portflow (and Portflow's come back), three-way like the description.
 - [ ] Reply to feedback from Ledger; ask for feedback on a version (pick from the people the evidence is shared with).
 - [ ] Feedback you got in person: post it to Portflow and ask the teacher to confirm it (comment validation); show

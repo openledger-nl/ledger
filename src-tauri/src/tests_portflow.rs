@@ -30,6 +30,8 @@ const ME: i64 = 7;
 #[derive(Default)]
 struct FakeWire {
     sent: Mutex<Vec<(String, String)>>,
+    /// The body of each request sent, in the same order.
+    bodies: Mutex<Vec<Option<serde_json::Value>>>,
     replies: Mutex<BTreeMap<String, Vec<Reply>>>,
 }
 
@@ -46,6 +48,7 @@ impl Wire for Arc<FakeWire> {
     fn send(&self, request: &Request) -> std::result::Result<Reply, String> {
         let page = request.query.iter().find(|(k, _)| k == "page").map(|(_, v)| v.clone());
         self.sent.lock().unwrap().push((request.method.to_string(), format!("{}{}", request.path, page.map(|p| format!("?page={p}")).unwrap_or_default())));
+        self.bodies.lock().unwrap().push(request.body.clone());
         let mut replies = self.replies.lock().unwrap();
         let queue = replies.get_mut(&request.path);
         match queue {
@@ -113,7 +116,7 @@ fn writes_go_through_only_when_their_kind_is_on() {
     assert!(some.send(&post("/direct-uploads")).is_ok());
     assert!(matches!(some.send(&post(&format!("/portfolios/{P}/comments/3/children"))), Err(PortflowError::NotAllowed(_))));
     // A write this version doesn't know is never allowed, whatever is on.
-    let all = client(&wire, gate(true, true, &["upload-versions", "create-evidence", "edit-descriptions", "link-outcomes", "reply-feedback", "ask-feedback", "confirm-feedback"]));
+    let all = client(&wire, gate(true, true, &["upload-versions", "create-evidence", "guide-description", "link-outcomes", "reply-feedback", "ask-feedback", "confirm-feedback"]));
     assert!(matches!(all.send(&post("/something-new")), Err(PortflowError::NotAllowed(_))));
 }
 
@@ -164,6 +167,8 @@ struct World {
 struct FakePortflow {
     world: Mutex<World>,
     calls: AtomicUsize,
+    /// Every collection description written: (collection, HTML).
+    descriptions: Mutex<Vec<(i64, String)>>,
 }
 
 fn person(id: i64, name: &str, role: &str) -> Person {
@@ -255,7 +260,7 @@ impl FakePortflow {
             comments: BTreeMap::from([(700, vec![comment(9001, None, teacher.clone(), "<p>Good start, add <strong>risks</strong>.</p>", 2, 1)])]),
             children: BTreeMap::from([(9001, vec![comment(9002, Some(9001), person(ME, "Me Student", "student"), "<p>Done!</p>", 2, 0)])]),
         };
-        FakePortflow { world: Mutex::new(world), calls: AtomicUsize::new(0) }
+        FakePortflow { world: Mutex::new(world), calls: AtomicUsize::new(0), descriptions: Mutex::new(vec![]) }
     }
 
     fn call(&self) {
@@ -327,6 +332,14 @@ impl Portflow for FakePortflow {
     fn comment_children(&self, _: i64, c: i64) -> PResult<Vec<Comment>> {
         self.call();
         Ok(self.world.lock().unwrap().children.get(&c).cloned().unwrap_or_default())
+    }
+    fn set_collection_description(&self, _: i64, c: i64, html: &str) -> PResult<Option<String>> {
+        self.call();
+        self.descriptions.lock().unwrap().push((c, html.to_string()));
+        if let Some(found) = self.world.lock().unwrap().collections.iter_mut().find(|x| x.id == c) {
+            found.description = Some(html.to_string());
+        }
+        Ok(Some(html.to_string()))
     }
 }
 
@@ -1012,4 +1025,115 @@ fn a_level_only_goal_is_aimed_for_by_its_nickname() {
     let ps = &view.skills[0];
     assert_eq!((ps.key.as_str(), ps.target, ps.reached), ("PS", Some(2), false));
     assert_eq!((view.targets_reached, view.targets_total), (0, 1));
+}
+
+// ---- the reading guide in the collection's description -------------------------------------------------------
+
+fn guide_on(m: &Machine, write: bool, kinds: &[&str]) {
+    config::update_settings(m.root(), |s| {
+        s.access.write = write;
+        s.access.writes = kinds.iter().map(|k| k.to_string()).collect();
+    })
+    .unwrap();
+}
+
+#[test]
+fn the_reading_guide_goes_to_portflow_only_when_its_write_is_on() {
+    let m = Machine::new();
+    m.switch(true);
+    let semester = m.linked();
+    m.edit(|c| projects::save_readme(c, "speed-edit", "# Reading guide\n\nStart with the **project plan**.").unwrap());
+    let fake = FakePortflow::new();
+
+    // Off by default: read only, and the write's own switch off.
+    assert!(!m.settings().access.allows(config::GUIDE_WRITE));
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(report.guides_written, 0);
+    assert!(fake.descriptions.lock().unwrap().is_empty());
+    // Read and write on, but not this write: still nothing.
+    guide_on(&m, true, &["upload-versions"]);
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert!(fake.descriptions.lock().unwrap().is_empty());
+    // The switch on without read and write: nothing either.
+    guide_on(&m, false, &[config::GUIDE_WRITE]);
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert!(fake.descriptions.lock().unwrap().is_empty());
+
+    // On: Ledger's guide replaces the description, and the mirror shows it.
+    guide_on(&m, true, &[config::GUIDE_WRITE]);
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(report.guides_written, 1);
+    let sent = fake.descriptions.lock().unwrap().clone();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].0, 500);
+    assert!(sent[0].1.contains("<strong>project plan</strong>"), "{}", sent[0].1);
+    let mirrored = fs::read_to_string(m.root().join(format!("projects/speed-edit/portflow/{semester}.md"))).unwrap();
+    assert!(mirrored.contains("project plan"), "{mirrored}");
+
+    // Unchanged: not sent again.
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(fake.descriptions.lock().unwrap().len(), 1);
+    // Changed in Ledger: sent again.
+    m.edit(|c| projects::save_readme(c, "speed-edit", "# Reading guide\n\nStart with the research.").unwrap());
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(fake.descriptions.lock().unwrap().len(), 2);
+    // Changed in Portflow: Ledger's text wins.
+    fake.world.lock().unwrap().collections[0].description = Some("<p>Edited in Portflow.</p>".into());
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(fake.descriptions.lock().unwrap().len(), 3);
+    assert!(fake.descriptions.lock().unwrap()[2].1.contains("research"));
+    // An empty guide never empties the description.
+    m.edit(|c| projects::save_readme(c, "speed-edit", "  ").unwrap());
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(fake.descriptions.lock().unwrap().len(), 3);
+}
+
+#[test]
+fn the_guide_write_is_a_put_on_the_collection_and_the_gate_holds_it_back() {
+    let wire = Arc::new(FakeWire::default());
+    let path = format!("/portfolios/{P}/collections/500");
+    wire.reply(&path, 200, r#"{"id": 500, "description": "<p>Kept.</p>"}"#);
+    let read_only = client(&wire, gate(true, false, &[config::GUIDE_WRITE]));
+    assert!(matches!(read_only.set_collection_description(P, 500, "<p>Guide</p>"), Err(PortflowError::NotAllowed(_))));
+    let other = client(&wire, gate(true, true, &["upload-versions"]));
+    assert!(matches!(other.set_collection_description(P, 500, "<p>Guide</p>"), Err(PortflowError::NotAllowed(_))));
+    assert!(wire.sent().is_empty(), "nothing reached Portflow: {:?}", wire.sent());
+
+    let on = client(&wire, gate(true, true, &[config::GUIDE_WRITE]));
+    assert_eq!(on.set_collection_description(P, 500, "<p>Guide</p>").unwrap().as_deref(), Some("<p>Kept.</p>"));
+    assert_eq!(wire.sent(), vec![("PUT".to_string(), path)]);
+    assert_eq!(wire.bodies.lock().unwrap()[0], Some(serde_json::json!({ "description": "<p>Guide</p>" })));
+}
+
+#[test]
+fn the_guide_goes_to_the_collection_of_the_current_semester() {
+    let m = Machine::new();
+    m.switch(true);
+    m.edit(|c| {
+        projects::create(c, "Speed edit").unwrap();
+        let mut ids = vec![];
+        for (name, start, end) in [("Spring 26", "2026-02-01", "2026-07-15"), ("Fall 26", "2026-09-01", "2027-01-31"), ("Spring 27", "2027-02-01", "2027-07-15")] {
+            let s = semesters::create(c, &SemesterDraft { name: name.into(), start: start.into(), end: end.into(), sprint_weeks: 3, notes: String::new(), sprints: vec![], vacations: vec![] }).unwrap();
+            ids.push(s.id);
+        }
+        store::link_collection(c, "speed-edit", &ids[0], Some(400)).unwrap();
+        store::link_collection(c, "speed-edit", &ids[1], Some(500)).unwrap();
+        store::link_collection(c, "speed-edit", &ids[2], Some(600)).unwrap();
+    });
+    let target = |today: &str| m.read(|c| store::guide_targets(c, today)).unwrap().into_iter().map(|g| g.collection).collect::<Vec<_>>();
+    assert_eq!(target("2026-11-16"), vec![500], "the semester that covers today");
+    assert_eq!(target("2026-03-10"), vec![400]);
+    assert_eq!(target("2026-08-10"), vec![400], "between semesters: the one that ended last");
+    assert_eq!(target("2025-12-01"), vec![400], "before any: the first to come");
+}
+
+#[test]
+fn a_machine_that_had_edit_descriptions_on_starts_with_the_guide_write_off() {
+    let m = Machine::new();
+    fs::create_dir_all(m.root().join(".ledger")).unwrap();
+    fs::write(m.root().join(".ledger/portflow.json"), r#"{"enabled": true, "access": {"write": true, "writes": ["edit-descriptions", "upload-versions"]}}"#).unwrap();
+    let settings = m.settings();
+    assert!(settings.access.allows("upload-versions"));
+    assert!(!settings.access.allows(config::GUIDE_WRITE));
+    assert!(!settings.access.writes.contains("edit-descriptions"));
 }

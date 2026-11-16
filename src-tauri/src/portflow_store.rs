@@ -195,6 +195,62 @@ pub fn collection_links(conn: &Connection) -> Result<Vec<CollectionLink>> {
     })
 }
 
+/// Where a project's reading guide goes in Portflow: the collection linked to the project for the semester that covers
+/// today, or else for the latest semester that has started, or else for the first one still to come. One per project;
+/// a past semester's collection keeps the description it was handed in with.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuideTarget {
+    pub project: String,
+    pub collection: i64,
+    /// The guide, as markdown (the project's README.md).
+    pub readme: String,
+}
+
+pub fn guide_targets(conn: &Connection, today: &str) -> Result<Vec<GuideTarget>> {
+    type Row = (String, i64, String, String, String);
+    let rows: Vec<Row> = query_all(
+        conn,
+        "SELECT l.project_slug, l.collection_id, p.readme, COALESCE(s.start_date, ''), COALESCE(s.end_date, '')
+         FROM project_collections l JOIN projects p ON p.slug = l.project_slug LEFT JOIN semesters s ON s.id = l.semester_id",
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+    )?;
+    // Lower ranks first: covering today (latest start first), started (latest first), to come (soonest first).
+    let rank = |start: &str, end: &str| -> (u8, String) {
+        if start <= today && today <= end {
+            (0, invert(start))
+        } else if start <= today {
+            (1, invert(start))
+        } else {
+            (2, start.to_string())
+        }
+    };
+    let mut best: BTreeMap<String, ((u8, String), GuideTarget)> = BTreeMap::new();
+    for (project, collection, readme, start, end) in rows {
+        let key = rank(&start, &end);
+        if best.get(&project).is_some_and(|(k, _)| *k <= key) {
+            continue;
+        }
+        best.insert(project.clone(), (key, GuideTarget { project, collection, readme }));
+    }
+    Ok(best.into_values().map(|(_, target)| target).collect())
+}
+
+/// A day ("2026-09-01") turned so that later days sort first.
+fn invert(day: &str) -> String {
+    day.chars().map(|c| c.to_digit(10).map_or(c, |d| char::from_digit(9 - d, 10).unwrap_or(c))).collect()
+}
+
+/// What Ledger last wrote to this collection's description, and what Portflow had right after: `(sent, seen)`.
+pub fn guide_written(conn: &Connection, collection: i64) -> Result<Option<(String, String)>> {
+    query_opt(conn, "SELECT sent, seen FROM portflow_guide_writes WHERE collection_id = ?1", [collection], |r| Ok((r.get(0)?, r.get(1)?)))
+}
+
+pub fn record_guide_written(conn: &Connection, collection: i64, sent: &str, seen: &str) -> Result<()> {
+    conn.execute("INSERT OR REPLACE INTO portflow_guide_writes (collection_id, sent, seen) VALUES (?1, ?2, ?3)", params![collection, sent, seen])?;
+    Ok(())
+}
+
 /// Links a project to a collection for one semester, or (no collection) unlinks it. One collection per project per
 /// semester, and a collection belongs to one project.
 pub fn link_collection(conn: &Connection, project: &str, semester: &str, collection: Option<i64>) -> Result<()> {

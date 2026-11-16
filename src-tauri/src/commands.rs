@@ -90,8 +90,11 @@ pub fn get_project(app: State<App>, slug: String) -> Result<ProjectView> {
 }
 
 #[tauri::command]
-pub fn save_readme(app: State<App>, slug: String, text: String) -> Result<ProjectView> {
-    app.mutate(|c, _| projects::save_readme(c, &slug, &text))
+pub fn save_readme(app: State<App>, syncer: State<crate::portflow::PortflowSyncer>, slug: String, text: String) -> Result<ProjectView> {
+    let saved = app.mutate(|c, _| projects::save_readme(c, &slug, &text))?;
+    // A guide that goes to Portflow (that write switched on) follows the save; editing never waits for Portflow.
+    crate::portflow::guide_saved(&app, &syncer);
+    Ok(saved)
 }
 
 /// What a post is (a thought, devlog, research or reflection) and how sure you are of it.

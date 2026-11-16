@@ -351,7 +351,7 @@ pub fn write_kind(request: &Request) -> Option<&'static str> {
     } else if path.contains("/comments") {
         "reply-feedback"
     } else if path.contains("/collections/") {
-        "edit-descriptions"
+        crate::portflow_config::GUIDE_WRITE
     } else {
         // A write this version doesn't know: never allowed.
         "unknown"
@@ -487,6 +487,12 @@ pub trait Portflow: Send + Sync {
     fn version(&self, portfolio: i64, version: i64) -> PResult<Version>;
     fn evidence_comments(&self, portfolio: i64, evidence: i64) -> PResult<Vec<Comment>>;
     fn comment_children(&self, portfolio: i64, comment: i64) -> PResult<Vec<Comment>>;
+
+    /// Writes a collection's description (HTML) and answers with the description Portflow now has, when it says.
+    /// A write ("guide-description"): refused by the gate unless read and write and that switch are on.
+    fn set_collection_description(&self, _portfolio: i64, _collection: i64, _html: &str) -> PResult<Option<String>> {
+        Err(PortflowError::NotAllowed("This Portflow client can't write collection descriptions.".into()))
+    }
 }
 
 pub type Sleeper = Arc<dyn Fn(Duration) + Send + Sync>;
@@ -656,6 +662,14 @@ impl<W: Wire> Portflow for HttpPortflow<W> {
 
     fn evidence_comments(&self, p: i64, e: i64) -> PResult<Vec<Comment>> {
         self.get_all(format!("/portfolios/{p}/evidence/{e}/comments"), "comments")
+    }
+
+    fn set_collection_description(&self, p: i64, c: i64, html: &str) -> PResult<Option<String>> {
+        // `PUT …/collections/{c}` is the write the Portflow web app makes for a description (see
+        // plans/portflow-integration.md). Rails wraps a bare `description` into `collection` itself.
+        let request = Request { method: "PUT", path: format!("/portfolios/{p}/collections/{c}"), query: vec![], body: Some(serde_json::json!({ "description": html })) };
+        let answer = self.send(&request)?;
+        Ok(answer["description"].as_str().map(str::to_string))
     }
 
     fn comment_children(&self, p: i64, c: i64) -> PResult<Vec<Comment>> {

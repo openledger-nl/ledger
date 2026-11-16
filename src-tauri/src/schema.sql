@@ -455,6 +455,15 @@ CREATE TABLE portflow_people (
     position   INTEGER NOT NULL DEFAULT 0
 );
 
+-- The reading guide Ledger last wrote to a collection's description (`sent`, HTML) and the description Portflow had
+-- right after (`seen`), so an unchanged guide isn't sent again every round. Bookkeeping only: not in the vault; after
+-- a restart the next round compares the guide with the description instead.
+CREATE TABLE portflow_guide_writes (
+    collection_id INTEGER PRIMARY KEY,
+    sent          TEXT NOT NULL,
+    seen          TEXT NOT NULL
+);
+
 -- A linked collection as Portflow last showed it (projects/<p>/portflow/<semester-id>.md).
 CREATE TABLE collection_mirrors (
     project_slug  TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,

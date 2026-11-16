@@ -1,5 +1,6 @@
-//! One Portflow round: read what Portflow has and bring the vault in step with it. Pull only: nothing is sent to
-//! Portflow but reads (the access gate in `portflow_api.rs` would refuse anything else anyway).
+//! One Portflow round: read what Portflow has and bring the vault in step with it. Pull only, but for one write the
+//! person can switch on: a project's reading guide goes to the description of the collection it is linked to for the
+//! current semester (see [`write_guide`]). Every other write would be refused by the access gate in `portflow_api.rs`.
 //!
 //! A round reads, in this order: who is signed in; the learning outcomes with their sub-goals and goal sets; the people
 //! the portfolio is shared with; the sections (linked to semesters) and collections; and for every collection linked to a project, its
@@ -79,6 +80,8 @@ pub struct Report {
     pub unplaced: usize,
     /// Files in the vault this round wrote or removed.
     pub files_touched: usize,
+    /// Reading guides written to a collection's description this round.
+    pub guides_written: usize,
     /// Things a person should know, such as a linked collection that is gone.
     pub notes: Vec<String>,
 }
@@ -98,6 +101,9 @@ impl Report {
         }
         if self.unplaced > 0 {
             parts.push(format!("{} evidence item{} to put in a thread", self.unplaced, if self.unplaced == 1 { "" } else { "s" }));
+        }
+        if self.guides_written > 0 {
+            parts.push(format!("{} reading guide{} written to Portflow", self.guides_written, if self.guides_written == 1 { "" } else { "s" }));
         }
         if parts.is_empty() {
             parts.push("Up to date".into());
@@ -157,18 +163,30 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
     let sections: HashMap<i64, String> = section_list.into_iter().map(|s| (s.id, s.name)).collect();
     let collections: HashMap<i64, crate::portflow_api::Collection> = portflow.collections(p)?.into_iter().map(|c| (c.id, c)).collect();
     let mut links = vec![];
+    // Where each reading guide goes, when that write is on; empty (and nothing is written) when it is off.
+    let guide_on = settings.access.allows(crate::portflow_config::GUIDE_WRITE);
+    let mut guides: HashMap<i64, store::GuideTarget> = HashMap::new();
+    let today = crate::ids::now().chars().take(10).collect::<String>();
     ledger
         .read(&mut |conn| {
             links = store::collection_links(conn)?;
+            if guide_on {
+                guides = store::guide_targets(conn, &today)?.into_iter().map(|g| (g.collection, g)).collect();
+            }
             Ok(())
         })
         .map_err(ledger_err)?;
 
     for link in &links {
-        let Some(collection) = collections.get(&link.collection) else {
+        let Some(found) = collections.get(&link.collection) else {
             report.notes.push(format!("The collection linked to {} for {} isn't in your portfolio any more.", link.project, link.semester));
             continue;
         };
+        let mut collection = found.clone();
+        if let Some(guide) = guides.get(&link.collection).filter(|g| g.project == link.project) {
+            write_guide(portflow, ledger, p, guide, &mut collection, &mut report)?;
+        }
+        let collection = &collection;
         report.collections += 1;
         let goals = portflow.collection_goals(p, link.collection)?;
         let section = collection.section_id.and_then(|s| sections.get(&s)).cloned().unwrap_or_default();
@@ -180,6 +198,46 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
         }
     }
     Ok(report)
+}
+
+/// Puts the project's reading guide in the collection's description, when it says something the description doesn't:
+/// Ledger's text wins. An empty guide never empties a description. What was sent is remembered, so a guide Portflow
+/// stores in its own way isn't sent again every round. A refused or failed write is a note, not the end of the round.
+fn write_guide(portflow: &dyn Portflow, ledger: &dyn Ledger, p: i64, guide: &store::GuideTarget, collection: &mut crate::portflow_api::Collection, report: &mut Report) -> PResult<()> {
+    if guide.readme.trim().is_empty() {
+        return Ok(());
+    }
+    let html = crate::markdown::render(&guide.readme);
+    let current = collection.description.clone().unwrap_or_default();
+    let mut written = None;
+    ledger
+        .read(&mut |conn| {
+            written = store::guide_written(conn, collection.id)?;
+            Ok(())
+        })
+        .map_err(ledger_err)?;
+    let unchanged = written.as_ref().is_some_and(|(sent, seen)| *sent == html && *seen == current) || same_text(&html, &current);
+    if unchanged {
+        return Ok(());
+    }
+    match portflow.set_collection_description(p, collection.id, &html) {
+        Ok(answer) => {
+            let seen = answer.unwrap_or_else(|| html.clone());
+            ledger.write(&mut |conn, _| store::record_guide_written(conn, collection.id, &html, &seen)).map_err(ledger_err)?;
+            collection.description = Some(seen);
+            report.guides_written += 1;
+            crate::applog::info("portflow", &format!("Wrote the reading guide of {} to the description of “{}”", guide.project, collection.name));
+        }
+        Err(PortflowError::SignedOut) => return Err(PortflowError::SignedOut),
+        Err(e) => report.notes.push(format!("The reading guide of {} didn't go to “{}”: {e}", guide.project, collection.name)),
+    }
+    Ok(())
+}
+
+/// Whether two bits of HTML hold the same markup once runs of white space are one space.
+fn same_text(a: &str, b: &str) -> bool {
+    let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ").replace("> <", "><");
+    squash(a) == squash(b)
 }
 
 fn pull_evidence(
