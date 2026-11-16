@@ -370,6 +370,40 @@ pub fn upload_files(app: State<App>, project: String, thread: String, paths: Vec
     app.mutate(|c, root| uploads::add_files(c, root, &project, &thread, &sources, &description))
 }
 
+/// A file dropped on the window: its bytes come as the request's raw body (no JSON, so a large file stays cheap), and
+/// where it goes in the headers `project`, `thread` and `name` (percent-encoded, as headers carry only ASCII).
+#[tauri::command]
+pub fn upload_dropped(app: State<App>, request: tauri::ipc::Request<'_>) -> Result<UploadView> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(Error::invalid("The file didn't arrive: send its bytes as the request body"));
+    };
+    let header = |key: &str| -> Result<String> {
+        let raw = request.headers().get(key).and_then(|v| v.to_str().ok()).ok_or_else(|| Error::invalid(format!("Missing `{key}`")))?;
+        percent_decode(raw).ok_or_else(|| Error::invalid(format!("`{key}` is not percent-encoded UTF-8")))
+    };
+    let (project, thread, name) = (header("project")?, header("thread")?, header("name")?);
+    app.mutate(|c, root| uploads::add_bytes(c, root, &project, &thread, &name, bytes, ""))
+}
+
+/// Undoes `encodeURIComponent`: `%XX` escapes to bytes, read as UTF-8; `None` for a broken escape or text.
+fn percent_decode(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = s.get(i + 1..i + 3)?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+
 /// Every file uploaded in the project, from all its threads (the project's Attachments tab).
 #[tauri::command]
 pub fn list_project_uploads(app: State<App>, project: String) -> Result<Vec<UploadView>> {
@@ -962,4 +996,18 @@ pub fn attach_screenshot(app: AppHandle, project: String, thread: String, descri
 #[tauri::command]
 pub fn discard_screenshot(app: AppHandle) {
     screenshot::discard_pending(&app);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::percent_decode;
+
+    #[test]
+    fn percent_decoding_undoes_encode_uri_component() {
+        assert_eq!(percent_decode("Sch%C3%A9ma%20v2.png").as_deref(), Some("Schéma v2.png"));
+        assert_eq!(percent_decode("plain-name.pdf").as_deref(), Some("plain-name.pdf"));
+        assert_eq!(percent_decode("bad%2"), None);
+        assert_eq!(percent_decode("bad%zz"), None);
+        assert_eq!(percent_decode("%FF"), None);
+    }
 }

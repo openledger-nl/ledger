@@ -70,6 +70,22 @@ async function call<T>(command: string, args?: Record<string, unknown>, log = tr
 	}
 }
 
+/** Like `call`, for a command that takes bytes: `body` is sent as is, and `headers` (percent-encoded, as headers carry
+ *  only ASCII) say what they are. */
+async function callRaw<T>(command: string, body: Uint8Array, headers: Record<string, string>): Promise<T> {
+	if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+		throw new Error('Ledger needs its desktop shell — start it with `pnpm run tauri dev`.');
+	}
+	const encoded = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, encodeURIComponent(v)]));
+	try {
+		return await invoke<T>(command, body, { headers: encoded });
+	} catch (e) {
+		const message = typeof e === 'string' ? e : e instanceof Error ? e.message : String(e);
+		logError(command, message);
+		throw new Error(message);
+	}
+}
+
 export const api = {
 	renderMarkdown: (body: string) => call<string>('render_markdown', { body }),
 	/** What a [[link]] in this project's markdown can point at: its threads, deliverables and feedback. */
@@ -179,6 +195,9 @@ export const api = {
 	// uploads and project files
 	uploadFiles: (project: string, thread: string, paths: string[], description: string) =>
 		call<Upload[]>('upload_files', { project, thread, paths, description }),
+	/** A file dropped on the window, saved in the thread: its bytes go as the raw request body, the rest in headers. */
+	uploadDropped: async (project: string, thread: string, file: File) =>
+		callRaw<Upload>('upload_dropped', new Uint8Array(await file.arrayBuffer()), { project, thread, name: file.name }),
 	/** Every file uploaded in the project, from all its threads, newest first. */
 	listProjectUploads: (project: string) => call<Upload[]>('list_project_uploads', { project }),
 	updateUpload: (project: string, thread: string, id: string, description: string) =>

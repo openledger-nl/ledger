@@ -222,6 +222,7 @@ pub fn run() {
             commands::update_feedback,
             commands::delete_feedback,
             commands::upload_files,
+            commands::upload_dropped,
             commands::list_project_uploads,
             commands::update_upload,
             commands::delete_upload,

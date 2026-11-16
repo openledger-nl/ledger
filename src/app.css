@@ -1257,3 +1257,19 @@ button.pt-label { padding: 3px 9px; }
 .fb-when-input { display: flex; gap: 6px; align-items: center; }
 .fb-when-input .date-input { flex: 1; min-width: 140px; }
 .dn-goto { width: 170px; }
+
+/* ---------- files dragged onto the window (FileDrop.svelte) ---------- */
+/* Passes the pointer through, so the drag keeps reaching the window underneath. */
+.file-drop {
+	position: fixed; inset: 0; z-index: 90; pointer-events: none; display: flex; align-items: center; justify-content: center;
+	background: var(--scrim-faint); padding: 16px;
+}
+.file-drop::before { content: ''; position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 16px; }
+.file-drop-card {
+	position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+	padding: 22px 28px; max-width: 420px; border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow-toast);
+}
+.file-drop-card svg { color: var(--accent); }
+.file-drop-list { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+.file-drop-list li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.file-drop-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }

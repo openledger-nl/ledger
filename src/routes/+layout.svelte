@@ -7,6 +7,7 @@
 	import CaptureBar from '$lib/components/CaptureBar.svelte';
 	import Dialogs from '$lib/components/Dialogs.svelte';
 	import ScreenshotModal from '$lib/components/ScreenshotModal.svelte';
+	import FileDrop from '$lib/components/FileDrop.svelte';
 	import ProjectDialogs from '$lib/components/ProjectDialogs.svelte';
 	import Rail from '$lib/components/Rail.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
@@ -67,6 +68,7 @@
 	</div>
 
 	<ScreenshotModal projects={data.projects} />
+	<FileDrop projects={data.projects} />
 	<UpdateNotice />
 	<ProjectDialogs />
 	<Dialogs />
