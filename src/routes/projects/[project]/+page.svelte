@@ -20,8 +20,10 @@
 	// The guide is the project's README.md: pictures in it are looked for from the project's folder.
 	const images = $derived({ project: project.slug, dir: '' });
 
-	// A project linked to a Portflow collection is part of a portfolio, and there the reading guide is what an assessor
-	// reads first: it comes first on the overview, says where it goes, and can be handed in.
+	// A study project linked to a Portflow collection is part of a portfolio, and there the reading guide is what an
+	// assessor reads first: it is the collection's description in Portflow (one text, two names), comes first on the
+	// overview, says how it is kept in step, and can be handed in. A hobby or company project, linked or not, has none
+	// of that: the backend gives it no guide collection.
 	let linked = $state<ProjectPortflowData | null>(null);
 	$effect(() => {
 		const slug = project.slug;
@@ -33,7 +35,7 @@
 		}
 		let stale = false;
 		portflowApi.project(slug).then(
-			(d) => !stale && (linked = d.collections.length ? d : null),
+			(d) => !stale && (linked = d.guideCollection !== null ? d : null),
 			() => !stale && (linked = null)
 		);
 		return () => (stale = true);
@@ -89,7 +91,8 @@
 				<h2>Reading guide</h2>
 				<div class="sub">
 					{#if linked}
-						README.md — the first thing an assessor reads in your portfolio: where to start, what matters, how this project works.
+						README.md · the description of <strong>“{target?.name || 'your collection'}”</strong> in Portflow: the first thing an assessor reads in
+						your portfolio.
 					{:else}
 						README.md — where to start, what matters, how this project works.
 					{/if}
@@ -106,11 +109,11 @@
 		</div>
 		{#if linked}
 			<p class="hint guide-where">
-				{#if linked.guideWrite && target}
-					Saved here and written to the description of <strong>{target.name || 'the linked collection'}</strong> in Portflow with the next sync; Ledger’s
-					text wins.
+				{#if linked.guideWrite}
+					One text in both places: a change in Portflow comes in with the next sync, and what you write here goes back to Portflow; when both changed,
+					Ledger’s text wins.
 				{:else}
-					Kept in Ledger. To put it in the description of {target?.name ? `“${target.name}”` : 'the linked collection'}, switch on
+					A change in Portflow comes in with the next sync. What you write here stays in Ledger: to send it back, switch on
 					<a href="/settings/sync#portflow">Reading guide → collection description</a> under Settings → Portflow (off by default).
 				{/if}
 			</p>
