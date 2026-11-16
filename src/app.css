@@ -888,10 +888,12 @@ details.more p { margin: 0; }
 .mmm-site:hover { text-decoration: underline; }
 .mmm .mmm-tag { font-weight: 400; color: var(--muted); }
 
-/* Where the window is too narrow to hold it beside the page, it is a drawer over it. */
+/* Where the window is too narrow to hold it beside the page, it is a drawer over it: over the part of the page beside the
+   rail (below its header), so the drawer and the rail make one column and the header stays as it is. */
+*:has(> .side-rail) { position: relative; }
 @media (max-width: 1199px) {
-	.side-window { position: fixed; z-index: 40; top: 0; right: 44px; bottom: 0; width: min(420px, calc(100vw - 60px)); box-shadow: var(--shadow-drawer); }
-	.side-scrim.open { display: block; position: fixed; inset: 0; z-index: 35; background: var(--scrim-faint); }
+	.side-window { position: absolute; z-index: 40; top: 0; right: 44px; bottom: 0; width: min(420px, calc(100% - 60px)); box-shadow: var(--shadow-drawer); clip-path: inset(0 0 0 -60px); /* its shadow falls on the page, not the header */ }
+	.side-scrim.open { display: block; position: absolute; inset: 0; z-index: 35; background: var(--scrim-faint); }
 	/* The rail stays in reach above the scrim, to switch section or close. */
 	.side-rail { position: relative; z-index: 41; }
 }
