@@ -75,10 +75,28 @@
 	/** Where the box is drawn: in the bar when there is room, otherwise over it, opened from the icon. */
 	const compact = $derived(layout.width !== 'full');
 
-	// An open search shows its words in the box, so refining it is one edit away.
+	// An open search shows its words in the box, so refining it is one edit away; not while typing, when the box is
+	// ahead of the address.
 	$effect(() => {
-		if (page.url.pathname === '/search') query = page.url.searchParams.get('q') ?? '';
+		const q = page.url.searchParams.get('q') ?? '';
+		if (page.url.pathname === '/search' && document.activeElement !== box) query = q;
 	});
+
+	// Search runs as you type: a moment after the last key, the results page follows the box. The first search from
+	// another page is a step of its own (Back returns there); refining it replaces the step.
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	function search(now = false) {
+		clearTimeout(timer);
+		const run = () => {
+			const q = query.trim();
+			const onSearch = page.url.pathname === '/search';
+			if (!q && !onSearch) return;
+			if (onSearch && (page.url.searchParams.get('q') ?? '') === q) return;
+			goto(q ? `/search?q=${encodeURIComponent(q)}` : '/search', { replaceState: onSearch, keepFocus: true, noScroll: true });
+		};
+		if (now) run();
+		else timer = setTimeout(run, 150);
+	}
 
 	async function openSearch() {
 		if (compact) layout.searchOpen = true;
@@ -93,11 +111,7 @@
 
 	function submit(e: SubmitEvent) {
 		e.preventDefault();
-		const q = query.trim();
-		if (!q) return;
-		closeSearch();
-		box?.blur();
-		goto(`/search?q=${encodeURIComponent(q)}`);
+		search(true);
 	}
 
 	function onKey(e: KeyboardEvent) {
@@ -143,6 +157,7 @@
 				<input
 					bind:this={box}
 					bind:value={query}
+					oninput={() => search()}
 					type="search"
 					placeholder="Search everything"
 					aria-label="Search everything"

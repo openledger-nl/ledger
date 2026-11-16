@@ -26,7 +26,7 @@
 				{#if data.q}
 					{plural(data.hits.length, 'result')} for “{data.q}”
 				{:else}
-					Type in the search box on the left.
+					Type in the search box at the top: results show as you type.
 				{/if}
 			</div>
 		</div>
