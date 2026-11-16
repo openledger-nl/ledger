@@ -100,7 +100,7 @@
 				{#each prompt.deliverables as d (d.path)}
 					<span class="chip" class:plain={!d.exists}>
 						{#if d.exists}
-							<a href={deliverableUrl(project, d.path)} style="color:inherit;text-decoration:none">{baseName(d.path)}</a>
+							<a href={deliverableUrl(project, d.path, thread)} style="color:inherit;text-decoration:none">{baseName(d.path)}</a>
 						{:else}
 							<span title="This file is no longer in the project">{baseName(d.path)} (missing)</span>
 						{/if}

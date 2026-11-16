@@ -24,7 +24,7 @@
 	<div class="chips">
 		{#each v.files as f (f.name)}
 			{#if f.path}
-				<a class="chip" href={deliverableUrl(evidence.project, f.path)} title="In Ledger">{fileName(f.path)}</a>
+				<a class="chip" href={deliverableUrl(evidence.project, f.path, evidence.thread ?? undefined)} title="In Ledger">{fileName(f.path)}</a>
 			{:else}
 				<button class="chip plain" title="Uploaded in Portflow: opens there" onclick={() => open_(v.number)}>
 					{f.name}<ExternalLink size={11} />
@@ -36,7 +36,7 @@
 
 <div class="card evidence-card">
 	{#if live}
-		<a class="ev-name" href={deliverableUrl(evidence.project, live)} title="Open the deliverable">{evidence.name}</a>
+		<a class="ev-name" href={deliverableUrl(evidence.project, live, evidence.thread ?? undefined)} title="Open the deliverable">{evidence.name}</a>
 	{:else}
 		<strong class="ev-name">{evidence.name}</strong>
 	{/if}
@@ -53,7 +53,7 @@
 		{@render files(latest)}
 	{:else if evidence.files.length}
 		<div class="chips">
-			{#each evidence.files as f (f.path)}<a class="chip" href={deliverableUrl(evidence.project, f.path)}>{f.name}</a>{/each}
+			{#each evidence.files as f (f.path)}<a class="chip" href={deliverableUrl(evidence.project, f.path, evidence.thread ?? undefined)}>{f.name}</a>{/each}
 		</div>
 	{/if}
 

@@ -6,8 +6,10 @@ import { projectDialogs } from './dialogs.svelte';
 
 export const projectUrl = (project: string) => `/projects/${project}`;
 export const threadUrl = (project: string, thread: string) => `/projects/${project}/threads/${thread}`;
-export const deliverableUrl = (project: string, path: string) =>
-	`/projects/${project}/deliverables/view?path=${encodeURIComponent(path)}`;
+/** A deliverable's page; with `thread`, opened from that thread: the top bar leads back to it, and new feedback and a
+ *  publish note go there. */
+export const deliverableUrl = (project: string, path: string, thread?: string) =>
+	`/projects/${project}/deliverables/view?path=${encodeURIComponent(path)}${thread ? `&thread=${encodeURIComponent(thread)}` : ''}`;
 
 /** Opens New project, which asks for the kind, the goal and the end first. */
 export function newProjectFlow() {

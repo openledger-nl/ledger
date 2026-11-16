@@ -135,8 +135,8 @@
 		{#if post.versionPublished && post.deliverablePath && post.deliverableVersion}
 			<!-- A version published: the deliverable as it is now, and as it was published. -->
 			<div class="view-buttons">
-				<a class="btn small" href={deliverableUrl(project, post.deliverablePath)}>View live</a>
-				<a class="btn small" href={deliverableUrl(project, snapshotPath(post.deliverablePath, post.deliverableVersion))}>
+				<a class="btn small" href={deliverableUrl(project, post.deliverablePath, thread)}>View live</a>
+				<a class="btn small" href={deliverableUrl(project, snapshotPath(post.deliverablePath, post.deliverableVersion), thread)}>
 					View version {post.deliverableVersion}
 				</a>
 			</div>

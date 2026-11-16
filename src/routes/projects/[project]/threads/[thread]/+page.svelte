@@ -352,7 +352,7 @@
 			<div class="side-body">
 				{#each evidence as item (item.slug)}<EvidenceCard evidence={item} />{/each}
 				{#each otherDeliverables as d (d.path)}
-					<a class="card side-deliverable" href={deliverableUrl(project, d.path)}>
+					<a class="card side-deliverable" href={deliverableUrl(project, d.path, slug)}>
 						<strong>{baseName(d.path)}</strong>
 						{#if d.latest}<span class="badge published">v{d.latest}</span>{:else}<span class="badge draft">not published</span>{/if}
 					</a>
