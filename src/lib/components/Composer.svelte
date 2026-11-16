@@ -78,9 +78,9 @@
 		</div>
 	{/if}
 	<div class="toolbar">
-		<button class="btn small chip-ai" onclick={onprompt} title="Ask for a deliverable">Prompt…</button>
-		<button class="btn small chip-own" onclick={onfeedback} title="Give feedback on a deliverable">Feedback…</button>
-		<button class="btn small" onclick={pickFiles} title="Attach files to this thread">Upload files…</button>
+		<button class="btn small chip-ai" onclick={onprompt} title="Ask for a deliverable, or for changes to one">Make deliverable</button>
+		<button class="btn small chip-own" onclick={onfeedback} title="Give feedback on a deliverable">Feedback</button>
+		<button class="btn small" onclick={pickFiles} title="Attach files to this thread">Upload files</button>
 		<span class="spacer-h"></span>
 		<div class="seg small" role="group" aria-label="Kind of post">
 			{#each POST_KINDS as k (k.kind)}

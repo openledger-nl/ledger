@@ -213,7 +213,7 @@
 
 <svelte:window {onkeydown} />
 
-<Modal title={prompt ? 'Edit prompt' : 'New prompt'} wide {onclose}>
+<Modal title={prompt ? 'Edit prompt' : 'Make deliverable'} wide {onclose}>
 	<p class="hint" style="margin:0">
 		A prompt asks for a deliverable. Whatever produces it — you, an assistant — lands the file in the project’s deliverables.
 		{#if !prompt}{naming ? 'Claude Code gives the prompt a name from what it asks.' : 'The prompt is called by the start of its text.'}{/if}
@@ -348,6 +348,6 @@
 		{#if !prompt && autoRun}<span class="hint">Claude Code starts on it as soon as it is created</span>{/if}
 		<span class="hint">Ctrl+Enter saves</span>
 		<button class="btn ghost" onclick={onclose}>Cancel</button>
-		<button class="btn primary" onclick={save} disabled={saving || empty || (!prompt && kind === 'existing' && !chosen)}>{prompt ? 'Save' : 'Create prompt'}</button>
+		<button class="btn primary" onclick={save} disabled={saving || empty || (!prompt && kind === 'existing' && !chosen)}>{prompt ? 'Save' : 'Make deliverable'}</button>
 	{/snippet}
 </Modal>

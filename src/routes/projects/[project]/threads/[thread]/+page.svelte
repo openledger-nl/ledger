@@ -325,7 +325,7 @@
 					<div class="empty-state">
 						<h1>Nothing here yet</h1>
 						<p>
-							Write your first note below. Every note is saved on its own with its time. Use <b>Prompt</b> to ask for a deliverable,
+							Write your first note below. Every note is saved on its own with its time. Use <b>Make deliverable</b> to ask for one,
 							<b>Feedback</b> to react to one, and <b>Upload</b> to add files.
 						</p>
 					</div>
