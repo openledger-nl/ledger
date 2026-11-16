@@ -248,6 +248,8 @@ a.tb-crumb:hover { color: var(--accent); }
 	background: var(--field); border: 1px solid var(--line); border-radius: 8px; color: var(--faint);
 }
 .tb-search:focus-within { border-color: var(--accent); }
+/* On a thread's page: search the whole vault instead of the thread. */
+.tb-search .tb-everywhere { padding: 2px 8px; font-size: 11.5px; white-space: nowrap; }
 .tb-search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 13px; padding: 0; }
 .tb-search input::-webkit-search-cancel-button { display: none; }
 .tb-search kbd { font: 500 11px var(--font-sans); color: var(--faint); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }

@@ -21,6 +21,7 @@
 	import { orderFlow } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { portflow } from '$lib/portflow.svelte';
+	import { matches, threadSearch } from '$lib/threadSearch.svelte';
 	import { attempt, confirmDialog, promptDialog, refresh } from '$lib/ui.svelte';
 	import type { Evidence, Feedback, Post, Prompt, Story, Upload } from '$lib/types';
 	import type { PageData } from './$types';
@@ -145,9 +146,20 @@
 		return entries;
 	});
 
+	/** What an entry says, to search it by (the top bar's box searches this thread, see threadSearch.svelte.ts). */
+	function textOf(e: Entry): string {
+		if (e.kind === 'post') return [e.post.body, ...(structure.answers.get(e.post.id) ?? []).map((a) => a.body)].join('\n');
+		if (e.kind === 'prompt') return [e.prompt.title, e.prompt.body, e.prompt.base, ...e.prompt.deliverables.map((d) => d.path)].join('\n');
+		if (e.kind === 'feedback')
+			return [e.feedback.body, e.feedback.from ?? '', e.feedback.quote ?? '', ...(feedbackReplies.get(e.feedback.id) ?? []).map((r) => r.body)].join('\n');
+		return [e.upload.name, e.upload.description].join('\n');
+	}
+	const searching = $derived(threadSearch.query.trim());
+	const found = $derived(searching ? chronological.filter((e) => matches(textOf(e), searching)) : chronological);
+
 	/** The same entries read the way Settings says (oldest or newest first), each day under its own heading. */
 	const flow = $derived.by(() => {
-		const entries = orderFlow(chronological, listOrder.order);
+		const entries = orderFlow(found, listOrder.order);
 		return entries.map((entry, i) => ({
 			entry,
 			day: dayKey(entry.at),
@@ -289,6 +301,13 @@
 	<div class="thread-main">
 		<div class="thread" bind:this={scroller}>
 			<div class="thread-inner">
+				{#if searching}
+					<div class="notice info thread-found">
+						<span>{found.length ? `${plural(found.length, 'item')} of ${chronological.length} in this thread hold “${searching}”` : `Nothing in this thread holds “${searching}”`}</span>
+						<a class="link accent" href="/search?q={encodeURIComponent(searching)}">Search everywhere</a>
+						<button class="link" onclick={() => (threadSearch.query = '')}>Show all</button>
+					</div>
+				{/if}
 				{#each flow as item (item.entry.key)}
 					{#if item.newDay}<div class="divider">{dayLabel(item.day)}</div>{/if}
 					{@const e = item.entry}
@@ -327,6 +346,9 @@
 						<UploadCard {project} thread={slug} upload={e.upload} />
 					{/if}
 				{:else}
+					{#if searching}
+						<!-- Said in the notice above. -->
+					{:else}
 					<div class="empty-state">
 						<h1>Nothing here yet</h1>
 						<p>
@@ -334,6 +356,7 @@
 							<b>Feedback</b> to react to one, and <b>Upload</b> to add files.
 						</p>
 					</div>
+					{/if}
 				{/each}
 			</div>
 		</div>
@@ -450,6 +473,12 @@
 		flex-direction: column;
 		min-height: 0;
 		overflow: hidden;
+	}
+	.thread-found {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px 14px;
 	}
 	.side-deliverable {
 		flex-direction: row;

@@ -19,6 +19,7 @@
 	import { layout, toggleSidebar } from '$lib/layout.svelte';
 	import { attempt } from '$lib/ui.svelte';
 	import { groups } from '$lib/components/settings/panels';
+	import { threadSearch } from '$lib/threadSearch.svelte';
 
 	interface Crumb {
 		label: string;
@@ -96,9 +97,26 @@
 
 	// Search runs as you type: a moment after the last key, the results page follows the box. The first search from
 	// another page is a step of its own (Back returns there); refining it replaces the step.
+	// On a thread's page the box looks in that thread (threadSearch.svelte.ts); Enter or "Everywhere" searches it all.
+	const inThread = $derived(!!page.params.thread);
+	$effect(() => {
+		void page.params.thread;
+		threadSearch.query = '';
+		if (page.url.pathname !== '/search') query = '';
+	});
+
+	// "Show all" on the thread page empties the search there: the box follows.
+	$effect(() => {
+		if (inThread && threadSearch.query === '') query = '';
+	});
+
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	function search(now = false) {
 		clearTimeout(timer);
+		if (inThread && !now) {
+			threadSearch.query = query;
+			return;
+		}
 		const run = () => {
 			const q = query.trim();
 			const onSearch = page.url.pathname === '/search';
@@ -171,13 +189,16 @@
 					bind:value={query}
 					oninput={() => search()}
 					type="search"
-					placeholder="Search everything"
-					aria-label="Search everything"
+					placeholder={inThread ? 'Search this thread' : 'Search everything'}
+					aria-label={inThread ? 'Search this thread' : 'Search everything'}
 					autocomplete="off"
 					spellcheck="false"
 					onkeydown={(e) => e.key === 'Escape' && (compact ? closeSearch() : box?.blur())}
 					onblur={() => compact && !query.trim() && closeSearch()}
 				/>
+				{#if inThread && query.trim()}
+					<button type="submit" class="btn small ghost tb-everywhere" title="Search the whole vault for this">Everywhere</button>
+				{/if}
 				{#if compact}
 					<button type="button" class="tb-icon" aria-label="Close search" onclick={closeSearch}><X size={16} /></button>
 				{:else}
