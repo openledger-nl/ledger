@@ -111,7 +111,7 @@
 		{#if !portflow.enabled}
 			<div class="empty-state">
 				<h1>Portflow is off</h1>
-				<p>Epsilon+ reads your learning outcomes from Portflow. Switch it on under <a href="/settings/sync">Settings → Sync &amp; external → Portflow</a>.</p>
+				<p>Epsilon+ reads your learning outcomes from Portflow. Switch it on under <a href="/settings/sync#portflow">Settings → Sync &amp; external → Portflow</a>.</p>
 			</div>
 		{:else if error}
 			<div class="notice bad">{error}</div>
