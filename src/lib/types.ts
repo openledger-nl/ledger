@@ -1089,6 +1089,13 @@ export interface EvidenceVersion {
 	portflowUrl: string | null;
 }
 
+/** An evidence description in the shape teachers expect: What? / Goal? / Why it contributes? (markdown each). */
+export interface EvidenceParts {
+	what: string;
+	goal: string;
+	why: string;
+}
+
 export interface Evidence {
 	project: string;
 	slug: string;
@@ -1097,6 +1104,9 @@ export interface Evidence {
 	threadTitle: string | null;
 	portflowId: number | null;
 	kind: string;
+	/** The description as Ledger keeps it (markdown), and its three parts when it has the shape teachers expect. */
+	description: string;
+	descriptionParts: EvidenceParts | null;
 	descriptionHtml: string;
 	files: { path: string; name: string; exists: boolean }[];
 	outcomes: OutcomeRef[];

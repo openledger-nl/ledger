@@ -8,6 +8,7 @@
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
 	import type { ProjectPortflow, ThreadSummary } from '$lib/types';
 	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
+	import EvidenceDescription from './EvidenceDescription.svelte';
 
 	let { project, threads, version }: { project: string; threads: ThreadSummary[]; version: unknown } = $props();
 
@@ -90,6 +91,7 @@
 						align="end"
 					/>
 				</div>
+				<EvidenceDescription evidence={e} onsaved={(items) => (data = data ? { ...data, evidence: items } : data)} />
 			{/each}
 		{/if}
 

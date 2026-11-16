@@ -370,6 +370,7 @@ export const trelloApi = {
 
 import type {
 	Evidence,
+	EvidenceParts,
 	EvidenceChoice,
 	EpsilonView,
 	EpsilonGoals,
@@ -410,6 +411,9 @@ export const portflowApi = {
 	/** Into an existing thread, a new one (`newThread`, its title), or out of any (both null). */
 	placeEvidence: (project: string, evidence: string, thread: string | null, newThread: string | null = null) =>
 		call<Evidence[]>('portflow_place_evidence', { project, evidence, thread, newThread }),
+	/** Saves an evidence item's description: its three parts, or (`parts` null) `text` as it is. Answers with the project's items. */
+	saveEvidenceDescription: (project: string, evidence: string, parts: EvidenceParts | null, text: string | null = null) =>
+		call<Evidence[]>('portflow_save_evidence_description', { project, evidence, parts, text }),
 	/** Opens Portflow in the default browser, through Canvas (Portflow can't be opened at one item from outside). */
 	open: () => call<void>('portflow_open'),
 	recentFeedback: (limit = 8) => call<PortflowFeedback[]>('portflow_recent_feedback', { limit }),

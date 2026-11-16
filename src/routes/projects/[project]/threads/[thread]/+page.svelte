@@ -275,7 +275,7 @@
 	<div class="thread-inner">
 		{#if evidence.length}
 			<div class="evidence-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-				{#each evidence as item (item.slug)}<EvidenceCard evidence={item} />{/each}
+				{#each evidence as item (item.slug)}<EvidenceCard evidence={item} onsaved={(items) => (evidence = items.filter((i) => i.thread === slug))} />{/each}
 			</div>
 		{/if}
 		<div class="filter-bar pt-filter">
