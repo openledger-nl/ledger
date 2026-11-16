@@ -81,21 +81,6 @@
 		<button class="btn small chip-ai" onclick={onprompt} title="Ask for a deliverable, or for changes to one">Make deliverable</button>
 		<button class="btn small chip-own" onclick={onfeedback} title="Give feedback on a deliverable">Feedback</button>
 		<button class="btn small" onclick={pickFiles} title="Attach files to this thread">Upload files</button>
-		<span class="spacer-h"></span>
-		<div class="seg small" role="group" aria-label="Kind of post">
-			{#each POST_KINDS as k (k.kind)}
-				<button class:on={kind === k.kind} aria-pressed={kind === k.kind} onclick={() => (kind = k.kind)}>{k.name}</button>
-			{/each}
-		</div>
-		{#each LABELS as l (l.label)}
-			<button
-				class="pt-label {l.label}"
-				class:off={!labels.includes(l.label)}
-				aria-pressed={labels.includes(l.label)}
-				title={l.hint}
-				onclick={() => (labels = labels.includes(l.label) ? [] : [l.label])}
-			>{l.name}</button>
-		{/each}
 	</div>
 	<div class="input-row">
 		<MarkdownEditor
@@ -111,4 +96,29 @@
 		/>
 		<button class="btn primary" onclick={send} disabled={sending || !text.trim()}>Save</button>
 	</div>
+	<!-- What the next note is: its kind, and at most one label. Their own row under the box, so neither is squeezed. -->
+	<div class="post-options">
+		<div class="seg small" role="group" aria-label="Kind of note">
+			{#each POST_KINDS as k (k.kind)}
+				<button class:on={kind === k.kind} aria-pressed={kind === k.kind} onclick={() => (kind = k.kind)}>{k.name}</button>
+			{/each}
+		</div>
+		<div class="seg small" role="group" aria-label="Label">
+			<button class:on={!labels.length} aria-pressed={!labels.length} title="No label" onclick={() => (labels = [])}>No label</button>
+			{#each LABELS as l (l.label)}
+				<button class:on={labels[0] === l.label} aria-pressed={labels[0] === l.label} title={l.hint} onclick={() => (labels = labels[0] === l.label ? [] : [l.label])}
+					>{l.name}</button
+				>
+			{/each}
+		</div>
+	</div>
 </div>
+
+<style>
+	.post-options {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 16px;
+	}
+</style>
