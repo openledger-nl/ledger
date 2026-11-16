@@ -124,6 +124,7 @@
 			{#if onselect}
 				<input class="fb-pick" type="checkbox" checked={selected} aria-label="Select this feedback for a prompt" title="Select it for a prompt" onchange={() => onselect(feedback.id)} />
 			{/if}
+			<span class="time">{time(feedback.createdAt)}</span>
 			<span class="card-kind">{kind}</span>
 			{#if feedback.from}
 				<span class="from"
@@ -131,7 +132,6 @@
 						{GIVEN[feedback.given]}{/if}</span
 				>
 			{/if}
-			<span class="time">{time(feedback.createdAt)}</span>
 			{#if inPrompts.length}<span class="badge accent" title="In: {inPrompts.join(', ')}">In a prompt</span>{/if}
 		</div>
 		<div class="meta file">
@@ -194,8 +194,8 @@
 				{#each replies as r (r.id)}
 					<div class="reply" class:done={r.status === 'resolved'} id="f-{r.id}">
 						<div class="meta">
-							<span><strong>{r.from ?? 'Someone'}</strong>{#if r.fromRole}<span class="badge">{r.fromRole}</span>{/if}</span>
 							<span class="time">{time(r.createdAt)}</span>
+							<span><strong>{r.from ?? 'Someone'}</strong>{#if r.fromRole}<span class="badge">{r.fromRole}</span>{/if}</span>
 							{#if r.status === 'resolved'}<span class="hint">resolved</span>{/if}
 						</div>
 						<Markdown html={r.html} />
@@ -233,9 +233,6 @@
 	}
 	.card.feedback-card.resolved {
 		border-left-color: var(--line);
-	}
-	.card.feedback-card .card-kind {
-		color: var(--muted);
 	}
 	.fb-actions {
 		gap: 6px;

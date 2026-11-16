@@ -403,12 +403,15 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; scroll-margin: 80px; }
 .card.flash { box-shadow: 0 0 0 2px var(--accent); }
-.meta { display: flex; gap: 8px; align-items: baseline; font-size: 12px; }
-.meta .time { font-weight: 600; }
+/* A card's header, the same on every card: the time first, then what it is, then who it is from; in the body's typeface,
+   no capitals, no bold, so it reads quietly above the content. */
+.meta { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--muted); }
+.meta .time { font-weight: 500; color: var(--faint); font-variant-numeric: tabular-nums; }
 .meta .file { color: var(--faint); }
 .fb-head { display: flex; flex-direction: column; gap: 2px; }
 .fb-head .meta.file { color: var(--muted); }
-.actions { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+/* What can be done with a card: a row of small buttons (.btn.small; ghost for the quieter ones), the same on every card. */
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .actions .link { white-space: nowrap; }
 .quote {
 	display: flex; flex-direction: column; gap: 2px; background: var(--accent-soft); border-left: 3px solid var(--accent);
@@ -426,12 +429,11 @@ main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: colu
 .fb-pick { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; align-self: center; }
 .quote.passage .qtext { white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .qcard { border: 0; background: var(--accent-soft); }
-.qlabel { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.qlabel { font-size: 12.5px; font-weight: 500; color: var(--ink); }
 .answer { background: var(--card); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
 .answer .lbl { font-size: 11px; font-weight: 600; color: var(--muted); }
 .answers { display: flex; flex-direction: column; gap: 8px; }
 .note-card { background: var(--green-soft); border-color: transparent; }
-.note-card .qlabel { color: var(--green); }
 
 .composer { background: var(--panel); border-top: 1px solid var(--line); padding: 14px 32px 18px; display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; }
 .reply-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--accent-soft); border-radius: 8px; padding: 6px 10px; font-size: 12px; }
@@ -756,10 +758,7 @@ details.more p { margin: 0; }
 .feedback-card { border-left: 3px solid var(--amber); }
 .feedback-card.resolved { border-left-color: var(--green); opacity: 0.85; }
 .upload-card { border-left: 3px solid var(--green); }
-.card-kind { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
-.feedback-card .card-kind { color: var(--amber); }
-.feedback-card.resolved .card-kind { color: var(--green); }
-.upload-card .card-kind { color: var(--green); }
+.card-kind { font-size: 12.5px; font-weight: 500; color: var(--ink); }
 .card-title { font-weight: 700; font-size: 15px; }
 .file-thumb { max-width: 100%; max-height: 360px; border-radius: 8px; border: 1px solid var(--line); background: var(--card-2); align-self: flex-start; }
 .file-row { display: flex; align-items: center; gap: 10px; background: var(--card-2); border-radius: 8px; padding: 8px 12px; font-size: 13px; }

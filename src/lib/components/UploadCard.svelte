@@ -44,8 +44,8 @@
 
 <div class="card upload-card" id="u-{upload.id}">
 	<div class="meta">
-		<span class="card-kind">Upload</span>
 		<span class="time">{time(upload.uploadedAt)}</span>
+		<span class="card-kind">Upload</span>
 	</div>
 
 	{#if upload.exists && upload.image}
@@ -78,8 +78,8 @@
 	{:else}
 		{#if upload.description.trim()}<Markdown html={upload.descriptionHtml} />{/if}
 		<div class="actions">
-			<button class="link" onclick={startEdit}>{upload.description.trim() ? 'Edit description' : 'Add description'}</button>
-			<button class="link danger" onclick={remove}>Remove</button>
+			<button class="btn small ghost" onclick={startEdit}>{upload.description.trim() ? 'Edit description' : 'Add description'}</button>
+			<button class="btn small ghost danger" onclick={remove}>Remove</button>
 		</div>
 	{/if}
 </div>

@@ -87,12 +87,12 @@
 	id="p-{post.id}"
 >
 	<div class="meta">
+		<span class="time">{time(post.createdAt)}</span>
 		{#if variant === 'card' && post.guidingQuestion}
 			<span class="qlabel">Guiding question{guidingType ? ` · ${guidingType}` : ''}</span>
 		{:else if variant === 'card' && post.versionPublished}
 			<span class="qlabel">Version published</span>
 		{/if}
-		<span class="time">{time(post.createdAt)}</span>
 		{#if variant === 'answer'}<span class="file">{dayLabel(dayKey(post.createdAt))}</span>{/if}
 		{#if post.updatedAt !== post.createdAt}<span class="file">edited</span>{/if}
 		{#if tags !== undefined && !post.guidingQuestion && !post.versionPublished}<PostTags {project} {thread} postId={post.id} meta={tags} />{/if}
@@ -132,29 +132,19 @@
 				{/if}
 			</div>
 		{/if}
-		{#if post.versionPublished && post.deliverablePath && post.deliverableVersion}
-			<!-- A version published: the deliverable as it is now, and as it was published. -->
-			<div class="view-buttons">
+		<div class="actions">
+			{#if post.versionPublished && post.deliverablePath && post.deliverableVersion}
+				<!-- A version published: the deliverable as it is now, and as it was published. -->
 				<a class="btn small" href={deliverableUrl(project, post.deliverablePath, thread)}>View live</a>
 				<a class="btn small" href={deliverableUrl(project, snapshotPath(post.deliverablePath, post.deliverableVersion), thread)}>
 					View version {post.deliverableVersion}
 				</a>
-			</div>
-		{/if}
-		<div class="actions">
-			<button class="link accent" onclick={() => onreply(post)}>{post.guidingQuestion ? 'Answer' : 'Reply'}</button>
-			{#if !(post.versionPublished && post.deliverablePath && post.deliverableVersion)}
-				<button class="link" onclick={startEdit}>Edit</button>
 			{/if}
-			<button class="link danger" onclick={remove}>Delete</button>
+			<button class="btn small ghost" onclick={() => onreply(post)}>{post.guidingQuestion ? 'Answer' : 'Reply'}</button>
+			{#if !(post.versionPublished && post.deliverablePath && post.deliverableVersion)}
+				<button class="btn small ghost" onclick={startEdit}>Edit</button>
+			{/if}
+			<button class="btn small ghost danger" onclick={remove}>Delete</button>
 		</div>
 	{/if}
 </div>
-
-<style>
-	.view-buttons {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-</style>

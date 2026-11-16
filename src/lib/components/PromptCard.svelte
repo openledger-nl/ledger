@@ -60,8 +60,8 @@
 
 <div class="card prompt-card" id="pr-{prompt.id}">
 	<div class="meta">
-		<span class="card-kind">Prompt</span>
 		<span class="time">{time(prompt.createdAt)}</span>
+		<span class="card-kind">Prompt</span>
 		{#if prompt.templateName}<span class="badge accent">{prompt.templateName}</span>{/if}
 		{#if prompt.updatedAt !== prompt.createdAt}<span class="file">edited</span>{/if}
 	</div>
@@ -113,9 +113,9 @@
 	{/if}
 
 	<div class="actions">
-		{#if onDeliverable}<button class="link accent" onclick={() => onaddfeedback?.()}>Add feedback…</button>{/if}
-		<button class="link" onclick={() => onedit(prompt)}>Edit</button>
-		<Menu class="link more" label="More about this prompt" items={[{ id: 'delete', label: 'Delete prompt', icon: Trash, danger: true }]} onpick={() => remove()} align="end">
+		{#if onDeliverable}<button class="btn small" onclick={() => onaddfeedback?.()}>Add feedback</button>{/if}
+		<button class="btn small ghost" onclick={() => onedit(prompt)}>Edit</button>
+		<Menu class="btn small ghost more" label="More about this prompt" items={[{ id: 'delete', label: 'Delete prompt', icon: Trash, danger: true }]} onpick={() => remove()} align="end">
 			<Ellipsis size={16} />
 		</Menu>
 	</div>
