@@ -7,9 +7,10 @@
 	import { date, plural } from '$lib/format';
 	import { openInPortflow } from '$lib/portflow.svelte';
 	import type { Evidence } from '$lib/types';
+	import EvidenceDescription from './EvidenceDescription.svelte';
 	import Markdown from './Markdown.svelte';
 
-	let { evidence }: { evidence: Evidence } = $props();
+	let { evidence, onsaved }: { evidence: Evidence; onsaved?: (items: Evidence[]) => void } = $props();
 
 	let open = $state(false);
 	const latest = $derived(evidence.versions[0] ?? null);
@@ -47,6 +48,8 @@
 			<button class="btn small ghost" onclick={() => open_(null)}><ExternalLink size={13} />Open in Portflow</button>
 		{/if}
 	</div>
+
+	<EvidenceDescription {evidence} {onsaved} />
 
 	{#if latest && latest.files.length}
 		{@render files(latest)}

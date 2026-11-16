@@ -27,7 +27,9 @@ export function portflowFooter(s: PortflowStatus | null) {
 export const portflow = $state({
 	/** Off until the backend says otherwise. */
 	enabled: false,
-	status: null as PortflowStatus | null
+	status: null as PortflowStatus | null,
+	/** The "Evidence description → evidence item" write is on (read and write, and its own switch). */
+	evidenceWrite: false
 });
 
 /** Asks the backend again (after the switch changed, or the vault was reloaded). */
@@ -36,8 +38,10 @@ export async function loadPortflow() {
 		const view = await portflowApi.get();
 		portflow.enabled = view.enabled;
 		portflow.status = view.status;
+		portflow.evidenceWrite = view.write && view.writes.some((w) => w.id === 'evidence-description' && w.on);
 	} catch {
 		portflow.enabled = false;
+		portflow.evidenceWrite = false;
 	}
 }
 

@@ -161,7 +161,11 @@
 		busy = 'access';
 		const saved = await attempt(() => portflowApi.setAccess(write, writes));
 		busy = null;
-		if (saved) view = saved;
+		if (saved) {
+			view = saved;
+			// The evidence editors say whether a description goes to Portflow.
+			await loadPortflow();
+		}
 	}
 
 	const onWrites = () => (view?.writes ?? []).filter((w) => w.on).map((w) => w.id);
