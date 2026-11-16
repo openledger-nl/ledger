@@ -31,9 +31,16 @@ data in `src/stories/fixtures.ts` and any backend call it makes answered in `src
 ## Before you push
 
 ```bash
-pnpm run check   # Svelte + TypeScript
+pnpm run check   # Svelte + TypeScript, and the UI text check
 pnpm test        # Rust tests
 ```
+
+UI text uses plain punctuation: `-` or `|` instead of a dash or a middle dot, three dots `...` instead of the ellipsis
+character (and none on a button or menu item), straight quotes, and words ("to") or `>` for a path through menus instead
+of an arrow. `pnpm run check` runs `scripts/check-ui-text.mjs`, which looks at the text a person can read (Svelte
+templates, string literals in TypeScript and Rust, not comments) and names each character it finds with what to use
+instead. A literal that needs one of them to work, such as a parser that recognises curly quotes in someone else's text,
+gets `ui-text: allow` and the reason in a comment on its line or the line before.
 
 CI runs both on every pull request, with the commits check below, and a pull request is merged only when they pass.
 On your first pull request here, the checks wait until a maintainer lets them run.

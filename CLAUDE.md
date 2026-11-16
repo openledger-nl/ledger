@@ -104,6 +104,8 @@ So, as an agent:
 - Colours and fonts come from the tokens at the top of `src/app.css` (`--brand-*`, the theme tokens, `--font-sans`,
   `--font-mono`). Use a token, never a literal colour, in components and CSS.
 - Icons are Lucide: `import X from '@lucide/svelte/icons/x'` (one file per icon, not the package root).
+- UI text uses plain ASCII punctuation: `-` or `|`, `...`, straight quotes; no em or en dash, middle dot, ellipsis
+  character, curly quotes or arrows. `pnpm run check` enforces it (`scripts/check-ui-text.mjs`).
 - In the UI the wordmark is `<Wordmark />` (`src/lib/components/Wordmark.svelte`): drawn inline so its L and cursor
   take the theme's `--accent`. The files in `src/lib/assets/brand/` are the fixed-colour (indigo) logo for everything
   outside the app; the app icons in `src-tauri/icons/` are generated from the mark. Don't draw new versions in code.
