@@ -13,6 +13,7 @@
 	import { projectUrl, threadUrl } from '$lib/actions';
 	import { portflowApi } from '$lib/api';
 	import IntendedDevelopmentModal from '$lib/components/IntendedDevelopmentModal.svelte';
+	import Dropdown from '$lib/components/Dropdown.svelte';
 	import EpsilonIcon from '$lib/components/EpsilonIcon.svelte';
 	import EpsilonMatrix from '$lib/components/EpsilonMatrix.svelte';
 	import { ago, plural } from '$lib/format';
@@ -88,13 +89,18 @@
 				>
 					<Crosshair size={15} />Intended development
 				</button>
-				<label class="field">
-				Semester
-				<select bind:value={semester}>
-					<option value="">Current{current ? ` (${current.name})` : ''}</option>
-					{#each view.semesters as s (s.id)}<option value={s.id}>{s.name}{s.sectionName ? '' : ' · no Portflow section'}</option>{/each}
-				</select>
-				</label>
+				<div class="field">
+					Semester
+					<Dropdown
+						bind:value={semester}
+						options={[
+							{ value: '', label: `Current${current ? ` (${current.name})` : ''}` },
+							...view.semesters.map((s) => ({ value: s.id, label: `${s.name}${s.sectionName ? '' : ' · no Portflow section'}` }))
+						]}
+						label="Semester"
+						align="end"
+					/>
+				</div>
 			</div>
 		{/if}
 	</div>

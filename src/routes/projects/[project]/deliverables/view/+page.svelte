@@ -524,13 +524,15 @@
 			</span>
 		</div>
 		{#if aiMade && doc.prompts.length}
-			<label class="field">
+			<div class="field">
 				<span>Which prompt asked for it? (optional)</span>
-				<select bind:value={promptId}>
-					<option value="">None of them</option>
-					{#each doc.prompts as p (p.id)}<option value={p.id}>{p.threadTitle} · {p.title || 'Untitled prompt'}</option>{/each}
-				</select>
-			</label>
+				<Dropdown
+					bind:value={promptId}
+					options={[{ value: '', label: 'None of them' }, ...doc.prompts.map((p) => ({ value: p.id, label: `${p.threadTitle} · ${p.title || 'Untitled prompt'}` }))]}
+					label="Which prompt asked for it"
+					full
+				/>
+			</div>
 		{/if}
 		<label class="field">
 			<span>AI-use label for the result (optional)</span>

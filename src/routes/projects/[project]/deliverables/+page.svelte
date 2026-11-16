@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
 	import { api } from '$lib/api';
 	import { deliverableUrl, formatSize, snapshotPath } from '$lib/actions';
@@ -15,6 +16,8 @@
 	let templateId = $state('');
 	let filter = $state('');
 	let creating = $state(false);
+
+	const templateOptions = $derived<DropdownOption[]>([{ value: '', label: 'Empty file' }, ...data.templates.map((t) => ({ value: t.id, label: t.name }))]);
 
 	const shown = $derived.by(() => {
 		const q = filter.trim().toLowerCase();
@@ -55,13 +58,10 @@
 					File name
 					<input bind:value={name} placeholder="e.g. pricing-brief.md" onkeydown={(e) => e.key === 'Enter' && name.trim() && create()} />
 				</label>
-				<label class="field" style="width:240px">
+				<div class="field" style="width:240px">
 					Start from
-					<select bind:value={templateId}>
-						<option value="">Empty file</option>
-						{#each data.templates as t (t.scope + '/' + t.id)}<option value={t.id}>{t.name}</option>{/each}
-					</select>
-				</label>
+					<Dropdown bind:value={templateId} options={templateOptions} label="Start from" full />
+				</div>
 				<button class="btn primary" onclick={create} disabled={creating || !name.trim()}>Create</button>
 			</div>
 		</div>

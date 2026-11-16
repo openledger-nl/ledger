@@ -4,6 +4,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import TreePalm from '@lucide/svelte/icons/tree-palm';
 	import { page } from '$app/state';
+	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import SemesterModal from '$lib/components/SemesterModal.svelte';
 	import SprintTimeline from '$lib/components/SprintTimeline.svelte';
 	import { portflowApi } from '$lib/api';
@@ -37,6 +38,13 @@
 		const all = await attempt(() => portflowApi.linkSection(semester, value ? Number(value) : null));
 		if (all) sections = all;
 	}
+	const sectionOptions = (semester: string): DropdownOption[] => [
+		{ value: '', label: 'None' },
+		...sections.map((x) => ({
+			value: String(x.id),
+			label: `${x.name}${x.semester && x.semester !== semester ? ` (now ${x.semesterName ?? x.semester})` : ''}`
+		}))
+	];
 
 	/** The editor: undefined when closed; otherwise the semester it changes, or null for a new one (from `preset`, if given). */
 	let editor = $state<{ semester: Semester | null; preset?: SemesterDraft } | undefined>(undefined);
@@ -153,15 +161,15 @@
 				</div>
 
 				{#if portflow.enabled && sections.length}
-					<label class="sem-section">
+					<div class="sem-section">
 						Portflow section
-						<select value={sectionOf(s.id) ?? ''} onchange={(e) => linkSection(s.id, e.currentTarget.value)}>
-							<option value="">None</option>
-							{#each sections as x (x.id)}
-								<option value={x.id}>{x.name}{x.semester && x.semester !== s.id ? ` (now ${x.semesterName ?? x.semester})` : ''}</option>
-							{/each}
-						</select>
-					</label>
+						<!-- Section ids are numbers; the empty string is "None". Only a different pick links anew. -->
+						<Dropdown
+							bind:value={() => String(sectionOf(s.id) ?? ''), (v) => v !== String(sectionOf(s.id) ?? '') && linkSection(s.id, v)}
+							options={sectionOptions(s.id)}
+							label="Portflow section"
+						/>
+					</div>
 				{/if}
 
 				<SprintTimeline start={s.start} end={s.end} sprints={s.sprints} vacations={s.vacations} />

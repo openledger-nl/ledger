@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { listen } from '@tauri-apps/api/event';
 	import { openUrl } from '@tauri-apps/plugin-opener';
+	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import Switch from '$lib/components/Switch.svelte';
 	import { trelloApi as api } from '$lib/api';
 	import { ago, dateTime } from '$lib/format';
@@ -30,6 +31,12 @@
 	let pickBoard = $state('');
 	let people = $state<TrelloMember[]>([]);
 	let pickPerson = $state('');
+
+	const boardOptions = $derived<DropdownOption[]>((boards ?? []).map((b) => ({ value: b.id, label: b.name })));
+	const personOptions = $derived<DropdownOption[]>([
+		{ value: '', label: pickBoard ? 'Choose a person…' : 'Choose a board first' },
+		...people.map((m) => ({ value: m.id, label: `${m.fullName || m.username}${m.fullName && m.username ? ` (@${m.username})` : ''}` }))
+	]);
 
 	/** Per linked project: its columns and the lists they use. */
 	let mappings = $state<Record<string, TrelloMapping>>({});
@@ -185,7 +192,8 @@
 
 	// ---- projects and columns ------------------------------------------------------------------
 
-	async function linkProject(slug: string, board: string, select: HTMLSelectElement) {
+	// The dropdown shows the board the project has, so a cancelled or failed change needs no undoing here.
+	async function linkProject(slug: string, board: string) {
 		const project = view?.projects.find((p) => p.slug === slug);
 		const before = project?.board ?? '';
 		if (before && before !== board) {
@@ -196,18 +204,12 @@
 				confirmLabel: board ? 'Use this board' : 'Stop syncing',
 				danger: true
 			});
-			if (!ok) {
-				select.value = before;
-				return;
-			}
+			if (!ok) return;
 		}
 		busy = 'link:' + slug;
 		const saved = await attempt(() => api.trelloLinkProject(slug, board || null));
 		busy = null;
-		if (!saved) {
-			select.value = before;
-			return;
-		}
+		if (!saved) return;
 		view = saved;
 		await loadMappings();
 	}
@@ -330,20 +332,20 @@
 					</div>
 				{:else}
 					<div class="form-row">
-						<label class="field grow">
+						<div class="field grow">
 							Board to pick from
-							<select value={pickBoard} onchange={(e) => chooseBoard(e.currentTarget.value)} disabled={boards === null}>
-								<option value="">{boards === null ? 'Loading boards…' : 'Choose a board…'}</option>
-								{#each boards ?? [] as b (b.id)}<option value={b.id}>{b.name}</option>{/each}
-							</select>
-						</label>
-						<label class="field grow">
+							<Dropdown
+								bind:value={() => pickBoard, (v) => v !== pickBoard && chooseBoard(v)}
+								options={[{ value: '', label: boards === null ? 'Loading boards…' : 'Choose a board…' }, ...boardOptions]}
+								disabled={boards === null}
+								label="Board to pick from"
+								full
+							/>
+						</div>
+						<div class="field grow">
 							Person
-							<select bind:value={pickPerson} disabled={people.length === 0}>
-								<option value="">{pickBoard ? 'Choose a person…' : 'Choose a board first'}</option>
-								{#each people as m (m.id)}<option value={m.id}>{m.fullName || m.username}{m.fullName && m.username ? ` (@${m.username})` : ''}</option>{/each}
-							</select>
-						</label>
+							<Dropdown bind:value={pickPerson} options={personOptions} disabled={people.length === 0} label="Person" full />
+						</div>
 					</div>
 					{#if boardsError}
 						<div class="notice bad">{boardsError}</div>
@@ -374,15 +376,17 @@
 					{#each view.projects as p (p.slug)}
 						<div class="field">
 							{p.name}
-							<select
-								value={p.board ?? ''}
-								onchange={(e) => linkProject(p.slug, e.currentTarget.value, e.currentTarget)}
+							<Dropdown
+								bind:value={() => p.board ?? '', (v) => v !== (p.board ?? '') && linkProject(p.slug, v)}
+								options={[
+									{ value: '', label: 'Not synced' },
+									...boardOptions,
+									...(p.board && !(boards ?? []).some((b) => b.id === p.board) ? [{ value: p.board, label: p.boardName ?? p.board }] : [])
+								]}
 								disabled={busy !== null || boards === null}
-							>
-								<option value="">Not synced</option>
-								{#each boards ?? [] as b (b.id)}<option value={b.id}>{b.name}</option>{/each}
-								{#if p.board && !(boards ?? []).some((b) => b.id === p.board)}<option value={p.board}>{p.boardName}</option>{/if}
-							</select>
+								label="Trello board for {p.name}"
+								full
+							/>
 						</div>
 						{#if p.board && mappings[p.slug]}
 							{@const mapping = mappings[p.slug]}
@@ -390,11 +394,16 @@
 								{#each mapping.columns as c (c.id)}
 									<dt>{c.name}</dt>
 									<dd>
-										<select value={c.choice} onchange={(e) => chooseList(p.slug, c.id, e.currentTarget.value)} disabled={busy !== null}>
-											<option value="auto">{c.choice === 'auto' && c.listName ? `List “${c.listName}” (same name)` : 'The list with the same name'}</option>
-											<option value="none">Don’t sync this column</option>
-											{#each mapping.lists as l (l.id)}<option value={l.id}>List “{l.name}”</option>{/each}
-										</select>
+										<Dropdown
+											bind:value={() => c.choice, (v) => v !== c.choice && chooseList(p.slug, c.id, v)}
+											options={[
+												{ value: 'auto', label: c.choice === 'auto' && c.listName ? `List “${c.listName}” (same name)` : 'The list with the same name' },
+												{ value: 'none', label: 'Don’t sync this column' },
+												...mapping.lists.map((l) => ({ value: l.id, label: `List “${l.name}”` }))
+											]}
+											disabled={busy !== null}
+											label="Trello list for {c.name}"
+										/>
 										{#if !c.listId}<span class="hint">no list: its tasks aren’t synced</span>{/if}
 									</dd>
 								{/each}

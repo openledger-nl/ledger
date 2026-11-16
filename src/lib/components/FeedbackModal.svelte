@@ -6,6 +6,7 @@
 	import { listOrder } from '$lib/order.svelte';
 	import { attempt, refresh } from '$lib/ui.svelte';
 	import type { DeliverableSummary, FeedbackFrom } from '$lib/types';
+	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	import PersonPicker from './PersonPicker.svelte';
 	import Modal from './Modal.svelte';
@@ -23,7 +24,7 @@
 	let from = $state<FeedbackFrom>({ name: null, portflowUser: null, role: null, given: null });
 	let saving = $state(false);
 
-	const options = $derived(
+	const options = $derived<DropdownOption[]>(
 		all.flatMap((d) => [
 			...(d.exists ? [{ value: d.path, label: d.path }] : []),
 			...orderVersions(d.versions, listOrder.order).map((v) => ({ value: snapshotPath(d.path, v), label: `${d.path} · version ${v}` }))
@@ -56,12 +57,10 @@
 	{#if loaded && options.length === 0}
 		<p class="notice">This project has no deliverables yet. Create one from a prompt first.</p>
 	{:else}
-		<label class="field">
+		<div class="field">
 			Deliverable
-			<select bind:value={target}>
-				{#each options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
-			</select>
-		</label>
+			<Dropdown bind:value={target} {options} label="Deliverable" full />
+		</div>
 		<PersonPicker bind:value={from} />
 		<div class="field">
 			The feedback

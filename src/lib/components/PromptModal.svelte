@@ -7,6 +7,7 @@
 	import { autoRunNewPrompt } from '$lib/claudeRuns.svelte';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
 	import type { DeliverableSummary, Feedback, Prompt, PromptDeliverable, Template } from '$lib/types';
+	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	import Modal from './Modal.svelte';
 
@@ -62,6 +63,13 @@
 	let open = $state<Feedback[]>([]);
 	let selected = $state<string[]>(initial.selected);
 	const template = $derived(templates.find((t) => t.id === templateId));
+	const templateOptions = $derived<DropdownOption[]>([
+		{ value: '', label: 'No template' },
+		...templates.map((t) => ({ value: t.id, label: `${t.name}${t.scope ? '' : ' (all projects)'}` }))
+	]);
+	const existingOptions = $derived<DropdownOption[]>(
+		existing.map((d) => ({ value: d.path, label: `${d.path}${d.versions.length ? ` · latest version v${d.versions.at(-1)}` : ' · not published yet'}` }))
+	);
 
 	// ---- the two texts ------------------------------------------------------------------------------
 
@@ -225,10 +233,15 @@
 				{/each}
 			</div>
 			<div class="form-row" style="flex-wrap:nowrap; align-items:stretch">
-				<select bind:value={adding} aria-label="Add an existing deliverable" style="flex:1">
-					<option value="">Add an existing deliverable…</option>
-					{#each linkable as d (d.path)}<option value={d.path}>{d.path}</option>{/each}
-				</select>
+				<div style="flex:1;min-width:0">
+					<Dropdown
+						bind:value={adding}
+						options={linkable.map((d) => ({ value: d.path, label: d.path }))}
+						label="Add an existing deliverable"
+						placeholder="Add an existing deliverable…"
+						full
+					/>
+				</div>
 				<button class="btn small" disabled={!adding} onclick={link}>Add</button>
 			</div>
 			<div class="form-row" style="flex-wrap:nowrap; align-items:stretch">
@@ -258,24 +271,15 @@
 				An existing deliverable: the prompt asks for changes to it{existing.length ? '' : ' (there are none in this project yet)'}
 			</label>
 			{#if kind === 'existing'}
-				<select bind:value={chosen} aria-label="The existing deliverable">
-					{#each existing as d (d.path)}
-						<option value={d.path}>{d.path}{d.versions.length ? ` · latest version v${d.versions.at(-1)}` : ' · not published yet'}</option>
-					{/each}
-				</select>
+				<Dropdown bind:value={chosen} options={existingOptions} label="The existing deliverable" full />
 			{/if}
 		</div>
 
 		{#if kind === 'new' && templates.length}
-			<label class="field">
+			<div class="field">
 				Start from a template
-				<select bind:value={templateId}>
-					<option value="">No template</option>
-					{#each templates as t (t.scope + '/' + t.id)}
-						<option value={t.id}>{t.name}{t.scope ? '' : ' (all projects)'}</option>
-					{/each}
-				</select>
-			</label>
+				<Dropdown bind:value={templateId} options={templateOptions} label="Template" full />
+			</div>
 			{#if template}
 				<div class="notice info">
 					{#if template.trigger}<b>Use when:</b> {template.trigger}<br />{/if}

@@ -4,6 +4,7 @@
 	// Portflow) and its study guide. Kept in the semester's file; Epsilon+ marks the rows aimed for and shows only that level's
 	// description.
 	import { untrack } from 'svelte';
+	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import { portflowApi } from '$lib/api';
 	import { attempt } from '$lib/ui.svelte';
@@ -40,6 +41,18 @@
 	const levels = $derived(Array.from({ length: Math.max(view.maxLevel, 3) }, (_, i) => i + 1));
 	const problem = $derived(studyGuide.trim() && !/^https?:\/\//.test(studyGuide.trim()) ? 'The study guide is a web address (https://…)' : '');
 
+	/** A level is kept as a string here (the empty string: not this semester) and saved as a number. */
+	const levelOptions = (of: number[]): DropdownOption[] => [
+		{ value: '', label: 'Not this semester' },
+		...of.map((l) => ({ value: String(l), label: `Level ${l}` }))
+	];
+	// A plan that is no longer offered (its project unlinked) stays listed by its id, so it is not dropped unseen.
+	const planOptions = $derived<DropdownOption[]>([
+		{ value: '', label: 'None' },
+		...choices.map((c) => ({ value: c.id, label: `${c.name} · ${c.projectName}` })),
+		...(learningPlan && !choices.some((c) => c.id === learningPlan) ? [{ value: learningPlan, label: learningPlan }] : [])
+	]);
+
 	const numbers = (picked: Record<string, string>) =>
 		Object.fromEntries(Object.entries(picked).filter(([, v]) => v).map(([k, v]) => [k, Number(v)]));
 
@@ -69,41 +82,40 @@
 		<div class="targets-col">
 			<h3>Layers</h3>
 			{#each shownLayers as [key, name] (key)}
-				<label class="target">
+				<div class="target">
 					<span>{name}</span>
-					<select bind:value={layers[key]}>
-						<option value="">Not this semester</option>
-						{#each levels as l (l)}<option value={String(l)}>Level {l}</option>{/each}
-					</select>
-				</label>
+					<div class="level-pick">
+						<Dropdown bind:value={() => layers[key] ?? '', (v) => (layers[key] = v)} options={levelOptions(levels)} label={name} full />
+					</div>
+				</div>
 			{/each}
 		</div>
 		{#if view.skills.length}
 			<div class="targets-col">
 				<h3>Other goals</h3>
 				{#each view.skills as skill (skill.outcome)}
-					<label class="target">
+					<div class="target">
 						<span title={skill.name}>{skill.name}</span>
-						<select bind:value={goals[skill.key]}>
-							<option value="">Not this semester</option>
-							{#each skill.levels as l (l.id)}<option value={String(l.level)}>Level {l.level}</option>{/each}
-						</select>
-					</label>
+						<div class="level-pick">
+							<Dropdown
+								bind:value={() => goals[skill.key] ?? '', (v) => (goals[skill.key] = v)}
+								options={levelOptions(skill.levels.map((l) => l.level))}
+								label={skill.name}
+								full
+							/>
+						</div>
+					</div>
 				{/each}
 			</div>
 		{/if}
 	</div>
 
 	<h3>Overview</h3>
-	<label class="field">
+	<div class="field">
 		Learning plan
-		<select bind:value={learningPlan}>
-			<option value="">None</option>
-			{#each choices as c (c.id)}<option value={c.id}>{c.name} · {c.projectName}</option>{/each}
-			{#if learningPlan && !choices.some((c) => c.id === learningPlan)}<option value={learningPlan}>{learningPlan}</option>{/if}
-		</select>
+		<Dropdown bind:value={learningPlan} options={planOptions} label="Learning plan" full />
 		<span class="hint">The evidence item you deliver in Portflow. Only items in a project linked to a collection are listed.</span>
-	</label>
+	</div>
 	<label class="field">
 		Study guide
 		<input bind:value={studyGuide} placeholder="https://…" />
@@ -150,7 +162,7 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.target select {
+	.level-pick {
 		flex: none;
 		width: 150px;
 	}

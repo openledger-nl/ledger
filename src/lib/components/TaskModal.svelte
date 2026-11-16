@@ -2,6 +2,7 @@
 	import { api } from '$lib/api';
 	import { attempt, confirmDialog, refresh } from '$lib/ui.svelte';
 	import type { Board, Task, ThreadSummary } from '$lib/types';
+	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	import Modal from './Modal.svelte';
 
@@ -31,6 +32,10 @@
 	let storyId = $state(initial.storyId);
 	let threadSlug = $state(initial.threadSlug);
 	let saving = $state(false);
+
+	const columnOptions = $derived<DropdownOption[]>(board.columns.map((c) => ({ value: c.id, label: c.name })));
+	const storyOptions = $derived<DropdownOption[]>([{ value: '', label: 'None' }, ...board.stories.map((s) => ({ value: s.id, label: `${s.id} — ${s.summary}` }))]);
+	const threadOptions = $derived<DropdownOption[]>([{ value: '', label: 'None' }, ...threads.map((t) => ({ value: t.slug, label: t.title }))]);
 
 	async function save() {
 		saving = true;
@@ -74,26 +79,18 @@
 		<MarkdownEditor bind:value={body} rows={5} label="Details" placeholder="Context, acceptance, links. Markdown works." />
 	</div>
 	<div class="form-row">
-		<label class="field grow">
+		<div class="field grow">
 			Column
-			<select bind:value={columnId}>
-				{#each board.columns as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
-			</select>
-		</label>
-		<label class="field grow">
+			<Dropdown bind:value={columnId} options={columnOptions} label="Column" full />
+		</div>
+		<div class="field grow">
 			User story
-			<select bind:value={storyId}>
-				<option value="">None</option>
-				{#each board.stories as s (s.id)}<option value={s.id}>{s.id} — {s.summary}</option>{/each}
-			</select>
-		</label>
-		<label class="field grow">
+			<Dropdown bind:value={storyId} options={storyOptions} label="User story" full />
+		</div>
+		<div class="field grow">
 			Thread
-			<select bind:value={threadSlug}>
-				<option value="">None</option>
-				{#each threads as t (t.slug)}<option value={t.slug}>{t.title}</option>{/each}
-			</select>
-		</label>
+			<Dropdown bind:value={threadSlug} options={threadOptions} label="Thread" full />
+		</div>
 	</div>
 
 	{#snippet footer()}

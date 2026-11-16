@@ -2,6 +2,7 @@
 	// The guide on the home page for a new client: bring in a vault that exists, or set one up in four steps (a semester,
 	// sync to GitHub, a first thread, a first deliverable). What a step needs is read from the vault, so it ticks itself off
 	// when it is done, wherever it was done, and the guide ends with the first deliverable (onboarding.rs keeps the rest).
+	import Dropdown from '$lib/components/Dropdown.svelte';
 	import { goto } from '$app/navigation';
 	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import Check from '@lucide/svelte/icons/check';
@@ -265,12 +266,10 @@
 										}}
 									>
 										{#if projects.length > 1}
-											<label class="field">
+											<div class="field">
 												Project
-												<select bind:value={chosenProject}>
-													{#each projects as p (p.slug)}<option value={p.slug}>{p.name}</option>{/each}
-												</select>
-											</label>
+												<Dropdown bind:value={chosenProject} options={projects.map((p) => ({ value: p.slug, label: p.name }))} label="Project" full />
+											</div>
 										{:else if !project && !madeProject}
 											<label class="field">
 												Project
@@ -300,12 +299,10 @@
 										}}
 									>
 										{#if projects.length > 1}
-											<label class="field">
+											<div class="field">
 												Project
-												<select bind:value={chosenProject}>
-													{#each projects as p (p.slug)}<option value={p.slug}>{p.name}</option>{/each}
-												</select>
-											</label>
+												<Dropdown bind:value={chosenProject} options={projects.map((p) => ({ value: p.slug, label: p.name }))} label="Project" full />
+											</div>
 										{/if}
 										<label class="field">
 											File name

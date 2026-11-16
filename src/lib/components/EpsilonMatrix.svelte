@@ -8,6 +8,7 @@
 	import MessageSquarePlus from '@lucide/svelte/icons/message-square-plus';
 	import { page } from '$app/state';
 	import { deliverableForLevelFlow, threadForLevelFlow, threadUrl, projectUrl } from '$lib/actions';
+	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import Markdown from '$lib/components/Markdown.svelte';
 	import { plural } from '$lib/format';
 	import type { EpsilonView, EpsilonCell, EpsilonLevel, EpsilonSkill, EvidenceRef, ProjectSummary } from '$lib/types';
@@ -26,6 +27,9 @@
 	});
 	let chosenProject = $state('');
 	const project = $derived(projects.some((p) => p.slug === chosenProject) ? chosenProject : (projects[0]?.slug ?? ''));
+	const projectOptions = $derived<DropdownOption[]>(
+		projects.map((p) => ({ value: p.slug, label: `${p.name}${view.linkedProjects.includes(p.slug) ? ' · this semester' : ''}` }))
+	);
 	const aiming = $derived(view.rows.some((r) => r.target) || view.skills.some((s) => s.target));
 
 	const cellAt = $derived(new Map(view.cells.map((c) => [`${c.layer}:${c.outcome}`, c])));
@@ -176,12 +180,10 @@
 			<h2>{detail.title}</h2>
 			<span class="spacer-h"></span>
 			{#if projects.length}
-				<label class="project-pick">
+				<div class="project-pick">
 					Start in
-					<select value={project} onchange={(e) => (chosenProject = e.currentTarget.value)}>
-						{#each projects as p (p.slug)}<option value={p.slug}>{p.name}{view.linkedProjects.includes(p.slug) ? ' · this semester' : ''}</option>{/each}
-					</select>
-				</label>
+					<Dropdown bind:value={() => project, (v) => (chosenProject = v)} options={projectOptions} label="Start in" align="end" />
+				</div>
 			{/if}
 			<button class="btn small" onclick={() => (picked = null)}>Close</button>
 		</div>
@@ -426,10 +428,6 @@
 		gap: 6px;
 		font-size: 12.5px;
 		color: var(--muted);
-	}
-	.project-pick select {
-		font-size: 12.5px;
-		max-width: 220px;
 	}
 	.level-actions {
 		display: flex;

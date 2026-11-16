@@ -5,10 +5,17 @@
 	import { portflowApi } from '$lib/api';
 	import { portflow } from '$lib/portflow.svelte';
 	import type { FeedbackFrom, PortflowPerson } from '$lib/types';
+	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
 
 	let { value = $bindable() }: { value: FeedbackFrom } = $props();
 
 	let people = $state<PortflowPerson[]>([]);
+	const GIVEN: DropdownOption[] = [
+		{ value: '', label: '—' },
+		{ value: 'in person', label: 'In person' },
+		{ value: 'email', label: 'By email' },
+		{ value: 'other', label: 'Otherwise' }
+	];
 	const id = `people-${Math.random().toString(36).slice(2)}`;
 
 	onMount(async () => {
@@ -48,15 +55,16 @@
 			</datalist>
 		{/if}
 	</label>
-	<label class="field">
+	<div class="field">
 		How
-		<select value={value.given ?? ''} onchange={(e) => (value = { ...value, given: e.currentTarget.value || null })}>
-			<option value="">—</option>
-			<option value="in person">In person</option>
-			<option value="email">By email</option>
-			<option value="other">Otherwise</option>
-		</select>
-	</label>
+		<!-- The empty string is "not said"; it is stored as null. -->
+		<Dropdown
+			bind:value={() => value.given ?? '', (v) => v !== (value.given ?? '') && (value = { ...value, given: v || null })}
+			options={GIVEN}
+			label="How it was given"
+			full
+		/>
+	</div>
 </div>
 {#if value.portflowUser && value.role}
 	<div class="hint">{value.name} is a {value.role} in your Portflow portfolio.</div>

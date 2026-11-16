@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { listen } from '@tauri-apps/api/event';
+	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import Switch from '$lib/components/Switch.svelte';
 	import { api, portflowApi } from '$lib/api';
 	import { projectUrl } from '$lib/actions';
@@ -184,6 +185,30 @@
 
 	const importing = $derived(pickable.find((c) => String(c.id) === importCollection) ?? null);
 
+	function chooseImport(id: string) {
+		importCollection = id;
+		importName = pickable.find((c) => String(c.id) === id)?.name ?? '';
+	}
+
+	const projectOptions = $derived<DropdownOption[]>([{ value: '', label: 'Choose a project…' }, ...projects.map((p) => ({ value: p.slug, label: p.name }))]);
+	const semesterOptions = $derived<DropdownOption[]>(semesters.map((s) => ({ value: s.id, label: s.name })));
+
+	/** The collections not in Ledger yet, under their section, after a first "none" line saying `empty`. */
+	function collectionOptions(empty: string): DropdownOption[] {
+		// Until the collections have loaded there is nothing to choose.
+		if (collections === null) return [{ value: '', label: 'Loading collections…', disabled: true }];
+		return [
+			{ value: '', label: empty },
+			...bySection.flatMap((g) =>
+				g.items.map((c) => ({
+					value: String(c.id),
+					label: `${c.name}${c.subtitle ? ` · ${c.subtitle}` : ''} (${plural(c.evidenceCount, 'item')})`,
+					group: g.section || 'No section'
+				}))
+			)
+		];
+	}
+
 	async function importProject() {
 		if (!importing) return;
 		busy = 'import';
@@ -337,27 +362,20 @@
 					<div class="notice">Add a semester first (Settings → Semesters): the project is linked to its collection for one semester.</div>
 				{:else}
 					<div class="form-row">
-						<label class="field grow">
+						<div class="field grow">
 							Collection
-							<select
-								bind:value={importCollection}
-								disabled={collections === null}
-								onchange={() => (importName = pickable.find((c) => String(c.id) === importCollection)?.name ?? '')}
-							>
-								<option value="">{collections === null ? 'Loading collections…' : pickable.length ? 'Choose what to import…' : 'Every collection is in Ledger'}</option>
-								{#each bySection as g (g.section)}
-									<optgroup label={g.section || 'No section'}>
-										{#each g.items as c (c.id)}<option value={String(c.id)}>{c.name}{c.subtitle ? ` · ${c.subtitle}` : ''} ({plural(c.evidenceCount, 'item')})</option>{/each}
-									</optgroup>
-								{/each}
-							</select>
-						</label>
-						<label class="field">
+							<!-- A different collection names the new project after it. -->
+							<Dropdown
+								bind:value={() => importCollection, (v) => v !== importCollection && chooseImport(v)}
+								options={collectionOptions(pickable.length ? 'Choose what to import…' : 'Every collection is in Ledger')}
+								label="Collection to import"
+								full
+							/>
+						</div>
+						<div class="field">
 							Semester
-							<select bind:value={importSemester}>
-								{#each semesters as s (s.id)}<option value={s.id}>{s.name}</option>{/each}
-							</select>
-						</label>
+							<Dropdown bind:value={importSemester} options={semesterOptions} label="Semester" full />
+						</div>
 					</div>
 					{#if importing}
 						<div class="form-row">
@@ -407,30 +425,23 @@
 					<div class="notice">Add a semester first (Settings → Semesters): a collection is linked for one semester.</div>
 				{:else}
 					<div class="form-row">
-						<label class="field grow">
+						<div class="field grow">
 							Project
-							<select bind:value={pickProject}>
-								<option value="">Choose a project…</option>
-								{#each projects as p (p.slug)}<option value={p.slug}>{p.name}</option>{/each}
-							</select>
-						</label>
-						<label class="field">
+							<Dropdown bind:value={pickProject} options={projectOptions} label="Project" full />
+						</div>
+						<div class="field">
 							Semester
-							<select bind:value={pickSemester}>
-								{#each semesters as s (s.id)}<option value={s.id}>{s.name}</option>{/each}
-							</select>
-						</label>
-						<label class="field grow">
+							<Dropdown bind:value={pickSemester} options={semesterOptions} label="Semester" full />
+						</div>
+						<div class="field grow">
 							Collection
-							<select bind:value={pickCollection} disabled={collections === null}>
-								<option value="">{collections === null ? 'Loading collections…' : pickable.length ? 'Choose a collection…' : 'Every collection is linked'}</option>
-								{#each bySection as g (g.section)}
-									<optgroup label={g.section || 'No section'}>
-										{#each g.items as c (c.id)}<option value={String(c.id)}>{c.name}{c.subtitle ? ` · ${c.subtitle}` : ''} ({plural(c.evidenceCount, 'item')})</option>{/each}
-									</optgroup>
-								{/each}
-							</select>
-						</label>
+							<Dropdown
+								bind:value={pickCollection}
+								options={collectionOptions(pickable.length ? 'Choose a collection…' : 'Every collection is linked')}
+								label="Collection"
+								full
+							/>
+						</div>
 					</div>
 					{#if collectionsError}
 						<div class="notice bad">{collectionsError}</div>

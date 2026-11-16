@@ -7,6 +7,7 @@
 	import { openInPortflow, portflow } from '$lib/portflow.svelte';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
 	import type { ProjectPortflow, ThreadSummary } from '$lib/types';
+	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
 	import Markdown from './Markdown.svelte';
 
 	let { project, threads, version }: { project: string; threads: ThreadSummary[]; version: unknown } = $props();
@@ -31,6 +32,7 @@
 	});
 
 	const unplaced = $derived((data?.evidence ?? []).filter((e) => !e.thread));
+	const placeOptions = (name: string): DropdownOption[] => [{ value: '__new__', label: `A new thread “${name}”` }, ...threads.map((t) => ({ value: t.slug, label: t.title }))];
 
 	async function place(evidence: string, name: string, choice: string) {
 		if (!choice) return;
@@ -80,11 +82,15 @@
 						<span class="hint">· {plural(e.versions.length, 'version')}</span>
 						{#if e.portflowId}<button class="link accent" onclick={() => openInPortflow(`“${e.name}”`)}>Open in Portflow</button>{/if}
 					</div>
-					<select disabled={busy !== null} onchange={(ev) => place(e.slug, e.name, ev.currentTarget.value)}>
-						<option value="">Put in a thread…</option>
-						<option value="__new__">A new thread “{e.name}”</option>
-						{#each threads as t (t.slug)}<option value={t.slug}>{t.title}</option>{/each}
-					</select>
+					<!-- An action, not a setting: it shows the prompt until the item is placed (and leaves this list). -->
+					<Dropdown
+						bind:value={() => '', (v) => place(e.slug, e.name, v)}
+						options={placeOptions(e.name)}
+						disabled={busy !== null}
+						label="Put “{e.name}” in a thread"
+						placeholder="Put in a thread…"
+						align="end"
+					/>
 				</div>
 			{/each}
 		{/if}
