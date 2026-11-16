@@ -2,6 +2,7 @@
 	// Who gave a piece of feedback, and how. The project's own people come first (its coach, teammates, client, with
 	// their role); with Portflow on, the people your portfolio is shared with follow (teachers first, with their role).
 	// Anyone else can be typed as a name.
+	import { GIVEN_WAYS } from '$lib/v1';
 	import { onMount } from 'svelte';
 	import { api, portflowApi } from '$lib/api';
 	import { portflow } from '$lib/portflow.svelte';
@@ -15,9 +16,7 @@
 	let team = $state<ProjectPerson[]>([]);
 	const GIVEN: DropdownOption[] = [
 		{ value: '', label: '—' },
-		{ value: 'in person', label: 'In person' },
-		{ value: 'email', label: 'By email' },
-		{ value: 'other', label: 'Otherwise' }
+		...GIVEN_WAYS.map((g) => ({ value: g.given, label: g.name }))
 	];
 	const id = `people-${Math.random().toString(36).slice(2)}`;
 

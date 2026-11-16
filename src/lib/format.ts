@@ -49,6 +49,23 @@ export function dayKey(iso: string | Date): string {
 	return d ? partsFormat.format(d) : '';
 }
 
+/** A day and a 24-hour time as they are in Amsterdam ("2026-11-09", "14:05"), as a moment (ISO 8601, UTC). */
+export function amsterdamMoment(day: string, clock: string): string {
+	const [y, m, d] = day.split('-').map(Number);
+	const [hh, mm] = (clock || '00:00').split(':').map(Number);
+	const wall = Date.UTC(y, m - 1, d, hh || 0, mm || 0);
+	// How far Amsterdam's clock is ahead of UTC at a moment (an hour, or two in summer time).
+	const ahead = (t: number) => {
+		const parts = Object.fromEntries(
+			new Intl.DateTimeFormat('en-GB', { timeZone: TIME_ZONE, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })
+				.formatToParts(new Date(t))
+				.map((p) => [p.type, Number(p.value)])
+		);
+		return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute) - t;
+	};
+	return new Date(wall - ahead(wall - ahead(wall))).toISOString();
+}
+
 /** Today in Amsterdam, "2026-11-09". */
 export const todayKey = () => dayKey(new Date());
 

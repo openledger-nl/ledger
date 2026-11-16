@@ -20,6 +20,8 @@ import type {
 	Feedback,
 	LinkTarget,
 	FeedbackFrom,
+	FeedbackRecord,
+	InboxFeedback,
 	Post,
 	ProjectSummary,
 	ProjectView,
@@ -147,6 +149,10 @@ export const api = {
 		call<Prompt>('create_prompt_deliverable', { project, thread, id, name }),
 
 	// feedback
+	/** Every piece of feedback in the vault, newest first. */
+	listAllFeedback: () => call<InboxFeedback[]>('list_all_feedback'),
+	/** Your own note or someone else's, from the inbox; kept in a thread (see FeedbackRecord). */
+	recordFeedback: (draft: FeedbackRecord) => call<Feedback>('record_feedback', { draft }),
 	/** On the whole document, or on the passage `quote` when given; `from` says who gave it. */
 	addFeedback: (project: string, thread: string, deliverablePath: string, body: string, quote: Anchor | null = null, from: FeedbackFrom | null = null) =>
 		call<Feedback>('add_feedback', { project, thread, deliverablePath, body, quote, from }),

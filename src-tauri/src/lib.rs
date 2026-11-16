@@ -211,6 +211,8 @@ pub fn run() {
             commands::attach_prompt_feedback,
             commands::detach_prompt_feedback,
             commands::add_feedback,
+            commands::list_all_feedback,
+            commands::record_feedback,
             commands::set_feedback_status,
             commands::update_feedback,
             commands::delete_feedback,

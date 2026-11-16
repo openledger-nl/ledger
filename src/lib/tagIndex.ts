@@ -1,20 +1,19 @@
 // The index of `#` tags the pickers offer: every project tag and person tag in use, from the vault's projects, the
-// meeting notes and the feedback, each with how it reads and how often it is used. Until the backend indexes the
-// vault's tags, the meeting notes and feedback come from the mock data.
+// meeting notes and the feedback, each with how it reads and how often it is used.
 
-import type { DailyNote, FeedbackItem, ProjectMeta, ProjectPerson, ProjectSummary } from './types';
+import type { DailyNote, InboxFeedback, ProjectMeta, ProjectPerson, ProjectSummary } from './types';
 import type { TagOption } from './components/TagPicker.svelte';
-import { personName, personRole, roleName } from './v1';
+import { feedbackTag, personName, personRole, roleName } from './v1';
 import { plural } from './format';
 
 const words = (tag: string) => tag.split('-').map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(' ');
 
 /** Project tags (`thrym-player`, shown as `#project/thrym-player`): the vault's projects first, by name. */
-export function projectTagOptions(projects: ProjectSummary[], meta: ProjectMeta[], notes: DailyNote[] = [], feedback: FeedbackItem[] = []): TagOption[] {
+export function projectTagOptions(projects: ProjectSummary[], meta: ProjectMeta[], notes: DailyNote[] = [], feedback: InboxFeedback[] = []): TagOption[] {
 	const uses = new Map<string, number>();
 	const count = (t: string) => uses.set(t, (uses.get(t) ?? 0) + 1);
 	for (const n of notes) for (const m of n.meetings) m.projects.forEach(count);
-	for (const f of feedback) count(f.target.project);
+	for (const f of feedback) count(f.project);
 
 	const names = new Map<string, string>();
 	for (const m of meta) names.set(m.tag, words(m.tag));
@@ -33,11 +32,17 @@ export function projectTagOptions(projects: ProjectSummary[], meta: ProjectMeta[
 
 /** Person tags (`coach/frank`): the people of the projects first (by their own name and role), then the others from the
  *  meetings and the feedback, most used first. */
-export function personTagOptions(notes: DailyNote[] = [], feedback: FeedbackItem[] = [], people: ProjectPerson[] = []): TagOption[] {
+export function personTagOptions(notes: DailyNote[] = [], feedback: InboxFeedback[] = [], people: ProjectPerson[] = []): TagOption[] {
 	const uses = new Map<string, number>();
 	const count = (t: string) => uses.set(t, (uses.get(t) ?? 0) + 1);
 	for (const n of notes) for (const m of n.meetings) m.people.forEach(count);
-	for (const f of feedback) if (f.from) count(f.from);
+	const named = new Map<string, string>();
+	for (const f of feedback) {
+		const tag = feedbackTag(f);
+		if (!tag || !f.from) continue;
+		count(tag);
+		named.set(tag, f.from);
+	}
 	const listed = new Map<string, ProjectPerson[]>();
 	for (const p of people) listed.set(p.tag, [...(listed.get(p.tag) ?? []), p]);
 	const own = [...listed].map(([value, of]) => ({
@@ -48,6 +53,6 @@ export function personTagOptions(notes: DailyNote[] = [], feedback: FeedbackItem
 	const others = [...uses]
 		.filter(([value]) => !listed.has(value))
 		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-		.map(([value, n]) => ({ value, label: personName(value), hint: `#${value} · ${personRole(value)} · ${plural(n, 'use')}` }));
+		.map(([value, n]) => ({ value, label: named.get(value) ?? personName(value), hint: `#${value} · ${personRole(value)} · ${plural(n, 'use')}` }));
 	return [...own, ...others];
 }

@@ -1,17 +1,20 @@
 //! Feedback is written in a thread and lands on a deliverable (or one of its published versions): on the whole
-//! document, or on a passage of it.
+//! document, or on a passage of it. Feedback recorded from the inbox may land on a user story or on the project as a
+//! whole instead (no deliverable), and says whether it is your own note or someone else's, and in which meeting it was
+//! given.
 
 use rusqlite::{Connection, Row, params};
 
 use crate::db::{query_all, query_opt};
 use crate::error::{Error, Result};
 use crate::models::{FeedbackFrom, FeedbackView, Quote};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::{deliverables, ids, markdown, provenance, threads};
 
 const COLUMNS: &str = "id, thread_slug, deliverable_path, deliverable_version, status, created_at, updated_at, body, quote, quote_prefix, quote_suffix,
-    from_name, from_user, from_role, given, portflow_comment, reply_to, comment_type, evidence, evidence_version";
+    from_name, from_user, from_role, given, portflow_comment, reply_to, comment_type, evidence, evidence_version, kind, story, daily";
 
 /// The longest passage that can be commented on, in characters: a paragraph or two, not a whole page.
 pub const MAX_QUOTE: usize = 2000;
@@ -20,6 +23,8 @@ const MAX_CONTEXT: usize = 120;
 
 fn from_row(r: &Row<'_>) -> rusqlite::Result<FeedbackView> {
     let body: String = r.get(7)?;
+    let from: Option<String> = r.get(11)?;
+    let kind = kind_of(r.get::<_, Option<String>>(20)?.as_deref(), from.is_some());
     Ok(FeedbackView {
         id: r.get(0)?,
         thread_slug: r.get(1)?,
@@ -34,7 +39,7 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<FeedbackView> {
         quote_prefix: r.get(9)?,
         quote_suffix: r.get(10)?,
         given_on: None,
-        from: r.get(11)?,
+        from,
         from_user: r.get(12)?,
         from_role: r.get(13)?,
         given: r.get(14)?,
@@ -43,7 +48,20 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<FeedbackView> {
         comment_type: r.get(17)?,
         evidence: r.get(18)?,
         evidence_version: r.get(19)?,
+        kind,
+        story: r.get(21)?,
+        daily: r.get(22)?,
     })
+}
+
+/// What a piece of feedback is: as kept, or for feedback from before that was kept, someone's when it names who gave it.
+fn kind_of(stored: Option<&str>, named: bool) -> String {
+    match stored {
+        Some("own") => "own".into(),
+        Some("someone") => "someone".into(),
+        _ if named => "someone".into(),
+        _ => "own".into(),
+    }
 }
 
 /// Says which version each piece of feedback was given on. Feedback on the live file was given on what the next version
@@ -54,6 +72,10 @@ fn fill_given_on(conn: &Connection, project: &str, items: &mut [FeedbackView]) -
     for f in items.iter_mut() {
         if let Some(version) = &f.deliverable_version {
             f.given_on = Some(version.clone());
+            continue;
+        }
+        // On a story, on the project as a whole, or on an evidence item Ledger has no files of: no version to be on.
+        if f.deliverable_path.is_empty() {
             continue;
         }
         if !published.contains_key(&f.deliverable_path) {
@@ -159,7 +181,7 @@ pub fn add(conn: &Connection, project: &str, thread: &str, deliverable_path: &st
     add_with(conn, project, thread, deliverable_path, body, quote, &FeedbackFrom::default())
 }
 
-pub const GIVEN: [&str; 4] = ["in person", "portflow", "email", "other"];
+pub const GIVEN: [&str; 6] = ["in person", "meeting", "portflow", "email", "phone", "other"];
 
 /// Feedback on the whole document, saying who gave it and how.
 #[cfg_attr(not(test), allow(dead_code))]
@@ -217,7 +239,7 @@ pub fn set_from(conn: &Connection, id: &str, from: &FeedbackFrom) -> Result<()> 
     if let Some(given) = given
         && !GIVEN.contains(&given)
     {
-        return Err(Error::invalid("Feedback is given in person, through Portflow, by email, or otherwise"));
+        return Err(Error::invalid("Feedback is given in person, in a meeting, through Portflow, by email, by phone, or otherwise"));
     }
     let role = from.role.as_deref().map(str::trim).filter(|r| !r.is_empty());
     conn.execute(
@@ -285,4 +307,152 @@ pub fn update(conn: &Connection, project: &str, thread: &str, id: &str, body: &s
 pub fn delete(conn: &Connection, project: &str, thread: &str, id: &str) -> Result<()> {
     conn.execute("DELETE FROM feedback WHERE project_slug = ?1 AND thread_slug = ?2 AND id = ?3", [project, thread, id])?;
     Ok(())
+}
+
+// ---- recorded from the inbox --------------------------------------------------------------------------
+
+/// Feedback written down from the inbox: your own note or someone else's, on a deliverable (or one of its versions), on
+/// a user story, or on the project as a whole. Like all feedback it is kept in a thread.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FeedbackRecord {
+    pub project: String,
+    /// The thread to keep it in; none: the project's most recent thread, or a new one named "Feedback".
+    pub thread: Option<String>,
+    /// A live path, or a published version ("plan@v1.0.md").
+    pub deliverable: Option<String>,
+    /// A user story's id, for feedback on that story rather than on a deliverable.
+    pub story: Option<String>,
+    /// "own" or "someone".
+    pub kind: String,
+    /// Who gave it and how; left out for your own note.
+    pub from: FeedbackFrom,
+    /// The day ("2026-11-09") of the meeting note it was given in.
+    pub daily: Option<String>,
+    pub body: String,
+    /// When it was given (ISO 8601); now when left out.
+    pub at: Option<String>,
+}
+
+const NEW_THREAD: &str = "Feedback";
+
+fn some(text: &Option<String>) -> Option<String> {
+    text.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string)
+}
+
+/// The thread feedback is kept in: the one asked for, or else the project's most recently active one, or else a new
+/// thread named "Feedback" (a project without threads can still be given feedback).
+fn thread_for(conn: &Connection, project: &str, wanted: Option<&str>) -> Result<String> {
+    if let Some(slug) = wanted {
+        threads::require(conn, project, slug)?;
+        return Ok(slug.to_string());
+    }
+    let newest = threads::list(conn, project)?.into_iter().max_by(|a, b| a.last_activity.cmp(&b.last_activity));
+    match newest {
+        Some(thread) => Ok(thread.slug),
+        None => Ok(threads::create(conn, project, NEW_THREAD)?.slug),
+    }
+}
+
+/// A moment as feedback keeps it (UTC, milliseconds), from any ISO 8601 text with an offset; `None` when it isn't one.
+fn moment(text: &str) -> Option<String> {
+    let parsed = chrono::DateTime::parse_from_rfc3339(text.trim()).ok()?;
+    Some(ids::format_millis(parsed.timestamp_millis()))
+}
+
+/// Records feedback from the inbox. Your own note names nobody; someone else's must say who gave it.
+pub fn record(conn: &Connection, draft: &FeedbackRecord) -> Result<FeedbackView> {
+    crate::projects::require(conn, &draft.project)?;
+    let project = draft.project.as_str();
+    let body = draft.body.trim();
+    if body.is_empty() {
+        return Err(Error::invalid("Write the feedback first"));
+    }
+    let kind = match draft.kind.as_str() {
+        "own" | "someone" => draft.kind.as_str(),
+        _ => return Err(Error::invalid("Feedback is your own note or someone else's")),
+    };
+    if kind == "someone" && some(&draft.from.name).is_none() {
+        return Err(Error::invalid("Say who gave the feedback"));
+    }
+    let deliverable = some(&draft.deliverable);
+    let story = some(&draft.story);
+    if deliverable.is_some() && story.is_some() {
+        return Err(Error::invalid("Feedback lands on a deliverable or on a user story, not both"));
+    }
+    if let Some(path) = &deliverable
+        && !deliverables::exists(conn, project, path)?
+    {
+        return Err(Error::not_found("Deliverable not found"));
+    }
+    if let Some(id) = &story
+        && !crate::stories::exists(conn, project, id)?
+    {
+        return Err(Error::not_found("User story not found"));
+    }
+    let daily = some(&draft.daily);
+    if let Some(day) = &daily
+        && chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").is_err()
+    {
+        return Err(Error::invalid("The meeting's day is written as 2026-11-09"));
+    }
+    let at = match some(&draft.at) {
+        Some(text) => moment(&text).ok_or_else(|| Error::invalid("When it was given is not a moment Ledger can read"))?,
+        None => ids::now(),
+    };
+    let thread = thread_for(conn, project, some(&draft.thread).as_deref())?;
+    let path = deliverable.unwrap_or_default();
+    let version = deliverables::split_version(&path).1;
+
+    let id = ids::new_id();
+    conn.execute(
+        "INSERT INTO feedback (id, project_slug, thread_slug, deliverable_path, deliverable_version, created_at, updated_at, body, kind, story, daily)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![id, project, thread, path, version, at, ids::now(), body, kind, story, daily],
+    )?;
+    if kind == "someone" {
+        set_from(conn, &id, &draft.from)?;
+    }
+    get(conn, project, &thread, &id)
+}
+
+/// A piece of feedback in the inbox, with what it needs to say where it is: its project, its thread, its story.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InboxFeedback {
+    pub project: String,
+    pub project_name: String,
+    pub thread_title: String,
+    /// The story it is about, by its summary.
+    pub story_title: Option<String>,
+    #[serde(flatten)]
+    pub feedback: FeedbackView,
+}
+
+/// Every piece of feedback in the vault, from every project and thread (Portflow's included), newest first.
+pub fn list_all(conn: &Connection) -> Result<Vec<InboxFeedback>> {
+    let projects = query_all(conn, "SELECT slug, name FROM projects", [], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    let mut out = vec![];
+    for (project, name) in projects {
+        let mut items = query_all(conn, &format!("SELECT {COLUMNS} FROM feedback WHERE project_slug = ?1"), [&project], from_row)?;
+        fill_given_on(conn, &project, &mut items)?;
+        let titles: HashMap<String, String> =
+            query_all(conn, "SELECT slug, title FROM threads WHERE project_slug = ?1", [&project], |r| Ok((r.get(0)?, r.get(1)?)))?.into_iter().collect();
+        let stories: HashMap<String, String> = query_all(conn, "SELECT id, summary FROM user_stories WHERE project_slug = ?1", [&project], |r| {
+            Ok((r.get::<_, String>(0)?.to_lowercase(), r.get(1)?))
+        })?
+        .into_iter()
+        .collect();
+        for feedback in items {
+            out.push(InboxFeedback {
+                project: project.clone(),
+                project_name: name.clone(),
+                thread_title: titles.get(&feedback.thread_slug).cloned().unwrap_or_else(|| feedback.thread_slug.clone()),
+                story_title: feedback.story.as_ref().and_then(|s| stories.get(&s.to_lowercase()).cloned()),
+                feedback,
+            });
+        }
+    }
+    out.sort_by(|a, b| (&b.feedback.created_at, &b.feedback.id).cmp(&(&a.feedback.created_at, &a.feedback.id)));
+    Ok(out)
 }

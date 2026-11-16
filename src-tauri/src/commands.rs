@@ -300,6 +300,18 @@ pub fn add_feedback(
     app.mutate(|c, _| feedback::add_with(c, &project, &thread, &deliverable_path, &body, quote.as_ref(), &from.unwrap_or_default()))
 }
 
+/// Every piece of feedback in the vault, newest first: the inbox.
+#[tauri::command]
+pub fn list_all_feedback(app: State<App>) -> Result<Vec<feedback::InboxFeedback>> {
+    app.read(|c, _| feedback::list_all(c))
+}
+
+/// Feedback written down from the inbox: your own note or someone else's, on a deliverable, a story or the project.
+#[tauri::command]
+pub fn record_feedback(app: State<App>, draft: feedback::FeedbackRecord) -> Result<FeedbackView> {
+    app.mutate(|c, _| feedback::record(c, &draft))
+}
+
 #[tauri::command]
 pub fn set_feedback_from(app: State<App>, project: String, thread: String, id: String, from: FeedbackFrom) -> Result<FeedbackView> {
     app.mutate(|c, _| feedback::update_from(c, &project, &thread, &id, &from))

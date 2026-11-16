@@ -160,6 +160,12 @@ CREATE TABLE feedback (
     comment_type        TEXT,
     evidence            TEXT,
     evidence_version    INTEGER,
+    -- 'own' (your own note, for yourself or for Claude) or 'someone' (given by someone else); NULL in files written
+    -- before it was kept, which then reads as 'someone' when it names who gave it and 'own' when it doesn't.
+    kind                TEXT,
+    -- A user story it is about (its id in the project), and the day of the meeting note it was written down in.
+    story               TEXT,
+    daily               TEXT,
     FOREIGN KEY (project_slug, thread_slug) REFERENCES threads(project_slug, slug) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX feedback_by_comment ON feedback (portflow_comment) WHERE portflow_comment IS NOT NULL;

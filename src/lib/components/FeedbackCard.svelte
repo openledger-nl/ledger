@@ -63,7 +63,7 @@
 	let from = $state<FeedbackFrom>({ name: null, portflowUser: null, role: null, given: null });
 	/** Pulled from Portflow: Portflow says what it says and who said it. */
 	const fromPortflow = $derived(feedback.portflowComment !== null);
-	const GIVEN: Record<string, string> = { 'in person': 'in person', portflow: 'in Portflow', email: 'by email', other: '' };
+	const GIVEN: Record<string, string> = { 'in person': 'in person', meeting: 'in a meeting', portflow: 'in Portflow', email: 'by email', phone: 'by phone', other: '' };
 	let saving = $state(false);
 	let prompting = $state(false);
 

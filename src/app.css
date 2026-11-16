@@ -1200,7 +1200,7 @@ details.more p { margin: 0; }
 .fb-role { font-size: 12px; color: var(--muted); }
 .fb-when { font-size: 12px; color: var(--faint); white-space: nowrap; }
 .fb-where { font-size: 12px; color: var(--muted); }
-.fb-body { margin: 0; white-space: pre-wrap; }
+.fb-body { margin: 0; }
 .fb-follow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .fb-item .actions { align-items: center; }
 

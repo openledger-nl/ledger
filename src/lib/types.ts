@@ -147,8 +147,13 @@ export interface Feedback {
 	from: string | null;
 	fromUser: number | null;
 	fromRole: string | null;
-	/** How it was given: "in person", "portflow", "email" or "other". */
+	/** How it was given: "in person", "meeting", "portflow", "email", "phone" or "other". */
 	given: string | null;
+	/** Your own note (for yourself or for Claude), or feedback from someone else. */
+	kind: FeedbackKind;
+	/** The user story it is about, by id; the day ("2026-11-09") of the meeting note it was written down in. */
+	story: string | null;
+	daily: string | null;
 	/** Set on feedback pulled from Portflow: it can't be edited in Ledger. */
 	portflowComment: number | null;
 	/** The feedback this answers (a reply in Portflow). */
@@ -1310,9 +1315,6 @@ export interface DailyNote {
 	updatedAt: string;
 }
 
-/** Where a piece of feedback came in. */
-export type FeedbackSource = 'ledger' | 'portflow' | 'feedpulse';
-
 /** Your own note (for yourself or for Claude), or feedback from someone else. */
 export type FeedbackKind = 'own' | 'someone';
 
@@ -1329,37 +1331,29 @@ export interface ProjectPerson {
 	tag: PersonTag;
 }
 
-/** What feedback lands on. */
-export type FeedbackTarget =
-	| { on: 'deliverable'; project: string; deliverable: string; version: string | null }
-	| { on: 'story'; project: string; story: string }
-	| { on: 'project'; project: string };
-
-/** A feedback file (`type: feedback`) in v1: its own kind of file, not a post. */
-export interface FeedbackItem {
-	id: string;
-	kind: FeedbackKind;
-	source: FeedbackSource;
-	/** Group feedback from Portflow is on a group's collection; personal is yours alone. */
-	scope: 'personal' | 'group';
-	/** Who gave it, as a person tag; null for your own notes. */
-	from: PersonTag | null;
-	role: FeedbackRole | null;
-	/** How it was given: in person, by mail, in a meeting… */
-	given: string | null;
-	/** The daily note it was written down in, by its day. */
-	daily: string | null;
-	target: FeedbackTarget;
-	body: string;
-	at: string;
-	/** Only you resolve feedback, never Ledger. */
-	status: 'open' | 'resolved';
-	resolvedAt: string | null;
-	/** What you did with it: posts, runs and versions that answer it, in words. */
-	followUps: string[];
+/** A piece of feedback in the inbox: with its project, the title of the thread it is kept in, and its story's summary. */
+export interface InboxFeedback extends Feedback {
+	project: string;
+	projectName: string;
+	threadTitle: string;
+	storyTitle: string | null;
 }
 
-export type FeedbackDraft = Omit<FeedbackItem, 'id' | 'status' | 'resolvedAt' | 'followUps' | 'source' | 'scope'>;
+/** Feedback written down from the inbox. It lands on a deliverable (or a version), a user story, or the project as a
+ *  whole, and is kept in a thread: the one named, or else the project's most recent one (or a new one, "Feedback"). */
+export interface FeedbackRecord {
+	project: string;
+	thread: string | null;
+	/** A live path, or a published version ("plan@v1.0.md"). */
+	deliverable: string | null;
+	story: string | null;
+	kind: FeedbackKind;
+	from: FeedbackFrom;
+	daily: string | null;
+	body: string;
+	/** When it was given, ISO 8601. */
+	at: string | null;
+}
 
 /** A deliverable's v1 facts: its number, its goal and its own label (Man-Made switches AI writing off for it). */
 export interface DeliverableMeta {

@@ -177,8 +177,13 @@ pub struct FeedbackView {
     pub from: Option<String>,
     pub from_user: Option<i64>,
     pub from_role: Option<String>,
-    /// How it was given: "in person", "portflow", "email" or "other".
+    /// How it was given: "in person", "meeting", "portflow", "email", "phone" or "other".
     pub given: Option<String>,
+    /// "own" (your own note) or "someone" (given by someone else).
+    pub kind: String,
+    /// The user story it is about, by id; and the day of the meeting note it was written down in.
+    pub story: Option<String>,
+    pub daily: Option<String>,
     /// Pulled from Portflow: the comment, the feedback it answers, its kind, and the evidence item and version it is on.
     pub portflow_comment: Option<i64>,
     pub reply_to: Option<String>,

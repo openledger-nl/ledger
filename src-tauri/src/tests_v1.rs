@@ -309,3 +309,134 @@ fn a_version_published_with_another_label_keeps_the_intended_one_and_why() {
     vault.persist(&again).unwrap();
     assert_eq!(fs::read_to_string(&records[0]).unwrap(), text);
 }
+
+// ---- feedback recorded from the inbox -------------------------------------------------------------------
+
+use crate::feedback::{self, FeedbackRecord};
+use crate::models::{FeedbackFrom, StoryDraft};
+use crate::{stories, threads};
+
+fn someone(project: &str, name: &str, role: &str) -> FeedbackRecord {
+    FeedbackRecord {
+        project: project.into(),
+        kind: "someone".into(),
+        from: FeedbackFrom { name: Some(name.into()), role: Some(role.into()), given: Some("meeting".into()), ..Default::default() },
+        body: "Split the plan into sprints.".into(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn feedback_on_a_project_without_threads_starts_a_feedback_thread() {
+    let dir = tempdir().unwrap();
+    let (_vault, conn) = open(dir.path());
+    let project = projects::create(&conn, "Bakery").unwrap().slug;
+    let saved = feedback::record(&conn, &someone(&project, "Frank", "coach")).unwrap();
+    assert_eq!(saved.kind, "someone");
+    assert_eq!(saved.deliverable_path, "");
+    let thread = threads::list(&conn, &project).unwrap();
+    assert_eq!(thread.len(), 1);
+    assert_eq!(thread[0].title, "Feedback");
+    assert_eq!(saved.thread_slug, thread[0].slug);
+}
+
+#[test]
+fn feedback_goes_to_the_most_recently_active_thread_unless_one_is_named() {
+    let dir = tempdir().unwrap();
+    let (_vault, conn) = open(dir.path());
+    let project = projects::create(&conn, "Bakery").unwrap().slug;
+    let first = threads::create(&conn, &project, "Research").unwrap().slug;
+    let second = threads::create(&conn, &project, "Planning").unwrap().slug;
+    let picked = feedback::record(&conn, &FeedbackRecord { thread: Some(first.clone()), ..someone(&project, "Frank", "coach") }).unwrap();
+    assert_eq!(picked.thread_slug, first);
+    // The thread that just got feedback is now the most recently active one.
+    let next = feedback::record(&conn, &someone(&project, "Ries", "client")).unwrap();
+    assert_eq!(next.thread_slug, first);
+    assert_ne!(next.thread_slug, second);
+}
+
+#[test]
+fn recorded_feedback_keeps_whose_it_is_its_story_and_its_meeting_in_its_file() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let project = projects::create(&conn, "Bakery").unwrap().slug;
+    let thread = threads::create(&conn, &project, "Planning").unwrap().slug;
+    stories::create(&conn, &project, StoryDraft { id: "US-1".into(), summary: "Swap a shift".into(), ..Default::default() }).unwrap();
+    let on_story = feedback::record(
+        &conn,
+        &FeedbackRecord { story: Some("US-1".into()), daily: Some("2026-11-09".into()), at: Some("2026-11-09T14:05:00+01:00".into()), ..someone(&project, "Frank", "coach") },
+    )
+    .unwrap();
+    let own = feedback::record(&conn, &FeedbackRecord { kind: "own".into(), from: FeedbackFrom::default(), body: "Check the rota rules.".into(), ..someone(&project, "", "") }).unwrap();
+    assert_eq!(own.kind, "own");
+    assert_eq!(own.from, None);
+    assert_eq!(on_story.created_at, "2026-11-09T13:05:00.000Z");
+    vault.persist(&conn).unwrap();
+
+    let text = read(root, &format!("projects/{project}/threads/{thread}/feedback/{}.md", on_story.id));
+    let meta = frontmatter::parse(&text).unwrap().meta;
+    assert_eq!(meta.text("kind").as_deref(), Some("someone"));
+    assert_eq!(meta.text("story").as_deref(), Some("US-1"));
+    assert_eq!(meta.text("daily").as_deref(), Some("2026-11-09"));
+    assert_eq!(meta.text("given").as_deref(), Some("meeting"));
+    assert_eq!(meta.text("deliverable"), None);
+
+    let (_again, conn) = open(root);
+    let inbox = feedback::list_all(&conn).unwrap();
+    assert_eq!(inbox.len(), 2);
+    let story = inbox.iter().find(|f| f.feedback.id == on_story.id).unwrap();
+    assert_eq!(story.feedback.story.as_deref(), Some("US-1"));
+    assert_eq!(story.story_title.as_deref(), Some("Swap a shift"));
+    assert_eq!(story.feedback.daily.as_deref(), Some("2026-11-09"));
+    assert_eq!(story.feedback.from.as_deref(), Some("Frank"));
+    assert_eq!(story.thread_title, "Planning");
+    assert!(inbox.iter().any(|f| f.feedback.id == own.id && f.feedback.kind == "own"));
+}
+
+#[test]
+fn someone_elses_feedback_must_say_who_and_lands_on_one_thing() {
+    let dir = tempdir().unwrap();
+    let (_vault, conn) = open(dir.path());
+    let project = projects::create(&conn, "Bakery").unwrap().slug;
+    let plan = deliverables::create(&conn, &project, "Plan.md", "# Plan").unwrap().path;
+    stories::create(&conn, &project, StoryDraft { id: "US-1".into(), summary: "Swap".into(), ..Default::default() }).unwrap();
+    assert!(feedback::record(&conn, &FeedbackRecord { from: FeedbackFrom::default(), ..someone(&project, "", "") }).is_err());
+    let both = FeedbackRecord { deliverable: Some(plan.clone()), story: Some("US-1".into()), ..someone(&project, "Frank", "coach") };
+    assert!(feedback::record(&conn, &both).is_err());
+    assert!(feedback::record(&conn, &FeedbackRecord { deliverable: Some("Nope.md".into()), ..someone(&project, "Frank", "coach") }).is_err());
+    let on_plan = feedback::record(&conn, &FeedbackRecord { deliverable: Some(plan.clone()), ..someone(&project, "Frank", "coach") }).unwrap();
+    assert_eq!(on_plan.deliverable_path, plan);
+}
+
+#[test]
+fn hand_written_feedback_without_a_deliverable_reads_in_when_it_says_whose_it_is() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/bakery/project.md", "---\nname: Bakery\n---\n");
+    write(root, "projects/bakery/threads/notes/thread.md", "---\ntitle: Notes\n---\n");
+    write(root, "projects/bakery/threads/notes/feedback/a.md", "---\nkind: own\ndaily: not a day\n---\n\nRemember the holidays.\n");
+    write(root, "projects/bakery/threads/notes/feedback/b.md", "---\nkind: shouting\n---\n\nNo deliverable, no kind: not feedback.\n");
+    write(root, "projects/bakery/threads/notes/feedback/c.md", "---\ndeliverable: Plan.md\nfrom: Frank\n---\n\nOlder feedback names its giver.\n");
+    let (_vault, conn) = open(root);
+    let inbox = feedback::list_all(&conn).unwrap();
+    let ids: Vec<&str> = inbox.iter().map(|f| f.feedback.id.as_str()).collect();
+    assert!(ids.contains(&"a") && ids.contains(&"c") && !ids.contains(&"b"), "{ids:?}");
+    let a = inbox.iter().find(|f| f.feedback.id == "a").unwrap();
+    assert_eq!(a.feedback.kind, "own");
+    assert_eq!(a.feedback.daily, None, "a day that isn't one is dropped");
+    assert_eq!(inbox.iter().find(|f| f.feedback.id == "c").unwrap().feedback.kind, "someone");
+}
+
+#[test]
+fn the_inbox_holds_every_project_newest_first() {
+    let dir = tempdir().unwrap();
+    let (_vault, conn) = open(dir.path());
+    let a = projects::create(&conn, "Bakery").unwrap().slug;
+    let b = projects::create(&conn, "Synth").unwrap().slug;
+    let older = feedback::record(&conn, &FeedbackRecord { at: Some("2026-10-01T09:00:00Z".into()), ..someone(&a, "Frank", "coach") }).unwrap();
+    let newer = feedback::record(&conn, &FeedbackRecord { at: Some("2026-11-01T09:00:00Z".into()), ..someone(&b, "Ries", "client") }).unwrap();
+    let inbox = feedback::list_all(&conn).unwrap();
+    assert_eq!(inbox.iter().map(|f| f.feedback.id.clone()).collect::<Vec<_>>(), vec![newer.id, older.id]);
+    assert_eq!(inbox[0].project_name, "Synth");
+}

@@ -37,6 +37,16 @@ export const ROLES: { role: FeedbackRole; name: string }[] = [
 ];
 export const roleName = (role: FeedbackRole | null) => (role ? (ROLES.find((r) => r.role === role)?.name ?? role) : 'You');
 
+/** How feedback was given, as kept ("meeting") and as said ("In a meeting"); Portflow's own is set by Portflow. */
+export const GIVEN_WAYS: { given: string; name: string }[] = [
+	{ given: 'in person', name: 'In person' },
+	{ given: 'meeting', name: 'In a meeting' },
+	{ given: 'email', name: 'By email' },
+	{ given: 'phone', name: 'By phone' },
+	{ given: 'other', name: 'Otherwise' }
+];
+export const givenName = (given: string | null) => (given === 'portflow' ? 'In Portflow' : (GIVEN_WAYS.find((g) => g.given === given)?.name ?? null));
+
 /** `expert/sander` → `Sander`; `client/police/ries` → `Ries`. */
 export function personName(tag: PersonTag): string {
 	const last = tag.split('/').pop() ?? tag;
@@ -47,6 +57,18 @@ export function personName(tag: PersonTag): string {
 export function teamTags(people: ProjectPerson[], projects: string[]): PersonTag[] {
 	return [...new Set(people.filter((p) => p.role === 'teammate' && projects.includes(p.project)).map((p) => p.tag))];
 }
+
+/** The tag someone goes by, as the backend forms it: `coach/frank-de-vries` (role, then the name as a slug). */
+export function personTag(role: string, name: string): PersonTag {
+	const slug = name
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '');
+	return `${role || 'other'}/${slug || 'someone'}`;
+}
+
+/** The person tag of whoever gave a piece of feedback; null for your own notes and feedback that names nobody. */
+export const feedbackTag = (f: { from: string | null; fromRole: string | null }) => (f.from ? personTag(f.fromRole ?? 'other', f.from) : null);
 
 /** `client/police/ries` → `client · police`: the role and where they are from. */
 export const personRole = (tag: PersonTag) => tag.split('/').slice(0, -1).join(' · ');

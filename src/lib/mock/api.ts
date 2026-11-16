@@ -6,8 +6,6 @@
 import * as fixtures from './fixtures';
 import type {
 	DeliverableMeta,
-	FeedbackDraft,
-	FeedbackItem,
 	LabelConfirmation,
 	DailyNote,
 	PostMeta,
@@ -19,7 +17,6 @@ const KEY = 'ledger-preview-data';
 interface Store {
 	projects: ProjectMeta[];
 	daily: DailyNote[];
-	feedback: FeedbackItem[];
 	posts: PostMeta[];
 	deliverables: DeliverableMeta[];
 	confirmations: LabelConfirmation[];
@@ -28,7 +25,6 @@ interface Store {
 const seed = (): Store => structuredClone({
 	projects: fixtures.projectMeta,
 	daily: fixtures.daily,
-	feedback: fixtures.feedback,
 	posts: fixtures.postMeta,
 	deliverables: fixtures.deliverableMeta,
 	confirmations: fixtures.confirmations
@@ -62,7 +58,6 @@ function save() {
 /** Answers like a command does: a little later, and a copy, so a screen can't change the store by accident. */
 const answer = <T>(value: T): Promise<T> => new Promise((resolve) => setTimeout(() => resolve(structuredClone(value)), 60));
 
-const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /** `Thrym Player` → `thrym-player`, as project tags are written. */
 export const tagOf = (name: string) =>
@@ -110,23 +105,6 @@ export const mockApi = {
 		store.daily = store.daily.filter((d) => d.date !== date);
 		save();
 		return answer(null);
-	},
-
-	// ---- feedback ---------------------------------------------------------------------------------
-	listFeedback: () => answer([...store.feedback].sort((a, b) => b.at.localeCompare(a.at))),
-	recordFeedback: (draft: FeedbackDraft) => {
-		const item: FeedbackItem = { ...draft, id: id('f'), source: 'ledger', scope: 'personal', status: 'open', resolvedAt: null, followUps: [] };
-		store.feedback = [...store.feedback, item];
-		save();
-		return answer(item);
-	},
-	/** Only you resolve feedback: this is called from your click, never by Ledger itself. */
-	setFeedbackStatus: (feedbackId: string, status: 'open' | 'resolved') => {
-		store.feedback = store.feedback.map((f) =>
-			f.id === feedbackId ? { ...f, status, resolvedAt: status === 'resolved' ? new Date().toISOString() : null } : f
-		);
-		save();
-		return answer(store.feedback.find((f) => f.id === feedbackId) ?? null);
 	},
 
 	// ---- deliverables -----------------------------------------------------------------------------

@@ -464,6 +464,13 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
     }
 
     let mut feedback_extras: HashMap<String, crate::portflow_vault::FeedbackExtra> = crate::portflow_vault::feedback_extras(conn)?;
+    // What the inbox adds: whose it is, and the story and meeting note it belongs to.
+    let mut feedback_v1: HashMap<String, (Option<String>, Option<String>, Option<String>)> = HashMap::new();
+    for (id, kind, story, daily) in query_all(conn, "SELECT id, kind, story, daily FROM feedback", [], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?))
+    })? {
+        feedback_v1.insert(id, (kind, story, daily));
+    }
     type FeedbackRow = (String, String, String, String, Option<String>, String, String, String, String, Option<String>, Option<String>, Option<String>);
     for (id, project, thread, path, version, status, created_at, updated_at, body, quote, prefix, suffix) in query_all::<FeedbackRow, _>(
         conn,
@@ -476,6 +483,11 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         frontmatter::set(&mut meta, "id", id.clone());
         frontmatter::set_opt(&mut meta, "deliverable", Some(&path));
         frontmatter::set_opt(&mut meta, "version", version.as_deref());
+        if let Some((kind, story, daily)) = feedback_v1.remove(&id) {
+            frontmatter::set_opt(&mut meta, "kind", kind.as_deref());
+            frontmatter::set_opt(&mut meta, "story", story.as_deref());
+            frontmatter::set_opt(&mut meta, "daily", daily.as_deref());
+        }
         frontmatter::set(&mut meta, "status", status);
         frontmatter::set_opt(&mut meta, "quote", quote.as_deref());
         frontmatter::set_opt(&mut meta, "quotePrefix", prefix.as_deref());
@@ -978,6 +990,8 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
     let mut prompts: Vec<PromptItem> = vec![];
     let mut feedback: Vec<FeedbackItem> = vec![];
     let mut feedback_extras: Vec<(String, crate::portflow_vault::FeedbackExtra)> = vec![];
+    // id, then whose it is ("own"/"someone"), the story and the meeting note's day
+    let mut feedback_v1: Vec<(String, Option<String>, Option<String>, Option<String>)> = vec![];
     let mut uploads: Vec<(String, String, String, String, i64, String, String)> = vec![];
     // id, thread, prompt, status, model, permission mode, started, finished, seconds, turns, deliverables, body
     type RunItem = (String, String, String, String, String, String, String, String, i64, Option<i64>, Vec<String>, String);
@@ -1008,8 +1022,13 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             let rel = entity_file(project, slug, "feedback", &stem);
             let Some((meta, body)) = source.parsed(&rel) else { continue };
             let extra = crate::portflow_vault::FeedbackExtra::read(&meta);
-            // Feedback from Portflow is on an evidence item and may have no deliverable.
-            let Some(deliverable) = meta.text("deliverable").or_else(|| extra.evidence.as_ref().map(|_| String::new())) else { continue };
+            let kind = meta.text("kind").filter(|k| k == "own" || k == "someone");
+            let story = meta.text("story").filter(|s| !s.trim().is_empty());
+            let daily = meta.text("daily").filter(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok());
+            // Feedback from Portflow is on an evidence item and may have no deliverable; feedback recorded from the
+            // inbox may be on a story or on the whole project.
+            let unattached = extra.evidence.is_some() || kind.is_some() || story.is_some();
+            let Some(deliverable) = meta.text("deliverable").or_else(|| unattached.then(String::new)) else { continue };
             if body.trim().is_empty() {
                 continue;
             }
@@ -1017,6 +1036,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             let status = if meta.text("status").as_deref() == Some("resolved") { "resolved" } else { "open" };
             let id = meta.text("id").unwrap_or(stem);
             feedback_extras.push((id.clone(), extra));
+            feedback_v1.push((id.clone(), kind, story, daily));
             feedback.push((
                 id,
                 slug.clone(),
@@ -1108,6 +1128,11 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
     }
     for (id, extra) in feedback_extras {
         extra.store(conn, &id)?;
+    }
+    for (id, kind, story, daily) in feedback_v1 {
+        if kind.is_some() || story.is_some() || daily.is_some() {
+            conn.execute("UPDATE feedback SET kind = ?2, story = ?3, daily = ?4 WHERE id = ?1", params![id, kind, story, daily])?;
+        }
     }
     uploads.sort_by(|a, b| (&a.5, &a.0).cmp(&(&b.5, &b.0)));
     for (id, thread, file, name, size, uploaded_at, description) in uploads {
