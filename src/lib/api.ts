@@ -31,6 +31,7 @@ import type {
 	Prompt,
 	Provenance,
 	PublishChoices,
+	ReaderPreset,
 	Region,
 	ScreenshotTaken,
 	SidebarFold,
@@ -45,6 +46,7 @@ import type {
 	Task,
 	TaskUpdate,
 	Template,
+	TemplateDraft,
 	ThreadSummary,
 	ThreadView,
 	Upload,
@@ -231,12 +233,14 @@ export const api = {
 	listTemplates: (scope: string) => call<Template[]>('list_templates', { scope }),
 	projectTemplates: (project: string) => call<Template[]>('project_templates', { project }),
 	effectiveTemplates: (project: string) => call<Template[]>('effective_templates', { project }),
-	createTemplate: (scope: string, name: string, trigger: string, questions: string[], body: string) =>
-		call<Template>('create_template', { scope, name, trigger, questions, body }),
+	createTemplate: (scope: string, draft: TemplateDraft) => call<Template>('create_template', { scope, draft }),
 	/** Copies a vault-wide template into the project under the same id, so the project can change its own. */
 	overrideTemplate: (project: string, id: string) => call<Template>('override_template', { project, id }),
-	updateTemplate: (scope: string, id: string, name: string, trigger: string, questions: string[], body: string) =>
-		call<Template>('update_template', { scope, id, name, trigger, questions, body }),
+	updateTemplate: (scope: string, id: string, draft: TemplateDraft) => call<Template>('update_template', { scope, id, draft }),
+	/** The readers a template can name by a word. */
+	templateReaderPresets: () => call<ReaderPreset[]>('template_reader_presets'),
+	/** What a new deliverable in the project starts with from this template: its skeleton, with its readers noted. */
+	templateSkeleton: (project: string, id: string) => call<string>('template_skeleton', { project, id }),
 	deleteTemplate: (scope: string, id: string) => call<void>('delete_template', { scope, id }),
 
 	// user stories

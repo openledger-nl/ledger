@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 use crate::frontmatter::{self, MetaExt};
-use crate::models::{Bump, Criterion, Quote, SemesterDraft, StoryDraft, TaskUpdate};
+use crate::models::{Bump, Criterion, Quote, SemesterDraft, StoryDraft, TaskUpdate, TemplateDraft, TemplateReader};
 use crate::posts::AddOptions;
 use crate::provenance::{self, Origin};
 use crate::settings::{self, SyncEnv};
@@ -39,7 +39,7 @@ fn open(root: &Path) -> (Vault, Connection) {
 
 /// A vault with a bit of everything in it. Returns the project and thread slugs.
 fn populate(conn: &Connection, root: &Path) -> (String, String) {
-    templates::create(conn, "", "Interview", "after a call", &["Who?".into(), "Why: really?".into()], "# Interview\n\n## Who\n").unwrap();
+    templates::create(conn, "", &TemplateDraft::basic("Interview", "after a call", &["Who?".into(), "Why: really?".into()], "# Interview\n\n## Who\n")).unwrap();
     let autumn = SemesterDraft {
         name: "Semester 1: autumn".into(),
         start: "2026-09-01".into(),
@@ -53,7 +53,7 @@ fn populate(conn: &Connection, root: &Path) -> (String, String) {
     sprints[0].goal = "Pick: the client".into();
     semesters::update(conn, &made.id, &SemesterDraft { sprints, ..autumn }).unwrap();
     let project = projects::create(conn, "Acme").unwrap().slug;
-    templates::create(conn, &project, "House style", "", &[], "Short sentences.").unwrap();
+    templates::create(conn, &project, &TemplateDraft::basic("House style", "", &[], "Short sentences.")).unwrap();
     projects::save_readme(conn, &project, "# Acme\n\nRead the call notes first.\n").unwrap();
 
     let alpha = threads::create(conn, &project, "Alpha: the first").unwrap().slug;
@@ -219,12 +219,32 @@ fn what_is_written_loads_back_identically() {
 }
 
 #[test]
+fn a_templates_kinds_and_readers_are_kept_in_its_frontmatter() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let readers = vec![
+        TemplateReader { who: "client".into(), needs: "reads the summary first".into(), keep_from: "the rate".into() },
+        TemplateReader { who: "me".into(), ..Default::default() },
+    ];
+    let draft = TemplateDraft { kinds: vec!["study".into(), "company".into()], readers, readers_shown: true, ..TemplateDraft::basic("Brief", "", &[], "# Brief\n") };
+    templates::create(&conn, "", &draft).unwrap();
+    vault.persist(&conn).unwrap();
+
+    let text = read(root, "templates/brief.md");
+    assert!(text.contains("kinds:\n- study\n- company\nreaders:\n- who: client\n  needs: reads the summary first\n  keepFrom: the rate\n- me\nreadersShown: true\n"), "{text}");
+    let (_, reloaded) = open(root);
+    let brief = templates::get(&reloaded, "", "brief").unwrap();
+    assert_eq!((brief.kinds.clone(), brief.readers.clone(), brief.readers_shown), (draft.kinds.clone(), templates::get(&conn, "", "brief").unwrap().readers, true));
+}
+
+#[test]
 fn things_made_in_the_same_instant_keep_their_order_after_a_reload() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let (mut vault, conn) = open(root);
     let questions: Vec<String> = (1..=12).map(|n| format!("Question {n}?")).collect();
-    templates::create(&conn, "", "Many", "", &questions, "").unwrap();
+    templates::create(&conn, "", &TemplateDraft::basic("Many", "", &questions, "")).unwrap();
     let p = projects::create(&conn, "P").unwrap().slug;
     let t = threads::create(&conn, &p, "T").unwrap().slug;
     prompts::create_titled(&conn, &p, &t, "", "Answer them all", Some("many")).unwrap();

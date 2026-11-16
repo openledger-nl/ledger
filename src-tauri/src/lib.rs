@@ -269,6 +269,8 @@ pub fn run() {
             commands::update_template,
             commands::override_template,
             commands::delete_template,
+            commands::template_reader_presets,
+            commands::template_skeleton,
             commands::list_stories,
             commands::create_story,
             commands::update_story,

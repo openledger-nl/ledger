@@ -28,7 +28,7 @@ use crate::claude_code::runs::{self, Host, MAX_CONCURRENT, MAX_OUTPUT_BYTES, Run
 use crate::claude_code::versions::{Baseline, Change};
 use crate::claude_code::{check_with, finish};
 use crate::error::Result;
-use crate::models::{BaseSpec, Bump, NewPrompt};
+use crate::models::{BaseSpec, Bump, NewPrompt, TemplateDraft};
 use crate::state::Core;
 use crate::{deliverables, ids, projects, prompts, provenance, templates, threads};
 
@@ -680,7 +680,7 @@ fn the_text_is_a_short_preamble_then_the_prompt_as_written() {
 fn the_template_reaches_the_run_in_the_base_and_a_linked_deliverable_is_named() {
     let f = Fixture::with_body("Write up the call.");
     let skeleton = "# Interview\n\n```text\nfenced\n```\n## Who\n";
-    let template = templates::create(&f.core.conn, "", "Interview", "after a call", &[], skeleton).unwrap();
+    let template = templates::create(&f.core.conn, "", &TemplateDraft::basic("Interview", "after a call", &[], skeleton)).unwrap();
 
     // The structure is in the base the dialog fills in from the template, in a fence long enough to hold the one inside it.
     let spec = BaseSpec { template_id: Some(template.id.clone()), feedback: vec![] };

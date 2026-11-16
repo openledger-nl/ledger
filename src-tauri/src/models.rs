@@ -336,10 +336,39 @@ pub struct TemplateView {
     pub questions: Vec<String>,
     /// The skeleton of the deliverable.
     pub body: String,
+    /// The kinds of project it is offered in (study, hobby, company); empty for every kind.
+    pub kinds: Vec<String>,
+    /// Who its deliverables are written for: told to Claude, and noted in the deliverable.
+    pub readers: Vec<TemplateReader>,
+    /// The readers are a visible line in a new deliverable, not only a `%%` note.
+    pub readers_shown: bool,
     pub created_at: String,
     pub updated_at: String,
     /// A vault-wide template that the project has replaced with one of its own of the same id.
     pub overridden: bool,
+}
+
+/// Someone a template's deliverable is written for: a preset (`client`, `coach`, …, see `templates::PRESETS`) or
+/// someone in your own words, what they need from it, and what must be kept from them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TemplateReader {
+    pub who: String,
+    pub needs: String,
+    pub keep_from: String,
+}
+
+/// What a template says, as the editor sends it.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TemplateDraft {
+    pub name: String,
+    pub trigger: String,
+    pub questions: Vec<String>,
+    pub body: String,
+    pub kinds: Vec<String>,
+    pub readers: Vec<TemplateReader>,
+    pub readers_shown: bool,
 }
 
 // ---- stories, tasks, the board ----------------------------------------------------------------------
@@ -584,4 +613,12 @@ pub struct TaskUpdate {
     pub column_id: Option<String>,
     pub story_id: Option<String>,
     pub thread_slug: Option<String>,
+}
+
+#[cfg(test)]
+impl TemplateDraft {
+    /// A template with a name, a hint, questions and a skeleton, and nothing more.
+    pub fn basic(name: &str, trigger: &str, questions: &[String], body: &str) -> Self {
+        Self { name: name.into(), trigger: trigger.into(), questions: questions.to_vec(), body: body.into(), ..Default::default() }
+    }
 }

@@ -103,16 +103,24 @@ fn fence_for(text: &str) -> String {
     "`".repeat((longest + 1).max(3))
 }
 
-/// The base of a prompt for a new deliverable that starts from this template: its name and its structure.
+/// The base of a prompt for a new deliverable that starts from this template: its name, its readers and its structure.
 fn template_text(conn: &Connection, project: &str, id: &str) -> Result<String> {
     let template = templates::find(conn, project, id).map_err(|_| Error::invalid("Template not found"))?;
-    let intro = format!("Create the deliverable from the template “{}”", one_line(&template.name));
+    let mut intro = format!("Create the deliverable from the template “{}”.", one_line(&template.name));
+    // Who it is for, so it is written for them; in the base, so a prompt can name other readers than its template.
+    let readers = templates::resolve(conn, Some(project), &template.readers)?;
+    if !readers.is_empty() {
+        intro.push_str(&format!(
+            "\n\nIt is written for: {}. Write it for these readers: their words, the detail they need and what they read first, and leave out what is to be kept from them.",
+            templates::describe(&readers)
+        ));
+    }
     let body = template.body.trim_end();
     if body.trim().is_empty() {
-        return Ok(format!("{intro}."));
+        return Ok(intro);
     }
     let fence = fence_for(body);
-    Ok(format!("{intro}. Use this structure:\n\n{fence}markdown\n{body}\n{fence}"))
+    Ok(format!("{intro}\n\nUse this structure:\n\n{fence}markdown\n{body}\n{fence}"))
 }
 
 /// Pieces of feedback as a prompt says them: each with the version it was given on, the passage, and what was said. With
@@ -203,7 +211,10 @@ pub fn create(conn: &Connection, project: &str, thread: &str, draft: &NewPrompt)
     }
     if let Some(name) = new_name {
         // The file starts from the template's structure, when the prompt has one.
-        let skeleton = template.as_ref().map(|t| t.body.clone()).unwrap_or_default();
+        let skeleton = match &template {
+            Some(t) => templates::skeleton(conn, project, t)?,
+            None => String::new(),
+        };
         let created = deliverables::create(conn, project, name, &skeleton)?;
         link_deliverable(conn, project, thread, &id, &created.path)?;
     }

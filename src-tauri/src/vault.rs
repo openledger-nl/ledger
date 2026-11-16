@@ -50,7 +50,7 @@ use crate::db::{self, query_all};
 use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
 use crate::models::{SemesterDraft, Sprint, Vacation};
-use crate::{board, deliverables, ids, posts, projects, provenance, semesters, settings};
+use crate::{board, deliverables, ids, posts, projects, provenance, semesters, settings, templates};
 
 // ---- layout -----------------------------------------------------------------------------------------
 
@@ -554,26 +554,19 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
 }
 
 fn export_templates(conn: &Connection, files: &mut BTreeMap<String, String>) -> Result<()> {
-    let mut questions: HashMap<(String, String), Vec<String>> = HashMap::new();
-    for (scope, id, question) in query_all(conn, "SELECT scope, template_id, question FROM template_questions ORDER BY scope, template_id, position", [], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
-    })? {
-        questions.entry((scope, id)).or_default().push(question);
-    }
-
-    for (scope, id, name, trigger, body, created_at, updated_at) in query_all(
-        conn,
-        "SELECT scope, id, name, \"trigger\", body, created_at, updated_at FROM templates",
-        [],
-        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?, r.get::<_, String>(6)?)),
-    )? {
-        let mut meta = Mapping::new();
-        frontmatter::set(&mut meta, "name", name);
-        frontmatter::set_opt(&mut meta, "trigger", Some(&trigger));
-        frontmatter::set_list(&mut meta, "questions", &questions.remove(&(scope.clone(), id.clone())).unwrap_or_default());
-        frontmatter::set(&mut meta, "createdAt", created_at);
-        frontmatter::set(&mut meta, "updatedAt", updated_at);
-        files.insert(template_file(&scope, &id), frontmatter::render(&meta, &body));
+    let mut scopes: Vec<String> = vec![String::new()];
+    scopes.extend(query_all(conn, "SELECT DISTINCT scope FROM templates WHERE scope <> ''", [], |r| r.get::<_, String>(0))?);
+    for scope in scopes {
+        for template in templates::list(conn, &scope)? {
+            let mut meta = Mapping::new();
+            frontmatter::set(&mut meta, "name", template.name.clone());
+            frontmatter::set_opt(&mut meta, "trigger", Some(&template.trigger));
+            frontmatter::set_list(&mut meta, "questions", &template.questions);
+            templates::export_meta(&template, &mut meta);
+            frontmatter::set(&mut meta, "createdAt", template.created_at.clone());
+            frontmatter::set(&mut meta, "updatedAt", template.updated_at.clone());
+            files.insert(template_file(&scope, &template.id), frontmatter::render(&meta, &template.body));
+        }
     }
     Ok(())
 }
@@ -867,9 +860,22 @@ fn import_templates(conn: &Connection, source: &Source, scope: &str) -> Result<(
         let rel = template_file(scope, &id);
         let Some((meta, body)) = source.parsed(&rel) else { continue };
         let created_at = meta.text("createdAt").unwrap_or_else(|| source.stamp(&rel));
+        let (kinds, readers, readers_shown) = templates::import_meta(&meta);
         conn.execute(
-            "INSERT OR IGNORE INTO templates (scope, id, name, \"trigger\", body, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![scope, id, meta.text("name").unwrap_or_else(|| id.clone()), meta.text("trigger").unwrap_or_default(), body, created_at, meta.text("updatedAt").unwrap_or_else(|| created_at.clone())],
+            "INSERT OR IGNORE INTO templates (scope, id, name, \"trigger\", body, kinds, readers, readers_shown, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                scope,
+                id,
+                meta.text("name").unwrap_or_else(|| id.clone()),
+                meta.text("trigger").unwrap_or_default(),
+                body,
+                kinds,
+                readers,
+                readers_shown,
+                created_at,
+                meta.text("updatedAt").unwrap_or_else(|| created_at.clone())
+            ],
         )?;
         for (position, question) in meta.list("questions").iter().enumerate() {
             conn.execute(

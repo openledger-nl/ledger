@@ -282,7 +282,7 @@ pub fn detach_prompt_feedback(app: State<App>, project: String, thread: String, 
 pub fn create_prompt_deliverable(app: State<App>, project: String, thread: String, id: String, name: String) -> Result<PromptView> {
     app.mutate(|c, _| {
         let prompt = prompts::get(c, &project, &thread, &id)?;
-        let skeleton = prompt.template_id.as_deref().and_then(|t| templates::find(c, &project, t).ok()).map(|t| t.body).unwrap_or_default();
+        let skeleton = prompt.template_id.as_deref().and_then(|t| templates::skeleton_for(c, &project, t).ok()).unwrap_or_default();
         let created = deliverables::create(c, &project, &name, &skeleton)?;
         prompts::link_deliverable(c, &project, &thread, &id, &created.path)
     })
@@ -561,8 +561,8 @@ pub fn effective_templates(app: State<App>, project: String) -> Result<Vec<Templ
 }
 
 #[tauri::command]
-pub fn create_template(app: State<App>, scope: String, name: String, trigger: String, questions: Vec<String>, body: String) -> Result<TemplateView> {
-    app.mutate(|c, _| templates::create(c, &scope, &name, &trigger, &questions, &body))
+pub fn create_template(app: State<App>, scope: String, draft: TemplateDraft) -> Result<TemplateView> {
+    app.mutate(|c, _| templates::create(c, &scope, &draft))
 }
 
 /// Gives the project its own copy of a vault-wide template, which then replaces the shared one there.
@@ -572,16 +572,20 @@ pub fn override_template(app: State<App>, project: String, id: String) -> Result
 }
 
 #[tauri::command]
-pub fn update_template(
-    app: State<App>,
-    scope: String,
-    id: String,
-    name: Option<String>,
-    trigger: Option<String>,
-    questions: Option<Vec<String>>,
-    body: Option<String>,
-) -> Result<TemplateView> {
-    app.mutate(|c, _| templates::update(c, &scope, &id, name.as_deref(), trigger.as_deref(), questions.as_deref(), body.as_deref()))
+pub fn update_template(app: State<App>, scope: String, id: String, draft: TemplateDraft) -> Result<TemplateView> {
+    app.mutate(|c, _| templates::update(c, &scope, &id, &draft))
+}
+
+/// The readers a template can name by a word: `me`, `client`, `people` and the rest.
+#[tauri::command]
+pub fn template_reader_presets() -> Vec<templates::Preset> {
+    templates::PRESETS.to_vec()
+}
+
+/// What a new deliverable in the project starts with from this template: its skeleton with its readers noted.
+#[tauri::command]
+pub fn template_skeleton(app: State<App>, project: String, id: String) -> Result<String> {
+    app.read(|c, _| templates::skeleton_for(c, &project, &id))
 }
 
 #[tauri::command]

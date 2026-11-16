@@ -438,11 +438,36 @@ export interface Template {
 	questions: string[];
 	/** The skeleton of the deliverable. */
 	body: string;
+	/** The kinds of project it is offered in; empty for every kind. */
+	kinds: ProjectKind[];
+	/** Who its deliverables are written for: told to Claude, and noted in the deliverable. */
+	readers: TemplateReader[];
+	/** The readers are a visible line in a new deliverable, not only a `%%` note. */
+	readersShown: boolean;
 	createdAt: string;
 	updatedAt: string;
 	/** A vault-wide template the project has replaced with its own. */
 	overridden: boolean;
 }
+
+/** Someone a template's deliverable is written for: a preset's id (`client`, `me`, `people`, …) or your own words. */
+export interface TemplateReader {
+	who: string;
+	/** What they need from it, beyond what the preset says. */
+	needs: string;
+	/** What must be kept from them. */
+	keepFrom: string;
+}
+
+/** A reader a template can name by a word, with what Claude is told about them. */
+export interface ReaderPreset {
+	id: string;
+	name: string;
+	hint: string;
+}
+
+/** What a template says, as the editor saves it. */
+export type TemplateDraft = Pick<Template, 'name' | 'trigger' | 'questions' | 'body' | 'kinds' | 'readers' | 'readersShown'>;
 
 // ---- stories, tasks, the board ----------------------------------------------------------------------
 

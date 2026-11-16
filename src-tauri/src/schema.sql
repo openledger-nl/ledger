@@ -257,14 +257,19 @@ CREATE TABLE version_records (
 );
 
 -- scope '' is a vault-wide template, otherwise it is the slug of the project the template belongs to.
+-- kinds: the kinds of project it is for, comma-separated ('' for every kind). readers: who its deliverable is written
+-- for, as JSON.
 CREATE TABLE templates (
-    scope      TEXT NOT NULL,
-    id         TEXT NOT NULL,
-    name       TEXT NOT NULL,
-    "trigger"  TEXT NOT NULL DEFAULT '',
-    body       TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    scope         TEXT NOT NULL,
+    id            TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    "trigger"     TEXT NOT NULL DEFAULT '',
+    body          TEXT NOT NULL DEFAULT '',
+    kinds         TEXT NOT NULL DEFAULT '',
+    readers       TEXT NOT NULL DEFAULT '[]',
+    readers_shown INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
     PRIMARY KEY (scope, id)
 );
 

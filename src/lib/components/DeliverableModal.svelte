@@ -39,7 +39,7 @@
 	$effect(() => {
 		const slug = project;
 		let stale = false;
-		Promise.all([api.getProjectMeta(slug), api.listTemplates(slug).catch(() => []), api.nextDeliverableNumber(slug).catch(() => 1)]).then(([m, t, next]) => {
+		Promise.all([api.getProjectMeta(slug), api.effectiveTemplates(slug).catch(() => []), api.nextDeliverableNumber(slug).catch(() => 1)]).then(([m, t, next]) => {
 			if (stale) return;
 			meta = m;
 			templates = t;
@@ -75,7 +75,9 @@
 	async function create() {
 		if (!ready || busy) return;
 		busy = true;
-		const body = `# ${name.trim().replace(/\.md$/i, '')}\n\n> **Goal:** ${goal.trim()}\n\n${chosen?.body ?? ''}`.trimEnd() + '\n';
+		// The template's skeleton, with its readers noted under its title.
+		const skeleton = chosen ? ((await attempt(() => api.templateSkeleton(project, chosen.id))) ?? chosen.body) : '';
+		const body = `# ${name.trim().replace(/\.md$/i, '')}\n\n> **Goal:** ${goal.trim()}\n\n${skeleton}`.trimEnd() + '\n';
 		const made = await attempt(() => api.createDeliverable(project, fileName, body));
 		if (made) {
 			await attempt(() =>
