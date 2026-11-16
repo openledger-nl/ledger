@@ -4,6 +4,8 @@ import { capture, captureDebug, logError } from './log.svelte';
 import type {
 	ActivityEvent,
 	ProjectMeta,
+	PostKind,
+	EpistemicLabel,
 	ProjectPerson,
 	Semester,
 	SemesterDraft,
@@ -103,6 +105,9 @@ export const api = {
 	unlinkThreads: (project: string, slug: string, otherSlug: string) => call<void>('unlink_threads', { project, slug, otherSlug }),
 
 	// posts
+	/** What a post is and how sure you are of it, in its frontmatter. */
+	setPostMeta: (project: string, thread: string, id: string, kind: PostKind | null, labels: EpistemicLabel[]) =>
+		call<Post>('set_post_meta', { project, thread, id, kind, labels }),
 	addPost: (project: string, thread: string, body: string, replyToId: string | null = null) =>
 		call<Post>('add_post', { project, thread, body, replyToId }),
 	updatePost: (project: string, thread: string, id: string, body: string) => call<Post>('update_post', { project, thread, id, body }),

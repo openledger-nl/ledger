@@ -6,7 +6,6 @@
 	import { attempt, refresh } from '$lib/ui.svelte';
 	import type { Post } from '$lib/types';
 	import MarkdownEditor from './MarkdownEditor.svelte';
-	import { mockApi } from '$lib/mock/api';
 	import { previews } from '$lib/mock/flag.svelte';
 	import { LABELS, POST_KINDS } from '$lib/v1';
 	import type { EpistemicLabel, PostKind } from '$lib/types';
@@ -54,7 +53,7 @@
 		const post = await attempt(() => api.addPost(project, thread, body, replyTo?.id ?? null));
 		sending = false;
 		if (!post) return;
-		if (previews.enabled) await attempt(() => mockApi.setPostMeta({ postId: post.id, kind, labels }));
+		if (previews.enabled) await attempt(() => api.setPostMeta(project, thread, post.id, kind, labels));
 		labels = [];
 		text = '';
 		await refresh();

@@ -182,6 +182,7 @@ pub fn run() {
             commands::list_project_meta,
             commands::save_project_meta,
             commands::list_project_people,
+            commands::set_post_meta,
             commands::save_project_people,
             commands::delete_project,
             commands::create_thread,

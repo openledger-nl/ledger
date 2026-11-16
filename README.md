@@ -24,7 +24,7 @@ This is the rewrite of the original ASP.NET ledger, which is kept in the author'
 projects/<project>/project.md                       a project (name, board columns; its kind, goal, end and intended AI-use label; its people)
 projects/<project>/README.md                        the project's reading guide — where to start
 projects/<project>/threads/<thread>/thread.md       a thread
-projects/<project>/threads/<thread>/posts/<id>.md       its posts
+projects/<project>/threads/<thread>/posts/<id>.md       its posts, each with its kind and labels when you set them
 projects/<project>/threads/<thread>/prompts/<id>.md     its prompts: requests for deliverables
 projects/<project>/threads/<thread>/feedback/<id>.md    its feedback, which lands on a deliverable
 projects/<project>/threads/<thread>/uploads/<id>.md     upload manifests: when, where the file is, a description

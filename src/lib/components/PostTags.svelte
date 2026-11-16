@@ -2,18 +2,17 @@
 	// A post's kind and its labels (Fact, To check, Assumption), set by hand: Ledger never labels a post. Shown in the
 	// post's meta row; the tag button opens the choice below it. Wireframe C1; requirements: Threads.
 	import Tag from '@lucide/svelte/icons/tag';
-	import { mockApi } from '$lib/mock/api';
-	import { refresh } from '$lib/ui.svelte';
+	import { api } from '$lib/api';
+	import { attempt, refresh } from '$lib/ui.svelte';
 	import { LABELS, labelName, POST_KINDS, postKindName } from '$lib/v1';
 	import type { EpistemicLabel, PostKind, PostMeta } from '$lib/types';
 
-	let { postId, meta }: { postId: string; meta: PostMeta | null } = $props();
+	let { project, thread, postId, meta }: { project: string; thread: string; postId: string; meta: PostMeta | null } = $props();
 
 	let open = $state(false);
 
 	async function save(kind: PostKind, labels: EpistemicLabel[]) {
-		await mockApi.setPostMeta({ postId, kind, labels });
-		await refresh();
+		if (await attempt(() => api.setPostMeta(project, thread, postId, kind, labels))) await refresh();
 	}
 
 	const toggle = (label: EpistemicLabel) => {

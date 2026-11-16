@@ -151,3 +151,35 @@ fn people_without_a_name_or_role_are_refused_and_read_leniently() {
     assert!(project_facts::save_people(&conn, "synth", &[person("", "coach")]).is_err());
     assert!(project_facts::save_people(&conn, "synth", &[person("Bo", "wizard")]).is_err());
 }
+
+// ---- a post's kind and labels ---------------------------------------------------------------------------
+
+#[test]
+fn a_posts_kind_and_labels_are_kept_in_its_file() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let project = projects::create(&conn, "Acme").unwrap().slug;
+    let thread = crate::threads::create(&conn, &project, "Alpha").unwrap().slug;
+    let post = crate::posts::add(&conn, &project, &thread, "The API answers in 40 ms.", Default::default()).unwrap();
+    assert_eq!((post.kind.clone(), post.labels.clone()), (None, vec![]), "nothing until you say");
+
+    let set = crate::posts::set_meta(&conn, &project, &thread, &post.id, Some("Research"), &["assumption".into(), "Fact".into(), "fact".into()]).unwrap();
+    assert_eq!(set.kind.as_deref(), Some("research"));
+    assert_eq!(set.labels, ["fact", "assumption"], "each once, in their own order");
+    assert!(crate::posts::set_meta(&conn, &project, &thread, &post.id, Some("rant"), &[]).is_err());
+    assert!(crate::posts::set_meta(&conn, &project, &thread, &post.id, None, &["maybe".into()]).is_err());
+    vault.persist(&conn).unwrap();
+
+    let file = format!("projects/{project}/threads/{thread}/posts/{}.md", post.id);
+    let meta = frontmatter::parse(&read(root, &file)).unwrap().meta;
+    assert_eq!(meta.text("kind").as_deref(), Some("research"));
+    assert_eq!(meta.list("labels"), ["fact", "assumption"]);
+
+    // Hand-edited: an unknown label is dropped, a single label reads as a list of one.
+    let text = read(root, &file).replace("labels:\n- fact\n- assumption\n", "labels: To-Check\n").replace("kind: research", "kind: Devlog");
+    write(root, &file, &text);
+    let (_vault, again) = open(root);
+    let loaded = crate::posts::list(&again, &project, &thread).unwrap().remove(0);
+    assert_eq!((loaded.kind.as_deref(), loaded.labels), (Some("devlog"), vec!["to-check".to_string()]));
+}

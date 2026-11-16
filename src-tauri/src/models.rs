@@ -81,6 +81,10 @@ pub struct PostView {
     pub updated_at: String,
     pub body: String,
     pub html: String,
+    /// What the post is: "thought", "devlog", "research" or "reflection"; `None` until you say.
+    pub kind: Option<String>,
+    /// How sure you are of it: "fact", "to-check", "assumption". Set by hand only, never by Ledger.
+    pub labels: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -95,7 +95,7 @@
 		<span class="time">{time(post.createdAt)}</span>
 		{#if variant === 'answer'}<span class="file">{dayLabel(dayKey(post.createdAt))}</span>{/if}
 		{#if post.updatedAt !== post.createdAt}<span class="file">edited</span>{/if}
-		{#if tags !== undefined && !post.guidingQuestion && !post.versionPublished}<PostTags postId={post.id} meta={tags} />{/if}
+		{#if tags !== undefined && !post.guidingQuestion && !post.versionPublished}<PostTags {project} {thread} postId={post.id} meta={tags} />{/if}
 	</div>
 
 	{#if showQuote}

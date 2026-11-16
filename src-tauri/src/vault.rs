@@ -49,7 +49,7 @@ use crate::db::{self, query_all};
 use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
 use crate::models::{SemesterDraft, Sprint, Vacation};
-use crate::{board, deliverables, ids, projects, provenance, semesters, settings};
+use crate::{board, deliverables, ids, posts, projects, provenance, semesters, settings};
 
 // ---- layout -----------------------------------------------------------------------------------------
 
@@ -408,13 +408,13 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         files.insert(format!("{}/thread.md", thread_dir(&project, &slug)), frontmatter::render(&meta, &description));
     }
 
-    type PostRow = (String, String, String, Option<String>, bool, bool, Option<String>, Option<String>, Option<String>, String, String, String);
-    for (id, project, thread, parent, guiding, published, path, version, prompt, created_at, updated_at, body) in query_all::<PostRow, _>(
+    type PostRow = (String, String, String, Option<String>, bool, bool, Option<String>, Option<String>, Option<String>, String, String, String, Option<String>, String);
+    for (id, project, thread, parent, guiding, published, path, version, prompt, created_at, updated_at, body, kind, labels) in query_all::<PostRow, _>(
         conn,
         "SELECT id, project_slug, thread_slug, parent_id, guiding_question, version_published, deliverable_path,
-                deliverable_version, prompt_id, created_at, updated_at, body FROM posts",
+                deliverable_version, prompt_id, created_at, updated_at, body, kind, labels FROM posts",
         [],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?, r.get(12)?, r.get(13)?)),
     )? {
         let mut meta = Mapping::new();
         frontmatter::set(&mut meta, "id", id.clone());
@@ -424,6 +424,8 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         frontmatter::set_opt(&mut meta, "deliverable", path.as_deref());
         frontmatter::set_opt(&mut meta, "deliverableVersion", version.as_deref());
         frontmatter::set_opt(&mut meta, "prompt", prompt.as_deref());
+        frontmatter::set_opt(&mut meta, "kind", kind.as_deref());
+        frontmatter::set_list(&mut meta, "labels", &labels.split(',').filter(|l| !l.is_empty()).map(str::to_string).collect::<Vec<_>>());
         frontmatter::set(&mut meta, "createdAt", created_at);
         frontmatter::set(&mut meta, "updatedAt", updated_at);
         files.insert(entity_file(&project, &thread, "posts", &id), frontmatter::render(&meta, &body));
@@ -923,7 +925,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
 
     // Posts, prompts, feedback and uploads, each in time order: insertion order is the tie-break for things made
     // in the same instant.
-    type Post = (String, String, Option<String>, bool, bool, Option<String>, Option<String>, Option<String>, String, String, String);
+    type Post = (String, String, Option<String>, bool, bool, Option<String>, Option<String>, Option<String>, String, String, String, Option<String>, String);
     let mut posts: Vec<Post> = vec![];
     for slug in &slugs {
         for stem in source.stems(&format!("{}/posts", thread_dir(project, slug))) {
@@ -945,16 +947,18 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
                 created_at.clone(),
                 meta.text("updatedAt").unwrap_or(created_at),
                 body,
+                meta.text("kind").and_then(|k| posts::clean_kind(&k)),
+                posts::clean_labels(&meta.list("labels")).join(","),
             ));
         }
     }
     posts.sort_by(|a, b| (&a.8, &a.0).cmp(&(&b.8, &b.0)));
-    for (id, thread, parent, guiding, published, path, version, prompt, created_at, updated_at, body) in posts {
+    for (id, thread, parent, guiding, published, path, version, prompt, created_at, updated_at, body, kind, labels) in posts {
         conn.execute(
             "INSERT OR IGNORE INTO posts (id, project_slug, thread_slug, parent_id, guiding_question, version_published,
-                                          deliverable_path, deliverable_version, prompt_id, created_at, updated_at, body)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            params![id, project, thread, parent, guiding, published, path, version, prompt, created_at, updated_at, body],
+                                          deliverable_path, deliverable_version, prompt_id, created_at, updated_at, body, kind, labels)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![id, project, thread, parent, guiding, published, path, version, prompt, created_at, updated_at, body, kind, labels],
         )?;
     }
 

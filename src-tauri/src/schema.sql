@@ -84,6 +84,10 @@ CREATE TABLE posts (
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     body                TEXT NOT NULL,
+    -- What the post is ('thought', 'devlog', 'research' or 'reflection') and how sure you are of it: its labels, a
+    -- comma-separated list of 'fact', 'to-check' and 'assumption'. Set by hand only; NULL and '' when not set.
+    kind                TEXT,
+    labels              TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (project_slug, thread_slug) REFERENCES threads(project_slug, slug) ON DELETE CASCADE
 );
 CREATE INDEX posts_by_thread ON posts (project_slug, thread_slug, created_at);

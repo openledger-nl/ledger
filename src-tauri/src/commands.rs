@@ -93,6 +93,12 @@ pub fn save_readme(app: State<App>, slug: String, text: String) -> Result<Projec
     app.mutate(|c, _| projects::save_readme(c, &slug, &text))
 }
 
+/// What a post is (a thought, devlog, research or reflection) and how sure you are of it.
+#[tauri::command]
+pub fn set_post_meta(app: State<App>, project: String, thread: String, id: String, kind: Option<String>, labels: Vec<String>) -> Result<PostView> {
+    app.mutate(|c, _| posts::set_meta(c, &project, &thread, &id, kind.as_deref(), &labels))
+}
+
 /// A project's kind, goal and end; `None` while it has none.
 #[tauri::command]
 pub fn get_project_meta(app: State<App>, slug: String) -> Result<Option<ProjectMeta>> {

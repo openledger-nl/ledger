@@ -63,6 +63,10 @@ export interface Post {
 	updatedAt: string;
 	body: string;
 	html: string;
+	/** What the post is; null until you say. */
+	kind: PostKind | null;
+	/** How sure you are of it; set by hand only. */
+	labels: EpistemicLabel[];
 }
 
 export interface PromptDeliverable {
