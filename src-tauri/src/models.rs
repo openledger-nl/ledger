@@ -122,6 +122,14 @@ pub struct PromptView {
 }
 
 /// What a new prompt is made of. It has no title: it is named from what it asks.
+/// A template's guiding question and what the person answered it with, in the dialog that makes the prompt.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GuidingAnswer {
+    pub question: String,
+    pub answer: String,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewPrompt {
@@ -139,6 +147,9 @@ pub struct NewPrompt {
     /// The pieces of feedback (ids) it is meant to resolve.
     #[serde(default)]
     pub feedback: Vec<String>,
+    /// The template's guiding questions as answered in the dialog; one left blank was skipped.
+    #[serde(default)]
+    pub answers: Vec<GuidingAnswer>,
 }
 
 /// What a new prompt's base text is made from.

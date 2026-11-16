@@ -9,6 +9,7 @@
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
 	import type { MmmLevel, ProjectMeta, Template } from '$lib/types';
 	import Dropdown from './Dropdown.svelte';
+	import GuidingQuestions from './GuidingQuestions.svelte';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import CircleHelp from '@lucide/svelte/icons/circle-help';
 	import Modal from './Modal.svelte';
@@ -50,6 +51,16 @@
 	});
 
 	const chosen = $derived(templates.find((t) => t.id === template));
+	/** The answers to the template's guiding questions, one per question; they start blank when the template changes. */
+	let guided = $state<string[]>([]);
+	$effect(() => {
+		guided = (chosen?.questions ?? []).map(() => '');
+	});
+	/** The questions answered, as a %% note for whoever writes the first draft: seen in source mode, and by Claude. */
+	const answersNote = $derived.by(() => {
+		const done = (chosen?.questions ?? []).map((q, i) => [q, guided[i]?.trim() ?? ''] as const).filter(([, a]) => a);
+		return done.length ? `%% Answers to the guiding questions:\n\n${done.map(([q, a]) => `**${q}**\n${a}`).join('\n\n')}\n%%\n\n` : '';
+	});
 	const templateOptions = $derived([
 		{ value: '', label: 'None: an empty file', hint: 'Start from a blank page.' },
 		...templates.map((t) => ({ value: t.id, label: t.name, hint: t.trigger ? `Use when ${t.trigger}` : undefined, icon: FileText, group: t.scope ? 'This project' : 'Every project' }))
@@ -77,7 +88,7 @@
 		busy = true;
 		// The template's skeleton, with its readers noted under its title.
 		const skeleton = chosen ? ((await attempt(() => api.templateSkeleton(project, chosen.id))) ?? chosen.body) : '';
-		const body = `# ${name.trim().replace(/\.md$/i, '')}\n\n> **Goal:** ${goal.trim()}\n\n${skeleton}`.trimEnd() + '\n';
+		const body = `# ${name.trim().replace(/\.md$/i, '')}\n\n> **Goal:** ${goal.trim()}\n\n${answersNote}${skeleton}`.trimEnd() + '\n';
 		const made = await attempt(() => api.createDeliverable(project, fileName, body));
 		if (made) {
 			await attempt(() =>
@@ -119,6 +130,9 @@
 			<input bind:value={name} oninput={() => (named = true)} placeholder="e.g. Project plan" />
 		</label>
 	</div>
+	{#if chosen?.questions.length}
+		<GuidingQuestions questions={chosen.questions} bind:answers={guided} template={chosen.name} />
+	{/if}
 	<p class="hint" style="margin:-6px 0 0">Saved as <code>deliverables/{fileName}</code>. The number stays with it: deleting another deliverable doesn't renumber, and a file renamed outside Ledger keeps it while its name starts with it.</p>
 
 	<div class="form-row">

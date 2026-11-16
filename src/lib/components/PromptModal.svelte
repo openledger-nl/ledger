@@ -5,9 +5,10 @@
 	import { api, claudeCodeApi } from '$lib/api';
 	import { baseName } from '$lib/actions';
 	import { autoRunNewPrompt } from '$lib/claudeRuns.svelte';
-	import { attempt, refresh, toast } from '$lib/ui.svelte';
+	import { attempt, refresh } from '$lib/ui.svelte';
 	import type { DeliverableSummary, Feedback, Prompt, PromptDeliverable, Template } from '$lib/types';
 	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
+	import GuidingQuestions from './GuidingQuestions.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	import Modal from './Modal.svelte';
 
@@ -63,6 +64,12 @@
 	let open = $state<Feedback[]>([]);
 	let selected = $state<string[]>(initial.selected);
 	const template = $derived(templates.find((t) => t.id === templateId));
+	/** The answers to the template's guiding questions, one per question; they start blank when the template changes. */
+	let answers = $state<string[]>([]);
+	$effect(() => {
+		answers = (template?.questions ?? []).map(() => '');
+	});
+	const answered = $derived(kind === 'new' && answers.some((a) => a.trim()));
 	const templateOptions = $derived<DropdownOption[]>([
 		{ value: '', label: 'No template' },
 		...templates.map((t) => ({ value: t.id, label: `${t.name}${t.scope ? '' : ' (all projects)'}` }))
@@ -178,7 +185,7 @@
 
 	// ---- saving -------------------------------------------------------------------------------------
 
-	const empty = $derived(!base.trim() && !body.trim());
+	const empty = $derived(!base.trim() && !body.trim() && !answered);
 
 	async function save() {
 		saving = true;
@@ -191,14 +198,12 @@
 						templateId: kind === 'new' ? templateId || null : null,
 						deliverable: kind === 'existing' ? chosen : null,
 						newDeliverable: kind === 'new' ? fileName.trim() || null : null,
-						feedback: kind === 'existing' ? selected : []
+						feedback: kind === 'existing' ? selected : [],
+						answers: kind === 'new' && template ? template.questions.map((question, i) => ({ question, answer: answers[i] ?? '' })) : []
 					})
 		);
 		saving = false;
 		if (!saved) return;
-		if (!prompt && kind === 'new' && template?.questions.length) {
-			toast(`Added ${template.questions.length} guiding question${template.questions.length === 1 ? '' : 's'} to the thread`);
-		}
 		await refresh();
 		// Not awaited: the prompt is made, and the run reports for itself.
 		if (!prompt) void autoRunNewPrompt(project, thread, saved);
@@ -280,15 +285,11 @@
 				Start from a template
 				<Dropdown bind:value={templateId} options={templateOptions} label="Template" full />
 			</div>
-			{#if template}
-				<div class="notice info">
-					{#if template.trigger}<b>Use when:</b> {template.trigger}<br />{/if}
-					{#if template.questions.length}
-						{template.questions.length} guiding question{template.questions.length === 1 ? '' : 's'} will be added to this thread to answer first.
-					{:else}
-						This template has no guiding questions.
-					{/if}
-				</div>
+			{#if template?.trigger}
+				<div class="notice info"><b>Use when:</b> {template.trigger}</div>
+			{/if}
+			{#if template?.questions.length}
+				<GuidingQuestions questions={template.questions} bind:answers template={template.name} />
 			{/if}
 		{/if}
 

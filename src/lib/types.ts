@@ -111,6 +111,8 @@ export interface NewPromptInput {
 	newDeliverable: string | null;
 	/** The pieces of feedback (ids) it is meant to resolve. */
 	feedback: string[];
+	/** The template's guiding questions as answered in the dialog; a blank answer is a question skipped. */
+	answers?: { question: string; answer: string }[];
 }
 
 /** What the New prompt dialog starts from when it is opened for something other than a blank prompt. */

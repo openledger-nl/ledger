@@ -43,7 +43,7 @@
 	</div>
 	{#if !scope}
 		<p class="sub" style="margin:0">
-			Shared by every project. A prompt started from a template gets its guiding questions as posts to answer, and its deliverable starts from
+			Shared by every project. Starting a deliverable from a template asks its guiding questions there, to answer or skip, and the deliverable starts from
 			the template’s skeleton, with its readers noted for Claude. Each is offered in the kinds of project it is for, and a project can replace any
 			of them with its own.
 		</p>

@@ -97,7 +97,7 @@
 					}
 				: {
 						title: `Delete “${template.name}”?`,
-						message: `Prompts already started from it keep the guiding questions they were given.${scope ? ' If a shared template has the same name, this project uses that one again.' : ''}`,
+						message: `Prompts already started from it keep the answers they were given.${scope ? ' If a shared template has the same name, this project uses that one again.' : ''}`,
 						confirmLabel: 'Delete template',
 						danger: true
 					}
@@ -189,7 +189,7 @@
 		<div class="q-list">
 			{#each questions as _, i (i)}
 				<div class="q-row">
-					<MarkdownEditor bind:value={questions[i]} rows={2} label="Guiding question {i + 1}" placeholder="A question to answer in the thread first" />
+					<MarkdownEditor bind:value={questions[i]} rows={2} label="Guiding question {i + 1}" placeholder="A question to answer, or skip, when a deliverable is started" />
 					<div class="btns">
 						<button class="icon-btn" style="color:var(--muted)" aria-label="Move up" disabled={i === 0} onclick={() => move(i, -1)}><ArrowUp size={16} /></button>
 						<button class="icon-btn" style="color:var(--muted)" aria-label="Move down" disabled={i === questions.length - 1} onclick={() => move(i, 1)}><ArrowDown size={16} /></button>

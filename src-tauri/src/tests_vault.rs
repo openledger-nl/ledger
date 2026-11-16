@@ -141,7 +141,7 @@ fn the_vault_has_the_agreed_folder_structure() {
     assert!(meta.contains("linkedThreadSlugs:") && meta.contains("- beta"), "{meta}");
 
     let posts = names(root, &format!("{thread}/posts"));
-    assert_eq!(posts.len(), 5, "{posts:?}"); // two notes, two seeded questions, and the note that a version was published
+    assert_eq!(posts.len(), 3, "{posts:?}"); // two notes, and the note that a version was published
     let note = posts.iter().map(|f| read(root, &format!("{thread}/posts/{f}"))).find(|x| x.contains("**bold**")).unwrap();
     assert!(note.contains("createdAt:") && note.ends_with("and a second paragraph.\n"), "{note}");
 
@@ -270,16 +270,18 @@ fn things_made_in_the_same_instant_keep_their_order_after_a_reload() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let (mut vault, conn) = open(root);
-    let questions: Vec<String> = (1..=12).map(|n| format!("Question {n}?")).collect();
-    templates::create(&conn, "", &TemplateDraft::basic("Many", "", &questions, "")).unwrap();
     let p = projects::create(&conn, "P").unwrap().slug;
     let t = threads::create(&conn, &p, "T").unwrap().slug;
-    prompts::create_titled(&conn, &p, &t, "", "Answer them all", Some("many")).unwrap();
+    // Made one straight after another, most of them in the same millisecond.
+    let expected: Vec<String> = (1..=12).map(|n| format!("Note {n}")).collect();
+    for body in &expected {
+        posts::add(&conn, &p, &t, body, AddOptions::default()).unwrap();
+    }
+    prompts::create_titled(&conn, &p, &t, "", "Answer them all", None).unwrap();
     vault.persist(&conn).unwrap();
 
     let (_, reloaded) = open(root);
     let bodies: Vec<_> = posts::list(&reloaded, &p, &t).unwrap().into_iter().map(|x| x.body).collect();
-    let expected: Vec<_> = questions.iter().map(|q| format!("**Guiding question (Many):** {q}")).collect();
     assert_eq!(bodies, expected);
     assert_eq!(prompts::list(&reloaded, &p, &t).unwrap().len(), 1);
 }

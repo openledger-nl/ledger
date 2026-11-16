@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 use crate::error::Error;
-use crate::models::{BaseSpec, Bump, Criterion, NewPrompt, Quote, SemesterDraft, Sprint, StoryDraft, StoryUpdate, TaskUpdate, TemplateDraft, TemplateReader, Vacation};
+use crate::models::{BaseSpec, Bump, Criterion, NewPrompt, Quote, SemesterDraft, Sprint, StoryDraft, GuidingAnswer, StoryUpdate, TaskUpdate, TemplateDraft, TemplateReader, Vacation};
 use crate::posts::AddOptions;
 use crate::project_facts::{self, ProjectMeta, ProjectPerson};
 use crate::{activity, board, db, deliverables, semesters, feedback, links, markdown, posts, projects, prompts, search, stories, templates, threads, uploads};
@@ -291,27 +291,32 @@ fn a_project_can_copy_a_vault_wide_template_to_change_it_for_itself() {
 }
 
 #[test]
-fn a_prompt_from_a_template_seeds_its_questions_once_and_comes_after_them() {
+fn a_templates_guiding_questions_are_answered_with_the_prompt_not_in_the_thread() {
     let c = conn();
     let (p, t) = setup(&c);
     templates::create(&c, "", &TemplateDraft::basic("Interview", "", &["Who?".into(), "Why?".into()], "# Interview\n")).unwrap();
 
     let prompt = prompts::create_titled(&c, &p, &t, "Summary of the call", "  Write up the call with Ana.  ", Some("interview")).unwrap();
     assert_eq!((prompt.body.as_str(), prompt.template_name.as_deref()), ("Write up the call with Ana.", Some("Interview")));
+    assert!(posts::list(&c, &p, &t).unwrap().is_empty(), "the questions are not posted in the thread");
 
-    let seeded = posts::list(&c, &p, &t).unwrap();
-    assert_eq!(seeded.len(), 2);
-    assert!(seeded.iter().all(|x| x.guiding_question));
-    assert_eq!(seeded[0].body, "**Guiding question (Interview):** Who?");
-    assert!(seeded[1].created_at <= prompt.created_at, "the prompt comes after the questions it prompted");
-
-    // Editing the template afterwards never reaches back into the thread.
-    templates::update(&c, "", "interview", &TemplateDraft { questions: vec!["Something else?".into()], ..templates::draft_of(&templates::get(&c, "", "interview").unwrap()) }).unwrap();
-    assert_eq!(posts::list(&c, &p, &t).unwrap().len(), 2);
+    // What was answered goes with the base; a question left blank was skipped.
+    let answers = vec![
+        GuidingAnswer { question: "Who?".into(), answer: "  Ana, the buyer.  ".into() },
+        GuidingAnswer { question: "Why?".into(), answer: " ".into() },
+    ];
+    let answered = prompts::create(&c, &p, &t, &NewPrompt { base: "Write it.".into(), template_id: Some("interview".into()), answers, ..Default::default() }).unwrap();
+    assert_eq!(answered.base, "Write it.\n\nAnswers to the guiding questions of the template “Interview”:\n\n**Who?**\nAna, the buyer.");
+    let skipped = vec![GuidingAnswer { question: "Who?".into(), answer: String::new() }];
+    let all_skipped = prompts::create(&c, &p, &t, &NewPrompt { base: "Write it.".into(), template_id: Some("interview".into()), answers: skipped, ..Default::default() }).unwrap();
+    assert_eq!(all_skipped.base, "Write it.");
+    let only = vec![GuidingAnswer { question: "Who?".into(), answer: "Ana".into() }];
+    let only_answers = prompts::create(&c, &p, &t, &NewPrompt { template_id: Some("interview".into()), answers: only, ..Default::default() }).unwrap();
+    assert!(only_answers.base.starts_with("Answers to the guiding questions"), "answers alone are enough to ask for something");
 
     assert_eq!(message(prompts::create_titled(&c, &p, &t, "", "   ", None).unwrap_err()), "Say what you want delivered");
     assert_eq!(message(prompts::create_titled(&c, &p, &t, "", "x", Some("nope")).unwrap_err()), "Template not found");
-    assert_eq!(posts::list(&c, &p, &t).unwrap().len(), 2, "a refused prompt seeds nothing");
+    assert!(posts::list(&c, &p, &t).unwrap().is_empty());
 
     let edited = prompts::update(&c, &p, &t, &prompt.id, None, Some("Write it shorter.")).unwrap();
     assert_eq!((edited.title.as_str(), edited.body.as_str()), ("Summary of the call", "Write it shorter."), "editing what it asks doesn't rename it");
@@ -319,7 +324,7 @@ fn a_prompt_from_a_template_seeds_its_questions_once_and_comes_after_them() {
     prompts::set_title(&c, &p, &t, &prompt.id, "  Call\nnotes  ").unwrap();
     assert_eq!(prompts::get(&c, &p, &t, &prompt.id).unwrap().title, "Call notes", "a name is one line");
     prompts::delete(&c, &p, &t, &prompt.id).unwrap();
-    assert!(prompts::list(&c, &p, &t).unwrap().is_empty());
+    assert!(prompts::list(&c, &p, &t).unwrap().iter().all(|x| x.id != prompt.id));
 }
 
 #[test]
