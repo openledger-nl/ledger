@@ -9,6 +9,7 @@
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import { logApi } from '$lib/api';
 	import { ago, dateTime } from '$lib/format';
+	import { prettyHotkey } from '$lib/hotkey';
 	import { capture, startCapture, stopCapture } from '$lib/log.svelte';
 	import { captureAiPrompt, captureIssueUrl } from '$lib/report';
 	import { attempt, toast } from '$lib/ui.svelte';
@@ -64,7 +65,7 @@
 		<div class="notice bad">
 			<strong>Recording</strong>
 			{#if capture.startedAt}since <span title={dateTime(capture.startedAt)}>{ago(capture.startedAt)}</span>{/if} · {capture.events} steps so far. Go and
-			do what goes wrong; stop here or with the bar at the top.
+			do what goes wrong; stop here, with the bar at the top, or with {prettyHotkey('CommandOrControl+Shift+D')}.
 		</div>
 		<div class="row-end" style="justify-content:flex-start">
 			<button class="btn primary" onclick={stop} disabled={capture.busy}><CircleStop size={14} />Stop capture</button>
@@ -72,6 +73,7 @@
 	{:else}
 		<div class="row-end" style="justify-content:flex-start">
 			<button class="btn primary" onclick={start} disabled={capture.busy}><CircleDot size={14} />Start capture</button>
+			<span class="hint" style="align-self:center">or press {prettyHotkey('CommandOrControl+Shift+D')} on any screen</span>
 		</div>
 	{/if}
 
