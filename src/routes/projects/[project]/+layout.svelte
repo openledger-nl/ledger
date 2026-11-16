@@ -33,6 +33,7 @@
 		{ href: `${base}/attachments`, label: 'Attachments', n: project.attachmentCount, exact: false },
 		{ href: `${base}/stories`, label: 'Stories', n: project.storyCount, exact: false },
 		{ href: `${base}/board`, label: 'Board', n: project.openTaskCount, exact: false },
+		{ href: `${base}/people`, label: 'People', n: data.people.length || null, exact: false },
 		{ href: `${base}/templates`, label: 'Templates', n: null, exact: false }
 	]);
 	const active = (t: { href: string; exact: boolean }) => (t.exact ? path === t.href : path === t.href || path.startsWith(t.href + '/'));

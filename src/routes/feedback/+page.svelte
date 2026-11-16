@@ -1,6 +1,7 @@
 <script lang="ts">
 	// All feedback in one inbox, across projects: what was given in Ledger and what came in from Portflow, filtered by
 	// who gave it. Feedback is resolved only when you say so. Wireframe E1; requirements: Feedback.
+	import { page } from '$app/state';
 	import Check from '@lucide/svelte/icons/check';
 	import MessageSquarePlus from '@lucide/svelte/icons/message-square-plus';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -24,7 +25,8 @@
 
 	let status = $state<'open' | 'resolved' | 'all'>('open');
 	let source = $state<Source | ''>('');
-	let person = $state('');
+	// A link can open the inbox on one person's feedback: /feedback?from=coach/frank.
+	let person = $state(page.url.searchParams.get('from') ?? '');
 	let onProject = $state('');
 	let recording = $state(false);
 
