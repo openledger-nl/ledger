@@ -462,8 +462,8 @@ fn a_round_mirrors_outcomes_people_and_the_linked_collection() {
     let collections = m.read(|c| store::project_collections(c, "speed-edit")).unwrap();
     assert_eq!(collections[0].name, "Speed edit");
     assert_eq!(collections[0].section, "Semester 3 – Fall 26");
-    // Its description isn't mirrored: it is a study project's reading guide (this one has no facts, so it stays out).
-    assert!(!readme_of(&m).contains("plan"));
+    // Its description isn't mirrored: it is the reading guide (a linked project without facts counts as a study project).
+    assert!(readme_of(&m).contains("plan"), "{}", readme_of(&m));
     assert_eq!(collections[0].outcomes[0].name, "Analysis");
 
     // The files: the mirror, the collection and the evidence items; no copies of Portflow's files.
@@ -1209,11 +1209,9 @@ fn a_linked_project_that_isnt_a_study_project_is_never_kept_in_step() {
     m.linked();
     guide_on(&m, true, &[config::GUIDE_WRITE]);
     let fake = FakePortflow::new();
-    // No facts at all, then a hobby project: nothing read, nothing written.
-    for kind in [None, Some("hobby"), Some("company")] {
-        if let Some(kind) = kind {
-            m.edit(|c| crate::project_facts::save(c, "speed-edit", &crate::project_facts::ProjectMeta { kind: kind.into(), goal: "Fun.".into(), ..Default::default() }).unwrap());
-        }
+    // A project said to be a hobby or a company one: nothing read, nothing written.
+    for kind in ["hobby", "company"] {
+        m.edit(|c| crate::project_facts::save(c, "speed-edit", &crate::project_facts::ProjectMeta { kind: kind.into(), goal: "Fun.".into(), ..Default::default() }).unwrap());
         m.edit(|c| projects::save_readme(c, "speed-edit", "Mine.").unwrap());
         portflow_says(&fake, "<p>Theirs.</p>");
         let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
@@ -1302,4 +1300,37 @@ fn only_writes_that_are_listed_can_be_built_and_switched_on() {
     for built in crate::portflow_config::BUILT_WRITES {
         assert!(crate::portflow_config::WRITE_KINDS.iter().any(|(id, _)| *id == built), "{built} is built but not listed");
     }
+}
+
+#[test]
+fn the_first_round_takes_the_description_and_sets_the_old_guide_aside() {
+    // A linked project without facts counts as a study project; its guide says something else than the description.
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    let fake = FakePortflow::new();
+    m.edit(|c| projects::save_readme(c, "speed-edit", "Start here.\n\nHi").unwrap());
+    portflow_says(&fake, "<h1>Introduction</h1><p>The real guide.</p>");
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(report.guides_read, 1);
+    assert!(readme(&m).contains("The real guide."), "{}", readme(&m));
+    assert!(report.notes.iter().any(|n| n.contains(".ledger/conflicts/")), "{:?}", report.notes);
+    let kept = walkdir_files(&m.root().join(".ledger/conflicts"));
+    assert!(kept.iter().any(|(path, text)| path.ends_with("portflow/speed-edit-README.md") && text.contains("Hi")), "{kept:?}");
+    assert!(fake.descriptions.lock().unwrap().is_empty(), "nothing is written on the way in");
+}
+
+/// Every file under `dir`, as (path, text).
+fn walkdir_files(dir: &std::path::Path) -> Vec<(String, String)> {
+    let mut out = vec![];
+    let Ok(entries) = std::fs::read_dir(dir) else { return out };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            out.extend(walkdir_files(&path));
+        } else {
+            out.push((path.to_string_lossy().replace('\\', "/"), std::fs::read_to_string(&path).unwrap_or_default()));
+        }
+    }
+    out
 }

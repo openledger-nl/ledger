@@ -544,11 +544,13 @@ outcomes mirror are part of the Portflow feature, so they use it too.
       `{"description": html}`; an empty guide never empties a description. Saving the guide starts a round. A machine that
       had "Edit collection descriptions" on starts with this write off. With the write off the guide is edited in Ledger
       as always.
-- [x] **One text, two ways** (2026-11-16): the README *is* the collection description, for a **study project** only
-      (`kind: study`; hobby and company projects are never kept in step, linked or not). Every round, write switch or
+- [x] **One text, two ways** (2026-11-16): the README *is* the collection description, for a **study project**: one
+      said to be (`kind: study`), or one without facts, since being linked to a collection makes it part of a portfolio;
+      a project said to be a hobby or a company one is never kept in step, linked or not. Every round, write switch or
       not, a description changed in Portflow becomes the README (as markdown; an emptied description doesn't empty it);
       a README changed in Ledger goes back with the write on; both changed: Ledger's text is kept (and sent with the write
-      on, a report note with it off). The first time an empty or starter README takes the description. What both sides
+      on, a report note with it off). The first time, the description comes in: an empty or starter README simply takes it; a README that says something
+      else is set aside in `.ledger/conflicts/<time>/portflow/<project>-README.md` first (and the report says so). What both sides
       last agreed on is remembered per collection as hashes in `.ledger/portflow-guides.json` (this machine only, never
       synced), so a restart isn't a change. The mirror (`projects/<p>/portflow/<semester>.md`) no longer keeps a copy of
       the description; an old file's body is ignored and dropped the next time the mirror is written. Still no mentions

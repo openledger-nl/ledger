@@ -20,7 +20,7 @@
 	// The guide is the project's README.md: pictures in it are looked for from the project's folder.
 	const images = $derived({ project: project.slug, dir: '' });
 
-	// A study project linked to a Portflow collection is part of a portfolio, and there the reading guide is what an
+	// A project linked to a Portflow collection (a study project, or one without a kind yet) is part of a portfolio, and there the reading guide is what an
 	// assessor reads first: it is the collection's description in Portflow (one text, two names), comes first on the
 	// overview, says how it is kept in step, and can be handed in. A hobby or company project, linked or not, has none
 	// of that: the backend gives it no guide collection.

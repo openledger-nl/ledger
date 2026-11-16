@@ -258,7 +258,17 @@ fn sync_guide(
     let (in_portflow, in_ledger) = match &seen {
         Some(s) => (s.description != now.description, s.readme != now.readme),
         None if readme.trim().is_empty() || readme.trim() == crate::projects::starter_readme(&guide.name).trim() => (true, false),
-        None => (!blank(&description), true),
+        // The first round for a guide that says something else: the collection's description is what the portfolio
+        // shows, so it comes in, and the guide that was there is set aside in .ledger/conflicts/ rather than lost.
+        None if !blank(&description) => {
+            set_aside(root, &guide.project, &readme).map_err(ledger_err)?;
+            report.notes.push(format!(
+                "The reading guide of {} now is the description of “{}” in Portflow; the guide it had is kept in .ledger/conflicts/.",
+                guide.project, collection.name
+            ));
+            (true, false)
+        }
+        None => (false, true),
     };
 
     if in_portflow && !in_ledger {
@@ -302,6 +312,21 @@ fn sync_guide(
         Err(e) => report.notes.push(format!("The reading guide of {} didn't go to “{}”: {e}", guide.project, collection.name)),
     }
     Ok(())
+}
+
+/// Keeps a reading guide that is about to be replaced: `.ledger/conflicts/<time>/portflow/<project>-README.md`, beside
+/// what the other syncs set aside. Never synced.
+fn set_aside(root: &Path, project: &str, readme: &str) -> crate::error::Result<()> {
+    let file = root
+        .join(crate::settings::LEDGER_DIR)
+        .join("conflicts")
+        .join(crate::ids::now().replace(':', "-"))
+        .join("portflow")
+        .join(format!("{project}-README.md"));
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| crate::error::Error::io(dir, e))?;
+    }
+    std::fs::write(&file, readme).map_err(|e| crate::error::Error::io(&file, e))
 }
 
 /// A description as Portflow keeps it, white space folded, hashed: what is remembered of it.

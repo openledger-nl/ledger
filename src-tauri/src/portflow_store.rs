@@ -215,7 +215,7 @@ pub fn guide_targets(conn: &Connection, today: &str) -> Result<Vec<GuideTarget>>
         conn,
         "SELECT l.project_slug, p.name, l.collection_id, p.readme, COALESCE(s.start_date, ''), COALESCE(s.end_date, '')
          FROM project_collections l JOIN projects p ON p.slug = l.project_slug LEFT JOIN semesters s ON s.id = l.semester_id
-         WHERE p.kind = 'study'",
+         WHERE COALESCE(p.kind, '') IN ('study', '')",
         [],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
     )?;
