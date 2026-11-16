@@ -1,4 +1,4 @@
-// Words and small sums for the v1 preview screens: the names of project kinds, post kinds, labels and roles, how a
+// Words and small sums for the v1 screens: the names of project kinds, post kinds, labels and roles, how a
 // person tag reads, and the days a project has left. Free of Svelte and Tauri, like mmm.ts.
 
 import type { EpistemicLabel, FeedbackRole, PersonTag, PostKind, ProjectKind, ProjectMeta, ProjectPerson, Semester } from './types';
@@ -58,14 +58,18 @@ export function teamTags(people: ProjectPerson[], projects: string[]): PersonTag
 	return [...new Set(people.filter((p) => p.role === 'teammate' && projects.includes(p.project)).map((p) => p.tag))];
 }
 
-/** The tag someone goes by, as the backend forms it: `coach/frank-de-vries` (role, then the name as a slug). */
-export function personTag(role: string, name: string): PersonTag {
-	const slug = name
+/** A name as the backend makes it a file or tag name (ids.rs `slugify`): lowercase ASCII letters and digits, the rest
+ *  one dash. "01 Project plan" → "01-project-plan". */
+export const slugify = (name: string) =>
+	name
+		.trim()
 		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-+|-+$/g, '');
-	return `${role || 'other'}/${slug || 'someone'}`;
-}
+		.split(/[^a-z0-9]+/)
+		.filter(Boolean)
+		.join('-');
+
+/** The tag someone goes by, as the backend forms it: `coach/frank-de-vries` (role, then the name as a slug). */
+export const personTag = (role: string, name: string): PersonTag => `${role || 'other'}/${slugify(name) || 'someone'}`;
 
 /** The person tag of whoever gave a piece of feedback; null for your own notes and feedback that names nobody. */
 export const feedbackTag = (f: { from: string | null; fromRole: string | null }) => (f.from ? personTag(f.fromRole ?? 'other', f.from) : null);

@@ -2,6 +2,7 @@
 	// A new deliverable starts with its goal, in your own words; the template, the question it answers and the label
 	// follow from it. Ledger numbers it (01, 02, …) in the order deliverables are made. Wireframe D1; requirements:
 	// Deliverables.
+	import { slugify } from '$lib/v1';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { deliverableUrl } from '$lib/actions';
@@ -59,7 +60,8 @@
 		...(meta?.mainQuestion ? [{ value: 'main', label: 'The main question', hint: meta.mainQuestion, icon: CircleHelp }] : []),
 		...(answer && answer !== 'main' ? [{ value: answer, label: answer, icon: CircleHelp }] : [])
 	]);
-	const fileName = $derived(`${String(number).padStart(2, '0')} ${name.trim().replace(/\.md$/i, '') || '…'}.md`);
+	// The file as the backend names it: the number and the name, as a slug ("01-project-plan.md").
+	const fileName = $derived(`${slugify(`${String(number).padStart(2, '0')} ${name.trim().replace(/\.md$/i, '')}`)}${name.trim() ? '' : '-…'}.md`);
 	const manMade = $derived(mmm === 'man-made');
 	$effect(() => {
 		if (manMade) firstDraft = 'me';
@@ -116,7 +118,7 @@
 			<input bind:value={name} oninput={() => (named = true)} placeholder="e.g. Project plan" />
 		</label>
 	</div>
-	<p class="hint" style="margin:-6px 0 0">Saved as <code>04 Deliverables/{fileName}</code>. The number stays with it: renaming keeps it, deleting another doesn't renumber.</p>
+	<p class="hint" style="margin:-6px 0 0">Saved as <code>deliverables/{fileName}</code>. The number stays with it: deleting another deliverable doesn't renumber, and a file renamed outside Ledger keeps it while its name starts with it.</p>
 
 	<div class="form-row">
 		<div class="field grow">
