@@ -553,3 +553,26 @@ CREATE TABLE evidence_version_files (
     PRIMARY KEY (project_slug, evidence_slug, number, name),
     FOREIGN KEY (project_slug, evidence_slug, number) REFERENCES evidence_versions(project_slug, evidence_slug, number) ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+-- Meeting notes: one daily note per day, Daily/<date>.md (see daily.rs). What the file holds besides the meetings is
+-- kept to be written back: the text before the first meeting, frontmatter of your own (as YAML) and plain tags.
+CREATE TABLE daily_notes (
+    date       TEXT PRIMARY KEY,
+    id         TEXT NOT NULL,
+    preamble   TEXT NOT NULL DEFAULT '',
+    extra      TEXT NOT NULL DEFAULT '',
+    own_tags   TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
+
+-- A meeting in a daily note, in the order of the note. Projects and people are tags, one per line.
+CREATE TABLE daily_meetings (
+    date     TEXT NOT NULL REFERENCES daily_notes(date) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    time     TEXT,
+    title    TEXT NOT NULL DEFAULT '',
+    projects TEXT NOT NULL DEFAULT '',
+    people   TEXT NOT NULL DEFAULT '',
+    body     TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (date, position)
+);

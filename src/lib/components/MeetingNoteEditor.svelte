@@ -2,24 +2,26 @@
 	// One day's meeting note: its meetings, each under its own heading (time, title, the projects it belongs to) with
 	// the people who were there and your notes. Saved as you type, as the day's note `Daily/<day>.md`, with frontmatter
 	// that gathers the meetings' tags. No goal and no template: a meeting is a heading and what you write under it.
+	// The people of a meeting's projects come first in its "With", and "Whole team" adds every teammate at once.
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { untrack } from 'svelte';
 	import { dailyTags } from '$lib/daily';
-	import { mockApi } from '$lib/mock/api';
+	import { api } from '$lib/api';
 	import { dayLabel } from '$lib/semesters';
-	import { confirmDialog, refresh } from '$lib/ui.svelte';
-	import type { DailyNote, MeetingSection } from '$lib/types';
+	import { attempt, confirmDialog, refresh } from '$lib/ui.svelte';
+	import { teamTags } from '$lib/v1';
+	import type { DailyNote, MeetingSection, ProjectPerson } from '$lib/types';
 	import MarkdownEditor from './MarkdownEditor.svelte';
-	import PreviewBadge from './PreviewBadge.svelte';
-	import TagPicker, { type TagOption } from './TagPicker.svelte';
+	import TagPicker, { type TagOption, type TagQuickPick } from './TagPicker.svelte';
 	import TimeInput from './TimeInput.svelte';
 
 	let {
 		date,
 		note,
 		projectOptions,
-		peopleOptions
+		peopleOptions,
+		people = []
 	}: {
 		date: string;
 		/** The day's note as saved; null when the day has none yet. */
@@ -27,7 +29,23 @@
 		/** The indexed project and person tags ($lib/tagIndex). */
 		projectOptions: TagOption[];
 		peopleOptions: TagOption[];
+		/** The projects' people: the meeting's own come first, and make up "Whole team". */
+		people?: ProjectPerson[];
 	} = $props();
+
+	/** Who can be picked for a meeting: the people of its projects first, then everyone else in the index. */
+	function peopleFor(m: MeetingSection): TagOption[] {
+		const own = new Set(people.filter((p) => m.projects.includes(p.project)).map((p) => p.tag));
+		return [...peopleOptions.filter((o) => own.has(o.value)), ...peopleOptions.filter((o) => !own.has(o.value))];
+	}
+
+	/** "Whole team": every teammate of the meeting's projects, in one click. */
+	function quickFor(m: MeetingSection): TagQuickPick[] {
+		const tags = teamTags(people, m.projects);
+		if (!tags.length) return [];
+		const names = tags.map((t) => people.find((p) => p.tag === t)?.name ?? t).join(', ');
+		return [{ label: 'Whole team', tags, title: `Adds ${names}` }];
+	}
 
 	// The meetings as edited here, from the saved note once per day (the page keys this component by day).
 	let meetings = $state<MeetingSection[]>(untrack(() => structuredClone(note?.meetings ?? [])));
@@ -51,9 +69,9 @@
 		const timer = setTimeout(async () => {
 			saveState = 'saving';
 			const list = JSON.parse(snapshot) as MeetingSection[];
-			if (list.length) await mockApi.saveDailyNote({ date, id, meetings: list });
-			else await mockApi.deleteDailyNote(date);
-			saveState = 'saved';
+			// A day without meetings (and nothing else in its note) has no file: the backend takes it away.
+			const saved = await attempt(() => api.saveDailyNote({ date, id, meetings: list }));
+			saveState = saved === undefined ? 'unsaved' : 'saved';
 			await refresh();
 		}, 700);
 		return () => clearTimeout(timer);
@@ -91,7 +109,6 @@
 			<div class="dn-path"><code>Daily/{date}.md</code> · {saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Unsaved changes'}</div>
 		</div>
 		<div class="header-actions">
-			<PreviewBadge />
 			<button class="btn small primary" onclick={add}><Plus size={14} />Add meeting</button>
 		</div>
 	</header>
@@ -117,7 +134,7 @@
 					</div>
 					<div class="field">
 						<span>With</span>
-						<TagPicker bind:value={m.people} options={peopleOptions} label="With" placeholder="Who was there" />
+						<TagPicker bind:value={m.people} options={peopleFor(m)} quick={quickFor(m)} label="With" placeholder="Who was there" />
 					</div>
 				</div>
 				<MarkdownEditor bind:value={m.body} rows={4} label="Notes" placeholder="What was said, decided, to do…" />

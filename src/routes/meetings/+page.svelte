@@ -13,7 +13,7 @@
 	let { data }: { data: PageData } = $props();
 
 	const projectOptions = $derived(projectTagOptions(data.projects, data.meta, data.notes, data.feedback));
-	const peopleOptions = $derived(personTagOptions(data.notes, data.feedback));
+	const peopleOptions = $derived(personTagOptions(data.notes, data.feedback, data.people));
 	const day = $derived(page.url.searchParams.get('day') ?? today());
 	const days = $derived([...new Set([today(), ...data.notes.map((n) => n.date)])].sort().reverse());
 	const noteOf = (d: string) => data.notes.find((n) => n.date === d) ?? null;
@@ -54,7 +54,7 @@
 				{/each}
 			</ul>
 			{#key day}
-				<MeetingNoteEditor date={day} note={noteOf(day)} {projectOptions} {peopleOptions} />
+				<MeetingNoteEditor date={day} note={noteOf(day)} {projectOptions} {peopleOptions} people={data.people} />
 			{/key}
 		</div>
 	</div>

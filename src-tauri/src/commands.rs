@@ -337,6 +337,30 @@ pub fn delete_feedback(app: State<App>, project: String, thread: String, id: Str
     app.mutate(|c, _| feedback::delete(c, &project, &thread, &id))
 }
 
+// ---- meeting notes (daily notes) -------------------------------------------------------------------
+
+/// The days' notes, newest first; with a project or a person (a tag), only the days with a meeting of theirs.
+#[tauri::command]
+pub fn list_daily_notes(app: State<App>, project: Option<String>, person: Option<String>) -> Result<Vec<crate::daily::DailyNote>> {
+    app.read(|c, _| crate::daily::list(c, project.as_deref(), person.as_deref()))
+}
+
+#[tauri::command]
+pub fn get_daily_note(app: State<App>, date: String) -> Result<Option<crate::daily::DailyNote>> {
+    app.read(|c, _| crate::daily::get(c, &date))
+}
+
+/// Saves a day's meetings; none (and nothing else in the note) removes its file. Returns the note, or none when it went.
+#[tauri::command]
+pub fn save_daily_note(app: State<App>, note: crate::daily::DailyDraft) -> Result<Option<crate::daily::DailyNote>> {
+    app.mutate(|c, _| crate::daily::save(c, &note))
+}
+
+#[tauri::command]
+pub fn delete_daily_note(app: State<App>, date: String) -> Result<()> {
+    app.mutate(|c, _| crate::daily::delete(c, &date))
+}
+
 // ---- uploads and project files ----------------------------------------------------------------------
 
 /// Copies files from this machine into the project's attachments and records them in the thread.

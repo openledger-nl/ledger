@@ -5,6 +5,7 @@ mod claude_code;
 mod commands;
 mod crypto;
 mod db;
+mod daily;
 mod deliverable_facts;
 mod deliverables;
 mod devupdates;
@@ -212,6 +213,10 @@ pub fn run() {
             commands::detach_prompt_feedback,
             commands::add_feedback,
             commands::list_all_feedback,
+            commands::list_daily_notes,
+            commands::get_daily_note,
+            commands::save_daily_note,
+            commands::delete_daily_note,
             commands::record_feedback,
             commands::set_feedback_status,
             commands::update_feedback,

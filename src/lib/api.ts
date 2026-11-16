@@ -21,6 +21,7 @@ import type {
 	LinkTarget,
 	FeedbackFrom,
 	FeedbackRecord,
+	DailyNote,
 	InboxFeedback,
 	Post,
 	ProjectSummary,
@@ -147,6 +148,15 @@ export const api = {
 		call<Prompt>('unlink_prompt_deliverable', { project, thread, id, path }),
 	createPromptDeliverable: (project: string, thread: string, id: string, name: string) =>
 		call<Prompt>('create_prompt_deliverable', { project, thread, id, name }),
+
+	// meeting notes: one daily note per day, Daily/<date>.md
+	/** Newest first; with a project or a person tag, only the days with a meeting of theirs. */
+	listDailyNotes: (filter: { project?: string; person?: string } = {}) =>
+		call<DailyNote[]>('list_daily_notes', { project: filter.project ?? null, person: filter.person ?? null }),
+	getDailyNote: (date: string) => call<DailyNote | null>('get_daily_note', { date }),
+	/** Replaces the day's meetings; none (and nothing else in the note) removes the note, and null comes back. */
+	saveDailyNote: (note: Pick<DailyNote, 'date' | 'id' | 'meetings'>) => call<DailyNote | null>('save_daily_note', { note }),
+	deleteDailyNote: (date: string) => call<void>('delete_daily_note', { date }),
 
 	// feedback
 	/** Every piece of feedback in the vault, newest first. */

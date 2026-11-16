@@ -24,6 +24,7 @@
 //! projects/<project>/portflow/<semester>.md      a linked Portflow collection, as Portflow shows it
 //! portflow/outcomes/<id>-<slug>.md, people.md,   learning outcomes, people and sections, mirrored from Portflow
 //! portflow/sections.md
+//! Daily/<YYYY-MM-DD>.md                          a day's meeting notes, as Obsidian keeps daily notes (see `daily`)
 //! .ledger/                                       settings and secrets (see `settings`); never pushed
 //! ```
 //!
@@ -301,7 +302,7 @@ fn managed_listing(root: &Path) -> BTreeMap<String, Fingerprint> {
     }
 
     let mut out = BTreeMap::new();
-    for dir in ["projects", "templates", "semesters", "portflow"] {
+    for dir in ["projects", "templates", "semesters", "portflow", crate::daily::FOLDER] {
         walk(root, dir, &mut out);
     }
     out
@@ -341,6 +342,9 @@ pub fn export(conn: &Connection) -> Result<BTreeMap<String, String>> {
     export_stories_and_tasks(conn, &mut files)?;
     export_deliverables(conn, &mut files)?;
     export_version_records(conn, &mut files)?;
+    for (path, text) in crate::daily::export(conn)? {
+        files.insert(path, text);
+    }
     // Empty unless Portflow is switched on: its tables are only filled from its files then.
     crate::portflow_vault::export(conn, &mut files)?;
     Ok(files)
@@ -772,6 +776,7 @@ fn import(conn: &Connection, root: &Path, listing: &BTreeMap<String, Fingerprint
 
     import_templates(&tx, &source, "")?;
     import_semesters(&tx, &source)?;
+    import_daily(&tx, &source)?;
     let projects = import_projects(&tx, &source)?;
     for project in &projects {
         import_templates(&tx, &source, project)?;
@@ -788,6 +793,21 @@ fn import(conn: &Connection, root: &Path, listing: &BTreeMap<String, Fingerprint
     }
 
     tx.commit()?;
+    Ok(())
+}
+
+/// Meeting notes: every `Daily/<YYYY-MM-DD>.md`. Other files in `Daily/` are not Ledger's and are left alone.
+fn import_daily(conn: &Connection, source: &Source) -> Result<()> {
+    for stem in source.stems(crate::daily::FOLDER) {
+        if !crate::daily::is_day(&stem) {
+            continue;
+        }
+        let rel = crate::daily::file(&stem);
+        let Some((meta, body)) = source.parsed(&rel) else { continue };
+        let parsed = crate::daily::parse(&meta, &body);
+        let id = parsed.id.clone().unwrap_or_else(|| format!("daily-{stem}"));
+        crate::daily::store(conn, &stem, &id, &parsed, &source.stamp(&rel))?;
+    }
     Ok(())
 }
 
