@@ -211,6 +211,8 @@ pub fn run() {
             commands::get_deliverable_meta,
             commands::list_deliverable_meta,
             commands::save_deliverable_meta,
+            commands::get_deliverable_description,
+            commands::save_deliverable_description,
             commands::next_deliverable_number,
             commands::confirm_label,
             commands::save_project_people,

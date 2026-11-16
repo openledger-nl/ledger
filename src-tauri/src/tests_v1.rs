@@ -223,6 +223,38 @@ fn a_deliverables_facts_are_kept_in_its_project_file_and_load_back() {
 }
 
 #[test]
+fn a_deliverables_evidence_description_is_kept_follows_a_rename_and_goes_with_it() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let project = projects::create(&conn, "Acme").unwrap().slug;
+    let plan = deliverables::create(&conn, &project, "Plan.md", "# Plan").unwrap().path;
+    assert_eq!(deliverable_facts::description(&conn, &project, &plan).unwrap().description, "", "none yet");
+    assert!(deliverable_facts::save_description(&conn, &project, "missing.md", "x").is_err(), "only for a deliverable that is there");
+
+    let saved = deliverable_facts::save_description(&conn, &project, &plan, "**What?** A plan.\n\n**Goal?** Agree.\n\n**Why it contributes?** Analysing.").unwrap();
+    assert_eq!(saved.description, "**Evidence description**\n\n**What?** A plan.\n\n**Goal?** Agree.\n\n**Why it contributes?** Analysing.");
+    assert_eq!(saved.description_parts.as_ref().map(|p| p.goal.as_str()), Some("Agree."));
+    vault.persist(&conn).unwrap();
+    let meta = frontmatter::parse(&read(root, &format!("projects/{project}/project.md"))).unwrap().meta;
+    assert_eq!(meta.maps("descriptions")[0].text("path").as_deref(), Some(plan.as_str()));
+
+    // It loads back, and follows the deliverable when it is renamed.
+    let (mut vault, conn) = open(root);
+    assert_eq!(deliverable_facts::description(&conn, &project, &plan).unwrap(), saved);
+    let renamed = deliverables::rename(&conn, root, &project, &plan, "Project plan").unwrap();
+    assert_eq!(deliverable_facts::description(&conn, &project, &renamed).unwrap().description, saved.description);
+    assert_eq!(deliverable_facts::description(&conn, &project, &plan).unwrap().description, "");
+
+    // Emptied, it goes; and deleting the deliverable takes it along.
+    assert_eq!(deliverable_facts::save_description(&conn, &project, &renamed, "  ").unwrap().description, "");
+    deliverable_facts::save_description(&conn, &project, &renamed, "Free text.").unwrap();
+    vault.persist(&conn).unwrap();
+    deliverables::delete(&conn, root, &project, &renamed).unwrap();
+    assert_eq!(deliverable_facts::description(&conn, &project, &renamed).unwrap().description, "");
+}
+
+#[test]
 fn a_deliverables_number_is_never_given_twice() {
     let dir = tempdir().unwrap();
     let root = dir.path();

@@ -473,6 +473,7 @@ pub fn rename_base(conn: &Connection, root: &Path, project: &str, from: &str, to
     }
     for sql in [
         "UPDATE deliverable_facts SET path = ?3 WHERE project_slug = ?1 AND path = ?2",
+        "UPDATE deliverable_descriptions SET path = ?3 WHERE project_slug = ?1 AND path = ?2",
         "UPDATE version_records SET deliverable_path = ?3 WHERE project_slug = ?1 AND deliverable_path = ?2",
         "UPDATE posts SET deliverable_path = ?3 WHERE project_slug = ?1 AND deliverable_path = ?2",
         "UPDATE evidence_files SET path = ?3 WHERE project_slug = ?1 AND path = ?2",

@@ -1,16 +1,30 @@
 <script lang="ts">
-	// An evidence item's description, in the shape teachers expect in Portflow: What? / Goal? / Why it contributes?.
-	// Kept as the body of the item's file in Ledger; with the "Evidence description → evidence item" write on, the next
-	// round sends it to the item in Portflow. A description written freely (in Portflow, or before) stays as it is
-	// until it is split into the three parts.
+	// An evidence description, in the shape teachers expect in Portflow: What? / Goal? / Why it contributes?. Either an
+	// evidence item's (`evidence`): kept as the body of the item's file in Ledger; with the "Evidence description →
+	// evidence item" write on, the next round sends it to the item in Portflow. Or a deliverable's that isn't in Portflow
+	// (`deliverable`): kept in Ledger, ready for when it is handed in. A description written freely (in Portflow, or
+	// before) stays as it is until it is split into the three parts.
 	import Pencil from '@lucide/svelte/icons/pencil';
-	import { portflowApi } from '$lib/api';
+	import { api, portflowApi } from '$lib/api';
 	import { portflow } from '$lib/portflow.svelte';
-	import type { Evidence, EvidenceParts } from '$lib/types';
+	import type { DeliverableDescription, Evidence, EvidenceParts } from '$lib/types';
 	import { attempt } from '$lib/ui.svelte';
 	import Markdown from './Markdown.svelte';
 
-	let { evidence, onsaved }: { evidence: Evidence; onsaved?: (items: Evidence[]) => void } = $props();
+	let {
+		evidence,
+		deliverable,
+		onsaved,
+		ondescribed
+	}: {
+		evidence?: Evidence;
+		deliverable?: DeliverableDescription;
+		onsaved?: (items: Evidence[]) => void;
+		ondescribed?: (described: DeliverableDescription) => void;
+	} = $props();
+
+	/** What is described, whichever of the two it is. */
+	const shown = $derived(evidence ?? deliverable ?? { description: '', descriptionHtml: '', descriptionParts: null });
 
 	let editing = $state(false);
 	let busy = $state(false);
@@ -18,14 +32,14 @@
 	/** Editing free text rather than the three parts. */
 	let free = $state<string | null>(null);
 
-	const empty = $derived(!evidence.description.trim());
+	const empty = $derived(!shown.description.trim());
 
 	function start() {
-		if (evidence.descriptionParts || empty) {
-			parts = { ...(evidence.descriptionParts ?? { what: '', goal: '', why: '' }) };
+		if (shown.descriptionParts || empty) {
+			parts = { ...(shown.descriptionParts ?? { what: '', goal: '', why: '' }) };
 			free = null;
 		} else {
-			free = evidence.description;
+			free = shown.description;
 		}
 		editing = true;
 	}
@@ -38,11 +52,23 @@
 
 	async function save() {
 		busy = true;
-		const items = await attempt(() => portflowApi.saveEvidenceDescription(evidence.project, evidence.slug, free === null ? parts : null, free));
+		const asParts = free === null ? parts : null;
+		if (evidence) {
+			const item = evidence;
+			const items = await attempt(() => portflowApi.saveEvidenceDescription(item.project, item.slug, asParts, free));
+			if (items) {
+				editing = false;
+				onsaved?.(items);
+			}
+		} else if (deliverable) {
+			const d = deliverable;
+			const described = await attempt(() => api.saveDeliverableDescription(d.project, d.path, asParts, free));
+			if (described) {
+				editing = false;
+				ondescribed?.(described);
+			}
+		}
 		busy = false;
-		if (!items) return;
-		editing = false;
-		onsaved?.(items);
 	}
 </script>
 
@@ -80,7 +106,9 @@
 		{/if}
 		<div class="foot">
 			<span class="hint">
-				{#if !evidence.portflowId}
+				{#if !evidence}
+					Kept in Ledger, ready for when you hand it in
+				{:else if !evidence.portflowId}
 					Kept in Ledger until the item is in Portflow
 				{:else if portflow.evidenceWrite}
 					Sent to Portflow with the next sync
@@ -94,17 +122,19 @@
 		</div>
 	{:else if empty}
 		<div class="meta">
-			<span class="hint">No evidence description yet: What? / Goal? / Why it contributes?</span>
-			<button class="link accent" onclick={start}>Describe it</button>
+			<span class="hint">
+				{evidence ? 'No evidence description yet' : 'Evidence description, for when you hand it in'}: What? / Goal? / Why it contributes?
+			</span>
+			<button class="link accent" onclick={start}>{evidence ? 'Describe it' : 'Add evidence description'}</button>
 		</div>
 	{:else}
 		<div class="meta">
 			<!-- A description in the shape starts with its own bold title; free text gets one here. -->
-			{#if !evidence.descriptionParts}<span class="card-kind">Evidence description</span>{/if}
+			{#if !shown.descriptionParts}<span class="card-kind">Evidence description</span>{/if}
 			<span class="spacer-h"></span>
 			<button class="btn small ghost" onclick={start} title="Edit the description"><Pencil size={13} />Edit</button>
 		</div>
-		<Markdown html={evidence.descriptionHtml} />
+		<Markdown html={shown.descriptionHtml} />
 	{/if}
 </div>
 

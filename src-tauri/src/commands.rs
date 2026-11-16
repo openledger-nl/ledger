@@ -125,6 +125,29 @@ pub fn save_deliverable_meta(app: State<App>, meta: DeliverableMeta) -> Result<D
     app.mutate(|c, _| deliverable_facts::save(c, &meta))
 }
 
+/// A deliverable's evidence description (What? / Goal? / Why it contributes?); empty when it has none.
+#[tauri::command]
+pub fn get_deliverable_description(app: State<App>, project: String, path: String) -> Result<deliverable_facts::DescriptionView> {
+    app.read(|c, _| deliverable_facts::description(c, &project, &path))
+}
+
+/// Sets it: its three parts, or `text` as it is; empty takes it away.
+#[tauri::command]
+pub fn save_deliverable_description(
+    app: State<App>,
+    project: String,
+    path: String,
+    parts: Option<crate::portflow_evidence_text::Parts>,
+    text: Option<String>,
+) -> Result<deliverable_facts::DescriptionView> {
+    let text = match parts {
+        Some(parts) if [&parts.what, &parts.goal, &parts.why].iter().all(|t| t.trim().is_empty()) => String::new(),
+        Some(parts) => parts.to_markdown(),
+        None => text.unwrap_or_default(),
+    };
+    app.mutate(|c, _| deliverable_facts::save_description(c, &project, &path, &text))
+}
+
 /// The number the project's next deliverable gets.
 #[tauri::command]
 pub fn next_deliverable_number(app: State<App>, project: String) -> Result<i64> {

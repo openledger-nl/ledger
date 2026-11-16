@@ -31,7 +31,7 @@
 	import { dirOf } from '$lib/vaultImages';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import { beforeRestart } from '$lib/updates.svelte';
-	import type { Bump, Evidence, Feedback, MmmLevel, ProvenanceDraft, ProvenanceVersion } from '$lib/types';
+	import type { Bump, DeliverableDescription, Evidence, Feedback, MmmLevel, ProvenanceDraft, ProvenanceVersion } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -183,6 +183,25 @@
 		return () => (stale = true);
 	});
 	const evidenceSaved = (items: Evidence[]) => (evidence = items.find((e) => e.slug === evidence?.slug) ?? evidence);
+
+	// Any other deliverable can have one too, kept in Ledger for when it is handed in: offered under the document while
+	// it is worked on, as one line until it is written.
+	let described = $state<DeliverableDescription | null>(null);
+	$effect(() => {
+		const slug = project;
+		const path = doc.basePath;
+		const inPortflow = !!doc.evidence;
+		described = null;
+		if (inPortflow) return;
+		let stale = false;
+		api
+			.getDeliverableDescription(slug, path)
+			.then((d) => {
+				if (!stale) described = d;
+			})
+			.catch(() => {});
+		return () => (stale = true);
+	});
 
 	// ---- renaming ------------------------------------------------------------------------------
 	// The live file gets another name (its extension stays) and its versions and feedback follow; the page moves along. An
@@ -540,6 +559,10 @@
 		{#if evidence}
 			<section class="card doc-evidence" aria-label="Evidence description">
 				<EvidenceDescription {evidence} onsaved={evidenceSaved} />
+			</section>
+		{:else if described && doc.exists}
+			<section class="card doc-evidence" aria-label="Evidence description">
+				<EvidenceDescription deliverable={described} ondescribed={(d) => (described = d)} />
 			</section>
 		{/if}
 	</div>

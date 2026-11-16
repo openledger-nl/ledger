@@ -46,6 +46,15 @@ CREATE TABLE deliverable_facts (
     PRIMARY KEY (project_slug, path)
 );
 
+-- A deliverable's evidence description (What? / Goal? / Why it contributes?), by its live path, ready for when it is
+-- handed in (see deliverable_facts.rs). A Portflow evidence item keeps its own in its evidence file instead.
+CREATE TABLE deliverable_descriptions (
+    project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    path         TEXT NOT NULL,
+    description  TEXT NOT NULL,
+    PRIMARY KEY (project_slug, path)
+);
+
 -- The people of a project (see project_facts.rs): its coach, teammates, client…, in the order they are listed.
 CREATE TABLE project_people (
     project_slug  TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,

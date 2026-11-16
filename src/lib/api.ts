@@ -6,6 +6,8 @@ import type {
 	ProjectMeta,
 	LabelConfirmation,
 	DeliverableMeta,
+	DeliverableDescription,
+	EvidenceParts as DescriptionParts,
 	PostKind,
 	EpistemicLabel,
 	ProjectPerson,
@@ -117,6 +119,11 @@ export const api = {
 	getDeliverableMeta: (project: string, path: string) => call<DeliverableMeta | null>('get_deliverable_meta', { project, path }),
 	listDeliverableMeta: (project: string) => call<DeliverableMeta[]>('list_deliverable_meta', { project }),
 	saveDeliverableMeta: (meta: DeliverableMeta) => call<DeliverableMeta>('save_deliverable_meta', { meta }),
+	/** Its evidence description, kept for hand-in; empty when it has none. */
+	getDeliverableDescription: (project: string, path: string) => call<DeliverableDescription>('get_deliverable_description', { project, path }),
+	/** Its three parts, or `text` as it is; empty takes it away. */
+	saveDeliverableDescription: (project: string, path: string, parts: DescriptionParts | null, text: string | null = null) =>
+		call<DeliverableDescription>('save_deliverable_description', { project, path, parts, text }),
 	/** A version published with another label than the project's intended one: the intended label and why, kept with it. */
 	confirmLabel: (c: LabelConfirmation) =>
 		call<void>('confirm_label', { project: c.project, path: c.path, version: c.version, intended: c.intended, reason: c.reason }),

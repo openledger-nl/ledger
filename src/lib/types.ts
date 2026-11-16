@@ -1422,6 +1422,16 @@ export interface FeedbackRecord {
 }
 
 /** A deliverable's v1 facts: its number, its goal and its own label (Man-Made switches AI writing off for it). */
+/** A deliverable's evidence description (What? / Goal? / Why it contributes?), kept in Ledger for when it is handed in.
+ *  Empty when it has none; a Portflow evidence item has its own (`Evidence.description`). */
+export interface DeliverableDescription {
+	project: string;
+	path: string;
+	description: string;
+	descriptionHtml: string;
+	descriptionParts: EvidenceParts | null;
+}
+
 export interface DeliverableMeta {
 	project: string;
 	/** The live path, as 0.8 names it. */

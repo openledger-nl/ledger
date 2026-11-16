@@ -13,6 +13,16 @@
 //!   template: plan
 //! ```
 //!
+//! Its evidence description (What? / Goal? / Why it contributes?, the shape teachers expect) is kept beside them, in
+//! `descriptions:`, so it is ready when the deliverable is handed in; a Portflow evidence item keeps its own in its
+//! evidence file (portflow_store.rs) instead:
+//!
+//! ```text
+//! descriptions:
+//! - path: 01-project-plan.md
+//!   text: "**Evidence description**\n\n**What?** …"
+//! ```
+//!
 //! Deleting a deliverable drops its facts. A file renamed outside Ledger keeps them when its new name starts with the same
 //! number ("01-plan.md" → "01-project-plan.md"); facts whose file is gone otherwise are kept, so a file that comes back
 //! finds them again.
@@ -113,10 +123,62 @@ pub fn save(conn: &Connection, meta: &DeliverableMeta) -> Result<DeliverableMeta
     get(conn, project, &path)?.ok_or_else(|| Error::not_found("Deliverable not found"))
 }
 
-/// A deliverable deleted: its facts go (its number stays given).
+/// A deliverable deleted: its facts and its evidence description go (its number stays given).
 pub fn forget(conn: &Connection, project: &str, path: &str) -> Result<()> {
     conn.execute("DELETE FROM deliverable_facts WHERE project_slug = ?1 AND path = ?2", [project, path])?;
+    conn.execute("DELETE FROM deliverable_descriptions WHERE project_slug = ?1 AND path = ?2", [project, path])?;
     Ok(())
+}
+
+// ---- the evidence description -----------------------------------------------------------------------
+
+/// A deliverable's evidence description, as the page shows it: the markdown, as HTML, and its three parts when it is in
+/// the shape. Empty when it has none.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DescriptionView {
+    pub project: String,
+    pub path: String,
+    pub description: String,
+    pub description_html: String,
+    pub description_parts: Option<crate::portflow_evidence_text::Parts>,
+}
+
+fn description_view(project: &str, path: &str, description: String) -> DescriptionView {
+    DescriptionView {
+        project: project.to_string(),
+        path: path.to_string(),
+        description_html: crate::markdown::render(&description),
+        description_parts: crate::portflow_evidence_text::parse(&description),
+        description,
+    }
+}
+
+pub fn description(conn: &Connection, project: &str, path: &str) -> Result<DescriptionView> {
+    projects::require(conn, project)?;
+    let path = deliverables::split_version(path.trim()).0;
+    let text: Option<String> =
+        query_opt(conn, "SELECT description FROM deliverable_descriptions WHERE project_slug = ?1 AND path = ?2", [project, path.as_str()], |r| r.get(0))?;
+    Ok(description_view(project, &path, text.unwrap_or_default()))
+}
+
+/// Sets a deliverable's evidence description (kept in the shape when it has one); an empty one takes it away.
+pub fn save_description(conn: &Connection, project: &str, path: &str, text: &str) -> Result<DescriptionView> {
+    projects::require(conn, project)?;
+    let path = deliverables::split_version(path.trim()).0;
+    if !deliverables::exists(conn, project, &path)? {
+        return Err(Error::not_found("Deliverable not found"));
+    }
+    let text = crate::portflow_evidence_text::canonical(text);
+    if text.is_empty() {
+        conn.execute("DELETE FROM deliverable_descriptions WHERE project_slug = ?1 AND path = ?2", [project, path.as_str()])?;
+    } else {
+        conn.execute(
+            "INSERT OR REPLACE INTO deliverable_descriptions (project_slug, path, description) VALUES (?1, ?2, ?3)",
+            params![project, path, text],
+        )?;
+    }
+    description(conn, project, &path)
 }
 
 // ---- the vault --------------------------------------------------------------------------------------
@@ -125,6 +187,20 @@ pub fn export(conn: &Connection, project: &str, meta: &mut Mapping) -> Result<()
     let next: i64 = conn.query_row("SELECT next_deliverable FROM projects WHERE slug = ?1", [project], |r| r.get(0))?;
     if next > 0 {
         frontmatter::set(meta, "nextDeliverable", next);
+    }
+    let descriptions: Vec<(String, String)> =
+        query_all(conn, "SELECT path, description FROM deliverable_descriptions WHERE project_slug = ?1 ORDER BY path", [project], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    if !descriptions.is_empty() {
+        let items = descriptions
+            .into_iter()
+            .map(|(path, text)| {
+                let mut item = Mapping::new();
+                frontmatter::set(&mut item, "path", path);
+                frontmatter::set(&mut item, "text", text);
+                Value::Mapping(item)
+            })
+            .collect();
+        frontmatter::set(meta, "descriptions", Value::Sequence(items));
     }
     let facts = query_all(conn, &format!("SELECT {COLUMNS} FROM deliverable_facts WHERE project_slug = ?1 ORDER BY number, path"), [project], from_row)?;
     if facts.is_empty() {
@@ -152,6 +228,17 @@ pub fn export(conn: &Connection, project: &str, meta: &mut Mapping) -> Result<()
 pub fn import(conn: &Connection, project: &str, meta: &Mapping) -> Result<()> {
     let next = meta.text("nextDeliverable").and_then(|n| n.parse::<i64>().ok()).unwrap_or(0).max(0);
     conn.execute("UPDATE projects SET next_deliverable = ?2 WHERE slug = ?1", params![project, next])?;
+    for item in meta.maps("descriptions") {
+        let (Some(path), Some(text)) = (item.text("path"), item.text("text")) else { continue };
+        let text = text.trim();
+        if text.is_empty() {
+            continue;
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO deliverable_descriptions (project_slug, path, description) VALUES (?1, ?2, ?3)",
+            params![project, deliverables::split_version(path.trim()).0, text],
+        )?;
+    }
     for item in meta.maps("deliverables") {
         let (Some(path), Some(goal)) = (item.text("path"), item.text("goal")) else { continue };
         let path = deliverables::split_version(path.trim()).0;
