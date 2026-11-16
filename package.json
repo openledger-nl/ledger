@@ -4,7 +4,8 @@
   "description": "Local-first ledger of threads, documents, user stories and a planboard",
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "tauri dev",
+    "dev:web": "vite dev",
     "dev:app": "node scripts/dev.mjs",
     "build": "vite build",
     "preview": "vite preview",

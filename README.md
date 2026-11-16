@@ -173,10 +173,17 @@ You need [Node.js](https://nodejs.org) 26 (the version in `.nvmrc`; `nvm use` pi
 
 ```bash
 pnpm install
-pnpm run tauri dev     # the app, with hot reload
+pnpm run dev           # the app, with hot reload (the same as pnpm run tauri dev)
 pnpm run dev:app       # the app, with every change held until you choose Update in it
 pnpm run tauri build   # an installer / bundle for this machine
 ```
+
+While the app runs from a checkout, its front end also opens in an ordinary browser at http://127.0.0.1:1420, to test
+or inspect it there. The browser tab reaches the backend through Ledger's window (`src/lib/browserRelay.ts` and the dev
+server plugin `scripts/browser-relay.mjs`, over the dev server's own socket: no new port), so keep the window open.
+What belongs to the window stays there: a file is dropped on the window, a dialog to pick a folder or a file opens over
+it, and global shortcuts are the app's. Anyone with that dev page open can act on the vault, as in the window. Only the
+development server has this; Ledger as installed is the desktop app alone.
 
 A local `tauri build` makes the installers but not the updater's signatures: those need the private key, which only CI has.
 

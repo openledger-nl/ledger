@@ -15,9 +15,14 @@ You need:
 
 ```bash
 pnpm install
-pnpm run tauri dev   # the app, with hot reload
+pnpm run dev         # the app, with hot reload (the same as pnpm run tauri dev)
 pnpm run dev:app     # the app, with every change held until you choose Update in it
 ```
+
+While the app runs from either, its front end also works in an ordinary browser at http://127.0.0.1:1420, handy for
+the browser's developer tools. The tab has no backend of its own: each call goes to Ledger's window, which runs it
+(`src/lib/browserRelay.ts`, `scripts/browser-relay.mjs`), so the window has to stay open. `pnpm run dev:web` starts the
+dev server alone, which is what `tauri dev` runs first.
 
 ## Before you push
 
