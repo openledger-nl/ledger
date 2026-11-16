@@ -250,10 +250,20 @@ fn sync_guide(
         Ok(())
     };
 
-    // Saying the same thing is agreeing, whichever side changed.
+    // The guide as it would be in Portflow (mentions as spans), and the description as it would be the guide (mentions as
+    // tokens): saying the same thing is agreeing, whichever side changed.
+    let threads = guide_threads(guide, &description);
+    let pulled = crate::portflow_html::to_guide_markdown(&description);
     let blank = |html: &str| crate::portflow_html::to_markdown(html).trim().is_empty();
-    if (readme.trim().is_empty() && blank(&description)) || (!readme.trim().is_empty() && same_text(&crate::markdown::render(&readme), &description)) {
+    if (readme.trim().is_empty() && blank(&description))
+        || (!readme.trim().is_empty() && (squash(&pulled) == squash(&readme) || same_text(&crate::portflow_html::to_portflow_html(&readme, &threads), &description)))
+    {
         return remember(memory, now);
+    }
+    // A guide taken in before mentions kept their ids (as bold labels) and not changed since: it takes them now.
+    if seen.as_ref().is_some_and(|s| s.description == now.description) && squash(&readme) == squash(&crate::portflow_html::to_markdown(&description)) {
+        report.files_touched += ledger.write(&mut |conn, _| crate::projects::save_readme(conn, &guide.project, &pulled).map(|_| ())).map_err(ledger_err)?;
+        return remember(memory, GuideSeen { description: now.description, readme: text_hash(&pulled) });
     }
     let (in_portflow, in_ledger) = match &seen {
         Some(s) => (s.description != now.description, s.readme != now.readme),
@@ -272,7 +282,7 @@ fn sync_guide(
     };
 
     if in_portflow && !in_ledger {
-        let text = crate::portflow_html::to_markdown(&description);
+        let text = pulled.clone();
         if text.trim().is_empty() {
             return remember(memory, now);
         }
@@ -299,7 +309,7 @@ fn sync_guide(
         let readme = seen.map(|s| s.readme).unwrap_or_default();
         return remember(memory, GuideSeen { description: now.description, readme });
     }
-    let html = crate::markdown::render(&readme);
+    let html = crate::portflow_html::to_portflow_html(&readme, &threads);
     match portflow.set_collection_description(p, collection.id, &html) {
         Ok(answer) => {
             let stored = answer.unwrap_or_else(|| html.clone());
@@ -312,6 +322,27 @@ fn sync_guide(
         Err(e) => report.notes.push(format!("The reading guide of {} didn't go to “{}”: {e}", guide.project, collection.name)),
     }
     Ok(())
+}
+
+/// The threads of the guide's project that hold an evidence item, each as a mention of that item, keyed by the thread's
+/// slug and its title (folded): a `[[link]]` to one becomes that mention in Portflow. A mention is written with the id
+/// form the description already uses (`evidence-2110705`), or that form when it has none.
+fn guide_threads(guide: &store::GuideTarget, description: &str) -> std::collections::HashMap<String, crate::portflow_html::Mention> {
+    use crate::portflow_html::{Mention, fold, mention_number, to_markdown_with_mentions};
+    let (_, existing) = to_markdown_with_mentions(description);
+    let mut out = std::collections::HashMap::new();
+    for e in &guide.evidence {
+        let (Some(slug), Some(title)) = (&e.thread, &e.thread_title) else { continue };
+        let id = existing
+            .iter()
+            .find(|m| m.kind == "evidence" && mention_number(&m.id) == Some(e.portflow_id))
+            .map(|m| m.id.clone())
+            .unwrap_or_else(|| format!("evidence-{}", e.portflow_id));
+        let mention = Mention { kind: "evidence".into(), id, label: e.name.clone() };
+        out.entry(fold(slug)).or_insert_with(|| mention.clone());
+        out.entry(fold(title)).or_insert(mention);
+    }
+    out
 }
 
 /// Keeps a reading guide that is about to be replaced: `.ledger/conflicts/<time>/portflow/<project>-README.md`, beside

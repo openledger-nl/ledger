@@ -14,6 +14,12 @@ pub fn render(source: &str) -> String {
             let alias = if has_pothole { " data-alias=\"1\"" } else { "" };
             Event::Html(format!("<a class=\"wikilink\" data-wikilink=\"{}\"{alias}>", escape_attribute(&dest_url)).into())
         }
+        // A Portflow mention in a reading guide (`[@Analysis](portflow:evidence-2110705)`): a chip with no address, which
+        // the page points at the evidence item's thread, or at Portflow (Markdown.svelte).
+        Event::Start(Tag::Link { dest_url, .. }) if dest_url.starts_with(crate::portflow_html::MENTION_SCHEME) => {
+            let (id, kind) = crate::portflow_html::parse_mention_url(&dest_url).unwrap_or_default();
+            Event::Html(format!("<a class=\"mention\" data-mention=\"{}\" data-mention-type=\"{}\">", escape_attribute(&id), escape_attribute(&kind)).into())
+        }
         Event::Start(Tag::Link { link_type, dest_url, title, id }) => {
             Event::Start(Tag::Link { link_type, dest_url: safe_url(dest_url), title, id })
         }
@@ -46,7 +52,7 @@ fn escape_attribute(text: &str) -> String {
 /// Keeps http(s), mailto, in-page anchors and scheme-less (relative) targets; everything else — notably
 /// `javascript:` and `data:` — is dropped. Whitespace and control characters are ignored when looking
 /// for a scheme, since browsers ignore them too.
-fn safe_url(url: CowStr<'_>) -> CowStr<'_> {
+pub(crate) fn safe_url(url: CowStr<'_>) -> CowStr<'_> {
     let probe: String = url
         .chars()
         .filter(|c| !c.is_whitespace() && !c.is_control())

@@ -553,8 +553,17 @@ outcomes mirror are part of the Portflow feature, so they use it too.
       else is set aside in `.ledger/conflicts/<time>/portflow/<project>-README.md` first (and the report says so). What both sides
       last agreed on is remembered per collection as hashes in `.ledger/portflow-guides.json` (this machine only, never
       synced), so a restart isn't a change. The mirror (`projects/<p>/portflow/<semester>.md`) no longer keeps a copy of
-      the description; an old file's body is ignored and dropped the next time the mirror is written. Still no mentions
-      ⇄ `[[links]]` and no merge within the text: the side that changed wins, Ledger when both did.
+      the description; an old file's body is ignored and dropped the next time the mirror is written. No merge within the
+      text: the side that changed wins, Ledger when both did.
+- [x] **Mentions in the reading guide** (2026-11-16): a mention (`<span data-type="mention" data-mention-type="evidence"
+      data-id="evidence-2110705" data-label="Analysis">`) becomes `[@Analysis](portflow:evidence-2110705)` in the README
+      (`?type=…` only when the kind isn't the id's prefix) and the same span again on the way back
+      (`portflow_html::to_guide_markdown` / `to_portflow_html`). In Ledger it is a chip: an evidence item placed in a
+      thread leads there, anything else opens Portflow. A `[[link]]` to a thread that holds an evidence item becomes a
+      mention of that item in Portflow (with the id form the description already uses, else `evidence-<id>`, which is
+      still to be checked against a real description); any other `[[link]]` keeps only its words there. Typing `@` in
+      the guide's editor offers the project's evidence items. A guide taken in earlier with bold `**@labels**` takes
+      the ids on the next round, as long as it wasn't edited since.
 - [ ] **Hand the reading guide in as evidence** by itself: needs `POST …/collections/{c}/evidence` (and a free-text
       version), whose body is still to be captured (phase 0). Until then "Hand in to Portflow…" on the Overview copies
       the guide (HTML and markdown) and opens Portflow to add it there by hand.

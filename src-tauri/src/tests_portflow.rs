@@ -1334,3 +1334,60 @@ fn walkdir_files(dir: &std::path::Path) -> Vec<(String, String)> {
     }
     out
 }
+
+#[test]
+fn mentions_come_in_with_their_ids_stay_agreed_and_go_back_as_spans() {
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    m.edit(|c| {
+        threads::create(c, "speed-edit", "Plan").unwrap();
+    });
+    let fake = FakePortflow::new();
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap(); // the evidence items come in
+    m.edit(|c| store::place_evidence(c, "speed-edit", "project-plan", Some("plan")).unwrap());
+    let span = r#"<span data-type="mention" data-mention-type="evidence" data-id="evidence-700" data-label="Project plan">@Project plan</span>"#;
+    portflow_says(&fake, &format!("<p>Start with {span}.</p>"));
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(report.guides_read, 1);
+    assert_eq!(readme(&m).trim(), "Start with [@Project plan](portflow:evidence-700).");
+    // It renders as a chip in Ledger.
+    let html = crate::markdown::render(&readme(&m));
+    assert!(html.contains(r#"<a class="mention" data-mention="evidence-700" data-mention-type="evidence">@Project plan</a>"#), "{html}");
+
+    // Pulled and unchanged: nothing to do, on either side.
+    guide_on(&m, true, &[config::GUIDE_WRITE]);
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!((report.guides_read, report.guides_written), (0, 0));
+    assert!(fake.descriptions.lock().unwrap().is_empty());
+
+    // Edited in Ledger, with a [[link]] to the thread the evidence item is in: both go to Portflow as mentions.
+    m.edit(|c| projects::save_readme(c, "speed-edit", "Start with [@Project plan](portflow:evidence-700), see [[Plan]].").map(|_| ()).unwrap());
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(report.guides_written, 1);
+    let sent = fake.descriptions.lock().unwrap().last().unwrap().1.clone();
+    assert_eq!(sent.matches(span).count(), 2, "{sent}");
+    // And what was sent isn't seen as a change on the next round.
+    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!((report.guides_read, report.guides_written), (0, 0));
+}
+
+#[test]
+fn a_guide_taken_in_with_bold_mentions_gets_their_ids() {
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    let fake = FakePortflow::new();
+    let span = r#"<span data-type="mention" data-mention-type="evidence" data-id="evidence-700" data-label="Project plan">@Project plan</span>"#;
+    portflow_says(&fake, &format!("<p>See {span}.</p>"));
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    // As an older Ledger took it in: the mention as a bold label, and that remembered as agreed.
+    m.edit(|c| projects::save_readme(c, "speed-edit", "See **@Project plan**.").map(|_| ()).unwrap());
+    let mut memory = config::read_guides(m.root());
+    for seen in memory.guides.values_mut() {
+        seen.readme = crate::provenance::sha256_hex("See **@Project plan**.".as_bytes());
+    }
+    config::write_guides(m.root(), &memory).unwrap();
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert_eq!(readme(&m).trim(), "See [@Project plan](portflow:evidence-700).");
+}

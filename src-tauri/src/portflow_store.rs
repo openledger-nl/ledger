@@ -207,6 +207,32 @@ pub struct GuideTarget {
     pub collection: i64,
     /// The guide, as markdown (the project's README.md).
     pub readme: String,
+    /// The project's evidence items, for the mentions in the guide.
+    pub evidence: Vec<EvidenceMention>,
+}
+
+/// An evidence item of the project as something a reading guide can mention (`@Analysis`), with the thread it is
+/// placed in, if any: a mention leads there, and a `[[link]]` to that thread becomes a mention of the item in Portflow.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvidenceMention {
+    /// Portflow's id of the item (`evidence.portflow_id`).
+    pub portflow_id: i64,
+    pub name: String,
+    pub thread: Option<String>,
+    pub thread_title: Option<String>,
+}
+
+/// The project's evidence items that are in Portflow, by name.
+pub fn evidence_mentions(conn: &Connection, project: &str) -> Result<Vec<EvidenceMention>> {
+    query_all(
+        conn,
+        "SELECT e.portflow_id, e.name, t.slug, t.title FROM evidence e
+         LEFT JOIN threads t ON t.project_slug = e.project_slug AND t.slug = e.thread_slug
+         WHERE e.project_slug = ?1 AND e.portflow_id IS NOT NULL ORDER BY e.name COLLATE NOCASE",
+        [project],
+        |r| Ok(EvidenceMention { portflow_id: r.get(0)?, name: r.get(1)?, thread: r.get(2)?, thread_title: r.get(3)? }),
+    )
 }
 
 pub fn guide_targets(conn: &Connection, today: &str) -> Result<Vec<GuideTarget>> {
@@ -235,9 +261,13 @@ pub fn guide_targets(conn: &Connection, today: &str) -> Result<Vec<GuideTarget>>
         if best.get(&project).is_some_and(|(k, _)| *k <= key) {
             continue;
         }
-        best.insert(project.clone(), (key, GuideTarget { project, name, collection, readme }));
+        best.insert(project.clone(), (key, GuideTarget { project, name, collection, readme, evidence: vec![] }));
     }
-    Ok(best.into_values().map(|(_, target)| target).collect())
+    let mut targets: Vec<GuideTarget> = best.into_values().map(|(_, target)| target).collect();
+    for target in &mut targets {
+        target.evidence = evidence_mentions(conn, &target.project)?;
+    }
+    Ok(targets)
 }
 
 /// A day ("2026-09-01") turned so that later days sort first.

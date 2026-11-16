@@ -694,6 +694,8 @@ pub struct ProjectPortflow {
     pub guide_collection: Option<i64>,
     /// Whether the guide is written to that collection's description ("Reading guide → collection description" on).
     pub guide_write: bool,
+    /// The project's evidence items, as what the guide can mention (`@Analysis`) and where a mention leads.
+    pub mentions: Vec<store::EvidenceMention>,
 }
 
 #[tauri::command]
@@ -709,6 +711,7 @@ pub fn portflow_project(app: State<App>, project: String) -> Result<ProjectPortf
             evidence: store::evidence_in_project(conn, &project, me)?,
             guide_collection,
             guide_write: settings.access.allows(config::GUIDE_WRITE),
+            mentions: store::evidence_mentions(conn, &project)?,
         })
     })
 }
