@@ -25,7 +25,7 @@
 				? `${available.branch} has ${available.behind} new ${available.behind === 1 ? 'commit' : 'commits'}`
 				: 'Files in the checkout changed';
 		if (available) return `Ledger ${available.version} is available`;
-		if (view.unavailable) return 'This build can’t look for updates';
+		if (view.unavailable) return 'This build can\'t look for updates';
 		if (view.checkedAt) return view.following ? `Runs what ${view.following} has` : 'Up to date';
 		if (!view.automatic) return 'Automatic checks are off';
 		return view.devBuild ? 'Hears of changes in the checkout as they come' : 'Looks shortly after starting, then every few hours';
@@ -63,7 +63,7 @@
 			<dt>Updates</dt>
 			<dd>
 				<span class="dot" class:ok={!available && !!view.checkedAt} class:warn={!!available} class:off={!available && !view.checkedAt}></span>
-				{statusText}{#if view.checkedAt}<span class="hint" title={dateTime(view.checkedAt)}> · checked {ago(view.checkedAt)}</span>{/if}
+				{statusText}{#if view.checkedAt}<span class="hint" title={dateTime(view.checkedAt)}> | checked {ago(view.checkedAt)}</span>{/if}
 			</dd>
 		</div>
 		{#if view.unavailable}
@@ -91,7 +91,7 @@
 		{/if}
 		<div class="row-end" style="justify-content:flex-start">
 			<button class="btn" onclick={check} disabled={checking || !!view.unavailable} title={view.unavailable ?? undefined}>
-				{checking ? 'Checking…' : 'Check for updates'}
+				{checking ? 'Checking...' : 'Check for updates'}
 			</button>
 			{#if available && updates.hidden}
 				<button class="btn ghost" onclick={() => showUpdate(available, true)}>

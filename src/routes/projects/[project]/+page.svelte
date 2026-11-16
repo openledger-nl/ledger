@@ -90,7 +90,7 @@
 				return;
 			}
 		}
-		await openInPortflow(`“${target?.name || 'your collection'}”, add an evidence item and paste the reading guide (it is copied) as its text`);
+		await openInPortflow(`"${target?.name || 'your collection'}", add an evidence item and paste the reading guide (it is copied) as its text`);
 	}
 </script>
 
@@ -101,17 +101,17 @@
 				<h2>Reading guide</h2>
 				<div class="sub">
 					{#if linked}
-						README.md · the description of <strong>“{target?.name || 'your collection'}”</strong> in Portflow: the first thing an assessor reads in
+						README.md | the description of <strong>"{target?.name || 'your collection'}"</strong> in Portflow: the first thing an assessor reads in
 						your portfolio.
 					{:else}
-						README.md — where to start, what matters, how this project works.
+						README.md - where to start, what matters, how this project works.
 					{/if}
 				</div>
 			</div>
 			{#if !editing}
 				<div class="header-actions">
 					{#if linked && !empty}
-						<button class="btn small ghost" onclick={handIn} title="Copy the guide and open Portflow to add it there"><Send size={14} />Hand in to Portflow…</button>
+						<button class="btn small ghost" onclick={handIn} title="Copy the guide and open Portflow to add it there"><Send size={14} />Hand in to Portflow</button>
 					{/if}
 					<button class="btn small" onclick={edit}>{empty ? 'Write' : 'Edit'}</button>
 				</div>
@@ -121,17 +121,17 @@
 			<p class="hint guide-where">
 				{#if linked.guideWrite}
 					One text in both places: a change in Portflow comes in with the next sync, and what you write here goes back to Portflow; when both changed,
-					Ledger’s text wins.
+					Ledger's text wins.
 				{:else}
 					A change in Portflow comes in with the next sync. What you write here stays in Ledger: to send it back, switch on
-					<a href="/settings/sync#portflow">Reading guide → collection description</a> under Settings → Portflow (off by default).
+					<a href="/settings/sync#portflow">Reading guide to collection description</a> under Settings > Portflow (off by default).
 				{/if}
 			</p>
 		{/if}
 		{#if editing}
 			{#if movedOn}
 				<div class="notice info guide-moved">
-					<span>The reading guide changed while you were editing it{linked ? ' (the collection’s description in Portflow)' : ''}.</span>
+					<span>The reading guide changed while you were editing it{linked ? ' (the collection\'s description in Portflow)' : ''}.</span>
 					<button class="link accent" onclick={loadNewer}>Load the new version</button>
 					<button class="link" onclick={() => (base = project.readme)}>Keep mine</button>
 				</div>

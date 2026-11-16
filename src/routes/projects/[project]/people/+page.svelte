@@ -51,7 +51,7 @@
 	const remove = (person: ProjectPerson) => store(plain(data.people).filter((_, i) => data.people[i] !== person));
 </script>
 
-<svelte:head><title>People · {data.project.name} · Ledger</title></svelte:head>
+<svelte:head><title>People | {data.project.name} | Ledger</title></svelte:head>
 
 <div class="page">
 	<div class="page-inner">
@@ -61,7 +61,7 @@
 			</div>
 			<p class="sub" style="margin:0">
 				Its coach, teammates, client and anyone else. They are offered first when you note who gave feedback or who was at a meeting, and
-				<strong>Whole team</strong> adds every teammate at once. Kept in the project’s <code>project.md</code>.
+				<strong>Whole team</strong> adds every teammate at once. Kept in the project's <code>project.md</code>.
 			</p>
 
 			<div class="form-row">

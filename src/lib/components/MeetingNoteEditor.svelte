@@ -113,7 +113,7 @@
 		const m = meetings[i];
 		if (m.body.trim() || m.title.trim()) {
 			const ok = await confirmDialog({
-				title: `Delete “${m.title.trim() || 'this meeting'}”?`,
+				title: `Delete "${m.title.trim() || 'this meeting'}"?`,
 				message: 'Its heading and your notes under it are taken out of the daily note.',
 				confirmLabel: 'Delete',
 				danger: true
@@ -155,7 +155,7 @@
 					bind:value={() => m.body, (v) => setBody(m, v)}
 					rows={4}
 					label="Notes"
-					placeholder="What was said, decided, to do… Type @ to mention someone."
+					placeholder="What was said, decided, to do... Type @ to mention someone."
 					people={mentionsFor(m)}
 				/>
 			</article>

@@ -7,5 +7,5 @@
 </script>
 
 <Story name="Default" asChild>
-	<IntendedDevelopmentModal view={fx.epsilon} semesterName="S3 — najaar 2026" onclose={() => {}} onsaved={() => {}} />
+	<IntendedDevelopmentModal view={fx.epsilon} semesterName="S3 - najaar 2026" onclose={() => {}} onsaved={() => {}} />
 </Story>

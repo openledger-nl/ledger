@@ -14,13 +14,13 @@ export function portflowFooter(s: PortflowStatus | null) {
 	if (!s) return { ...base, dot: 'off', title: 'Portflow' };
 	if (s.signedIn) {
 		const until = s.expiresAt ? new Date(s.expiresAt).toISOString() : null;
-		base.canvas = until ? `Signed in through Canvas · until ${dayKey(until) === todayKey() ? time(until) : dateTime(until)}` : 'Signed in through Canvas';
+		base.canvas = until ? `Signed in through Canvas | until ${dayKey(until) === todayKey() ? time(until) : dateTime(until)}` : 'Signed in through Canvas';
 	} else {
 		base.canvas = 'Not signed in to Canvas';
 	}
-	if (s.state === 'signed-out' || !s.signedIn) return { ...base, dot: 'warn', title: 'Portflow: sign in again', error: 'Sign in under Settings → Portflow' };
-	if (s.state === 'syncing') return { ...base, dot: 'warn pulse', title: 'Syncing Portflow…' };
-	if (s.state === 'error') return { ...base, dot: 'bad', title: 'Portflow problem', error: s.lastError ?? 'See Settings → Portflow' };
+	if (s.state === 'signed-out' || !s.signedIn) return { ...base, dot: 'warn', title: 'Portflow: sign in again', error: 'Sign in under Settings > Portflow' };
+	if (s.state === 'syncing') return { ...base, dot: 'warn pulse', title: 'Syncing Portflow...' };
+	if (s.state === 'error') return { ...base, dot: 'bad', title: 'Portflow problem', error: s.lastError ?? 'See Settings > Portflow' };
 	return { ...base, dot: 'ok', title: 'Portflow up to date', when: s.lastSyncAt ? ago(s.lastSyncAt) : '' };
 }
 

@@ -40,7 +40,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <aside class="rail" aria-label="Sidebar" onpointerover={show} onpointerleave={hide} onfocusin={show} onfocusout={hide} onclick={hide}>
-	<a class="rail-mark" href="/" data-tip="Ledger · Home" aria-label="Home"><Wordmark mark height={30} /></a>
+	<a class="rail-mark" href="/" data-tip="Ledger | Home" aria-label="Home"><Wordmark mark height={30} /></a>
 
 	<nav class="rail-group" aria-label="Pages">
 		<a class="rail-item" class:active={path === '/'} href="/" data-tip="Home" aria-label="Home"><House size={18} /></a>
@@ -63,11 +63,11 @@
 		<button class="rail-item" data-tip="New project" aria-label="New project" onclick={newProjectFlow}><Plus size={16} /></button>
 	</nav>
 
-	<a class="rail-sync" href="/settings/sync" data-tip={[footer.title, footer.when].filter(Boolean).join(' · ')} aria-label={footer.title}>
+	<a class="rail-sync" href="/settings/sync" data-tip={[footer.title, footer.when].filter(Boolean).join(' | ')} aria-label={footer.title}>
 		<span class="dot {footer.dot}"></span>
 	</a>
 	{#if portflow.enabled}
-		<a class="rail-sync rail-sync-2" href="/settings/sync#portflow" data-tip={[pf.title, pf.when, pf.canvas].filter(Boolean).join(' · ')} aria-label={pf.title}>
+		<a class="rail-sync rail-sync-2" href="/settings/sync#portflow" data-tip={[pf.title, pf.when, pf.canvas].filter(Boolean).join(' | ')} aria-label={pf.title}>
 			<span class="dot {pf.dot}"></span>
 		</a>
 	{/if}

@@ -164,7 +164,7 @@
 				const n = d.kinds[k] as number;
 				return `${n} ${KIND[k][n === 1 ? 0 : 1]}`;
 			})
-			.join(' · ');
+			.join(' | ');
 
 	// The hover card: placed over the hovered day, inside the graph's box.
 	let box: HTMLElement | undefined = $state();
@@ -201,7 +201,7 @@
 	<div class="header-top">
 		<h2>
 			{#if range}{total.toLocaleString(LOCALE)} {total === 1 ? 'contribution' : 'contributions'}
-				{periodLabel}{:else}Contributions{/if}{#if project}<span class="contrib-in"> · {projects.find((p) => p.slug === project)?.name}</span>{/if}
+				{periodLabel}{:else}Contributions{/if}{#if project}<span class="contrib-in"> | {projects.find((p) => p.slug === project)?.name}</span>{/if}
 		</h2>
 		<div class="contrib-filters">
 			<Dropdown bind:value={project} options={projectOptions} label="Project" align="end" />
@@ -268,7 +268,7 @@
 	{#if tip}
 		<div class="contrib-tip" style="left: {tip.x}px; top: {tip.y}px" role="tooltip">
 			{#if tip.day.future}
-				<b>Still to come</b> · {longDate.format(tip.day.date)}
+				<b>Still to come</b> | {longDate.format(tip.day.date)}
 			{:else}
 				<b>{tip.day.total ? plural(tip.day.total, 'contribution') : tip.day.today ? 'No contributions yet' : 'No contributions'}</b>
 				{tip.day.today ? 'today,' : 'on'} {longDate.format(tip.day.date)}

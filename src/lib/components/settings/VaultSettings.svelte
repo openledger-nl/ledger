@@ -64,7 +64,7 @@
 		Vault folder
 		<div class="form-row" style="flex-wrap:nowrap">
 			<input class="mono" bind:value={vaultInput} disabled={settings.vaultLocked} spellcheck="false" />
-			<button class="btn" onclick={browse} disabled={settings.vaultLocked}>Browse…</button>
+			<button class="btn" onclick={browse} disabled={settings.vaultLocked}>Browse</button>
 		</div>
 	</label>
 	{#if settings.vaultLocked}

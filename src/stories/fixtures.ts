@@ -160,7 +160,7 @@ export const posts: Post[] = [
 		11,
 		{ kind: 'research', labels: ['to-check'] }
 	),
-	post('p-3', 'Agreed, let’s order three to test.', '<p>Agreed, let’s order three to test.</p>', 11, { parentId: 'p-2', kind: 'thought' }),
+	post('p-3', 'Agreed, let\'s order three to test.', '<p>Agreed, let\'s order three to test.</p>', 11, { parentId: 'p-2', kind: 'thought' }),
 	post('p-4', 'Version 1.0 of sensor-research.md was published.', '<p>Version 1.0 of <strong>sensor-research.md</strong> was published.</p>', 13, {
 		versionPublished: true,
 		deliverablePath: 'sensor-research.md',
@@ -362,7 +362,7 @@ export const provenance: Provenance = {
 					record: null,
 					post: { threadSlug: THREAD, id: 'p-4' }
 				},
-				{ kind: 'feedback', id: 'f-1', status: 'open', version: '1.0', excerpt: 'Good comparison. Add the price…', at: at(13) }
+				{ kind: 'feedback', id: 'f-1', status: 'open', version: '1.0', excerpt: 'Good comparison. Add the price...', at: at(13) }
 			]
 		}
 	],
@@ -430,7 +430,7 @@ export const projectPortflow: ProjectPortflow = {
 	collections: [
 		{
 			semester: 's3-2026',
-			semesterName: 'S3 — najaar 2026',
+			semesterName: 'S3 - najaar 2026',
 			collection: 280_001,
 			name: 'Smart Greenhouse',
 			subtitle: 'IoT project',
@@ -458,7 +458,7 @@ const OUTCOMES = [
 ];
 
 export const epsilon: EpsilonView = {
-	semesters: [{ id: 's3-2026', name: 'S3 — najaar 2026', start: '2026-09-01', end: '2027-01-31', section: 1, sectionName: 'ICT & Software', current: true }],
+	semesters: [{ id: 's3-2026', name: 'S3 - najaar 2026', start: '2026-09-01', end: '2027-01-31', section: 1, sectionName: 'ICT & Software', current: true }],
 	semester: 's3-2026',
 	section: 1,
 	sectionName: 'ICT & Software',
@@ -494,13 +494,13 @@ export const epsilon: EpsilonView = {
 
 export const semester: Semester = {
 	id: 's3-2026',
-	name: 'S3 — najaar 2026',
+	name: 'S3 - najaar 2026',
 	start: '2026-08-31',
 	end: '2027-01-29',
 	sprintWeeks: 3,
 	notes: '',
 	sprints: [
-		{ name: 'Sprint 1', start: '2026-08-31', end: '2026-09-18', goal: 'Research the client’s greenhouse.' },
+		{ name: 'Sprint 1', start: '2026-08-31', end: '2026-09-18', goal: 'Research the client\'s greenhouse.' },
 		{ name: 'Sprint 2', start: '2026-09-21', end: '2026-10-09', goal: 'Prototype the sensor board.' },
 		{ name: 'Sprint 3', start: '2026-10-12', end: '2026-10-30', goal: 'Dashboard.' },
 		{ name: 'Sprint 4', start: '2026-11-09', end: '2026-11-27', goal: 'Test with the client.' }
@@ -516,7 +516,7 @@ export const story: Story = {
 	summary: 'Water plants automatically',
 	role: 'grower',
 	want: 'the greenhouse to water plants when the soil is dry',
-	reason: 'I don’t have to check every day',
+	reason: 'I don\'t have to check every day',
 	notes: '',
 	criteria: [
 		{ text: 'Waters below 30% moisture', done: true },
@@ -606,7 +606,7 @@ export const settings: Settings = {
 	settingsFile: '/home/student/Documents/Ledger/.ledger/settings.json',
 	secretsFile: '/home/student/Documents/Ledger/.ledger/.env',
 	version: '0.8.0',
-	sync: { repo: 'student/ledger-vault', branch: 'main', hasToken: true, tokenHint: '…a1b2', configured: true },
+	sync: { repo: 'student/ledger-vault', branch: 'main', hasToken: true, tokenHint: '...a1b2', configured: true },
 	status: {
 		configured: true,
 		repo: 'student/ledger-vault',

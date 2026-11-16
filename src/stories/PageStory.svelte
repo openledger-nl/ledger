@@ -61,7 +61,7 @@
 {/snippet}
 
 {#await run()}
-	<p class="hint" style="padding: 24px">Loading the page…</p>
+	<p class="hint" style="padding: 24px">Loading the page...</p>
 {:then data}
 	{@render nest(data, 0)}
 {:catch e}

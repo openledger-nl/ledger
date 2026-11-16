@@ -44,8 +44,8 @@
 				<label class="pick-row">
 					<input type="checkbox" checked={picked.includes(f.id)} onchange={() => toggle(f.id)} />
 					<span class="pick-text">
-						<span class="pick-head">{f.givenOn ? `v${f.givenOn}` : 'Live file'} · {threadTitle(f.threadSlug) ?? f.threadSlug}</span>
-						{#if f.quote}<span class="pick-quote">“{f.quote}”</span>{/if}
+						<span class="pick-head">{f.givenOn ? `v${f.givenOn}` : 'Live file'} | {threadTitle(f.threadSlug) ?? f.threadSlug}</span>
+						{#if f.quote}<span class="pick-quote">"{f.quote}"</span>{/if}
 						<span class="pick-body">{f.body}</span>
 					</span>
 				</label>

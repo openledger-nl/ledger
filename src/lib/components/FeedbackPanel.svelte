@@ -112,7 +112,7 @@
 		return out.sort((a, b) => (order === 'desc' ? b.last.localeCompare(a.last) : a.first.localeCompare(b.first)));
 	});
 
-	const span = (g: ThreadGroup) => (dayKey(g.first) === dayKey(g.last) ? date(g.first) : `${date(g.first)} – ${date(g.last)}`);
+	const span = (g: ThreadGroup) => (dayKey(g.first) === dayKey(g.last) ? date(g.first) : `${date(g.first)} - ${date(g.last)}`);
 	const isOpen = (f: Feedback) => f.status === 'open';
 	const versionUrl = (version: string | null) => deliverableUrl(project, version ? snapshotPath(doc.basePath, version) : doc.basePath);
 	const promptsOf = (f: Feedback) => prompts.filter((p) => p.feedback.includes(f.id)).map((p) => p.title || 'Untitled prompt');
@@ -155,7 +155,7 @@
 	</span>
 	{#if !thread}
 		<span class="hint">
-			Create a thread first — feedback is written in one. <button class="link accent" onclick={() => newThreadFlow(project)}>Create one</button>
+			Create a thread first - feedback is written in one. <button class="link accent" onclick={() => newThreadFlow(project)}>Create one</button>
 		</span>
 	{:else if inPortflow}
 		<span class="hint">Feedback on a Portflow item is given in Portflow; it comes in with the sync.</span>
@@ -166,7 +166,7 @@
 		{#if pending}
 			<div class="quote passage pending">
 				<span class="qhead">Selected text</span>
-				<span class="qtext">“{pending.text}”</span>
+				<span class="qtext">"{pending.text}"</span>
 				<button class="icon-btn" title="Comment on the whole document instead" aria-label="Comment on the whole document instead" onclick={() => (pending = null)}>
 					<X size={14} />
 				</button>
@@ -176,7 +176,7 @@
 			bind:this={editor}
 			bind:value={text}
 			label="Feedback"
-			placeholder="What works, what doesn’t, what to change…"
+			placeholder="What works, what doesn't, what to change"
 			onsubmit={() => text.trim() && add()}
 		/>
 		<PersonPicker bind:value={from} {project} />
@@ -195,7 +195,7 @@
 		{#each group.versions as v (v.version ?? 'live')}
 			<div class="fb-version">
 				<a class="vchip" class:on={doc.version === v.version} href={versionUrl(v.version)}>{v.version ? `v${v.version}` : 'Live'}</a>
-				<span class="pv-meta">{v.items.filter(isOpen).length} open · {v.items.length} in all</span>
+				<span class="pv-meta">{v.items.filter(isOpen).length} open | {v.items.length} in all</span>
 				{#if v.items.some(isOpen)}<button class="link accent" onclick={() => selectOpen(v.items)}>Select open</button>{/if}
 			</div>
 			<div class="fb-list">

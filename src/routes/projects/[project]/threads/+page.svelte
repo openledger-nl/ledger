@@ -12,7 +12,7 @@
 	const threads = $derived(orderThreads(data.projects.find((p) => p.slug === project.slug)?.threads ?? [], listOrder.order));
 </script>
 
-<svelte:head><title>Threads · {project.name} · Ledger</title></svelte:head>
+<svelte:head><title>Threads | {project.name} | Ledger</title></svelte:head>
 
 <div class="page">
 	<div class="page-inner">

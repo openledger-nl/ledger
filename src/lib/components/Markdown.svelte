@@ -43,7 +43,7 @@
 		for (const img of root.querySelectorAll<HTMLImageElement>('img[data-src]')) {
 			pictures.load(img.dataset.src ?? '').then((url) => {
 				if (url) img.src = url;
-				else img.replaceWith(Object.assign(document.createElement('span'), { className: 'missing', textContent: `Couldn’t load ${img.alt || img.dataset.src}` }));
+				else img.replaceWith(Object.assign(document.createElement('span'), { className: 'missing', textContent: `Couldn't load ${img.alt || img.dataset.src}` }));
 			});
 		}
 	});
@@ -65,7 +65,7 @@
 			a.classList.toggle('unresolved', !target);
 			if (!target || !project) {
 				a.removeAttribute('href');
-				a.title = index ? `Nothing in this project is called “${name}”` : 'Links work inside a project';
+				a.title = index ? `Nothing in this project is called "${name}"` : 'Links work inside a project';
 				continue;
 			}
 			a.href = linkUrl(project, target);
@@ -99,7 +99,7 @@
 				a.title = `${item.name}: open the deliverable`;
 			} else if (item?.thread && project) {
 				a.href = threadUrl(project, item.thread);
-				a.title = `${item.name}: its thread “${item.threadTitle ?? item.thread}”`;
+				a.title = `${item.name}: its thread "${item.threadTitle ?? item.thread}"`;
 			} else {
 				a.removeAttribute('href');
 				a.title = 'In Portflow';
@@ -177,7 +177,7 @@
 			}
 			if (anchor.classList.contains('mention')) {
 				if (href) void goto(href);
-				else void openInPortflow(`“${(anchor.textContent ?? '').replace(/^@/, '')}”`);
+				else void openInPortflow(`"${(anchor.textContent ?? '').replace(/^@/, '')}"`);
 				return;
 			}
 			if (/^(https?:|mailto:)/i.test(href)) openUrl(href).catch(() => {});

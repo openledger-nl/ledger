@@ -14,7 +14,7 @@
 		<span class="hint">
 			{answered
 				? `${answered} of ${questions.length} answered; a blank one is skipped`
-				: `From “${template}”. Answer what you can, or skip them: leave a question blank.`}
+				: `From "${template}". Answer what you can, or skip them: leave a question blank.`}
 		</span>
 		{#if answered}
 			<button class="link accent gq-clear" onclick={() => (answers = questions.map(() => ''))}>Skip all</button>

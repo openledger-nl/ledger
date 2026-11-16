@@ -30,8 +30,8 @@
 
 	async function remove() {
 		const ok = await confirmDialog({
-			title: `Remove “${upload.name}”?`,
-			message: 'The file is deleted from the project’s attachments unless something else still uses it.',
+			title: `Remove "${upload.name}"?`,
+			message: 'The file is deleted from the project\'s attachments unless something else still uses it.',
 			confirmLabel: 'Remove',
 			danger: true
 		});

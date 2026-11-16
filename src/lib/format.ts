@@ -87,7 +87,7 @@ export function plainText(markdown: string, max = 140): string {
 		.replace(/[*_`~>#]+/g, '')
 		.replace(/\s+/g, ' ')
 		.trim();
-	return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
+	return text.length > max ? `${text.slice(0, max).trimEnd()}...` : text;
 }
 
 /** "just now", "5 min ago", "3 h ago", or the date for anything older than a day. */
@@ -125,7 +125,7 @@ export function threadMeta(t: ThreadSummary): string {
 	if (t.promptCount) parts.push(plural(t.promptCount, 'prompt'));
 	if (t.feedbackCount) parts.push(`${t.feedbackCount} feedback`);
 	if (t.uploadCount) parts.push(plural(t.uploadCount, 'upload'));
-	return parts.join(' · ');
+	return parts.join(' | ');
 }
 
 /** Escapes text and wraps case-insensitive matches of `query` in <mark>, for search snippets. */

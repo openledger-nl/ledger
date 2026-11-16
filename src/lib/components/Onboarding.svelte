@@ -85,7 +85,7 @@
 			icon: CloudUpload,
 			done: !!settings?.sync.configured,
 			skipped: onboarding.skipped.includes('sync'),
-			summary: settings?.sync.configured ? `${settings.sync.repo} · ${settings.sync.branch}` : ''
+			summary: settings?.sync.configured ? `${settings.sync.repo} | ${settings.sync.branch}` : ''
 		},
 		{
 			id: 'thread',
@@ -150,7 +150,7 @@
 	async function hide() {
 		const ok = await confirmDialog({
 			title: 'Hide the setup guide?',
-			message: 'What you have set up stays as it is. You can bring the guide back under Settings → Sync & external → Vault.',
+			message: 'What you have set up stays as it is. You can bring the guide back under Settings > Sync & external > Vault.',
 			confirmLabel: 'Hide the guide'
 		});
 		if (ok) await finish();

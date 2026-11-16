@@ -11,7 +11,7 @@
 		{ value: 'sensor-research', label: 'Sensor research', group: 'Threads' },
 		{ value: 'project-plan', label: 'Project plan', group: 'Threads' },
 		{ value: 'dashboard-prototype', label: 'Dashboard prototype', group: 'Threads', hint: '7 posts' },
-		{ value: 'new', label: '+ New thread…' }
+		{ value: 'new', label: '+ New thread' }
 	];
 	let value = $state('sensor-research');
 </script>

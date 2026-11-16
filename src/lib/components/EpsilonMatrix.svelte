@@ -28,7 +28,7 @@
 	let chosenProject = $state('');
 	const project = $derived(projects.some((p) => p.slug === chosenProject) ? chosenProject : (projects[0]?.slug ?? ''));
 	const projectOptions = $derived<DropdownOption[]>(
-		projects.map((p) => ({ value: p.slug, label: `${p.name}${view.linkedProjects.includes(p.slug) ? ' · this semester' : ''}` }))
+		projects.map((p) => ({ value: p.slug, label: `${p.name}${view.linkedProjects.includes(p.slug) ? ' | this semester' : ''}` }))
 	);
 	const aiming = $derived(view.rows.some((r) => r.target) || view.skills.some((s) => s.target));
 
@@ -42,7 +42,7 @@
 		const [kind, a, b] = picked.split(':');
 		if (kind === 'cell') {
 			const cell = cellAt.get(`${a}:${b}`);
-			return cell ? { title: `${columnName.get(cell.outcome)} · ${rowName.get(cell.layer)}`, levels: cell.levels, target: cell.target } : null;
+			return cell ? { title: `${columnName.get(cell.outcome)} | ${rowName.get(cell.layer)}`, levels: cell.levels, target: cell.target } : null;
 		}
 		const skill = view.skills.find((s) => String(s.outcome) === a);
 		return skill ? { title: skill.name, levels: skill.levels, target: skill.target } : null;
@@ -63,7 +63,7 @@
 	const evidenceHref = (e: EvidenceRef) => (e.thread ? threadUrl(e.project, e.thread) : projectUrl(e.project));
 	const cellLabel = (c: EpsilonCell) =>
 		`${columnName.get(c.outcome)}, ${rowName.get(c.layer)}: ${plural(c.evidenceCount, 'evidence item', 'evidence items')}${c.level ? `, up to level ${c.level}` : ''}${
-			c.target ? ` · aiming for level ${c.target}${c.reached ? ', reached' : ', not yet'}` : ''
+			c.target ? ` | aiming for level ${c.target}${c.reached ? ', reached' : ', not yet'}` : ''
 		}`;
 </script>
 
@@ -81,7 +81,7 @@
 					<tr class:dim={aiming && !row.target}>
 						<th scope="row">
 							<span class="layer-letter">{row.layer}</span>{row.name}
-							{#if row.target}<span class="aim" title="Intended: level {row.target}">→ {row.target}</span>{/if}
+							{#if row.target}<span class="aim" title="Intended: level {row.target}">to {row.target}</span>{/if}
 						</th>
 						{#each view.columns as col (col.outcome)}
 							{@const cell = cellAt.get(`${row.layer}:${col.outcome}`)}
@@ -131,7 +131,7 @@
 								<span class="bar" class:filled={l.evidenceCount > 0} class:aim-bar={l.level === skill.target} style:--shade="{shade(l.level)}%" title="{l.name}: {plural(l.evidenceCount, 'evidence item', 'evidence items')}"></span>
 							{/each}
 						</span>
-						<span class="skill-name">{skill.nickname || skill.name}{#if skill.target}<span class="aim">→ {skill.target}</span>{/if}</span>
+						<span class="skill-name">{skill.nickname || skill.name}{#if skill.target}<span class="aim">to {skill.target}</span>{/if}</span>
 						<span class="hint">{skill.evidenceCount}</span>
 					</button>
 				{/each}
@@ -147,7 +147,7 @@
 			<strong>{l.name}</strong>
 			<span class="hint">
 				{l.evidenceCount ? plural(l.evidenceCount, 'evidence item', 'evidence items') : 'no evidence yet'}{l.feedbackCount
-					? ` · ${plural(l.feedbackCount, 'piece', 'pieces')} of feedback`
+					? ` | ${plural(l.feedbackCount, 'piece', 'pieces')} of feedback`
 					: ''}
 			</span>
 		</div>

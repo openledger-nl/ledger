@@ -124,7 +124,7 @@ export const sync = $state<{ status: SyncStatus | null }>({ status: null });
 export function syncFooter(s: SyncStatus | null) {
 	if (!s || !s.configured) return { dot: 'off', title: 'Local vault', when: '', where: 'Not synced to GitHub', encryption: '', error: '' };
 	const base = { when: '', where: `${s.repo ?? ''}@${s.branch ?? ''}`, encryption: s.encrypted ? 'Encrypted' : 'Not encrypted', error: '' };
-	if (s.state === 'syncing') return { ...base, dot: 'warn pulse', title: 'Syncing…' };
+	if (s.state === 'syncing') return { ...base, dot: 'warn pulse', title: 'Syncing...' };
 	if (s.state === 'error') return { ...base, dot: 'bad', title: 'Sync problem', error: s.lastError ?? 'See Settings' };
 	if (s.pending) return { ...base, dot: 'warn', title: 'Changes waiting to sync' };
 	return { ...base, dot: 'ok', title: 'Synced with GitHub', when: s.lastSyncAt ? ago(s.lastSyncAt) : '' };

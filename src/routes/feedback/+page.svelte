@@ -85,7 +85,7 @@
 	}
 </script>
 
-<svelte:head><title>Feedback · Ledger</title></svelte:head>
+<svelte:head><title>Feedback | Ledger</title></svelte:head>
 
 <div class="header-wrap flat">
 	<div class="header-top">
@@ -131,10 +131,10 @@
 						<span class="fb-when">{dateTime(f.createdAt)}</span>
 					</header>
 					<div class="fb-where">
-						On {#if on.href}<a href={on.href}>{on.label}</a>{:else}{on.label}{/if} · {f.projectName}
-						· in <a href="{threadUrl(f.project, f.threadSlug)}?item=f-{f.id}">{f.threadTitle}</a>
-						{#if given} · {given.toLowerCase()}{/if}
-						{#if f.daily} · <a href="/meetings?day={f.daily}">meeting notes {dayLabel(f.daily)}</a>{/if}
+						On {#if on.href}<a href={on.href}>{on.label}</a>{:else}{on.label}{/if} | {f.projectName}
+						| in <a href="{threadUrl(f.project, f.threadSlug)}?item=f-{f.id}">{f.threadTitle}</a>
+						{#if given} | {given.toLowerCase()}{/if}
+						{#if f.daily} | <a href="/meetings?day={f.daily}">meeting notes {dayLabel(f.daily)}</a>{/if}
 					</div>
 					<div class="fb-body"><Markdown html={f.html} /></div>
 					<footer class="actions">

@@ -93,7 +93,7 @@ export async function renameProjectFlow(slug: string, current: string) {
 
 export async function deleteProjectFlow(slug: string, name: string) {
 	const ok = await confirmDialog({
-		title: `Delete “${name}”?`,
+		title: `Delete "${name}"?`,
 		message: 'Its threads, deliverables, stories, tasks and uploaded files are removed from the vault (and from GitHub at the next sync).',
 		confirmLabel: 'Delete project',
 		danger: true
@@ -134,7 +134,7 @@ export function promptName(prompt: Pick<Prompt, 'title' | 'base' | 'body'>): str
 	const title = prompt.title.trim();
 	if (title) return title;
 	const line = (prompt.body.trim() || prompt.base.trim()).split('\n').find((l) => l.trim()) ?? 'Untitled prompt';
-	return line.length > 60 ? `${line.slice(0, 60).trimEnd()}…` : line;
+	return line.length > 60 ? `${line.slice(0, 60).trimEnd()}...` : line;
 }
 
 /** Whether a deliverable path names a published version ("reports/plan@v1.2.md", "LICENSE@v2.0"), as the backend reads it. */

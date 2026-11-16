@@ -246,7 +246,7 @@
 	<div class="sync-box">
 		<div class="sync-line">
 			<span class="dot {footer.dot}"></span><span>{footer.title}</span>
-			{#if footer.when}<span class="sync-when">· {footer.when}</span>{/if}
+			{#if footer.when}<span class="sync-when">| {footer.when}</span>{/if}
 		</div>
 		<div class="sync-sub" title={footer.where}>{footer.where}</div>
 		{#if footer.encryption}<div class="sync-sub">{footer.encryption}</div>{/if}
@@ -256,7 +256,7 @@
 			<a class="sync-part" href="/settings/sync#portflow" title="Portflow settings">
 				<div class="sync-line">
 					<span class="dot {pf.dot}"></span><span>{pf.title}</span>
-					{#if pf.when}<span class="sync-when">· {pf.when}</span>{/if}
+					{#if pf.when}<span class="sync-when">| {pf.when}</span>{/if}
 				</div>
 				<div class="sync-sub" title={pf.canvas}>{pf.canvas}</div>
 				{#if pf.error}<div class="sync-sub error">{pf.error}</div>{/if}

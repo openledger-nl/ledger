@@ -15,7 +15,7 @@
 	let people = $state<PortflowPerson[]>([]);
 	let team = $state<ProjectPerson[]>([]);
 	const GIVEN: DropdownOption[] = [
-		{ value: '', label: '—' },
+		{ value: '', label: '-' },
 		...GIVEN_WAYS.map((g) => ({ value: g.given, label: g.name }))
 	];
 	const id = `people-${Math.random().toString(36).slice(2)}`;
@@ -73,7 +73,7 @@
 	</div>
 </div>
 {#if value.name && team.some((p) => p.name.toLowerCase() === value.name?.trim().toLowerCase())}
-	<div class="hint">{value.name} is {value.role ? `the project’s ${value.role}` : 'in this project'}.</div>
+	<div class="hint">{value.name} is {value.role ? `the project's ${value.role}` : 'in this project'}.</div>
 {:else if value.portflowUser && value.role}
 	<div class="hint">{value.name} is a {value.role} in your Portflow portfolio.</div>
 {/if}

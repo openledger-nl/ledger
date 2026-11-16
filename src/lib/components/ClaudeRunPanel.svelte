@@ -101,10 +101,10 @@
 
 <div class="claude">
 	<div class="claude-row">
-		<button class="link accent" onclick={ask} disabled={asking || running}>Run in Claude Code…</button>
+		<button class="link accent" onclick={ask} disabled={asking || running}>Run in Claude Code</button>
 		{#if run}
-			<span class="state"><span class="dot {dots[run.status]}"></span>{run.cancelling ? 'Cancelling…' : labels[run.status]}</span>
-			<span class="hint">{elapsed}{run.exitCode !== null && run.status !== 'finished' ? ` · exit code ${run.exitCode}` : ''}</span>
+			<span class="state"><span class="dot {dots[run.status]}"></span>{run.cancelling ? 'Cancelling...' : labels[run.status]}</span>
+			<span class="hint">{elapsed}{run.exitCode !== null && run.status !== 'finished' ? ` | exit code ${run.exitCode}` : ''}</span>
 			{#if running}
 				<button class="link danger" onclick={cancel} disabled={run.cancelling}>Cancel</button>
 			{/if}
@@ -120,7 +120,7 @@
 			<div class="hint">Published, and linked to this prompt: {run.linked.join(', ')}</div>
 		{/if}
 		{#if showOutput}
-			<pre class="mono output" bind:this={outputBox} {onscroll}>{tracked?.output || (running ? 'Waiting for the first output…' : 'No output.')}</pre>
+			<pre class="mono output" bind:this={outputBox} {onscroll}>{tracked?.output || (running ? 'Waiting for the first output...' : 'No output.')}</pre>
 		{/if}
 		{#if noted}
 			<div class="hint">Kept in the thread as a note: <span class="mono">runs/{run.id}.md</span></div>
@@ -136,8 +136,8 @@
 						<summary>
 							<ChevronRight size={14} class="disclosure" /><span class="dot {dots[past.status]}"></span>{labels[past.status]}
 							<span class="hint">
-								{time(past.startedAt)} · {clock(past.seconds)}{past.turns ? ` · ${past.turns} turn${past.turns === 1 ? '' : 's'}` : ''}{past.model
-									? ` · ${past.model}`
+								{time(past.startedAt)} | {clock(past.seconds)}{past.turns ? ` | ${past.turns} turn${past.turns === 1 ? '' : 's'}` : ''}{past.model
+									? ` | ${past.model}`
 									: ''}
 							</span>
 						</summary>
@@ -155,20 +155,20 @@
 	{@const shown = preview}
 	<Modal title="Run in Claude Code" wide onclose={() => (preview = null)}>
 		<p style="margin:0;color:var(--muted)">
-			Claude Code runs on this machine in the project’s folder, and writes what it makes into <code>deliverables/</code> there:
+			Claude Code runs on this machine in the project's folder, and writes what it makes into <code>deliverables/</code> there:
 		</p>
 		<div class="mono folder">{shown.folder}</div>
 
 		<div class="notice info">
 			{modeNotes[shown.permissionMode]}
 			{shown.guard
-				? 'The extra guard rails are on: it is told not to read or write outside this folder, nor to touch the vault’s .ledger folder or any .env file, and neither the folder’s own Claude settings nor any MCP servers are used.'
+				? 'The extra guard rails are on: it is told not to read or write outside this folder, nor to touch the vault\'s .ledger folder or any .env file, and neither the folder\'s own Claude settings nor any MCP servers are used.'
 				: 'The extra guard rails are off.'}
 		</div>
 		<div class="notice info">
 			When it finishes, each deliverable it wrote is published as a version and that version is linked to this prompt: the first version for a new
 			file, the next minor for one that already existed. If you had edited a file since its last version, those edits are published as a version first,
-			so nothing of yours is lost under the run’s changes; that one is not linked.
+			so nothing of yours is lost under the run's changes; that one is not linked.
 		</div>
 		{#if shown.problem}
 			<div class="notice bad">{shown.problem} <a href="/settings/tools" onclick={() => (preview = null)}>Open Settings</a></div>

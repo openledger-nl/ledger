@@ -48,7 +48,7 @@
 
 	async function remove() {
 		const ok = await confirmDialog({
-			title: `Delete “${promptName(prompt)}”?`,
+			title: `Delete "${promptName(prompt)}"?`,
 			message: 'The deliverables it produced are kept.',
 			confirmLabel: 'Delete',
 			danger: true
@@ -84,7 +84,7 @@
 				{#each covered as f (f.id)}
 					<span class="chip" class:plain={f.status === 'resolved'}>
 						<button class="chip-go" title="Show the feedback" onclick={() => onfeedback?.(f.id)}>
-							{f.givenOn ? `v${f.givenOn}` : 'live'} · {f.quote ?? f.body}
+							{f.givenOn ? `v${f.givenOn}` : 'live'} | {f.quote ?? f.body}
 						</button>
 						<button class="x" aria-label="Take this feedback out of the prompt" onclick={() => detach(f.id)}><X size={12} /></button>
 					</span>

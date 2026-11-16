@@ -115,7 +115,7 @@
 	<div class="empty-state">
 		<h1>Welcome to Ledger</h1>
 		<p>
-			Everything lives in a folder of markdown files — a vault — that you can open in any editor and sync to a private GitHub
+			Everything lives in a folder of markdown files - a vault - that you can open in any editor and sync to a private GitHub
 			repository. Start with a project: it holds your threads, deliverables, user stories and board.
 		</p>
 		<button class="btn primary" onclick={newProjectFlow}>Create your first project</button>
@@ -127,7 +127,7 @@
 			<div class="header-top">
 				<div>
 					<h1>Dashboard</h1>
-					<div class="sub">{today} · {plural(data.projects.length, 'project')} in your vault</div>
+					<div class="sub">{today} | {plural(data.projects.length, 'project')} in your vault</div>
 				</div>
 				<div class="header-actions">
 					<button class="btn primary" onclick={newProjectFlow}><Plus size={16} />New project</button>

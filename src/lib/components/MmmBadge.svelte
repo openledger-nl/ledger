@@ -11,7 +11,7 @@
 </script>
 
 {#if info}
-	<span class="mmm" title="{info.name} — {info.tagline}. {info.meaning} (Me & My Machine label, mmmlabel.tech)" style="--c: {info.color}">
+	<span class="mmm" title="{info.name} - {info.tagline}. {info.meaning} (Me & My Machine label, mmmlabel.tech)" style="--c: {info.color}">
 		{#if icon}<img class="mmm-icon" src={icon} alt="" />{:else}<span class="mmm-dot"></span>{/if}{info.name}{#if tagline}<span class="mmm-tag">{info.tagline}</span>{/if}
 	</span>
 {/if}

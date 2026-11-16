@@ -73,7 +73,7 @@
 	const openPieces = $derived(pieces.filter((f) => f.status !== 'resolved').length);
 	const allResolved = $derived(openPieces === 0);
 	const kind = $derived(
-		allResolved ? 'Feedback · resolved' : replies.length && openPieces < pieces.length ? `Feedback · ${openPieces} of ${pieces.length} open` : 'Feedback'
+		allResolved ? 'Feedback | resolved' : replies.length && openPieces < pieces.length ? `Feedback | ${openPieces} of ${pieces.length} open` : 'Feedback'
 	);
 
 	async function toggle() {
@@ -142,7 +142,7 @@
 				<!-- Feedback on an evidence item whose files Ledger doesn't have names no deliverable. -->
 			{:else if onDeliverable}
 				<span>on {version ? `v${version}` : 'the live file'}</span>
-				<span>·</span>
+				<span>|</span>
 				<span>in <a href="/projects/{project}/threads/{thread}?item=f-{feedback.id}">{threadTitle ?? 'its thread'}</a></span>
 			{:else}
 				<span>on <a href={deliverableUrl(project, feedback.deliverablePath)}>{baseName(feedback.deliverablePath)}</a></span>
@@ -153,7 +153,7 @@
 	{#if feedback.quote}
 		{#snippet passage()}
 			<span class="qhead">{lost ? 'On text that has changed' : 'On the text'}</span>
-			<span class="qtext">“{feedback.quote}”</span>
+			<span class="qtext">"{feedback.quote}"</span>
 		{/snippet}
 		{#if onlocate && !lost}
 			<button class="quote passage" title="Show it in the document" onclick={() => onlocate(feedback.id)}>{@render passage()}</button>

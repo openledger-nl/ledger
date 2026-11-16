@@ -130,7 +130,7 @@
 			const ok = await confirmDialog({
 				title: 'Sign out and forget?',
 				message:
-					'Ledger forgets the session and removes the sign-in window’s cookies, so the next sign-in starts with a fresh Fontys login. Nothing in your vault or in Portflow changes.',
+					'Ledger forgets the session and removes the sign-in window\'s cookies, so the next sign-in starts with a fresh Fontys login. Nothing in your vault or in Portflow changes.',
 				confirmLabel: 'Sign out and forget'
 			});
 			if (!ok) return;
@@ -197,7 +197,7 @@
 		if (existing) {
 			const ok = await confirmDialog({
 				title: 'Use another collection?',
-				message: `${existing.projectName} is already linked to “${existing.collectionName ?? existing.collection}” for this semester. One project has one collection per semester; the old link is replaced. Its evidence items stay in your vault.`,
+				message: `${existing.projectName} is already linked to "${existing.collectionName ?? existing.collection}" for this semester. One project has one collection per semester; the old link is replaced. Its evidence items stay in your vault.`,
 				confirmLabel: 'Replace'
 			});
 			if (!ok) return;
@@ -219,19 +219,19 @@
 		importName = pickable.find((c) => String(c.id) === id)?.name ?? '';
 	}
 
-	const projectOptions = $derived<DropdownOption[]>([{ value: '', label: 'Choose a project…' }, ...projects.map((p) => ({ value: p.slug, label: p.name }))]);
+	const projectOptions = $derived<DropdownOption[]>([{ value: '', label: 'Choose a project' }, ...projects.map((p) => ({ value: p.slug, label: p.name }))]);
 	const semesterOptions = $derived<DropdownOption[]>(semesters.map((s) => ({ value: s.id, label: s.name })));
 
 	/** The collections not in Ledger yet, under their section, after a first "none" line saying `empty`. */
 	function collectionOptions(empty: string): DropdownOption[] {
 		// Until the collections have loaded there is nothing to choose.
-		if (collections === null) return [{ value: '', label: 'Loading collections…', disabled: true }];
+		if (collections === null) return [{ value: '', label: 'Loading collections...', disabled: true }];
 		return [
 			{ value: '', label: empty },
 			...bySection.flatMap((g) =>
 				g.items.map((c) => ({
 					value: String(c.id),
-					label: `${c.name}${c.subtitle ? ` · ${c.subtitle}` : ''} (${plural(c.evidenceCount, 'item')})`,
+					label: `${c.name}${c.subtitle ? ` | ${c.subtitle}` : ''} (${plural(c.evidenceCount, 'item')})`,
 					group: g.section || 'No section'
 				}))
 			)
@@ -271,7 +271,7 @@
 	const stateText = $derived.by(() => {
 		switch (status?.state) {
 			case 'syncing':
-				return 'Syncing…';
+				return 'Syncing...';
 			case 'error':
 				return 'Last sync failed';
 			case 'signed-out':
@@ -300,7 +300,7 @@
 
 	{#if view && !view.enabled}
 		<div class="hint">
-			Off. Ledger opens no window and sends nothing to Portflow or Canvas, and it doesn’t read or change the Portflow files in your vault. This is kept per
+			Off. Ledger opens no window and sends nothing to Portflow or Canvas, and it doesn't read or change the Portflow files in your vault. This is kept per
 			machine.
 		</div>
 	{:else if view}
@@ -322,7 +322,7 @@
 				</div>
 			{:else}
 				<div class="row-end" style="justify-content:flex-start">
-					<button class="btn primary" onclick={signIn} disabled={busy !== null}>{busy === 'sign-in' ? 'Waiting for the sign-in…' : 'Sign in with your Fontys account'}</button>
+					<button class="btn primary" onclick={signIn} disabled={busy !== null}>{busy === 'sign-in' ? 'Waiting for the sign-in...' : 'Sign in with your Fontys account'}</button>
 					{#if view.portfolio}
 						<button class="btn small ghost danger" onclick={() => signOut(true)} disabled={busy !== null}>Forget the sign-in</button>
 					{/if}
@@ -330,7 +330,7 @@
 			{/if}
 			<div class="hint">
 				A Ledger window opens Portflow the way Canvas does; you sign in there as usual. Ledger never sees or stores your password: once Portflow has opened,
-				it takes only the session Portflow’s own page uses (valid for eight hours) and closes the window. The session is kept in this vault’s
+				it takes only the session Portflow's own page uses (valid for eight hours) and closes the window. The session is kept in this vault's
 				<code>.ledger/.env</code>, like the Trello key: on this machine only, never uploaded. Signing out or switching Portflow off removes it.
 			</div>
 			{#if editingUrl}
@@ -344,10 +344,10 @@
 					<button class="btn small primary" onclick={saveUrl}>Save</button>
 					<button class="btn small ghost" onclick={() => (editingUrl = false)}>Cancel</button>
 				</div>
-				<div class="hint">The Canvas page that opens Portflow. Leave it blank for Fontys ICT’s.</div>
+				<div class="hint">The Canvas page that opens Portflow. Leave it blank for Fontys ICT's.</div>
 			{:else}
 				<div class="hint">
-					Opens <span class="mono">{view.launchUrl}</span> ·
+					Opens <span class="mono">{view.launchUrl}</span> |
 					<button
 						class="link accent"
 						onclick={() => {
@@ -364,28 +364,28 @@
 			<h3 style="font-size:14px">Access</h3>
 			<label class="choice">
 				<input type="radio" name="portflow-access" checked={!view.write} disabled={busy !== null} onchange={() => setAccess(false, onWrites())} />
-				<span><strong>Read only</strong> · Ledger reads your portfolio and never changes anything in it.</span>
+				<span><strong>Read only</strong> | Ledger reads your portfolio and never changes anything in it.</span>
 			</label>
 			<label class="choice">
 				<input type="radio" name="portflow-access" checked={view.write} disabled={!view.writesAvailable || busy !== null} onchange={() => setAccess(true, onWrites())} />
-				<span><strong>Read and write</strong> · also make the changes you switch on, one kind at a time.</span>
+				<span><strong>Read and write</strong> | also make the changes you switch on, one kind at a time.</span>
 			</label>
 			<div class="writes">
 				{#each view.writes as w (w.id)}
-					<label class="choice small" class:off={!w.available} title={w.available ? '' : 'Not built yet: Ledger can’t make this change in this version'}>
+					<label class="choice small" class:off={!w.available} title={w.available ? '' : 'Not built yet: Ledger can\'t make this change in this version'}>
 						<input
 							type="checkbox"
 							checked={w.on && w.available}
 							disabled={!view.write || !w.available || busy !== null}
 							onchange={(e) => toggleWrite(w.id, e.currentTarget.checked)}
-						/>{w.label}{#if !w.available}<span class="hint"> · not built yet</span>{/if}
+						/>{w.label}{#if !w.available}<span class="hint"> | not built yet</span>{/if}
 					</label>
 				{/each}
 			</div>
 			{#if !view.writesAvailable}
 				<div class="hint">
-					Writing isn’t in this version yet: uploading to your real portfolio comes once it has been tried out with your go-ahead. Until then Ledger only reads,
-					and that is enforced in the app’s core, not just here.
+					Writing isn't in this version yet: uploading to your real portfolio comes once it has been tried out with your go-ahead. Until then Ledger only reads,
+					and that is enforced in the app's core, not just here.
 				</div>
 			{/if}
 		</div>
@@ -395,7 +395,7 @@
 			<div class="sync-detail">
 				<h3 style="font-size:14px">Import a project from Portflow</h3>
 				{#if semesters.length === 0}
-					<div class="notice">Add a semester first (Settings → Semesters): the project is linked to its collection for one semester.</div>
+					<div class="notice">Add a semester first (Settings > Semesters): the project is linked to its collection for one semester.</div>
 				{:else}
 					<div class="form-row">
 						<div class="field grow">
@@ -403,7 +403,7 @@
 							<!-- A different collection names the new project after it. -->
 							<Dropdown
 								bind:value={() => importCollection, (v) => v !== importCollection && chooseImport(v)}
-								options={collectionOptions(pickable.length ? 'Choose what to import…' : 'Every collection is in Ledger')}
+								options={collectionOptions(pickable.length ? 'Choose what to import' : 'Every collection is in Ledger')}
 								label="Collection to import"
 								full
 							/>
@@ -427,7 +427,7 @@
 					{/if}
 					<div class="row-end" style="justify-content:flex-start">
 						<button class="btn primary" onclick={importProject} disabled={busy !== null || !importing || !importSemester}>
-							{busy === 'import' ? 'Importing…' : 'Import as a new project'}
+							{busy === 'import' ? 'Importing...' : 'Import as a new project'}
 						</button>
 					</div>
 					<div class="hint">
@@ -447,7 +447,7 @@
 				<div class="kv" style="grid-template-columns: 1fr auto">
 					<div>
 						<strong>{l.projectName}</strong>
-						<span class="hint">· {l.semesterName ?? l.semester}</span>
+						<span class="hint">| {l.semesterName ?? l.semester}</span>
 						<div class="hint">{l.collectionName ?? `Collection ${l.collection}: brought in at the next sync`}</div>
 					</div>
 					<button class="btn small ghost" onclick={() => unlink(l.project, l.semester, l.collectionName ?? 'The collection')}>Unlink</button>
@@ -458,7 +458,7 @@
 
 			{#if status?.signedIn}
 				{#if semesters.length === 0}
-					<div class="notice">Add a semester first (Settings → Semesters): a collection is linked for one semester.</div>
+					<div class="notice">Add a semester first (Settings > Semesters): a collection is linked for one semester.</div>
 				{:else}
 					<div class="form-row">
 						<div class="field grow">
@@ -473,7 +473,7 @@
 							Collection
 							<Dropdown
 								bind:value={pickCollection}
-								options={collectionOptions(pickable.length ? 'Choose a collection…' : 'Every collection is linked')}
+								options={collectionOptions(pickable.length ? 'Choose a collection' : 'Every collection is linked')}
 								label="Collection"
 								full
 							/>
@@ -489,7 +489,7 @@
 				{/if}
 			{/if}
 			<div class="hint">
-				One collection per project per semester (a collection usually belongs to one semester’s section). A project that carries on gets the next semester’s
+				One collection per project per semester (a collection usually belongs to one semester's section). A project that carries on gets the next semester's
 				collection next to it; the old link stays readable.
 				{#if view.unplaced > 0}
 					<strong>{plural(view.unplaced, 'evidence item')} still {view.unplaced === 1 ? 'needs' : 'need'} a thread:</strong> open the project to place them.
@@ -507,7 +507,7 @@
 				</dd>
 				{#if status?.lastSyncAt}
 					<dt>Last sync</dt>
-					<dd title={dateTime(status.lastSyncAt)}>{ago(status.lastSyncAt)}{status.summary ? ` — ${status.summary}` : ''}</dd>
+					<dd title={dateTime(status.lastSyncAt)}>{ago(status.lastSyncAt)}{status.summary ? ` - ${status.summary}` : ''}</dd>
 				{/if}
 				{#if status?.lastError}
 					<dt>Problem</dt>
@@ -526,14 +526,14 @@
 			</div>
 			<div class="hint">
 				Ledger looks at Portflow every ten minutes while you are signed in, and right after you link a collection or place an evidence item. The outcomes and
-				people are mirrored to <code>portflow/</code> in your vault, each linked collection to <code>projects/…/portflow/</code>, and each evidence item to
-				<code>projects/…/evidence/</code>; Portflow stays their owner, so edits to them are overwritten by the next sync. Version 3 in Portflow is v3.0 of
-				the evidence’s files: when you published v3.0 in Ledger it links to those files, and a version you uploaded in Portflow is not copied but opens
+				people are mirrored to <code>portflow/</code> in your vault, each linked collection to <code>projects/.../portflow/</code>, and each evidence item to
+				<code>projects/.../evidence/</code>; Portflow stays their owner, so edits to them are overwritten by the next sync. Version 3 in Portflow is v3.0 of
+				the evidence's files: when you published v3.0 in Ledger it links to those files, and a version you uploaded in Portflow is not copied but opens
 				there.
 			</div>
 		</div>
 	{:else if !loadError}
-		<div class="hint">Loading…</div>
+		<div class="hint">Loading...</div>
 	{/if}
 </div>
 

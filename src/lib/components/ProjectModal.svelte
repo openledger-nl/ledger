@@ -197,7 +197,7 @@
 			<Dropdown bind:value={() => newRole, (v) => (newRole = v as FeedbackRole)} options={roleOptions} label="Their role" />
 			<button class="btn small" onclick={addPerson} disabled={!newName.trim()}><UserPlus size={14} />Add</button>
 		</div>
-		<span class="hint">Your coach, teammates and client: offered when you note feedback or who was in a meeting, where “Whole team” adds every teammate at once.</span>
+		<span class="hint">Your coach, teammates and client: offered when you note feedback or who was in a meeting, where "Whole team" adds every teammate at once.</span>
 	</div>
 
 	{#snippet footer()}

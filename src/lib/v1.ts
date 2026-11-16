@@ -75,7 +75,7 @@ export const personTag = (role: string, name: string): PersonTag => `${role || '
 export const feedbackTag = (f: { from: string | null; fromRole: string | null }) => (f.from ? personTag(f.fromRole ?? 'other', f.from) : null);
 
 /** `client/police/ries` → `client · police`: the role and where they are from. */
-export const personRole = (tag: PersonTag) => tag.split('/').slice(0, -1).join(' · ');
+export const personRole = (tag: PersonTag) => tag.split('/').slice(0, -1).join(' | ');
 
 /** A tag as typed: lowercase, no `#`, words joined by dashes, levels by slashes. */
 export const cleanTag = (text: string) =>

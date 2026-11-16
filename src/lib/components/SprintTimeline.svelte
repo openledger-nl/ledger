@@ -33,7 +33,7 @@
 		<div
 			class="tl-sprint {p.phase}"
 			style="left: {p.left * 100}%; width: {p.width * 100}%"
-			title="{p.name} · {spanLabel(p.start, p.end)}{p.goal ? ` · ${p.goal}` : ''}"
+			title="{p.name} | {spanLabel(p.start, p.end)}{p.goal ? ` | ${p.goal}` : ''}"
 		>
 			<span>{p.width * total >= 10 ? short(p.name) : ''}</span>
 		</div>
@@ -42,7 +42,7 @@
 		<div
 			class="tl-vacation"
 			style="left: {offset(v.start) * 100}%; width: {(length(v.start, v.end) / total) * 100}%"
-			title="{v.name || 'Vacation'} · {spanLabel(v.start, v.end)}"
+			title="{v.name || 'Vacation'} | {spanLabel(v.start, v.end)}"
 		></div>
 	{/each}
 	{#if marker !== null}<span class="tl-today" style="left: {marker * 100}%" title="Today"></span>{/if}

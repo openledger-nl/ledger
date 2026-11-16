@@ -37,7 +37,7 @@
 		Description (optional{paths.length > 1 ? ', shared by all of them' : ''})
 		<MarkdownEditor bind:value={description} rows={4} label="Description" placeholder="What is this? Markdown works." autofocus />
 	</div>
-	<p class="hint" style="margin:0">Files are copied into the project’s attachments folder, and noted in this thread.</p>
+	<p class="hint" style="margin:0">Files are copied into the project's attachments folder, and noted in this thread.</p>
 
 	{#snippet footer()}
 		<span class="spacer-h"></span>

@@ -89,7 +89,7 @@
 	<div class="meta">
 		<span class="time">{time(post.createdAt)}</span>
 		{#if variant === 'card' && post.guidingQuestion}
-			<span class="qlabel">Guiding question{guidingType ? ` · ${guidingType}` : ''}</span>
+			<span class="qlabel">Guiding question{guidingType ? ` | ${guidingType}` : ''}</span>
 		{:else if variant === 'card' && post.versionPublished}
 			<span class="qlabel">Version published</span>
 		{/if}

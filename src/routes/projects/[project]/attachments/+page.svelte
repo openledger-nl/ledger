@@ -49,17 +49,17 @@
 	];
 </script>
 
-<svelte:head><title>Attachments · {data.project.name} · Ledger</title></svelte:head>
+<svelte:head><title>Attachments | {data.project.name} | Ledger</title></svelte:head>
 
 <div class="page">
 	<div class="page-inner">
 		<div class="panel">
 			<div class="header-top">
 				<h2>{plural(data.uploads.length, 'attachment')}</h2>
-				<input type="search" class="att-filter" placeholder="Filter…" bind:value={filter} aria-label="Filter by name, description or thread" />
+				<input type="search" class="att-filter" placeholder="Filter" bind:value={filter} aria-label="Filter by name, description or thread" />
 			</div>
 			<p class="sub" style="margin:0">
-				Every file uploaded in this project’s threads, screenshots included. The files are in the project’s <code>attachments/</code> folder; each
+				Every file uploaded in this project's threads, screenshots included. The files are in the project's <code>attachments/</code> folder; each
 				thread keeps a note of what was uploaded there, and why.
 			</p>
 			{#if data.uploads.length === 0}
@@ -100,7 +100,7 @@
 							</span>
 						</div>
 					{:else}
-						<div class="hint">Nothing matches{filter.trim() ? ` “${filter.trim()}”` : ''}.</div>
+						<div class="hint">Nothing matches{filter.trim() ? ` "${filter.trim()}"` : ''}.</div>
 					{/each}
 				</div>
 			{/if}

@@ -87,7 +87,7 @@
 		{:else}
 			<label class="field">
 				What?
-				<textarea bind:value={parts.what} rows="3" placeholder="A written plan with the context, the main question and three sub questions, the research approach, the scope…"
+				<textarea bind:value={parts.what} rows="3" placeholder="A written plan with the context, the main question and three sub questions, the research approach, the scope"
 				></textarea>
 			</label>
 			<label class="field">
@@ -113,7 +113,7 @@
 				{:else if portflow.evidenceWrite}
 					Sent to Portflow with the next sync
 				{:else}
-					Kept in Ledger · <a href="/settings/sync#portflow">switch on “Evidence description → evidence item”</a> to send it
+					Kept in Ledger | <a href="/settings/sync#portflow">switch on "Evidence description to evidence item"</a> to send it
 				{/if}
 			</span>
 			<span class="spacer-h"></span>

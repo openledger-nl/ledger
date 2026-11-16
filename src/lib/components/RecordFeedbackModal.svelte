@@ -238,7 +238,7 @@
 		{#if threads.length}
 			<Dropdown bind:value={thread} options={threadOptions} label="Thread" full />
 		{:else}
-			<span class="hint">This project has no threads yet: a thread named “Feedback” is started for it.</span>
+			<span class="hint">This project has no threads yet: a thread named "Feedback" is started for it.</span>
 		{/if}
 	</div>
 

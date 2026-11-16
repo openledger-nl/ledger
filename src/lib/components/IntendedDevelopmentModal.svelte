@@ -39,7 +39,7 @@
 
 	const shownLayers = $derived(ALL_LAYERS.filter(([l]) => view.rows.some((r) => r.layer === l) || layers[l]));
 	const levels = $derived(Array.from({ length: Math.max(view.maxLevel, 3) }, (_, i) => i + 1));
-	const problem = $derived(studyGuide.trim() && !/^https?:\/\//.test(studyGuide.trim()) ? 'The study guide is a web address (https://…)' : '');
+	const problem = $derived(studyGuide.trim() && !/^https?:\/\//.test(studyGuide.trim()) ? 'The study guide is a web address (https://...)' : '');
 
 	/** A level is kept as a string here (the empty string: not this semester) and saved as a number. */
 	const levelOptions = (of: number[]): DropdownOption[] => [
@@ -49,7 +49,7 @@
 	// A plan that is no longer offered (its project unlinked) stays listed by its id, so it is not dropped unseen.
 	const planOptions = $derived<DropdownOption[]>([
 		{ value: '', label: 'None' },
-		...choices.map((c) => ({ value: c.id, label: `${c.name} · ${c.projectName}` })),
+		...choices.map((c) => ({ value: c.id, label: `${c.name} | ${c.projectName}` })),
 		...(learningPlan && !choices.some((c) => c.id === learningPlan) ? [{ value: learningPlan, label: learningPlan }] : [])
 	]);
 
@@ -72,7 +72,7 @@
 	}
 </script>
 
-<Modal title="Intended development · {semesterName}" wide {onclose}>
+<Modal title="Intended development | {semesterName}" wide {onclose}>
 	<p class="hint intro">
 		The level you aim for this semester. A layer counts for its whole row; Epsilon+ keeps showing the whole grid, marks what you aim
 		for and shows only that level's description.
@@ -118,7 +118,7 @@
 	</div>
 	<label class="field">
 		Study guide
-		<input bind:value={studyGuide} placeholder="https://…" />
+		<input bind:value={studyGuide} placeholder="https://..." />
 	</label>
 
 	{#snippet footer()}

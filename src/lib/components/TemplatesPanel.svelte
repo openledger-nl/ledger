@@ -33,18 +33,18 @@
 			`${t.questions.length} question${t.questions.length === 1 ? '' : 's'}`
 		]
 			.filter(Boolean)
-			.join(' · ');
+			.join(' | ');
 </script>
 
 <div class="panel">
 	<div class="header-top">
-		<h2>{scope ? 'This project’s templates' : 'Templates'}</h2>
+		<h2>{scope ? 'This project\'s templates' : 'Templates'}</h2>
 		<button class="btn primary small" onclick={() => (editing = 'new')}>New template</button>
 	</div>
 	{#if !scope}
 		<p class="sub" style="margin:0">
 			Shared by every project. Starting a deliverable from a template asks its guiding questions there, to answer or skip, and the deliverable starts from
-			the template’s skeleton, with its readers noted for Claude. Each is offered in the kinds of project it is for, and a project can replace any
+			the template's skeleton, with its readers noted for Claude. Each is offered in the kinds of project it is for, and a project can replace any
 			of them with its own.
 		</p>
 	{/if}
@@ -62,7 +62,7 @@
 						<b>{t.name}</b>
 						<span>{summary(t)}</span>
 					</div>
-					{#if t.builtin}<span class="badge" title="Comes with Ledger; changing it makes it your vault’s own">built in</span>{/if}
+					{#if t.builtin}<span class="badge" title="Comes with Ledger; changing it makes it your vault's own">built in</span>{/if}
 					<button class="btn small" onclick={() => (editing = t)}>Edit</button>
 				</div>
 			{/each}
@@ -74,7 +74,7 @@
 	<div class="panel">
 		<h2>Shared with every project</h2>
 		{#if inherited.length === 0}
-			<div class="hint">There are no shared templates. Add some under Settings → Templates.</div>
+			<div class="hint">There are no shared templates. Add some under Settings > Templates.</div>
 		{:else}
 			<div class="tpl-list">
 				{#each inherited as t (t.id)}

@@ -100,7 +100,7 @@
 	function portflowItemOf(f: Feedback): string | null {
 		const item = evidence.find((e) => e.slug === f.evidence);
 		if (!item?.portflowId) return null;
-		return `“${item.name}”${f.evidenceVersion ? `, version ${f.evidenceVersion}` : ''}`;
+		return `"${item.name}"${f.evidenceVersion ? `, version ${f.evidenceVersion}` : ''}`;
 	}
 
 	/** Replies to feedback (from Portflow) are shown inside the feedback they answer, not on their own. */
@@ -238,7 +238,7 @@
 
 	async function remove() {
 		const ok = await confirmDialog({
-			title: `Delete “${thread.title}”?`,
+			title: `Delete "${thread.title}"?`,
 			message: `Its ${plural(posts.length, 'post')}, prompts, feedback and uploaded files go with it. Deliverables are kept, and its user stories lose the link.`,
 			confirmLabel: 'Delete thread',
 			danger: true
@@ -270,7 +270,7 @@
 	const storyIds = $derived(new Set(thread.stories.map((s) => s.id)));
 </script>
 
-<svelte:head><title>{thread.title} · Ledger</title></svelte:head>
+<svelte:head><title>{thread.title} | Ledger</title></svelte:head>
 
 <div class="header-wrap">
 	<div class="header-top">
@@ -279,8 +279,8 @@
 		</div>
 		<div class="header-actions">
 			<button class="btn ghost small" onclick={rename}>Rename</button>
-			<button class="btn ghost small" onclick={() => (linking = true)} disabled={siblings.length === 0}>Link threads…</button>
-			<button class="btn ghost small" onclick={openStories}>Stories{thread.stories.length ? ` (${thread.stories.length})` : ''}…</button>
+			<button class="btn ghost small" onclick={() => (linking = true)} disabled={siblings.length === 0}>Link threads</button>
+			<button class="btn ghost small" onclick={openStories}>Stories{thread.stories.length ? ` (${thread.stories.length})` : ''}...</button>
 			<button class="btn ghost small danger" onclick={remove}>Delete</button>
 		</div>
 	</div>
@@ -315,7 +315,7 @@
 			<div class="thread-inner">
 				{#if searching}
 					<div class="notice info thread-found">
-						<span>{found.length ? `${plural(found.length, 'item')} of ${chronological.length} in this thread hold “${searching}”` : `Nothing in this thread holds “${searching}”`}</span>
+						<span>{found.length ? `${plural(found.length, 'item')} of ${chronological.length} in this thread hold "${searching}"` : `Nothing in this thread holds "${searching}"`}</span>
 						<a class="link accent" href="/search?q={encodeURIComponent(searching)}">Search everywhere</a>
 						<button class="link" onclick={() => (threadSearch.query = '')}>Show all</button>
 					</div>
@@ -422,7 +422,7 @@
 
 {#if linking}
 	<Modal title="Link threads" onclose={() => (linking = false)}>
-		<p style="margin:0;color:var(--muted)">Linked threads belong together — for example several threads feeding one deliverable. Links work both ways.</p>
+		<p style="margin:0;color:var(--muted)">Linked threads belong together - for example several threads feeding one deliverable. Links work both ways.</p>
 		<div class="link-grid">
 			{#each siblings as t (t.slug)}
 				<label class="check">
@@ -458,7 +458,7 @@
 				onclick={() => {
 					storiesOpen = false;
 					storyModal = { story: null };
-				}}>New user story…</button
+				}}>New user story</button
 			>
 			<span class="spacer-h"></span>
 			<button class="btn primary" onclick={() => (storiesOpen = false)}>Done</button>

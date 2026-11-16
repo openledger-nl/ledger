@@ -23,7 +23,7 @@
 	}
 </script>
 
-<svelte:head><title>Meeting notes · Ledger</title></svelte:head>
+<svelte:head><title>Meeting notes | Ledger</title></svelte:head>
 
 <div class="header-wrap flat">
 	<div class="header-top">
@@ -47,7 +47,7 @@
 						<button class="mt-row" class:on={d === day} onclick={() => open(d)}>
 							<span class="mt-title">{d === today() ? 'Today' : dayLabel(d)}</span>
 							<span class="mt-sub">
-								{#if n?.meetings.length}{n.meetings.map((m) => m.title || 'Meeting').join(' · ')}{:else}No meetings yet{/if}
+								{#if n?.meetings.length}{n.meetings.map((m) => m.title || 'Meeting').join(' | ')}{:else}No meetings yet{/if}
 							</span>
 						</button>
 					</li>

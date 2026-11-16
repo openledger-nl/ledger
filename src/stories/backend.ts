@@ -22,8 +22,8 @@ const portflow: PortflowView = {
 	defaultLaunchUrl: 'https://portflow.fontys.nl',
 	write: false,
 	writes: [
-		{ id: 'guide-description', label: 'Reading guide → collection description', on: false, available: true },
-		{ id: 'evidence-description', label: 'Evidence description → evidence item', on: false, available: true }
+		{ id: 'guide-description', label: 'Reading guide to collection description', on: false, available: true },
+		{ id: 'evidence-description', label: 'Evidence description to evidence item', on: false, available: true }
 	],
 	writesAvailable: true,
 	portfolio: { id: 9_001, userId: 7_001, userName: 'Student, Sam' },
@@ -106,7 +106,7 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 			title: 'sensor-research.md',
 			threadSlug: null,
 			createdAt: '2026-11-14T10:00:00.000Z',
-			snippet: 'Which soil moisture <mark>sensor</mark> holds up in wet soil…'
+			snippet: 'Which soil moisture <mark>sensor</mark> holds up in wet soil...'
 		}
 	],
 	render_markdown: (args: Record<string, unknown>) => `<p>${String(args.markdown ?? args.text ?? '')}</p>`,
@@ -180,7 +180,7 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	portflow_epsilon: fx.epsilon,
 	portflow_people: [],
 	portflow_evidence_choices: [],
-	portflow_sections: [{ id: 1, name: 'ICT & Software', template: 'S3', importedAt: '2026-09-02T10:00:00.000Z', semester: 's3-2026', semesterName: 'S3 — najaar 2026' }],
+	portflow_sections: [{ id: 1, name: 'ICT & Software', template: 'S3', importedAt: '2026-09-02T10:00:00.000Z', semester: 's3-2026', semesterName: 'S3 - najaar 2026' }],
 	portflow_collections: [],
 	portflow_save_evidence_description: [fx.evidence],
 

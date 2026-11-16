@@ -94,7 +94,7 @@
 			class="rail-btn"
 			aria-pressed={active === s.id}
 			aria-label={s.title}
-			title="{s.title}{s.headCount ? ` · ${s.headCount}` : s.count ? ` · ${s.count}` : ''}"
+			title="{s.title}{s.headCount ? ` | ${s.headCount}` : s.count ? ` | ${s.count}` : ''}"
 			onclick={() => show(active === s.id ? null : s.id)}
 		>
 			<s.icon size={19} />

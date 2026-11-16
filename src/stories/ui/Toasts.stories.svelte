@@ -11,7 +11,7 @@
 <Story name="Message and error" asChild>
 	<Setup
 		run={() => {
-			toast('3 files attached to “Sensor research”');
+			toast('3 files attached to "Sensor research"');
 			toast('Ledger got no file from that drop.', true);
 		}}
 		reset={() => toasts.splice(0)}

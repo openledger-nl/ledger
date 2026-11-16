@@ -35,7 +35,7 @@
 {#if capture.active}
 	<div class="capture-bar" role="status">
 		<span class="rec"></span>
-		<span>Recording a debug capture · {capture.events} steps</span>
+		<span>Recording a debug capture | {capture.events} steps</span>
 		<span class="key">{key} stops</span>
 		<button class="btn small" onclick={stop} disabled={capture.busy}><CircleStop size={13} />Stop</button>
 	</div>

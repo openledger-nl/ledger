@@ -311,7 +311,7 @@
 
 	async function remove() {
 		const ok = await confirmDialog({
-			title: `Delete “${doc.name}”?`,
+			title: `Delete "${doc.name}"?`,
 			message: doc.versions.length
 				? 'The live file is deleted. Its published versions are kept and stay readable.'
 				: 'The file is deleted from the project.',
@@ -339,7 +339,7 @@
 	// What else can be done with it, behind the ⋯ next to Publish. Delete only for the live file; a version is kept.
 	const more = $derived<MenuItem[]>([
 		// Copy, Open and Show in folder are buttons of their own beside it.
-		...(!snapshot && doc.exists && !doc.evidence ? [{ id: 'rename', label: 'Rename…', icon: TextCursorInput }] : []),
+		...(!snapshot && doc.exists && !doc.evidence ? [{ id: 'rename', label: 'Rename', icon: TextCursorInput }] : []),
 		...(!snapshot && doc.exists ? [{ id: 'delete', label: 'Delete deliverable', icon: Trash, danger: true, rule: true }] : [])
 	]);
 
@@ -445,7 +445,7 @@
 	);
 </script>
 
-<svelte:head><title>{title} · Ledger</title></svelte:head>
+<svelte:head><title>{title} | Ledger</title></svelte:head>
 
 <!-- No tabs under it, so it keeps its own space below the buttons (`flat`), like the other pages' headers. -->
 <div class="header-wrap flat">
@@ -494,7 +494,7 @@
 	<div class="page-inner" bind:this={docArea}>
 		{#if snapshot}
 			<div class="notice info">
-				Published version {doc.version}, {dateTime(doc.modified)} — read-only.
+				Published version {doc.version}, {dateTime(doc.modified)} - read-only.
 				{#if doc.exists}
 					<a href={deliverableUrl(project, doc.basePath)}>Back to the live file</a>
 				{/if}
@@ -508,7 +508,7 @@
 				<a href={deliverableUrl(project, snapshotPath(doc.basePath, newest))}>Open version {newest}</a>
 			</div>
 		{:else if !doc.exists && !snapshot}
-			<div class="notice">The file is not in the project’s deliverables folder (any more).</div>
+			<div class="notice">The file is not in the project's deliverables folder (any more).</div>
 		{:else if isMarkdown && snapshot}
 			<div class="doc-view"><Markdown bind:this={reader} html={doc.html ?? ''} {images} {marks} onmark={showFeedback} /></div>
 		{:else if isMarkdown}
@@ -530,7 +530,7 @@
 					variant="doc"
 					minHeight="58vh"
 					label={doc.name}
-					placeholder="Write it in markdown…"
+					placeholder="Write it in markdown"
 					source={mode === 'source'}
 					{images}
 					{marks}
@@ -546,7 +546,7 @@
 			<div class="panel">
 				<h2>{doc.name}</h2>
 				<p class="sub" style="margin:0">
-					This kind of file can’t be shown here. Open it with the program your system uses for it — it opens the file in the vault, so changes you
+					This kind of file can't be shown here. Open it with the program your system uses for it - it opens the file in the vault, so changes you
 					save there are picked up when you come back.
 				</p>
 				<div class="row-end" style="justify-content:flex-start">
@@ -595,8 +595,8 @@
 			records who made the change{#if workThread}, and leaves a note in <code>{threadTitle}</code>{/if}.
 			{doc.versions.length ? `Latest so far: v${doc.versions.at(-1)}.` : 'This is the first version.'}
 		</p>
-		<label class="check"><input type="radio" bind:group={bump} value="minor" /> Minor — v{preview.minor}</label>
-		<label class="check"><input type="radio" bind:group={bump} value="major" /> Major — v{preview.major}</label>
+		<label class="check"><input type="radio" bind:group={bump} value="minor" /> Minor - v{preview.minor}</label>
+		<label class="check"><input type="radio" bind:group={bump} value="major" /> Major - v{preview.major}</label>
 		<label class="check">
 			<input type="radio" bind:group={bump} value="custom" /> Custom
 			<input
@@ -614,7 +614,7 @@
 			</label>
 			<span class="hint">
 				{#if stopped}
-					Claude Code’s run of “{stopped.promptTitle}” changed this file{stopped.status === 'finished' ? '' : ` and was ${stopped.status}`}, and no version holds
+					Claude Code's run of "{stopped.promptTitle}" changed this file{stopped.status === 'finished' ? '' : ` and was ${stopped.status}`}, and no version holds
 					its changes, so this starts ticked. Untick it only if you rewrote them yourself.
 				{:else}
 					Leave it empty for what you wrote yourself. Runs started from Ledger are recorded automatically; tick this for AI used elsewhere (a chat, an editor assistant, a paste).
@@ -626,7 +626,7 @@
 				<span>Which prompt asked for it? (optional)</span>
 				<Dropdown
 					bind:value={promptId}
-					options={[{ value: '', label: 'None of them' }, ...doc.prompts.map((p) => ({ value: p.id, label: `${p.threadTitle} · ${p.title || 'Untitled prompt'}` }))]}
+					options={[{ value: '', label: 'None of them' }, ...doc.prompts.map((p) => ({ value: p.id, label: `${p.threadTitle} | ${p.title || 'Untitled prompt'}` }))]}
 					label="Which prompt asked for it"
 					full
 				/>
@@ -639,7 +639,7 @@
 				<span class="hint">{MMM.find((m) => m.level === level)?.meaning}</span>
 			{/if}
 			{#if manMadeConflict}
-				<span class="pv-warn">Man-Made means no generative AI, but AI is recorded {aiMade ? 'for this change' : 'in this file’s history'}.</span>
+				<span class="pv-warn">Man-Made means no generative AI, but AI is recorded {aiMade ? 'for this change' : 'in this file\'s history'}.</span>
 			{:else if suggestManMade}
 				<span class="hint">
 					Nothing here is recorded as AI. <button class="link accent" onclick={() => (level = 'man-made')}>Label it Man-Made</button> if that is true.

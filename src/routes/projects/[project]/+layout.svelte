@@ -56,7 +56,7 @@
 			<p class="pj-goal"><Target size={15} /><span><strong>Goal</strong> {meta.goal}</span></p>
 			<div class="subline pj-facts">
 				<span class="badge">{kindName(meta.kind)}</span>
-				<span title={end ? dayLabel(end) : ''}>{daysLeftText(left)}{#if end} · ends {dayLabel(end)}{/if}</span>
+				<span title={end ? dayLabel(end) : ''}>{daysLeftText(left)}{#if end} | ends {dayLabel(end)}{/if}</span>
 				{#if meta.intendedMmm}<span class="pj-intended">Intended <MmmBadge level={meta.intendedMmm} /></span>{/if}
 				{#if meta.client}<span>Client: {meta.client}</span>{/if}
 				{#if meta.mainQuestion}<span class="pj-mq" title={meta.mainQuestion}>Main question: {meta.mainQuestion}</span>{/if}

@@ -5,6 +5,6 @@
 	let { data }: { data: PageData } = $props();
 </script>
 
-<svelte:head><title>Sync & external · Settings · Ledger</title></svelte:head>
+<svelte:head><title>Sync & external | Settings | Ledger</title></svelte:head>
 
 <SettingsGroup group="sync" settings={data.settings} />

@@ -21,7 +21,7 @@
 </Story>
 
 <Story name="Composer" asChild>
-	<MarkdownEditor value="" variant="composer" placeholder="Write a post… Ctrl+Enter sends" submitOnEnter />
+	<MarkdownEditor value="" variant="composer" placeholder="Write a post... Ctrl+Enter sends" submitOnEnter />
 </Story>
 
 <Story name="Mention people with @" asChild>

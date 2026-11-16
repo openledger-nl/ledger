@@ -26,7 +26,7 @@ export function redact(text: string, homeDir: string): string {
 		.replace(/\b(token|key|secret)=([^\s&]+)/gi, '$1=[removed]');
 }
 
-const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)} …` : text);
+const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)} ...` : text);
 
 export function entryLine(e: LogEntry, maxMessage = Infinity) {
 	return `${e.at} ${e.level.toUpperCase().padEnd(5)} [${e.source}] ${cut(e.message, maxMessage)}`;

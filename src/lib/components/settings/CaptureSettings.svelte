@@ -64,7 +64,7 @@
 	{#if capture.active}
 		<div class="notice bad">
 			<strong>Recording</strong>
-			{#if capture.startedAt}since <span title={dateTime(capture.startedAt)}>{ago(capture.startedAt)}</span>{/if} · {capture.events} steps so far. Go and
+			{#if capture.startedAt}since <span title={dateTime(capture.startedAt)}>{ago(capture.startedAt)}</span>{/if} | {capture.events} steps so far. Go and
 			do what goes wrong; stop here, with the bar at the top, or with {prettyHotkey('CommandOrControl+Shift+D')}.
 		</div>
 		<div class="row-end" style="justify-content:flex-start">
@@ -78,7 +78,7 @@
 	{/if}
 
 	<div class="hint">
-		It records each action Ledger’s window asks for (its name, whether it worked and how long it took), each page you open, each message Ledger shows
+		It records each action Ledger's window asks for (its name, whether it worked and how long it took), each page you open, each message Ledger shows
 		you, sync and Trello rounds, and every error. Not what you type, nor what the actions carry. Your home folder and anything shaped like a token are
 		taken out of the file; names of projects and threads are in it. A capture stops growing at 5 MB, and one that a crash cut short carries on when
 		Ledger starts again.
@@ -91,7 +91,7 @@
 				<dt>File</dt>
 				<dd class="mono">{last.path}</dd>
 				<dt>Recorded</dt>
-				<dd>{last.entries.length} steps, {errors} {errors === 1 ? 'error' : 'errors'}{last.startedAt ? ` · ${dateTime(last.startedAt)}` : ''}</dd>
+				<dd>{last.entries.length} steps, {errors} {errors === 1 ? 'error' : 'errors'}{last.startedAt ? ` | ${dateTime(last.startedAt)}` : ''}</dd>
 			</div>
 			<div class="row-end" style="justify-content:flex-start">
 				<button class="btn primary" onclick={report}><Bug size={14} />Send to the developer</button>
@@ -99,7 +99,7 @@
 				<button class="btn" onclick={showFile}><FolderOpen size={14} />Show the file</button>
 			</div>
 			<div class="hint">
-				<b>Send to the developer</b> opens a new issue on Ledger’s GitHub and the folder with the file in it: drag the file into the issue, check it,
+				<b>Send to the developer</b> opens a new issue on Ledger's GitHub and the folder with the file in it: drag the file into the issue, check it,
 				and submit. The repository is public, so look the file over first.
 			</div>
 		</div>

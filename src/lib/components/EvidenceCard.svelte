@@ -17,7 +17,7 @@
 	const fileName = (path: string) => path.split('/').pop() ?? path;
 	/** The deliverable it is in Ledger: its (first) live file. */
 	const live = $derived(evidence.files[0]?.path ?? null);
-	const open_ = (version: number | null) => openInPortflow(`“${evidence.name}”${version ? `, version ${version}` : ''}`);
+	const open_ = (version: number | null) => openInPortflow(`"${evidence.name}"${version ? `, version ${version}` : ''}`);
 </script>
 
 {#snippet files(v: Evidence['versions'][number])}

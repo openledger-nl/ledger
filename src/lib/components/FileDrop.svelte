@@ -71,7 +71,7 @@
 			toast(
 				web
 					? 'That was a link from a web page, not a file. Download it first, then drop the file from your folder.'
-					: 'Ledger got no file from that drop. Try again, or use “Upload files…” in a thread.',
+					: 'Ledger got no file from that drop. Try again, or use "Upload files..." in a thread.',
 				true
 			);
 			return;
@@ -200,7 +200,7 @@
 		}
 		busy = false;
 		if (!saved.length) return false;
-		toast(`${plural(saved.length, 'file')} attached to “${title}”`);
+		toast(`${plural(saved.length, 'file')} attached to "${title}"`);
 		await refresh();
 		if (go) await goto(`${threadUrl(project, thread)}?item=u-${saved[0].id}`);
 		return true;
@@ -218,7 +218,7 @@
 	const projectOptions = $derived<DropdownOption[]>(projects.map((p) => ({ value: p.slug, label: p.name })));
 	const threadOptions = $derived<DropdownOption[]>([
 		...newest(chosen?.threads ?? [], (t) => t.lastActivity).map((t) => ({ value: t.slug, label: t.title })),
-		{ value: NEW, label: '+ New thread…' }
+		{ value: NEW, label: '+ New thread' }
 	]);
 
 	/** The project's most recently active thread, or a new one when it has none. */
@@ -360,7 +360,7 @@
 			<span class="spacer-h"></span>
 			<button class="btn ghost" onclick={() => (pending = null)}>Cancel</button>
 			<button class="btn primary" onclick={attach} disabled={busy || !project || (creating && !title.trim())}>
-				{busy ? 'Saving…' : 'Save'}
+				{busy ? 'Saving...' : 'Save'}
 			</button>
 		{/snippet}
 	</Modal>

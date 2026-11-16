@@ -90,13 +90,13 @@
 		const ok = await confirmDialog(
 			reset
 				? {
-						title: `Go back to Ledger’s “${template.name}”?`,
+						title: `Go back to Ledger's "${template.name}"?`,
 						message: 'Your changes to it are deleted, and the template is again as Ledger ships it.',
 						confirmLabel: 'Reset template',
 						danger: true
 					}
 				: {
-						title: `Delete “${template.name}”?`,
+						title: `Delete "${template.name}"?`,
 						message: `Prompts already started from it keep the answers they were given.${scope ? ' If a shared template has the same name, this project uses that one again.' : ''}`,
 						confirmLabel: 'Delete template',
 						danger: true
@@ -112,14 +112,14 @@
 
 <Modal title={template ? `Edit ${template.name}` : scope ? 'New project template' : 'New template'} wide {onclose}>
 	{#if template?.builtin}
-		<p class="hint" style="margin:0">This template comes with Ledger. Saving a change makes it your vault’s own; you can always reset it.</p>
+		<p class="hint" style="margin:0">This template comes with Ledger. Saving a change makes it your vault's own; you can always reset it.</p>
 	{/if}
 	<label class="field">
 		Name
 		<input bind:value={name} placeholder="e.g. Interview summary" />
 	</label>
 	<label class="field">
-		Use when…
+		Use when...
 		<input bind:value={trigger} placeholder="e.g. you have just spoken to a customer" />
 	</label>
 	{#if !scope}
@@ -160,7 +160,7 @@
 			<input
 				class="someone"
 				bind:value={someone}
-				placeholder="Someone else…"
+				placeholder="Someone else"
 				aria-label="Add a reader in your own words"
 				onkeydown={(e) => {
 					if (e.key === 'Enter') {
@@ -177,8 +177,8 @@
 				Show the readers in the document
 				<span class="hint">
 					{readersShown
-						? 'A new deliverable gets a “Readers:” line under its title, and a %% note for Claude.'
-						: 'Only a %% note under the title, seen in source mode: Claude reads it, readers of the document don’t.'}
+						? 'A new deliverable gets a "Readers:" line under its title, and a %% note for Claude.'
+						: 'Only a %% note under the title, seen in source mode: Claude reads it, readers of the document don\'t.'}
 				</span>
 			</span>
 		</div>
@@ -226,7 +226,7 @@
 
 	{#snippet footer()}
 		{#if template && !template.builtin}
-			<button class="btn ghost danger" onclick={remove}>{template.customisedBuiltin ? 'Reset to Ledger’s' : 'Delete'}</button>
+			<button class="btn ghost danger" onclick={remove}>{template.customisedBuiltin ? 'Reset to Ledger\'s' : 'Delete'}</button>
 		{/if}
 		<span class="spacer-h"></span>
 		<button class="btn ghost" onclick={onclose}>Cancel</button>

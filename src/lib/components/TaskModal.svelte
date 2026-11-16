@@ -34,7 +34,7 @@
 	let saving = $state(false);
 
 	const columnOptions = $derived<DropdownOption[]>(board.columns.map((c) => ({ value: c.id, label: c.name })));
-	const storyOptions = $derived<DropdownOption[]>([{ value: '', label: 'None' }, ...board.stories.map((s) => ({ value: s.id, label: `${s.id} — ${s.summary}` }))]);
+	const storyOptions = $derived<DropdownOption[]>([{ value: '', label: 'None' }, ...board.stories.map((s) => ({ value: s.id, label: `${s.id} - ${s.summary}` }))]);
 	const threadOptions = $derived<DropdownOption[]>([{ value: '', label: 'None' }, ...threads.map((t) => ({ value: t.slug, label: t.title }))]);
 
 	async function save() {
@@ -54,7 +54,7 @@
 
 	async function remove() {
 		if (!task) return;
-		const ok = await confirmDialog({ title: `Delete “${task.title}”?`, confirmLabel: 'Delete', danger: true });
+		const ok = await confirmDialog({ title: `Delete "${task.title}"?`, confirmLabel: 'Delete', danger: true });
 		if (!ok) return;
 		if ((await attempt(() => api.deleteTask(project, task.id))) !== undefined) {
 			await refresh();

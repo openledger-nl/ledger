@@ -108,9 +108,9 @@
 	</div>
 
 	<div class="form-row">
-		<label class="field grow">As a…<input bind:value={role} placeholder="role" /></label>
-		<label class="field grow">I want to…<input bind:value={want} placeholder="goal" /></label>
-		<label class="field grow">Such that…<input bind:value={reason} placeholder="reason" /></label>
+		<label class="field grow">As a...<input bind:value={role} placeholder="role" /></label>
+		<label class="field grow">I want to...<input bind:value={want} placeholder="goal" /></label>
+		<label class="field grow">Such that...<input bind:value={reason} placeholder="reason" /></label>
 	</div>
 
 	<div class="field">
@@ -119,7 +119,7 @@
 	</div>
 
 	<div class="field">
-		<span>Acceptance criteria{criteria.length ? ` · ${doneCount}/${criteria.length} met` : ''}</span>
+		<span>Acceptance criteria{criteria.length ? ` | ${doneCount}/${criteria.length} met` : ''}</span>
 		<div class="q-list">
 			{#each criteria as c, i (i)}
 				<div class="crit-row" class:done={c.done}>
@@ -162,7 +162,7 @@
 					}
 					options={unlinked.map((t) => ({ value: t.slug, label: t.title }))}
 					label="Link a thread"
-					placeholder="+ Link a thread…"
+					placeholder="+ Link a thread"
 				/>
 			{:else if !threadSlugs.length}
 				<span class="hint">No threads yet</span>

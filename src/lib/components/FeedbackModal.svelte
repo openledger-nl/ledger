@@ -27,7 +27,7 @@
 	const options = $derived<DropdownOption[]>(
 		all.flatMap((d) => [
 			...(d.exists ? [{ value: d.path, label: d.path }] : []),
-			...orderVersions(d.versions, listOrder.order).map((v) => ({ value: snapshotPath(d.path, v), label: `${d.path} · version ${v}` }))
+			...orderVersions(d.versions, listOrder.order).map((v) => ({ value: snapshotPath(d.path, v), label: `${d.path} | version ${v}` }))
 		])
 	);
 
@@ -64,7 +64,7 @@
 		<PersonPicker bind:value={from} {project} />
 		<div class="field">
 			The feedback
-			<MarkdownEditor bind:value={body} rows={8} label="Your feedback" placeholder="What works, what doesn’t, what to change. Markdown works." />
+			<MarkdownEditor bind:value={body} rows={8} label="Your feedback" placeholder="What works, what doesn't, what to change. Markdown works." />
 		</div>
 	{/if}
 

@@ -47,7 +47,7 @@
 				await navigator.clipboard.writeText(link.body);
 				toast('The report is too long for a link. It is on your clipboard: paste it into the issue.');
 			} catch {
-				toast('The report is too long for a link and could not be copied. Use “Copy log” below.', true);
+				toast('The report is too long for a link and could not be copied. Use "Copy log" below.', true);
 			}
 		}
 		openUrl(link.url).catch(() => toast('Could not open the browser', true));
@@ -67,13 +67,13 @@
 <div class="panel">
 	<h2>Yell at the app</h2>
 	<p class="sub" style="margin:0">
-		Something broke? Send the latest error to Ledger’s GitHub as an issue, or copy it as a prompt to ask an AI assistant what went wrong.
+		Something broke? Send the latest error to Ledger's GitHub as an issue, or copy it as a prompt to ask an AI assistant what went wrong.
 	</p>
 
 	{#if latest}
 		<div class="notice bad">
 			<div class="hint" style="margin-bottom:4px">
-				<b>{latest.source}</b> · <span title={dateTime(latest.at)}>{ago(latest.at)}</span>
+				<b>{latest.source}</b> | <span title={dateTime(latest.at)}>{ago(latest.at)}</span>
 			</div>
 			<div class="yell-error">{latest.message}</div>
 		</div>
@@ -86,7 +86,7 @@
 		<button class="btn" onclick={copyPrompt} disabled={!latest}><Bot size={14} />Copy as AI prompt</button>
 	</div>
 	<div class="hint">
-		The issue opens in your browser, filled in, and nothing is posted until you submit it there. Ledger’s repository is <b>public</b>, so read it first:
+		The issue opens in your browser, filled in, and nothing is posted until you submit it there. Ledger's repository is <b>public</b>, so read it first:
 		your home folder and anything shaped like a token or recovery key are taken out, but names of projects and files in the error stay.
 	</div>
 

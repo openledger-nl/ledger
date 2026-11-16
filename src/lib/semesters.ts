@@ -42,7 +42,7 @@ export const dayLabel = (day: string) => european(day);
 
 /** "1-9-2026 – 21-9-2026". */
 export function spanLabel(start: string, end: string): string {
-	return `${european(start)} – ${european(end)}`;
+	return `${european(start)} - ${european(end)}`;
 }
 
 /** Days from `start` to `end`, both counted. */
@@ -116,10 +116,10 @@ export function suggestDraft(existing: Semester[]): SemesterDraft {
 	}
 	const s = parseDay(start) as Date;
 	const firstHalf = s.getMonth() >= 6;
-	const schoolYear = firstHalf ? `${s.getFullYear()}–${s.getFullYear() + 1}` : `${s.getFullYear() - 1}–${s.getFullYear()}`;
+	const schoolYear = firstHalf ? `${s.getFullYear()}-${s.getFullYear() + 1}` : `${s.getFullYear() - 1}-${s.getFullYear()}`;
 	const end = firstHalf ? `${s.getFullYear() + 1}-01-31` : `${s.getFullYear()}-07-31`;
 	return {
-		name: `Semester ${firstHalf ? 1 : 2} · ${schoolYear}`,
+		name: `Semester ${firstHalf ? 1 : 2} | ${schoolYear}`,
 		start,
 		end: parseDay(end) && end > start ? end : halfYearFrom(start),
 		sprintWeeks: 3,

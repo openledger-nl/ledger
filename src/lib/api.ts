@@ -59,7 +59,7 @@ import type {
 /** Runs a backend command; a failure is written to the app's log (unless `log` is false) and thrown. */
 async function call<T>(command: string, args?: Record<string, unknown>, log = true): Promise<T> {
 	if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
-		throw new Error('Ledger needs its desktop shell — start it with `pnpm run tauri dev`.');
+		throw new Error('Ledger needs its desktop shell - start it with `pnpm run tauri dev`.');
 	}
 	const started = performance.now();
 	try {
@@ -78,7 +78,7 @@ async function call<T>(command: string, args?: Record<string, unknown>, log = tr
  *  only ASCII) say what they are. */
 async function callRaw<T>(command: string, body: Uint8Array, headers: Record<string, string>): Promise<T> {
 	if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
-		throw new Error('Ledger needs its desktop shell — start it with `pnpm run tauri dev`.');
+		throw new Error('Ledger needs its desktop shell - start it with `pnpm run tauri dev`.');
 	}
 	const encoded = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, encodeURIComponent(v)]));
 	try {

@@ -156,7 +156,7 @@
 					<span>{s.sprints.length} sprints</span>
 					{#if s.vacations.length}<span>{s.vacations.length} {s.vacations.length === 1 ? 'vacation' : 'vacations'}</span>{/if}
 					{#if phase === 'current'}
-						<span><b>Week {p.week}</b> of {p.weeks}{#if at >= 0} · <b>{s.sprints[at].name}</b>{/if}</span>
+						<span><b>Week {p.week}</b> of {p.weeks}{#if at >= 0} | <b>{s.sprints[at].name}</b>{/if}</span>
 					{/if}
 				</div>
 
@@ -180,7 +180,7 @@
 						<li class={sphase}>
 							<span class="n">{i + 1}</span>
 							<span class="name">{sp.name}</span>
-							<span class="when">{spanLabel(sp.start, sp.end)} · {Math.round(workDays(sp.start, sp.end, s.vacations) / 7)} wk</span>
+							<span class="when">{spanLabel(sp.start, sp.end)} | {Math.round(workDays(sp.start, sp.end, s.vacations) / 7)} wk</span>
 							{#if sp.goal}<span class="goal"><Flag size={12} />{sp.goal}</span>{:else}<span class="goal"></span>{/if}
 							{#if sphase === 'current'}<span class="badge accent">Now</span>{/if}
 						</li>
@@ -190,7 +190,7 @@
 				{#if s.vacations.length}
 					<div class="sem-vacations">
 						{#each s.vacations as v, i (i)}
-							<span class="chip plain"><TreePalm size={12} />{v.name} · {spanLabel(v.start, v.end)}</span>
+							<span class="chip plain"><TreePalm size={12} />{v.name} | {spanLabel(v.start, v.end)}</span>
 						{/each}
 					</div>
 				{/if}

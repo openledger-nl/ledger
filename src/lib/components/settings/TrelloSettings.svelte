@@ -34,7 +34,7 @@
 
 	const boardOptions = $derived<DropdownOption[]>((boards ?? []).map((b) => ({ value: b.id, label: b.name })));
 	const personOptions = $derived<DropdownOption[]>([
-		{ value: '', label: pickBoard ? 'Choose a person…' : 'Choose a board first' },
+		{ value: '', label: pickBoard ? 'Choose a person' : 'Choose a board first' },
 		...people.map((m) => ({ value: m.id, label: `${m.fullName || m.username}${m.fullName && m.username ? ` (@${m.username})` : ''}` }))
 	]);
 
@@ -200,7 +200,7 @@
 			const ok = await confirmDialog({
 				title: board ? 'Use another board?' : 'Stop syncing this project?',
 				message:
-					'Items already synced with the old board stop syncing: their cards aren’t on the new board. They stay here, marked as no longer linked, and nothing is deleted on Trello.',
+					'Items already synced with the old board stop syncing: their cards aren\'t on the new board. They stay here, marked as no longer linked, and nothing is deleted on Trello.',
 				confirmLabel: board ? 'Use this board' : 'Stop syncing',
 				danger: true
 			});
@@ -238,7 +238,7 @@
 
 	const stateText = $derived.by(() => {
 		if (!status?.configured) return 'Not syncing';
-		if (status.state === 'syncing') return 'Syncing…';
+		if (status.state === 'syncing') return 'Syncing...';
 		if (status.state === 'error') return 'Last sync failed';
 		return status.pending ? 'Changes waiting to be looked at' : 'Up to date';
 	});
@@ -253,7 +253,7 @@
 	</div>
 	<p class="sub" style="margin:0">
 		Keep tasks and user stories in step with the Trello cards of <strong>one person</strong>. Cards that person is a member of come in as tasks (or as
-		user stories, when they carry the “User story” label), and a task or story made here becomes a card on Trello with that person assigned. Cards of
+		user stories, when they carry the "User story" label), and a task or story made here becomes a card on Trello with that person assigned. Cards of
 		anyone else are never read or changed. Only projects you link to a board are synced.
 	</p>
 
@@ -270,7 +270,7 @@
 					bind:this={keyInput}
 					type="password"
 					bind:value={apiKey}
-					placeholder={view.hasKey ? `Saved ${view.keyHint} — leave blank to keep it` : 'Your Trello API key'}
+					placeholder={view.hasKey ? `Saved ${view.keyHint} - leave blank to keep it` : 'Your Trello API key'}
 					spellcheck="false"
 					autocomplete="off"
 				/>
@@ -280,7 +280,7 @@
 				<input
 					type="password"
 					bind:value={token}
-					placeholder={view.hasToken ? `Saved ${view.tokenHint} — leave blank to keep it` : 'Your Trello token'}
+					placeholder={view.hasToken ? `Saved ${view.tokenHint} - leave blank to keep it` : 'Your Trello token'}
 					spellcheck="false"
 					autocomplete="off"
 				/>
@@ -293,9 +293,9 @@
 				onclick={(e) => {
 					e.preventDefault();
 					openUrl(e.currentTarget.href).catch(() => {});
-				}}>Trello’s Power-Ups admin</a
-			>: create a Power-Up (any name), open its API key page and copy the key, then choose “Generate a Token” there and allow read and write access. Ledger
-			sends them in an <code>Authorization</code> header, never in a web address, and keeps them in this vault’s <code>.ledger/.env</code>: on this machine
+				}}>Trello's Power-Ups admin</a
+			>: create a Power-Up (any name), open its API key page and copy the key, then choose "Generate a Token" there and allow read and write access. Ledger
+			sends them in an <code>Authorization</code> header, never in a web address, and keeps them in this vault's <code>.ledger/.env</code>: on this machine
 			only, never uploaded, and never shown here again beyond their last four characters.
 		</div>
 
@@ -328,7 +328,7 @@
 						</dd>
 					</div>
 					<div class="row-end" style="justify-content:flex-start">
-						<button class="btn small" onclick={startChanging} disabled={busy !== null}>Choose someone else…</button>
+						<button class="btn small" onclick={startChanging} disabled={busy !== null}>Choose someone else</button>
 					</div>
 				{:else}
 					<div class="form-row">
@@ -336,7 +336,7 @@
 							Board to pick from
 							<Dropdown
 								bind:value={() => pickBoard, (v) => v !== pickBoard && chooseBoard(v)}
-								options={[{ value: '', label: boards === null ? 'Loading boards…' : 'Choose a board…' }, ...boardOptions]}
+								options={[{ value: '', label: boards === null ? 'Loading boards...' : 'Choose a board' }, ...boardOptions]}
 								disabled={boards === null}
 								label="Board to pick from"
 								full
@@ -397,27 +397,27 @@
 										<Dropdown
 											bind:value={() => c.choice, (v) => v !== c.choice && chooseList(p.slug, c.id, v)}
 											options={[
-												{ value: 'auto', label: c.choice === 'auto' && c.listName ? `List “${c.listName}” (same name)` : 'The list with the same name' },
-												{ value: 'none', label: 'Don’t sync this column' },
-												...mapping.lists.map((l) => ({ value: l.id, label: `List “${l.name}”` }))
+												{ value: 'auto', label: c.choice === 'auto' && c.listName ? `List "${c.listName}" (same name)` : 'The list with the same name' },
+												{ value: 'none', label: 'Don\'t sync this column' },
+												...mapping.lists.map((l) => ({ value: l.id, label: `List "${l.name}"` }))
 											]}
 											disabled={busy !== null}
 											label="Trello list for {c.name}"
 										/>
-										{#if !c.listId}<span class="hint">no list: its tasks aren’t synced</span>{/if}
+										{#if !c.listId}<span class="hint">no list: its tasks aren't synced</span>{/if}
 									</dd>
 								{/each}
 							</div>
 							{#if mapping.unusedLists.length > 0}
 								<div class="hint" style="padding-left:12px">
-									Cards in {mapping.unusedLists.map((n) => `“${n}”`).join(', ')} aren’t added, because no column uses that list.
+									Cards in {mapping.unusedLists.map((n) => `"${n}"`).join(', ')} aren't added, because no column uses that list.
 								</div>
 							{/if}
 						{/if}
 					{/each}
 					<div class="hint">
-						A column takes the Trello list with the same name (ignoring capitals) unless you choose another. A task whose column has no list isn’t put on
-						Trello, and a card whose list has no column isn’t added here; both are counted below. A project’s user stories go in the list of its backlog
+						A column takes the Trello list with the same name (ignoring capitals) unless you choose another. A task whose column has no list isn't put on
+						Trello, and a card whose list has no column isn't added here; both are counted below. A project's user stories go in the list of its backlog
 						column when they are made. One board serves one project.
 					</div>
 				</div>
@@ -433,15 +433,15 @@
 					</dd>
 					{#if status?.lastSyncAt}
 						<dt>Last sync</dt>
-						<dd title={dateTime(status.lastSyncAt)}>{ago(status.lastSyncAt)}{status.summary ? ` — ${status.summary}` : ''}</dd>
+						<dd title={dateTime(status.lastSyncAt)}>{ago(status.lastSyncAt)}{status.summary ? ` - ${status.summary}` : ''}</dd>
 					{/if}
 					{#if status?.report}
 						<dt>Counts</dt>
 						<dd>
-							cards created {status.report.cardsCreated}, updated {status.report.cardsUpdated} · items added {status.report.itemsCreated}, updated
+							cards created {status.report.cardsCreated}, updated {status.report.cardsUpdated} | items added {status.report.itemsCreated}, updated
 							{status.report.itemsUpdated}{#if status.report.conflicts > 0}
-								· conflicts {status.report.conflicts}{/if}{#if status.report.unmatched > 0}
-								· left out {status.report.unmatched}{/if}
+								| conflicts {status.report.conflicts}{/if}{#if status.report.unmatched > 0}
+								| left out {status.report.unmatched}{/if}
 						</dd>
 					{/if}
 					{#if status?.lastError}
@@ -471,13 +471,13 @@
 				<div class="sync-detail">
 					<h3 style="font-size:14px">No longer synced</h3>
 					<div class="hint">
-						These items stopped syncing because their card was archived, deleted, moved to another board, or is no longer the person’s. They are still here, untouched.
+						These items stopped syncing because their card was archived, deleted, moved to another board, or is no longer the person's. They are still here, untouched.
 					</div>
 					{#each view.unlinked as item (item.project + '/' + item.kind + '/' + item.id)}
 						<div class="kv" style="grid-template-columns: 1fr auto">
 							<div>
 								<strong>{item.title}</strong>
-								<span class="hint">· {item.kind === 'story' ? 'user story' : 'task'} in {item.projectName}</span>
+								<span class="hint">| {item.kind === 'story' ? 'user story' : 'task'} in {item.projectName}</span>
 								<div class="hint">{item.reason}</div>
 							</div>
 							<button class="btn small" onclick={() => relink(item.kind, item.project, item.id)}>Make a new card</button>
@@ -489,17 +489,17 @@
 			<div class="hint">
 				Nothing is ever deleted on Trello, and deleting or archiving on one side never deletes on the other: an item whose card is gone stays here and stops
 				syncing, and a card whose item you delete stays on Trello. When both sides change the same text, the newer edit wins and the other is kept in the
-				vault’s <code>.ledger/conflicts</code> folder. Ledger looks at Trello every few minutes and shortly after you make changes. Trello allows about 100
+				vault's <code>.ledger/conflicts</code> folder. Ledger looks at Trello every few minutes and shortly after you make changes. Trello allows about 100
 				requests per 10 seconds per token; Ledger stays well under that and waits when Trello asks it to.
 			</div>
 			<div class="hint">
-				Every card Ledger writes ends with a short “Synced with Ledger” note. A card with that note is never added from Trello (it reaches your other machines
-				through the vault), so an item you deleted stays deleted and two machines never add the same item twice. Take the note off a card’s description to
-				bring it in anyway. A user story’s description on Trello reads <code>**As a** … / **I want to** … / **Such that** …</code>, then
+				Every card Ledger writes ends with a short "Synced with Ledger" note. A card with that note is never added from Trello (it reaches your other machines
+				through the vault), so an item you deleted stays deleted and two machines never add the same item twice. Take the note off a card's description to
+				bring it in anyway. A user story's description on Trello reads <code>**As a** ... / **I want to** ... / **Such that** ...</code>, then
 				<code>**Acceptance criteria**</code> as a checklist, then <code>**Notes**</code>; you can edit it there.
 			</div>
 		{/if}
 	{:else if !loadError}
-		<div class="hint">Loading…</div>
+		<div class="hint">Loading...</div>
 	{/if}
 </div>

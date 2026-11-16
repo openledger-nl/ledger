@@ -15,7 +15,7 @@
 	<h2>Sidebar</h2>
 	<p class="sub" style="margin:0">
 		What the sidebar becomes when it folds: when you hide it ({key}) and when the window is narrower than 1200 px, for example snapped to half the
-		screen. Saved in this vault’s <code>.ledger/settings.json</code>, which never syncs, so each machine can choose its own.
+		screen. Saved in this vault's <code>.ledger/settings.json</code>, which never syncs, so each machine can choose its own.
 	</p>
 
 	<div class="field">

@@ -102,7 +102,7 @@
 
 	async function remove() {
 		if (!semester) return;
-		const ok = await confirmDialog({ title: `Delete “${semester.name}”?`, message: 'Its sprints and vacations go with it. Nothing you made in it is touched.', confirmLabel: 'Delete semester', danger: true });
+		const ok = await confirmDialog({ title: `Delete "${semester.name}"?`, message: 'Its sprints and vacations go with it. Nothing you made in it is touched.', confirmLabel: 'Delete semester', danger: true });
 		if (!ok || (await attempt(() => api.deleteSemester(semester.id))) === undefined) return;
 		await refresh();
 		onclose();
@@ -112,7 +112,7 @@
 <Modal title={semester ? 'Edit semester' : 'New semester'} wide {onclose}>
 	<label class="field">
 		Name
-		<input bind:value={name} placeholder="e.g. Semester 1 · 2026–2027" />
+		<input bind:value={name} placeholder="e.g. Semester 1 | 2026-2027" />
 	</label>
 
 	<div class="sem-dates">
@@ -184,8 +184,8 @@
 					</div>
 					<span class="sprint-span">
 						{spanLabel(s.start, s.end)}
-						{#if worked !== length(s.start, s.end)}<span class="vac-note"> · incl. vacation</span>{/if}
-						{#if isLast && worked !== lengthOf(i) * 7}<span class="vac-note"> · {worked} days of work</span>{/if}
+						{#if worked !== length(s.start, s.end)}<span class="vac-note"> | incl. vacation</span>{/if}
+						{#if isLast && worked !== lengthOf(i) * 7}<span class="vac-note"> | {worked} days of work</span>{/if}
 					</span>
 					<input class="sprint-goal" bind:value={() => goals[i] ?? '', (v) => (goals[i] = v)} aria-label="Goal of sprint {i + 1}" placeholder="Goal (optional)" />
 				</div>
@@ -195,7 +195,7 @@
 
 	<label class="field">
 		Notes
-		<textarea bind:value={notes} rows="2" placeholder="Exam weeks, deadlines, what this half is about…"></textarea>
+		<textarea bind:value={notes} rows="2" placeholder="Exam weeks, deadlines, what this half is about"></textarea>
 	</label>
 
 	{#snippet footer()}

@@ -11,7 +11,7 @@
 
 <script lang="ts">
 	const items: MenuItem[] = [
-		{ id: 'rename', label: 'Rename…', icon: Pencil },
+		{ id: 'rename', label: 'Rename', icon: Pencil },
 		{ id: 'delete', label: 'Delete', sub: 'Its versions stay in versions/', icon: Trash2 }
 	];
 </script>

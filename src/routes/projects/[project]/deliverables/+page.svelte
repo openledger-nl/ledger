@@ -42,7 +42,7 @@
 	}
 </script>
 
-<svelte:head><title>Deliverables · {data.project.name} · Ledger</title></svelte:head>
+<svelte:head><title>Deliverables | {data.project.name} | Ledger</title></svelte:head>
 
 <div class="page">
 	<div class="page-inner">
@@ -50,7 +50,7 @@
 			<h2>New deliverable</h2>
 			<p class="sub" style="margin:0">
 				Deliverables are what prompts produce. They are plain files in <code>deliverables/</code>: markdown you can edit here, or anything
-				else — images, spreadsheets, PDFs — that you or an assistant drop into the folder. Publishing freezes a copy as
+				else - images, spreadsheets, PDFs - that you or an assistant drop into the folder. Publishing freezes a copy as
 				<code>name@v1.0.md</code> in <code>versions/</code>, so <code>deliverables/</code> keeps only the live files.
 			</p>
 			<div class="form-row">
@@ -71,7 +71,7 @@
 				<h2>{plural(data.deliverables.length, 'deliverable')}</h2>
 				<input
 					type="search"
-					placeholder="Filter…"
+					placeholder="Filter"
 					bind:value={filter}
 					style="padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg)"
 				/>
@@ -96,11 +96,11 @@
 								{#if d.attachments.length}<span class="badge" title={d.attachments.join('\n')}>+{plural(d.attachments.length, 'file')}</span>{/if}
 							</span>
 							<span class="doc-space">{plural(d.promptCount, 'prompt')}</span>
-							<span class="badge type">{KIND[d.kind]} · {formatSize(d.size)}</span>
+							<span class="badge type">{KIND[d.kind]} | {formatSize(d.size)}</span>
 							<span class="doc-date" title={deliverableTime(d).title}>{d.exists || d.latestAt ? ago(deliverableTime(d).at) : ''}</span>
 						</a>
 					{:else}
-						<div class="hint">Nothing matches “{filter}”.</div>
+						<div class="hint">Nothing matches "{filter}".</div>
 					{/each}
 				</div>
 			{/if}

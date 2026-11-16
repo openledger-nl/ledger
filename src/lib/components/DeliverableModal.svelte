@@ -71,7 +71,7 @@
 		...(answer && answer !== 'main' ? [{ value: answer, label: answer, icon: CircleHelp }] : [])
 	]);
 	// The file as the backend names it: the number and the name, as a slug ("01-project-plan.md").
-	const fileName = $derived(`${slugify(`${String(number).padStart(2, '0')} ${name.trim().replace(/\.md$/i, '')}`)}${name.trim() ? '' : '-…'}.md`);
+	const fileName = $derived(`${slugify(`${String(number).padStart(2, '0')} ${name.trim().replace(/\.md$/i, '')}`)}${name.trim() ? '' : '-...'}.md`);
 	const manMade = $derived(mmm === 'man-made');
 	$effect(() => {
 		if (manMade) firstDraft = 'me';

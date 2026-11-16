@@ -156,7 +156,7 @@ function picture(src: string, alt: string, view: EditorView): HTMLElement {
 	const img = box.appendChild(document.createElement('img'));
 	img.alt = alt;
 	const missing = () => {
-		box.textContent = `Couldn’t load ${alt || src}`;
+		box.textContent = `Couldn't load ${alt || src}`;
 		box.classList.add('missing');
 	};
 	img.onload = () => view.requestMeasure();
@@ -635,7 +635,7 @@ function wikiDecorations(view: EditorView): DecorationSet {
 			const words = m[2]?.trim();
 			const missing = !!index && !index.resolve(target);
 			const attributes: Record<string, string> = { 'data-wikilink': target };
-			if (index) attributes.title = missing ? `Nothing in this project is called “${target}”` : 'Ctrl+click to open';
+			if (index) attributes.title = missing ? `Nothing in this project is called "${target}"` : 'Ctrl+click to open';
 			const mark = Decoration.mark({ class: missing ? 'cm-md-wikilink unresolved' : 'cm-md-wikilink', attributes });
 			if (preview && !ranges.some((r) => r.from <= stop && r.to >= at)) {
 				// Only the words that are shown remain: the target alone, or what comes after the bar.

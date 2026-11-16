@@ -32,7 +32,7 @@
 	const projectOptions = $derived<DropdownOption[]>(projects.map((p) => ({ value: p.slug, label: p.name })));
 	const threadOptions = $derived<DropdownOption[]>([
 		...(chosen?.threads ?? []).map((t) => ({ value: t.slug, label: t.title })),
-		{ value: NEW, label: '+ New thread…' }
+		{ value: NEW, label: '+ New thread' }
 	]);
 
 	// A new screenshot: fetch the picture and start from where the person is looking. Only a new screenshot
@@ -123,7 +123,7 @@
 		{:else if compact}
 			<div class="shot-target">
 				<span>Attach to <strong>{chosen?.name}</strong> › <strong>{threadTitle}</strong></span>
-				<button class="btn ghost" onclick={() => (compact = false)}>Change…</button>
+				<button class="btn ghost" onclick={() => (compact = false)}>Change</button>
 			</div>
 			<!-- Enter attaches; Shift+Enter is a new line in the description. -->
 			<div class="field">
@@ -163,7 +163,7 @@
 		{/if}
 
 		{#snippet footer()}
-			<span class="hint">Enter attaches · Shift+Enter new line · Esc discards</span>
+			<span class="hint">Enter attaches | Shift+Enter new line | Esc discards</span>
 			<span class="spacer-h"></span>
 			<button class="btn ghost" onclick={discard}>Discard</button>
 			<button class="btn primary" onclick={attach} disabled={busy || !project || (creating && !title.trim())}>Attach</button>

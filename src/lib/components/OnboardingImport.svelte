@@ -81,7 +81,7 @@
 				The vault's folder
 				<div class="form-row" style="flex-wrap:nowrap">
 					<input class="mono" bind:value={folder} placeholder={settings.vaultPath} spellcheck="false" />
-					<button class="btn" onclick={browse}>Browse…</button>
+					<button class="btn" onclick={browse}>Browse</button>
 				</div>
 			</label>
 			<div class="hint">The folder with <code>projects/</code> in it, such as a vault you opened in Obsidian or cloned from GitHub.</div>

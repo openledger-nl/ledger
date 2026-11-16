@@ -89,7 +89,7 @@
 			variant="composer"
 			rows={1}
 			label="Note"
-			placeholder="Write a note… markdown works (Enter saves, Shift+Enter adds a line)"
+			placeholder="Write a note... markdown works (Enter saves, Shift+Enter adds a line)"
 			submitOnEnter
 			onsubmit={send}
 			oncancel={replyTo ? oncancelreply : undefined}

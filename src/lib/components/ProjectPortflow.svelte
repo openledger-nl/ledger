@@ -32,7 +32,7 @@
 	});
 
 	const unplaced = $derived((data?.evidence ?? []).filter((e) => !e.thread));
-	const placeOptions = (name: string): DropdownOption[] => [{ value: '__new__', label: `A new thread “${name}”` }, ...threads.map((t) => ({ value: t.slug, label: t.title }))];
+	const placeOptions = (name: string): DropdownOption[] => [{ value: '__new__', label: `A new thread "${name}"` }, ...threads.map((t) => ({ value: t.slug, label: t.title }))];
 
 	async function place(evidence: string, name: string, choice: string) {
 		if (!choice) return;
@@ -78,16 +78,16 @@
 				<div class="kv" style="grid-template-columns: 1fr auto">
 					<div>
 						<strong>{e.name}</strong>
-						<span class="hint">· {plural(e.versions.length, 'version')}</span>
-						{#if e.portflowId}<button class="link accent" onclick={() => openInPortflow(`“${e.name}”`)}>Open in Portflow</button>{/if}
+						<span class="hint">| {plural(e.versions.length, 'version')}</span>
+						{#if e.portflowId}<button class="link accent" onclick={() => openInPortflow(`"${e.name}"`)}>Open in Portflow</button>{/if}
 					</div>
 					<!-- An action, not a setting: it shows the prompt until the item is placed (and leaves this list). -->
 					<Dropdown
 						bind:value={() => '', (v) => place(e.slug, e.name, v)}
 						options={placeOptions(e.name)}
 						disabled={busy !== null}
-						label="Put “{e.name}” in a thread"
-						placeholder="Put in a thread…"
+						label="Put '{e.name}' in a thread"
+						placeholder="Put in a thread"
 						align="end"
 					/>
 				</div>
@@ -100,7 +100,7 @@
 			<div class="chips">
 				{#each data.evidence.filter((e) => e.thread) as e (e.slug)}
 					<a class="chip" href={threadUrl(project, e.thread ?? '')} title={e.threadTitle ?? ''}
-						>{e.name}{e.versions[0] ? ` · v${e.versions[0].number}` : ''}{e.openFeedback ? ` · ${e.openFeedback} open` : ''}</a
+						>{e.name}{e.versions[0] ? ` | v${e.versions[0].number}` : ''}{e.openFeedback ? ` | ${e.openFeedback} open` : ''}</a
 					>
 				{/each}
 			</div>

@@ -55,8 +55,8 @@
 	const aims = $derived(
 		view
 			? [
-					...view.rows.filter((r) => r.target).map((r) => `${r.name} → ${r.target}`),
-					...view.skills.filter((s) => s.target).map((s) => `${s.nickname || s.name} → ${s.target}`)
+					...view.rows.filter((r) => r.target).map((r) => `${r.name} to ${r.target}`),
+					...view.skills.filter((s) => s.target).map((s) => `${s.nickname || s.name} to ${s.target}`)
 				]
 			: []
 	);
@@ -68,7 +68,7 @@
 	}
 </script>
 
-<svelte:head><title>Epsilon+ · Ledger</title></svelte:head>
+<svelte:head><title>Epsilon+ | Ledger</title></svelte:head>
 
 <div class="header-wrap flat">
 	<div class="header-top">
@@ -85,7 +85,7 @@
 					class="btn"
 					onclick={() => (editing = true)}
 					disabled={!view.semester}
-					title={view.semester ? 'What you aim for this semester' : 'Add a semester covering today first (Settings → Semesters)'}
+					title={view.semester ? 'What you aim for this semester' : 'Add a semester covering today first (Settings > Semesters)'}
 				>
 					<Crosshair size={15} />Intended development
 				</button>
@@ -95,7 +95,7 @@
 						bind:value={semester}
 						options={[
 							{ value: '', label: `Current${current ? ` (${current.name})` : ''}` },
-							...view.semesters.map((s) => ({ value: s.id, label: `${s.name}${s.sectionName ? '' : ' · no Portflow section'}` }))
+							...view.semesters.map((s) => ({ value: s.id, label: `${s.name}${s.sectionName ? '' : ' | no Portflow section'}` }))
 						]}
 						label="Semester"
 						align="end"
@@ -111,28 +111,28 @@
 		{#if !portflow.enabled}
 			<div class="empty-state">
 				<h1>Portflow is off</h1>
-				<p>Epsilon+ reads your learning outcomes from Portflow. Switch it on under <a href="/settings/sync#portflow">Settings → Sync &amp; external → Portflow</a>.</p>
+				<p>Epsilon+ reads your learning outcomes from Portflow. Switch it on under <a href="/settings/sync#portflow">Settings > Sync &amp; external > Portflow</a>.</p>
 			</div>
 		{:else if error}
 			<div class="notice bad">{error}</div>
 		{:else if view && view.cellsTotal + view.skills.length === 0}
 			<div class="empty-state">
 				<h1>No learning outcomes yet</h1>
-				<p>They come in with the first Portflow sync after you sign in (Settings → Sync &amp; external → Portflow).</p>
+				<p>They come in with the first Portflow sync after you sign in (Settings > Sync &amp; external > Portflow).</p>
 			</div>
 		{:else if view}
 			<div class="epsilon-head">
 				<h2>{view.sectionName ?? 'Newest goal set'}</h2>
 				<span class="hint">
-					{plural(view.evidenceCount, 'evidence item', 'evidence items')} · {view.cellsWithEvidence} of {view.cellsTotal} cells with evidence{view.goalSet
-						? ` · ${view.goalSet}`
+					{plural(view.evidenceCount, 'evidence item', 'evidence items')} | {view.cellsWithEvidence} of {view.cellsTotal} cells with evidence{view.goalSet
+						? ` | ${view.goalSet}`
 						: ''}
 				</span>
 			</div>
 			{#if !view.scoped}
 				<div class="notice">
-					{view.semester ? 'This semester isn’t linked to a Portflow section yet' : 'No semester covers today'}, so the newest goal set is shown. Say which section a
-					semester is under <a href="/settings/semesters">Settings → Semesters</a>.
+					{view.semester ? 'This semester isn\'t linked to a Portflow section yet' : 'No semester covers today'}, so the newest goal set is shown. Say which section a
+					semester is under <a href="/settings/semesters">Settings > Semesters</a>.
 				</div>
 			{/if}
 			{#if view.semester}
@@ -140,7 +140,7 @@
 					<div class="overview-item">
 						<span class="overview-label">Intended development</span>
 						{#if aims.length}
-							<span>{aims.join(' · ')}</span>
+							<span>{aims.join(' | ')}</span>
 							<span class="hint">{view.targetsReached} of {view.targetsTotal} reached</span>
 						{:else}
 							<button class="link" onclick={() => (editing = true)}>Say what you aim for this semester</button>
@@ -169,7 +169,7 @@
 			{/if}
 			<EpsilonMatrix {view} />
 		{:else}
-			<div class="hint">Loading…</div>
+			<div class="hint">Loading...</div>
 		{/if}
 	</div>
 </div>

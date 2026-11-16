@@ -33,7 +33,7 @@
 			{#each items as f (f.id)}
 				<a class="hit" href="{threadUrl(f.project, f.thread)}?item=f-{f.id}">
 					<div class="hit-head">
-						<span class="hit-kind">{f.from ?? 'Someone'}{f.fromRole ? ` · ${f.fromRole}` : ''}</span>
+						<span class="hit-kind">{f.from ?? 'Someone'}{f.fromRole ? ` | ${f.fromRole}` : ''}</span>
 						<span class="hit-title">{f.evidenceName ?? f.evidence ?? ''}</span>
 						<span class="badge accent">{f.projectName}</span>
 						<span class="hint">{ago(f.createdAt)}</span>

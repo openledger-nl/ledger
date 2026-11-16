@@ -78,7 +78,7 @@
 		const matching = q ? free.filter((o) => `${o.label} ${prefix}${o.value} ${o.hint ?? ''}`.toLowerCase().includes(q)) : free;
 		const items = matching.map((o) => ({ ...o, isNew: false }));
 		if (allowNew && typed && !known.has(typed) && !value.includes(typed)) {
-			items.push({ value: typed, label: `Add “${query.trim().replace(/^#/, '') || typed}”`, isNew: true });
+			items.push({ value: typed, label: `Add "${query.trim().replace(/^#/, '') || typed}"`, isNew: true });
 		}
 		return items;
 	});
