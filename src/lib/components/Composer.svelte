@@ -32,7 +32,8 @@
 
 	let text = $state('');
 	let sending = $state(false);
-	// The kind and labels the next post gets; the kind stays for the next one, the labels don't.
+	// The kind and the label the next post gets (one label at most: Fact, To check or Assumption); the kind stays for the
+	// next one, the label doesn't.
 	let kind = $state<PostKind>('thought');
 	let labels = $state<EpistemicLabel[]>([]);
 	let input: MarkdownEditor;
@@ -92,7 +93,7 @@
 				class:off={!labels.includes(l.label)}
 				aria-pressed={labels.includes(l.label)}
 				title={l.hint}
-				onclick={() => (labels = labels.includes(l.label) ? labels.filter((x) => x !== l.label) : [...labels, l.label])}
+				onclick={() => (labels = labels.includes(l.label) ? [] : [l.label])}
 			>{l.name}</button>
 		{/each}
 	</div>

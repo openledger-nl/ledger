@@ -1,5 +1,5 @@
 <script lang="ts">
-	// A post's kind and its labels (Fact, To check, Assumption), set by hand: Ledger never labels a post. Shown in the
+	// A post's kind and its label (Fact, To check or Assumption: one at most), set by hand: Ledger never labels a post. Shown in the
 	// post's meta row; the tag button opens the choice below it. Wireframe C1; requirements: Threads.
 	import Tag from '@lucide/svelte/icons/tag';
 	import { api } from '$lib/api';
@@ -15,9 +15,10 @@
 		if (await attempt(() => api.setPostMeta(project, thread, postId, kind, labels))) await refresh();
 	}
 
+	/** A post has one label at most: picking one replaces the one it had, picking it again takes it off. */
 	const toggle = (label: EpistemicLabel) => {
 		const labels = meta?.labels ?? [];
-		save(meta?.kind ?? 'thought', labels.includes(label) ? labels.filter((l) => l !== label) : [...labels, label]);
+		save(meta?.kind ?? 'thought', labels.includes(label) ? [] : [label]);
 	};
 </script>
 
