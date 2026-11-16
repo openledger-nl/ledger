@@ -1235,3 +1235,148 @@ export interface EpsilonView {
 	/** The projects linked to a collection in this semester. */
 	linkedProjects: string[];
 }
+
+// ---- v1 (preview) ------------------------------------------------------------------------------------
+// What the v1 vault adds (Requirements 0.27; the LoFi wireframes in Penpot). The backend doesn't have these yet: until it
+// does, the screens that use them read and write src/lib/mock (behind Settings › Features › Preview screens). The shapes
+// are the contract the backend will fill, camelCase on the wire like the rest.
+
+/** Every project is one of three kinds, in the same vault and the same layout; the study parts are optional extras. */
+export type ProjectKind = 'study' | 'hobby' | 'company';
+
+/** The facts in a project's `00 Overview.md` frontmatter that 0.8 doesn't have. */
+export interface ProjectMeta {
+	slug: string;
+	kind: ProjectKind;
+	/** The most important thing a project has: asked first, shown on every project screen, fed to every deliverable. */
+	goal: string;
+	/** "semester" ends with the semester it runs in; otherwise a day of your own (ISO), or null for no end. */
+	end: 'semester' | string | null;
+	/** The semester a study project runs in, by name (NJ26). */
+	semester: string | null;
+	/** The label you mean the work to get; offered when publishing, and compared with what you publish. */
+	intendedMmm: MmmLevel | null;
+	/** Study projects have one; optional for the others. */
+	mainQuestion: string | null;
+	/** A company project's client (a company file in Companies/ is roadmap). */
+	client: string | null;
+	/** Shown in the overview's tag, `project/<tag>`, which daily notes and feedback use. */
+	tag: string;
+}
+
+/** What a post is; set by you, shown on it, filtered on. Prompts and runs are posts too, but 0.8 keeps them apart. */
+export type PostKind = 'thought' | 'devlog' | 'research' | 'reflection';
+
+/** How sure you are of a post; set by hand only, never by Ledger. */
+export type EpistemicLabel = 'fact' | 'to-check' | 'assumption';
+
+/** A post's kind and labels, by post id. */
+export interface PostMeta {
+	postId: string;
+	kind: PostKind;
+	labels: EpistemicLabel[];
+}
+
+/** A person is a tag for now (`expert/sander`, `client/police/ries`): role first, then who. */
+export type PersonTag = string;
+
+/** One meeting in a daily note: a `## 10:00 Title #project/x` heading, a `With:` line of people, then your notes. */
+export interface MeetingSection {
+	/** "10:00", or null when the heading has no time. */
+	time: string | null;
+	title: string;
+	/** Project tags (`thrym-player`), on the heading: the meeting belongs to each of these projects. */
+	projects: string[];
+	/** Person tags (`coach/frank`), on the `With:` line; the same as in feedback. */
+	people: PersonTag[];
+	/** Your notes, as you wrote them: no template, no required parts. */
+	body: string;
+}
+
+/**
+ * A daily note, `Daily/<day>.md`: one per day, made in Ledger or Obsidian, holding that day's meetings, each under its
+ * own heading. Its frontmatter (`type: daily`, `id`, `date`, `tags`) gathers the tags of its meetings, so the day is
+ * found by project and by person in Ledger and in Obsidian.
+ */
+export interface DailyNote {
+	/** ISO day; also the file's name, so a day has one note. */
+	date: string;
+	id: string;
+	meetings: MeetingSection[];
+	updatedAt: string;
+}
+
+/** Where a piece of feedback came in. */
+export type FeedbackSource = 'ledger' | 'portflow' | 'feedpulse';
+
+/** Your own note (for yourself or for Claude), or feedback from someone else. */
+export type FeedbackKind = 'own' | 'someone';
+
+export type FeedbackRole = 'coach' | 'expert' | 'teammate' | 'client' | 'colleague' | 'other';
+
+/** What feedback lands on. */
+export type FeedbackTarget =
+	| { on: 'deliverable'; project: string; deliverable: string; version: string | null }
+	| { on: 'story'; project: string; story: string }
+	| { on: 'project'; project: string };
+
+/** A feedback file (`type: feedback`) in v1: its own kind of file, not a post. */
+export interface FeedbackItem {
+	id: string;
+	kind: FeedbackKind;
+	source: FeedbackSource;
+	/** Group feedback from Portflow is on a group's collection; personal is yours alone. */
+	scope: 'personal' | 'group';
+	/** Who gave it, as a person tag; null for your own notes. */
+	from: PersonTag | null;
+	role: FeedbackRole | null;
+	/** How it was given: in person, by mail, in a meeting… */
+	given: string | null;
+	/** The daily note it was written down in, by its day. */
+	daily: string | null;
+	target: FeedbackTarget;
+	body: string;
+	at: string;
+	/** Only you resolve feedback, never Ledger. */
+	status: 'open' | 'resolved';
+	resolvedAt: string | null;
+	/** What you did with it: posts, runs and versions that answer it, in words. */
+	followUps: string[];
+}
+
+export type FeedbackDraft = Omit<FeedbackItem, 'id' | 'status' | 'resolvedAt' | 'followUps' | 'source' | 'scope'>;
+
+/** A deliverable's v1 facts: its number, its goal and its own label (Man-Made switches AI writing off for it). */
+export interface DeliverableMeta {
+	project: string;
+	/** The live path, as 0.8 names it. */
+	path: string;
+	/** `01`, `02`: given in the order they are made, kept on rename, never renumbered. */
+	number: number;
+	goal: string;
+	mmm: MmmLevel | null;
+	/** The question it answers: "main" or a sub-question's text. */
+	answers: string | null;
+	template: string | null;
+}
+
+export interface DeliverableDraft {
+	name: string;
+	goal: string;
+	template: string | null;
+	answers: string | null;
+	mmm: MmmLevel | null;
+	/** Who writes the first draft: you, or Claude Code from a prompt (off by default; never for Man-Made). */
+	firstDraft: 'me' | 'claude';
+}
+
+/** Publishing a version with another label than the project's intended one: your answer is kept with the version. */
+export interface LabelConfirmation {
+	project: string;
+	path: string;
+	version: string;
+	intended: MmmLevel;
+	chosen: MmmLevel;
+	reason: string;
+	at: string;
+}

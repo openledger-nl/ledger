@@ -23,7 +23,9 @@
 	import { locate, plain, type Anchor, type Mark } from '$lib/anchors';
 	import { sha256Hex } from '$lib/hash';
 	import { ago, dateTime } from '$lib/format';
-	import { MMM } from '$lib/mmm';
+	import { MMM, mmmInfo } from '$lib/mmm';
+	import { mockApi } from '$lib/mock/api';
+	import PreviewBadge from '$lib/components/PreviewBadge.svelte';
 	import MmmPicker from '$lib/components/MmmPicker.svelte';
 	import { dirOf } from '$lib/vaultImages';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
@@ -196,11 +198,27 @@
 	const manMadeConflict = $derived(level === 'man-made' && (aiMade || provenance.historyHasAi));
 	const suggestManMade = $derived(!aiMade && !provenance.historyHasAi && !level);
 
+	// Preview (wireframe D5): the project's intended label is offered, a study project's version needs a label, and a
+	// label other than the intended one asks you to confirm it honestly. It never blocks: confirm or change it.
+	const projectMeta = $derived(data.meta);
+	const deliverableMeta = $derived(data.deliverableMeta);
+	const intended = $derived(projectMeta?.intendedMmm ?? null);
+	const labelRequired = $derived(projectMeta?.kind === 'study');
+	const differs = $derived(!!intended && !!level && level !== intended);
+	let confirmed = $state(false);
+	let confirmReason = $state('');
+	$effect(() => {
+		void level;
+		confirmed = false;
+	});
+	const publishBlocked = $derived((labelRequired && !level) || (differs && !confirmed));
+
 	function startPublishing() {
 		bump = 'minor';
 		custom = '';
 		aiMade = stopped !== null;
-		level = provenance.suggestedLabel ?? '';
+		level = intended ?? provenance.suggestedLabel ?? '';
+		confirmReason = '';
 		promptId = stopped?.promptId ?? '';
 		changeNote = '';
 		publishing = true;
@@ -222,6 +240,19 @@
 		);
 		publishBusy = false;
 		if (!published) return;
+		if (differs && intended && level) {
+			await attempt(() =>
+				mockApi.confirmLabel({
+					project,
+					path: doc.path,
+					version: published.versions.at(-1) ?? '',
+					intended,
+					chosen: level as MmmLevel,
+					reason: confirmReason.trim(),
+					at: new Date().toISOString()
+				})
+			);
+		}
 		publishing = false;
 		toast(`Published version ${published.versions.at(-1) ?? ''}`.trim());
 		await refresh();
@@ -374,6 +405,9 @@
 					<span class="db-value">{snapshot ? `v${doc.version}` : 'Live'}</span>
 				</span>
 			</h1>
+			{#if deliverableMeta}
+				<p class="pj-goal"><span><strong>Goal</strong> {deliverableMeta.goal}</span></p>
+			{/if}
 			<div class="subline">
 				<span class="badge type">{doc.kind === 'markdown' ? 'Markdown' : doc.kind === 'image' ? 'Image' : 'File'}</span>
 				{#if snapshot}
@@ -385,6 +419,9 @@
 				{/if}
 				<span>{formatSize(doc.size)}</span>
 				{#if provenance.summary.label}<MmmBadge level={provenance.summary.label.level} />{/if}
+				{#if deliverableMeta?.mmm}<span class="pj-intended">Its label <MmmBadge level={deliverableMeta.mmm} /></span>{/if}
+				{#if deliverableMeta?.mmm === 'man-made'}<span class="hint">AI writing is off for it</span>{/if}
+				{#if deliverableMeta}<PreviewBadge />{/if}
 				{#if doc.path.includes('/')}<span class="mono">{doc.path}</span>{/if}
 				{#if isMarkdown && !snapshot && doc.exists}
 					<span class="save-state">{saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Unsaved changes'}</span>
@@ -536,7 +573,7 @@
 			</div>
 		{/if}
 		<div class="field">
-			<span>AI-use label for the result (optional)</span>
+			<span>AI-use label for the result {labelRequired ? '' : '(optional)'}{#if labelRequired}<span class="req">required in a study project</span>{/if}</span>
 			<MmmPicker bind:value={level} label="AI-use label for the result" empty="Not labelled" />
 			{#if level}
 				<span class="hint">{MMM.find((m) => m.level === level)?.meaning}</span>
@@ -549,6 +586,23 @@
 				</span>
 			{/if}
 		</div>
+		{#if differs && intended && level}
+			<div class="pub-confront">
+				<div class="pub-confront-head">
+					<span>This project is meant to be</span>
+					<MmmBadge level={intended} />
+					<span>and you chose</span>
+					<MmmBadge level={level} />
+					<PreviewBadge />
+				</div>
+				<p class="hint" style="margin:0">{mmmInfo(level)?.meaning} Keep it if it is true; your answer is kept with the version.</p>
+				<label class="check"><input type="checkbox" bind:checked={confirmed} /> I choose {mmmInfo(level)?.name} honestly for this version</label>
+				<input class="pub-reason" bind:value={confirmReason} placeholder="Why, in your own words (optional)" />
+				<button class="link accent" style="align-self:flex-start" onclick={() => (level = intended ?? '')}>Use {mmmInfo(intended)?.name} instead</button>
+			</div>
+		{:else if labelRequired && !level}
+			<p class="pv-warn" style="margin:0">A study project's published version needs an AI-use label. <PreviewBadge /></p>
+		{/if}
 		<div class="field">
 			<span>Changelog (optional)</span>
 			<MarkdownEditor bind:value={changeNote} rows={2} label="Changelog" placeholder="What changed, in your words" />
@@ -557,7 +611,7 @@
 		{#snippet footer()}
 			<span class="spacer-h"></span>
 			<button class="btn ghost" onclick={() => (publishing = false)}>Cancel</button>
-			<button class="btn primary" onclick={publish} disabled={publishBusy || (bump === 'custom' && !custom.trim())}>Publish</button>
+			<button class="btn primary" onclick={publish} disabled={publishBusy || (bump === 'custom' && !custom.trim()) || publishBlocked}>Publish</button>
 		{/snippet}
 	</Modal>
 {/if}

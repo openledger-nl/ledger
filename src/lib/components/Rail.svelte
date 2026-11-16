@@ -4,6 +4,9 @@
 	// pages as icons, each project as its initial, and the sync dot; hovering or focusing an item shows its name.
 	// Wireframes A6 and A7.
 	import House from '@lucide/svelte/icons/house';
+	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
+	import Inbox from '@lucide/svelte/icons/inbox';
+	import { previews } from '$lib/mock/flag.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Settings from '@lucide/svelte/icons/settings';
 	import { page } from '$app/state';
@@ -43,6 +46,10 @@
 		<a class="rail-item" class:active={path === '/'} href="/" data-tip="Home" aria-label="Home"><House size={18} /></a>
 		{#if portflow.enabled}
 			<a class="rail-item" class:active={on('/epsilon')} href="/epsilon" data-tip="Epsilon+" aria-label="Epsilon+"><EpsilonIcon size={18} /></a>
+		{/if}
+		{#if previews.enabled}
+			<a class="rail-item" class:active={on('/feedback')} href="/feedback" data-tip="Feedback (preview)" aria-label="Feedback"><Inbox size={18} /></a>
+			<a class="rail-item" class:active={on('/meetings')} href="/meetings" data-tip="Meeting notes (preview)" aria-label="Meeting notes"><NotebookPen size={18} /></a>
 		{/if}
 		<a class="rail-item" class:active={on('/settings')} href="/settings" data-tip="Settings" aria-label="Settings"><Settings size={18} /></a>
 	</nav>

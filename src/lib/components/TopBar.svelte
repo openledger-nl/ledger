@@ -50,6 +50,8 @@
 		if (id === '/') return [{ label: 'Home' }];
 		if (id.startsWith('/epsilon')) return [{ label: 'Epsilon+' }];
 		if (id.startsWith('/search')) return [{ label: 'Search' }];
+		if (id.startsWith('/meetings')) return [{ label: 'Meeting notes' }];
+		if (id.startsWith('/feedback')) return [{ label: 'Feedback' }];
 		if (id.startsWith('/settings')) {
 			const group = groups.find((g) => path.startsWith(`/settings/${g.id}`));
 			return group ? [{ label: 'Settings', href: '/settings' }, { label: group.label }] : [{ label: 'Settings' }];

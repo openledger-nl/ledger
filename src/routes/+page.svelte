@@ -11,6 +11,7 @@
 	import SyncWidget from '$lib/components/SyncWidget.svelte';
 	import { ago, newest, numericDay, plural, stamp, todayKey, weekday } from '$lib/format';
 	import { dashboard, isPinned, togglePin } from '$lib/dashboard.svelte';
+	import { daysLeft, daysLeftText, endDay } from '$lib/v1';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -39,6 +40,12 @@
 	);
 
 	type Card = (typeof cards)[number];
+
+	/** Preview: a project's goal and days left, the most important things it has (A1). */
+	function goal(slug: string) {
+		const m = data.meta.find((x) => x.slug === slug);
+		return m ? { text: m.goal, left: daysLeftText(daysLeft(endDay(m, data.semesters))) } : null;
+	}
 
 	/** Pinned projects first, in the order they were pinned; then the rest, the most recently active first. */
 	const pinned = $derived(
@@ -83,6 +90,10 @@
 				<span>{plural(p.storyCount, 'story', 'stories')}</span>
 				{#if c.openFeedback}<span class="badge draft">{c.openFeedback} open feedback</span>{/if}
 			</div>
+			{#if goal(p.slug)}
+				{@const g = goal(p.slug)}
+				<p class="proj-goal"><strong>{g?.left}</strong> {g?.text}</p>
+			{/if}
 		</header>
 
 		<ProjectLatest project={p} deliverables={data.details[p.slug]?.deliverables ?? []} />

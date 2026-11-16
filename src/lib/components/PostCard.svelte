@@ -4,7 +4,8 @@
 	import { deliverableUrl, snapshotPath, threadUrl } from '$lib/actions';
 	import { dayKey, dayLabel, plainText, time } from '$lib/format';
 	import { attempt, confirmDialog, refresh } from '$lib/ui.svelte';
-	import type { Post } from '$lib/types';
+	import type { Post, PostMeta } from '$lib/types';
+	import PostTags from './PostTags.svelte';
 	import Markdown from './Markdown.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
 
@@ -17,7 +18,8 @@
 		quotedElsewhere,
 		onreply,
 		onjump,
-		children
+		children,
+		tags
 	}: {
 		project: string;
 		thread: string;
@@ -30,6 +32,8 @@
 		onreply: (post: Post) => void;
 		onjump: (domId: string) => void;
 		children?: Snippet;
+		/** Preview: the post's kind and labels; undefined leaves them out (previews off). */
+		tags?: PostMeta | null;
 	} = $props();
 
 	let editing = $state(false);
@@ -91,6 +95,7 @@
 		<span class="time">{time(post.createdAt)}</span>
 		{#if variant === 'answer'}<span class="file">{dayLabel(dayKey(post.createdAt))}</span>{/if}
 		{#if post.updatedAt !== post.createdAt}<span class="file">edited</span>{/if}
+		{#if tags !== undefined && !post.guidingQuestion && !post.versionPublished}<PostTags postId={post.id} meta={tags} />{/if}
 	</div>
 
 	{#if showQuote}

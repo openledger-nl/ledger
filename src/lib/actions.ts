@@ -2,6 +2,8 @@ import { goto } from '$app/navigation';
 import { api } from './api';
 import { attempt, confirmDialog, promptDialog, refresh } from './ui.svelte';
 import type { Bump, DeliverableSummary, Prompt } from './types';
+import { previews } from './mock/flag.svelte';
+import { previewDialogs } from './mock/dialogs.svelte';
 
 export const projectUrl = (project: string) => `/projects/${project}`;
 export const threadUrl = (project: string, thread: string) => `/projects/${project}/threads/${thread}`;
@@ -10,6 +12,11 @@ export const deliverableUrl = (project: string, path: string) =>
 
 /** Asks for a name, creates the project and opens it. */
 export async function newProjectFlow() {
+	// Preview: the v1 dialog, which asks for the kind, the goal and the end first.
+	if (previews.enabled) {
+		previewDialogs.project = 'new';
+		return;
+	}
 	const name = await promptDialog({
 		title: 'New project',
 		label: 'What is it called?',
@@ -89,6 +96,11 @@ export async function deliverableForLevelFlow(project: string, aim: AimedLevel) 
 
 /** Asks for a file name, creates an empty deliverable in the project and opens it. (The Deliverables tab can also start one from a template.) */
 export async function newDeliverableFlow(project: string) {
+	// Preview: the v1 dialog, goal first, numbered.
+	if (previews.enabled) {
+		previewDialogs.deliverable = { project };
+		return;
+	}
 	const name = await promptDialog({
 		title: 'New deliverable',
 		label: 'File name',

@@ -18,6 +18,7 @@ import EncryptionSettings from './EncryptionSettings.svelte';
 import GitHubSettings from './GitHubSettings.svelte';
 import LogSettings from './LogSettings.svelte';
 import OrderSettings from './OrderSettings.svelte';
+import PreviewSettings from './PreviewSettings.svelte';
 import PortflowSettings from './PortflowSettings.svelte';
 import ScreenshotSettings from './ScreenshotSettings.svelte';
 import SemesterSettings from './SemesterSettings.svelte';
@@ -57,6 +58,7 @@ export interface Panel {
 export const panels: Panel[] = [
 	{ id: 'dashboard', group: 'features', title: 'Contribution graph', keywords: 'dashboard home activity heatmap squares days', component: DashboardSettings },
 	{ id: 'latest', group: 'features', title: 'Latest in the explorer', keywords: 'sidebar explorer latest recent newest threads deliverables navigation hide show', component: SidebarSettings },
+	{ id: 'previews', group: 'features', title: 'Preview screens', keywords: 'preview mock v1 wireframes penpot meetings feedback inbox goal kind experimental beta', component: PreviewSettings },
 	{ id: 'semesters', group: 'semesters', title: 'Semesters', keywords: 'semester sprint sprints vacation holiday break weeks preset nj26 plan calendar half year', component: SemesterSettings },
 	{ id: 'templates', group: 'templates', title: 'Templates', keywords: 'template prompt guiding questions skeleton deliverable shared every project global', component: TemplateSettings },
 	{ id: 'theme', group: 'visual', title: 'Theme', keywords: 'colours colors dark light night appearance look accent', component: ThemeSettings },
