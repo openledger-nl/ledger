@@ -132,16 +132,29 @@
 				{/if}
 			</div>
 		{/if}
-		<div class="actions">
-			<button class="link accent" onclick={() => onreply(post)}>{post.guidingQuestion ? 'Answer' : 'Reply'}</button>
-			{#if post.versionPublished && post.deliverablePath && post.deliverableVersion}
-				<a class="link accent" href={deliverableUrl(project, snapshotPath(post.deliverablePath, post.deliverableVersion))}>
+		{#if post.versionPublished && post.deliverablePath && post.deliverableVersion}
+			<!-- A version published: the deliverable as it is now, and as it was published. -->
+			<div class="view-buttons">
+				<a class="btn small" href={deliverableUrl(project, post.deliverablePath)}>View live</a>
+				<a class="btn small" href={deliverableUrl(project, snapshotPath(post.deliverablePath, post.deliverableVersion))}>
 					View version {post.deliverableVersion}
 				</a>
-			{:else}
+			</div>
+		{/if}
+		<div class="actions">
+			<button class="link accent" onclick={() => onreply(post)}>{post.guidingQuestion ? 'Answer' : 'Reply'}</button>
+			{#if !(post.versionPublished && post.deliverablePath && post.deliverableVersion)}
 				<button class="link" onclick={startEdit}>Edit</button>
 			{/if}
 			<button class="link danger" onclick={remove}>Delete</button>
 		</div>
 	{/if}
 </div>
+
+<style>
+	.view-buttons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+</style>
