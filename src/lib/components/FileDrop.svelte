@@ -10,7 +10,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
-	import { formatSize, newProjectFlow, threadUrl } from '$lib/actions';
+	import { formatSize, isImageName, newProjectFlow, shownMimeOf, threadUrl } from '$lib/actions';
 	import { newest, plural } from '$lib/format';
 	import { logError } from '$lib/log.svelte';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
@@ -227,6 +227,46 @@
 		return newest(p?.threads ?? [], (t) => t.lastActivity)[0]?.slug ?? NEW;
 	}
 
+	// ---- previews of the pictures in the drop ------------------------------------------------------------
+	// A path from the file manager is read through the backend (the page can't open it), which also turns a JPEG XL
+	// picture into one the window can show; a file the page was handed itself is shown as it is.
+
+	/** How many pictures of one drop get a preview. */
+	const MAX_PREVIEWS = 12;
+	type Preview = { name: string; url: string | null };
+	let previews = $state<Preview[]>([]);
+
+	$effect(() => {
+		const dropped = pending;
+		const made: string[] = [];
+		let stale = false;
+		previews = [];
+		if (!dropped) return;
+		const pictures = namesOf(dropped)
+			.map((name, i) => ({ name, i }))
+			.filter((p) => isImageName(p.name))
+			.slice(0, MAX_PREVIEWS);
+		previews = pictures.map((p) => ({ name: p.name, url: null }));
+		pictures.forEach(({ name, i }, at) => {
+			const blob: Promise<Blob | null> =
+				dropped.kind === 'paths'
+					? api.previewDroppedImage(dropped.paths[i]).then((b) => new Blob([b], { type: shownMimeOf(name) }))
+					: Promise.resolve(/\.jxl$/i.test(name) ? null : dropped.files[i]);
+			blob
+				.then((b) => {
+					if (stale || !b) return;
+					const url = URL.createObjectURL(b);
+					made.push(url);
+					previews[at] = { name, url };
+				})
+				.catch(() => {});
+		});
+		return () => {
+			stale = true;
+			made.forEach((url) => URL.revokeObjectURL(url));
+		};
+	});
+
 	function open(dropped: Dropped) {
 		pending = dropped;
 		project = projects.find((p) => p.slug === page.params.project)?.slug ?? projects[0]?.slug ?? '';
@@ -272,6 +312,15 @@
 {#if pending}
 	{@const names = namesOf(pending)}
 	<Modal title={names.length === 1 ? 'Save the file' : `Save ${names.length} files`} onclose={() => (pending = null)}>
+		{#if previews.some((p) => p.url)}
+			<div class="file-drop-previews" class:single={previews.length === 1}>
+				{#each previews as preview, i (i)}
+					{#if preview.url}
+						<img src={preview.url} alt={preview.name} title={preview.name} />
+					{/if}
+				{/each}
+			</div>
+		{/if}
 		<ul class="file-drop-list">
 			{#each names as name, i (i)}
 				<li>

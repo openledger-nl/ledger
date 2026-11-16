@@ -161,6 +161,9 @@ export function mimeOf(name: string): string {
 	return types[ext] ?? 'application/octet-stream';
 }
 
+/** Whether a file is a picture Ledger shows (the backend's `uploads::is_image`, which also decides what has a preview). */
+export const isImageName = (name: string) => /\.(png|jpe?g|gif|webp|svg|bmp|jxl)$/i.test(name);
+
 /** The type of a picture as the backend hands it to the window: a JPEG XL one comes decoded, as PNG (`images.rs`). */
 export const shownMimeOf = (name: string) => (/\.jxl$/i.test(name) ? 'image/png' : mimeOf(name));
 

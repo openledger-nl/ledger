@@ -455,6 +455,12 @@ pub fn read_project_image(app: State<App>, project: String, path: String) -> Res
     Ok(tauri::ipc::Response::new(crate::images::displayable_file(&file)?))
 }
 
+/// The preview of a picture being dropped onto the window, from wherever it is on this machine: pictures only.
+#[tauri::command]
+pub fn preview_dropped_image(path: String) -> Result<tauri::ipc::Response> {
+    Ok(tauri::ipc::Response::new(crate::images::preview_of(Path::new(&path))?))
+}
+
 /// Opens a file in a project's folder with the system's default program, or shows it in the file manager.
 #[tauri::command]
 pub fn open_project_file(app: AppHandle, project: String, path: String, reveal: bool) -> Result<()> {

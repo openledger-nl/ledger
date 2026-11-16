@@ -247,6 +247,7 @@ pub fn run() {
             commands::upload_files,
             commands::upload_dropped,
             commands::read_project_image,
+            commands::preview_dropped_image,
             commands::list_project_uploads,
             commands::update_upload,
             commands::delete_upload,

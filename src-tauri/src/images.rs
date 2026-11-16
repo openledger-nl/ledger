@@ -13,6 +13,9 @@ use crate::error::{Error, Result};
 /// The longest side a decoded picture is shown at.
 const MAX_SIDE: u32 = 2400;
 
+/// The largest file read for a preview.
+pub const MAX_BYTES: u64 = 50 * 1024 * 1024;
+
 /// How much of decoded pictures is kept in memory, at most.
 const CACHE_BYTES: usize = 96 * 1024 * 1024;
 
@@ -64,6 +67,20 @@ pub fn displayable(name: &str, bytes: Vec<u8>) -> Result<Vec<u8>> {
     Ok(out.into_inner())
 }
 
+/// A picture somewhere on this machine (a file being dropped onto the window), for its preview: pictures only, and not
+/// larger than `MAX_BYTES`.
+pub fn preview_of(path: &Path) -> Result<Vec<u8>> {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    if !crate::uploads::is_image(name) {
+        return Err(Error::invalid("Only pictures have a preview"));
+    }
+    let size = std::fs::metadata(path).map_err(|e| Error::io(path, e))?.len();
+    if size > MAX_BYTES {
+        return Err(Error::invalid("This picture is too large to preview"));
+    }
+    displayable_file(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,5 +93,13 @@ mod tests {
     #[test]
     fn a_broken_jpeg_xl_picture_is_said_not_to_be_readable() {
         assert!(displayable("a.jxl", b"not a picture".to_vec()).is_err());
+    }
+
+    #[test]
+    fn a_file_that_isnt_a_picture_has_no_preview() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("notes.pdf");
+        std::fs::write(&file, b"%PDF").unwrap();
+        assert!(preview_of(&file).is_err());
     }
 }
