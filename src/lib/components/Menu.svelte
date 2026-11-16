@@ -9,6 +9,8 @@
 		icon?: Component<{ size?: number; class?: string }>;
 		/** A coloured dot before the label (the AI-use levels). */
 		dot?: string;
+		/** A picture before the label (an imported asset's URL, e.g. an official MMM label); shown instead of the dot. */
+		image?: string;
 		/** Items that have this set, true or false, are choices: the one that is true gets a check. */
 		checked?: boolean;
 		danger?: boolean;
@@ -184,7 +186,7 @@
 				>
 					<span class="mi">
 						{#if item.icon}<item.icon size={15} class="mi-ico" />{/if}
-						{#if item.dot}<span class="mi-dot" style="--c: {item.dot}"></span>{/if}
+						{#if item.image}<img class="dd-image" src={item.image} alt="" />{:else if item.dot}<span class="mi-dot" style="--c: {item.dot}"></span>{/if}
 						<span class="mi-text">
 							<span class="dd-label">{item.label}</span>
 							{#if item.sub}<span class="mi-sub">{item.sub}</span>{/if}

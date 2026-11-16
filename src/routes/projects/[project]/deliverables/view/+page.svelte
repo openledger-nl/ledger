@@ -24,6 +24,7 @@
 	import { sha256Hex } from '$lib/hash';
 	import { ago, dateTime } from '$lib/format';
 	import { MMM } from '$lib/mmm';
+	import MmmPicker from '$lib/components/MmmPicker.svelte';
 	import { dirOf } from '$lib/vaultImages';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import { beforeRestart } from '$lib/updates.svelte';
@@ -534,12 +535,9 @@
 				/>
 			</div>
 		{/if}
-		<label class="field">
+		<div class="field">
 			<span>AI-use label for the result (optional)</span>
-			<select bind:value={level}>
-				<option value="">Not labelled</option>
-				{#each MMM as m (m.level)}<option value={m.level}>{m.name} — {m.tagline}</option>{/each}
-			</select>
+			<MmmPicker bind:value={level} label="AI-use label for the result" empty="Not labelled" />
 			{#if level}
 				<span class="hint">{MMM.find((m) => m.level === level)?.meaning}</span>
 			{/if}
@@ -550,7 +548,7 @@
 					Nothing here is recorded as AI. <button class="link accent" onclick={() => (level = 'man-made')}>Label it Man-Made</button> if that is true.
 				</span>
 			{/if}
-		</label>
+		</div>
 		<div class="field">
 			<span>Changelog (optional)</span>
 			<MarkdownEditor bind:value={changeNote} rows={2} label="Changelog" placeholder="What changed, in your words" />

@@ -42,12 +42,14 @@
 	--shadow-toast: 0 8px 24px rgba(0, 0, 0, 0.3);
 	--shadow-drawer: 0 0 40px rgba(0, 0, 0, 0.5);
 
-	/* The AI-use (MMM) levels, from the most AI to the least: only the dot of a label is coloured. */
-	--mmm-lazy-prompter: var(--red);
-	--mmm-piggybacker: var(--amber);
-	--mmm-cyborg: var(--brand-indigo);
-	--mmm-handyman: #4ea8ff;
-	--mmm-man-made: var(--green);
+	/* The AI-use (MMM) labels, from the most AI to the least: the colours of the official labels (https://mmmlabel.tech,
+	   by Fontys, WELGEEN and technofilosofie.com, free to use), as in src/lib/assets/mmm. Fixed, never themed. */
+	--mmm-lazy-prompter: #cc9cc7;
+	--mmm-piggybacker: #f8a07b;
+	--mmm-cyborg: #b5dcdc;
+	--mmm-handyman: #e5ac23;
+	--mmm-man-made: #e3d6a4;
+	--mmm-ink: #010101; /* the labels' black */
 }
 
 /* ---------- themes ----------
@@ -868,6 +870,9 @@ details.more p { margin: 0; }
 /* The AI-use (MMM) labels: a dot for the level, the text stays in the theme's ink. */
 .mmm { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--card-2); color: var(--ink); white-space: nowrap; }
 .mmm .mmm-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex-shrink: 0; }
+.mmm .mmm-icon { width: 16px; height: 16px; flex-shrink: 0; border-radius: 2px; margin-left: -5px; }
+.mmm-site { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+.mmm-site:hover { text-decoration: underline; }
 .mmm .mmm-tag { font-weight: 400; color: var(--muted); }
 
 /* Where the window is too narrow to hold it beside the page, it is a drawer over it. */

@@ -3,6 +3,7 @@
 	import { deliverableUrl, formatSize, threadUrl } from '$lib/actions';
 	import { ago, date, dateTime, dayKey, plural } from '$lib/format';
 	import { MMM, authorLabel, sizeChange } from '$lib/mmm';
+	import { MMM_ICONS } from '$lib/mmmIcons';
 	import { orderProvenance } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { attempt, refresh } from '$lib/ui.svelte';
@@ -49,7 +50,7 @@
 	];
 
 	const levels = (v: ProvenanceVersion): MenuItem[] => [
-		...MMM.map((m) => ({ id: m.level, label: m.name, sub: m.tagline, dot: m.color, checked: v.mmm === m.level })),
+		...MMM.map((m) => ({ id: m.level, label: m.name, sub: m.tagline, image: MMM_ICONS[m.level], dot: m.color, checked: v.mmm === m.level })),
 		...(v.mmm ? [{ id: '', label: 'Remove the label', icon: X, rule: true }] : [])
 	];
 
