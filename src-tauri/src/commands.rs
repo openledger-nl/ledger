@@ -529,6 +529,12 @@ pub fn update_version_record(app: State<App>, project: String, path: String, ver
     })
 }
 
+/// Gives a deliverable another name; returns its new path.
+#[tauri::command]
+pub fn rename_deliverable(app: State<App>, project: String, path: String, name: String) -> Result<String> {
+    app.mutate(|c, root| deliverables::rename(c, root, &project, &path, &name))
+}
+
 #[tauri::command]
 pub fn delete_deliverable(app: State<App>, project: String, path: String) -> Result<()> {
     app.mutate(|c, root| deliverables::delete(c, root, &project, &path))

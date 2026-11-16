@@ -1031,3 +1031,24 @@ fn links_list_what_a_project_can_point_at() {
     assert!(summary[2].2.starts_with("word word") && summary[2].2.ends_with('…'), "{}", summary[2].2);
     assert_eq!(summary[3], ("feedback", note.id.as_str(), "Too long", "on pricing-brief.md", "pricing-brief.md"));
 }
+
+#[test]
+fn renaming_a_deliverable_keeps_its_extension_versions_and_feedback() {
+    let dir = tempdir().unwrap();
+    let c = conn();
+    let (p, t) = setup(&c);
+    deliverables::create(&c, &p, "Launch Plan", "").unwrap();
+    deliverables::publish(&c, dir.path(), &p, "launch-plan.md", Bump::Major, None).unwrap();
+    feedback::add(&c, &p, &t, "launch-plan.md", "Shorter, please.", None).unwrap();
+
+    let to = deliverables::rename(&c, dir.path(), &p, "launch-plan.md", "Go-to-market plan.md").unwrap();
+    assert_eq!(to, "Go-to-market plan.md", "the name as typed, the extension once");
+    let view = deliverables::get(&c, &p, &to).unwrap();
+    assert_eq!(view.versions, ["1.0"]);
+    assert_eq!(view.feedback.len(), 1);
+    assert!(deliverables::get(&c, &p, "Go-to-market plan@v1.0.md").is_ok());
+    assert!(deliverables::get(&c, &p, "launch-plan.md").is_err());
+
+    assert_eq!(message(deliverables::rename(&c, dir.path(), &p, &to, "  ").unwrap_err()), "Name is required");
+    assert!(deliverables::rename(&c, dir.path(), &p, "Go-to-market plan@v1.0.md", "Old").is_err(), "a version keeps its name");
+}

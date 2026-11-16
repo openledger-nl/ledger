@@ -261,6 +261,7 @@ pub fn run() {
             commands::get_provenance,
             commands::update_version_record,
             commands::delete_deliverable,
+            commands::rename_deliverable,
             commands::list_templates,
             commands::project_templates,
             commands::effective_templates,

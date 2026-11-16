@@ -485,6 +485,32 @@ pub fn rename_base(conn: &Connection, root: &Path, project: &str, from: &str, to
     Ok(())
 }
 
+/// Gives the deliverable at `path` (its live file, not a version) another name, as typed: the file keeps its folder and
+/// its extension (typing it again is fine), and its versions, feedback and everything else that points at it follow
+/// (`rename_base`). Returns the new path.
+pub fn rename(conn: &Connection, root: &Path, project: &str, path: &str, name: &str) -> Result<String> {
+    if split_version(path).1.is_some() {
+        return Err(Error::invalid("A published version keeps its name; rename the deliverable itself"));
+    }
+    let (dir, file) = path.rsplit_once('/').map_or(("", path), |(d, f)| (d, f));
+    let ext = file.rsplit_once('.').filter(|(stem, _)| !stem.is_empty()).map(|(_, ext)| ext);
+    let mut name = name.trim();
+    if let Some(ext) = ext {
+        let dotted = format!(".{ext}");
+        if name.len() > dotted.len() && name[name.len() - dotted.len()..].eq_ignore_ascii_case(&dotted) {
+            name = name[..name.len() - dotted.len()].trim_end();
+        }
+    }
+    if name.is_empty() {
+        return Err(Error::invalid("Name is required"));
+    }
+    let clean = crate::uploads::sanitize(name);
+    let file = ext.map_or(clean.clone(), |ext| format!("{clean}.{ext}"));
+    let to = if dir.is_empty() { file } else { format!("{dir}/{file}") };
+    rename_base(conn, root, project, path, &to)?;
+    Ok(to)
+}
+
 /// Records a file found in the deliverables folder (or written there by this app).
 pub fn upsert(conn: &Connection, project: &str, path: &str, size: i64, modified: &str, body: Option<&str>) -> Result<()> {
     conn.execute(

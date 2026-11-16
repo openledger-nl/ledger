@@ -224,6 +224,8 @@ export const api = {
 	updateVersionRecord: (project: string, path: string, version: string, update: VersionUpdate) =>
 		call<Provenance>('update_version_record', { project, path, version, update }),
 	deleteDeliverable: (project: string, path: string) => call<void>('delete_deliverable', { project, path }),
+	/** Gives a deliverable another name (its extension stays); the answer is its new path. */
+	renameDeliverable: (project: string, path: string, name: string) => call<string>('rename_deliverable', { project, path, name }),
 
 	// templates
 	listTemplates: (scope: string) => call<Template[]>('list_templates', { scope }),
