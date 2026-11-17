@@ -11,7 +11,9 @@ export const load: PageLoad = async ({ params, url }) => {
 			api.getProvenance(params.project, path),
 			api.listDeliverablePrompts(params.project, path)
 		]);
-		return { deliverable, provenance, prompts };
+		// The deliverable's goal, number and own label, from its project's project.md.
+		const deliverableMeta = await api.getDeliverableMeta(params.project, deliverable.basePath || path);
+		return { deliverable, provenance, prompts, deliverableMeta };
 	} catch (e) {
 		error(404, e instanceof Error ? e.message : 'Deliverable not found');
 	}

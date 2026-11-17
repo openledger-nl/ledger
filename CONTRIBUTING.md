@@ -15,16 +15,32 @@ You need:
 
 ```bash
 pnpm install
-pnpm run tauri dev   # the app, with hot reload
+pnpm run dev         # the app, with hot reload (the same as pnpm run tauri dev)
 pnpm run dev:app     # the app, with every change held until you choose Update in it
 ```
+
+While the app runs from either, its front end also works in an ordinary browser at http://127.0.0.1:1420, handy for
+the browser's developer tools. The tab has no backend of its own: each call goes to Ledger's window, which runs it
+(`src/lib/browserRelay.ts`, `scripts/browser-relay.mjs`), so the window has to stay open. `pnpm run dev:web` starts the
+dev server alone, which is what `tauri dev` runs first.
+
+`pnpm storybook` (http://localhost:6006) shows every UI component and the main pages on sample data, without the app.
+A new component gets its stories in the same change: `src/stories/<area>/<Component>.stories.svelte`, with the sample
+data in `src/stories/fixtures.ts` and any backend call it makes answered in `src/stories/backend.ts`.
 
 ## Before you push
 
 ```bash
-pnpm run check   # Svelte + TypeScript
+pnpm run check   # Svelte + TypeScript, and the UI text check
 pnpm test        # Rust tests
 ```
+
+UI text uses plain punctuation: `-` or `|` instead of a dash or a middle dot, three dots `...` instead of the ellipsis
+character (and none on a button or menu item), straight quotes, and words ("to") or `>` for a path through menus instead
+of an arrow. `pnpm run check` runs `scripts/check-ui-text.mjs`, which looks at the text a person can read (Svelte
+templates, string literals in TypeScript and Rust, not comments) and names each character it finds with what to use
+instead. A literal that needs one of them to work, such as a parser that recognises curly quotes in someone else's text,
+gets `ui-text: allow` and the reason in a comment on its line or the line before.
 
 CI runs both on every pull request, with the commits check below, and a pull request is merged only when they pass.
 On your first pull request here, the checks wait until a maintainer lets them run.
@@ -93,9 +109,9 @@ repo (`build: move to Node 26`).
 
 | Area | Scopes |
 |---|---|
-| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `links` (`[[links]]` between threads, deliverables and feedback, written in any markdown), `dashboard` (the home page and its contribution graph), `onboarding` (the setup guide a new client gets on the home page) |
+| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `links` (`[[links]]` between threads, deliverables and feedback, written in any markdown), `dashboard` (the home page and its contribution graph), `onboarding` (the setup guide a new client gets on the home page), `people` (who is in a project: its coach, teammates and client), `meetings` (meeting notes: one note a day in `Meetings/`) |
 | Data and sync | `vault`, `sync`, `crypto`, `settings` |
-| Integrations | `screenshots`, `trello`, `claude` (runs with Claude Code) |
+| Integrations | `screenshots`, `trello`, `portflow` (the Fontys portfolio: feedback, evidence, learning outcomes), `claude` (runs with Claude Code) |
 | Across the app | `ui` (shared components, layout, icons), `brand` (logo, tokens, colours), `updates` (installing new releases from inside the app, and a development build taking in what changes in its checkout), `logs` (the error log, debug captures, reporting a problem) |
 | Reserved | `release`: only CI's own `chore(release)` commits; never use it yourself |
 

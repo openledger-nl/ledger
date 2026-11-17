@@ -46,9 +46,9 @@ repo (`build: move to Node 26`).
 
 | Area | Scopes |
 |---|---|
-| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `links` (`[[links]]` between threads, deliverables and feedback, written in any markdown), `dashboard` (the home page and its contribution graph), `onboarding` (the setup guide a new client gets on the home page) |
+| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `links` (`[[links]]` between threads, deliverables and feedback, written in any markdown), `dashboard` (the home page and its contribution graph), `onboarding` (the setup guide a new client gets on the home page), `people` (who is in a project: its coach, teammates and client), `meetings` (meeting notes: one note a day in `Meetings/`) |
 | Data and sync | `vault`, `sync`, `crypto`, `settings` |
-| Integrations | `screenshots`, `trello`, `claude` (runs with Claude Code) |
+| Integrations | `screenshots`, `trello`, `portflow` (the Fontys portfolio: feedback, evidence, learning outcomes), `claude` (runs with Claude Code) |
 | Across the app | `ui` (shared components, layout, icons), `brand` (logo, tokens, colours), `updates` (installing new releases from inside the app, and a development build taking in what changes in its checkout), `logs` (the error log, debug captures, reporting a problem) |
 | Reserved | `release`: only CI's own `chore(release)` commits; never use it yourself |
 
@@ -104,6 +104,8 @@ So, as an agent:
 - Colours and fonts come from the tokens at the top of `src/app.css` (`--brand-*`, the theme tokens, `--font-sans`,
   `--font-mono`). Use a token, never a literal colour, in components and CSS.
 - Icons are Lucide: `import X from '@lucide/svelte/icons/x'` (one file per icon, not the package root).
+- UI text uses plain ASCII punctuation: `-` or `|`, `...`, straight quotes; no em or en dash, middle dot, ellipsis
+  character, curly quotes or arrows. `pnpm run check` enforces it (`scripts/check-ui-text.mjs`).
 - In the UI the wordmark is `<Wordmark />` (`src/lib/components/Wordmark.svelte`): drawn inline so its L and cursor
   take the theme's `--accent`. The files in `src/lib/assets/brand/` are the fixed-colour (indigo) logo for everything
   outside the app; the app icons in `src-tauri/icons/` are generated from the mark. Don't draw new versions in code.

@@ -6,6 +6,7 @@
 	import { newProjectFlow, threadUrl } from '$lib/actions';
 	import { attempt, refresh, screenshot } from '$lib/ui.svelte';
 	import type { ProjectSummary } from '$lib/types';
+	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	import Modal from './Modal.svelte';
 
@@ -28,6 +29,11 @@
 
 	const chosen = $derived(projects.find((p) => p.slug === project));
 	const creating = $derived(thread === NEW);
+	const projectOptions = $derived<DropdownOption[]>(projects.map((p) => ({ value: p.slug, label: p.name })));
+	const threadOptions = $derived<DropdownOption[]>([
+		...(chosen?.threads ?? []).map((t) => ({ value: t.slug, label: t.title })),
+		{ value: NEW, label: '+ New thread' }
+	]);
 
 	// A new screenshot: fetch the picture and start from where the person is looking. Only a new screenshot
 	// restarts the form — not a project picked in it, nor a refresh of the project list.
@@ -112,17 +118,12 @@
 		{#if projects.length === 0}
 			<p class="notice">A screenshot is attached to a thread in a project, and there are no projects yet.</p>
 			<div class="row-end">
-				<button
-					class="btn"
-					onclick={async () => {
-						await newProjectFlow();
-					}}>New project</button
-				>
+				<button class="btn" onclick={newProjectFlow}>New project</button>
 			</div>
 		{:else if compact}
 			<div class="shot-target">
 				<span>Attach to <strong>{chosen?.name}</strong> › <strong>{threadTitle}</strong></span>
-				<button class="btn ghost" onclick={() => (compact = false)}>Change…</button>
+				<button class="btn ghost" onclick={() => (compact = false)}>Change</button>
 			</div>
 			<!-- Enter attaches; Shift+Enter is a new line in the description. -->
 			<div class="field">
@@ -139,19 +140,15 @@
 			</div>
 		{:else}
 			<div class="form-row">
-				<label class="field grow">
+				<div class="field grow">
 					Project
-					<select value={project} onchange={(e) => pickProject(e.currentTarget.value)}>
-						{#each projects as p (p.slug)}<option value={p.slug}>{p.name}</option>{/each}
-					</select>
-				</label>
-				<label class="field grow">
+					<!-- Picking the same project again keeps the thread already chosen. -->
+					<Dropdown bind:value={() => project, (v) => v !== project && pickProject(v)} options={projectOptions} label="Project" full />
+				</div>
+				<div class="field grow">
 					Thread
-					<select bind:value={thread}>
-						{#each chosen?.threads ?? [] as t (t.slug)}<option value={t.slug}>{t.title}</option>{/each}
-						<option value={NEW}>+ New thread…</option>
-					</select>
-				</label>
+					<Dropdown bind:value={thread} options={threadOptions} label="Thread" full />
+				</div>
 			</div>
 			{#if creating}
 				<label class="field">
@@ -166,7 +163,7 @@
 		{/if}
 
 		{#snippet footer()}
-			<span class="hint">Enter attaches · Shift+Enter new line · Esc discards</span>
+			<span class="hint">Enter attaches | Shift+Enter new line | Esc discards</span>
 			<span class="spacer-h"></span>
 			<button class="btn ghost" onclick={discard}>Discard</button>
 			<button class="btn primary" onclick={attach} disabled={busy || !project || (creating && !title.trim())}>Attach</button>

@@ -2,18 +2,17 @@
 	import { onDestroy, untrack } from 'svelte';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import CodeXml from '@lucide/svelte/icons/code-xml';
-	import Copy from '@lucide/svelte/icons/copy';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
-	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import FileText from '@lucide/svelte/icons/file-text';
-	import FolderOpen from '@lucide/svelte/icons/folder-open';
-	import MessagesSquare from '@lucide/svelte/icons/messages-square';
+	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
+	import TextCursorInput from '@lucide/svelte/icons/text-cursor-input';
 	import Trash from '@lucide/svelte/icons/trash';
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import DocSide from '$lib/components/DocSide.svelte';
+	import EvidenceDescription from '$lib/components/EvidenceDescription.svelte';
 	import FileImage from '$lib/components/FileImage.svelte';
 	import Markdown from '$lib/components/Markdown.svelte';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
@@ -21,16 +20,18 @@
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import SelectionComment from '$lib/components/SelectionComment.svelte';
-	import { api } from '$lib/api';
-	import { deliverableFile, deliverableUrl, formatSize, newThreadFlow, nextVersion, snapshotPath } from '$lib/actions';
+	import { api, portflowApi } from '$lib/api';
+	import { portflow } from '$lib/portflow.svelte';
+	import { deliverableFile, deliverableUrl, nextVersion, snapshotPath } from '$lib/actions';
 	import { locate, plain, type Anchor, type Mark } from '$lib/anchors';
 	import { sha256Hex } from '$lib/hash';
-	import { ago, dateTime } from '$lib/format';
-	import { MMM } from '$lib/mmm';
+	import { dateTime } from '$lib/format';
+	import { MMM, mmmInfo } from '$lib/mmm';
+	import MmmPicker from '$lib/components/MmmPicker.svelte';
 	import { dirOf } from '$lib/vaultImages';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import { beforeRestart } from '$lib/updates.svelte';
-	import type { Bump, Feedback, MmmLevel, ProvenanceDraft, ProvenanceVersion } from '$lib/types';
+	import type { Bump, DeliverableDescription, Evidence, Feedback, MmmLevel, ProvenanceDraft, ProvenanceVersion } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -42,6 +43,8 @@
 	const snapshot = $derived(doc.version !== null);
 	const isMarkdown = $derived(doc.kind === 'markdown');
 	const file = $derived(deliverableFile(doc.path));
+	/** How the deliverable reads: its name without the file's extension (an evidence item's name is shown as it is). */
+	const title = $derived(doc.evidence ? doc.name : doc.name.replace(/\.[^./]+$/, '') || doc.name);
 	// Pictures in it are looked for beside the live file, also in a version (which is kept in versions/, apart from them).
 	const images = $derived({ project, dir: dirOf(deliverableFile(doc.basePath)) });
 
@@ -140,45 +143,93 @@
 	}
 
 	// ---- the thread of this page ---------------------------------------------------------------
-	// One thread for everything done here: the note a publish leaves, new feedback, and the prompts made from feedback. It is
-	// chosen once, at the top, and kept for this deliverable. Until then: where the last version went (or the prompt that
-	// asked for the file was written), or else the project's first thread.
+	// One thread for everything done here: the note a publish leaves, new feedback, and the prompts made from feedback. It
+	// isn't chosen: it is the thread the deliverable belongs to. That is its evidence item's thread, else where its last
+	// version went, else the thread of the prompt that asked for it, else the thread it was opened from (`?thread=<slug>`),
+	// else the project's first thread.
 
 	let workThread = $state('');
-	let threadKey = '';
 
+	const cameFrom = $derived(page.url.searchParams.get('thread'));
 	$effect(() => {
-		const key = `ledger-doc-thread:${project}:${doc.basePath}`;
 		const options = threads.map((t) => t.slug);
-		const fallback = [provenance.defaultThread, doc.prompts[0]?.threadSlug].find((slug) => slug && options.includes(slug)) ?? options[0] ?? '';
-		untrack(() => {
-			if (key !== threadKey) {
-				threadKey = key;
-				try {
-					workThread = localStorage.getItem(key) ?? '';
-				} catch {
-					workThread = '';
-				}
-			}
-			if (!options.includes(workThread)) workThread = fallback;
-		});
-	});
-
-	// Remembered as soon as it is chosen.
-	$effect(() => {
-		const slug = workThread;
-		untrack(() => {
-			if (!slug || !threadKey) return;
-			try {
-				localStorage.setItem(threadKey, slug);
-			} catch {
-				// Not persisted.
-			}
-		});
+		workThread =
+			[evidence?.thread, provenance.defaultThread, doc.prompts[0]?.threadSlug, cameFrom].find((slug) => slug && options.includes(slug)) ??
+			options[0] ??
+			'';
 	});
 
 	const threadTitle = $derived(threads.find((t) => t.slug === workThread)?.title ?? '');
-	const threadOptions = $derived(threads.map((t) => ({ value: t.slug, label: t.title })));
+
+	// ---- the evidence item it is -----------------------------------------------------------------
+	// A deliverable that is a Portflow evidence item shows the item's description (What? / Goal? / Why it contributes?)
+	// under the document, to read and edit here rather than in the thread.
+
+	let evidence = $state<Evidence | null>(null);
+	const isEvidenceFile = (e: Evidence) => e.files.some((f) => f.path === doc.basePath || f.path === `deliverables/${doc.basePath}`);
+	$effect(() => {
+		const wanted = doc.evidence;
+		const slug = project;
+		void doc.basePath;
+		evidence = null;
+		if (!wanted || !portflow.enabled) return;
+		let stale = false;
+		portflowApi
+			.project(slug)
+			.then((view) => {
+				if (!stale) evidence = view.evidence.find(isEvidenceFile) ?? view.evidence.find((e) => e.name === wanted) ?? null;
+			})
+			.catch(() => {});
+		return () => (stale = true);
+	});
+	const evidenceSaved = (items: Evidence[]) => (evidence = items.find((e) => e.slug === evidence?.slug) ?? evidence);
+
+	// Any other deliverable can have one too, kept in Ledger for when it is handed in: offered under the document while
+	// it is worked on, as one line until it is written.
+	let described = $state<DeliverableDescription | null>(null);
+	$effect(() => {
+		const slug = project;
+		const path = doc.basePath;
+		const inPortflow = !!doc.evidence;
+		described = null;
+		if (inPortflow) return;
+		let stale = false;
+		api
+			.getDeliverableDescription(slug, path)
+			.then((d) => {
+				if (!stale) described = d;
+			})
+			.catch(() => {});
+		return () => (stale = true);
+	});
+
+	// ---- renaming ------------------------------------------------------------------------------
+	// The live file gets another name (its extension stays) and its versions and feedback follow; the page moves along. An
+	// evidence item is named after the item in Portflow, so it is renamed there.
+
+	let renaming = $state(false);
+	let newName = $state('');
+	let renameBusy = $state(false);
+
+	function startRenaming() {
+		newName = title;
+		renaming = true;
+	}
+
+	async function rename() {
+		if (!newName.trim() || renameBusy) return;
+		renameBusy = true;
+		await flush();
+		const to = await attempt(() => api.renameDeliverable(project, doc.path, newName.trim()));
+		renameBusy = false;
+		if (!to) return;
+		renaming = false;
+		dirty = false;
+		await refresh();
+		const url = new URL(deliverableUrl(project, to), page.url);
+		if (cameFrom) url.searchParams.set('thread', cameFrom);
+		await goto(url.pathname + url.search, { replaceState: true });
+	}
 
 	// ---- actions -------------------------------------------------------------------------------
 
@@ -198,11 +249,27 @@
 	const manMadeConflict = $derived(level === 'man-made' && (aiMade || provenance.historyHasAi));
 	const suggestManMade = $derived(!aiMade && !provenance.historyHasAi && !level);
 
+	// Wireframe D5: the project's intended label is offered, a study project's version needs a label, and a
+	// label other than the intended one asks you to confirm it honestly. It never blocks: confirm or change it.
+	const projectMeta = $derived(data.meta);
+	const deliverableMeta = $derived(data.deliverableMeta);
+	const intended = $derived(projectMeta?.intendedMmm ?? null);
+	const labelRequired = $derived(projectMeta?.kind === 'study');
+	const differs = $derived(!!intended && !!level && level !== intended);
+	let confirmed = $state(false);
+	let confirmReason = $state('');
+	$effect(() => {
+		void level;
+		confirmed = false;
+	});
+	const publishBlocked = $derived((labelRequired && !level) || (differs && !confirmed));
+
 	function startPublishing() {
 		bump = 'minor';
 		custom = '';
 		aiMade = stopped !== null;
-		level = provenance.suggestedLabel ?? '';
+		level = intended ?? provenance.suggestedLabel ?? '';
+		confirmReason = '';
 		promptId = stopped?.promptId ?? '';
 		changeNote = '';
 		publishing = true;
@@ -224,6 +291,19 @@
 		);
 		publishBusy = false;
 		if (!published) return;
+		if (differs && intended && level) {
+			await attempt(() =>
+				api.confirmLabel({
+					project,
+					path: doc.path,
+					version: published.versions.at(-1) ?? '',
+					intended,
+					chosen: level as MmmLevel,
+					reason: confirmReason.trim(),
+					at: new Date().toISOString()
+				})
+			);
+		}
 		publishing = false;
 		toast(`Published version ${published.versions.at(-1) ?? ''}`.trim());
 		await refresh();
@@ -231,7 +311,7 @@
 
 	async function remove() {
 		const ok = await confirmDialog({
-			title: `Delete “${doc.name}”?`,
+			title: `Delete "${doc.name}"?`,
 			message: doc.versions.length
 				? 'The live file is deleted. Its published versions are kept and stay readable.'
 				: 'The file is deleted from the project.',
@@ -258,13 +338,8 @@
 
 	// What else can be done with it, behind the ⋯ next to Publish. Delete only for the live file; a version is kept.
 	const more = $derived<MenuItem[]>([
-		...(isMarkdown ? [{ id: 'copy', label: 'Copy markdown', icon: Copy }] : []),
-		...(doc.exists
-			? [
-					{ id: 'open', label: 'Open in editor', icon: ExternalLink },
-					{ id: 'reveal', label: 'Show in folder', icon: FolderOpen }
-				]
-			: []),
+		// Copy, Open and Show in folder are buttons of their own beside it.
+		...(!snapshot && doc.exists && !doc.evidence ? [{ id: 'rename', label: 'Rename', icon: TextCursorInput }] : []),
 		...(!snapshot && doc.exists ? [{ id: 'delete', label: 'Delete deliverable', icon: Trash, danger: true, rule: true }] : [])
 	]);
 
@@ -272,6 +347,7 @@
 		if (id === 'copy') void copyMarkdown();
 		else if (id === 'open') void open(false);
 		else if (id === 'reveal') void open(true);
+		else if (id === 'rename') startRenaming();
 		else if (id === 'delete') void remove();
 	}
 
@@ -369,54 +445,44 @@
 	);
 </script>
 
-<svelte:head><title>{doc.name} · Ledger</title></svelte:head>
+<svelte:head><title>{title} | Ledger</title></svelte:head>
 
+<!-- No tabs under it, so it keeps its own space below the buttons (`flat`), like the other pages' headers. -->
 <div class="header-wrap flat">
-	<div class="crumbs">
-		<a href="/projects/{project}">{data.project.name}</a><span>/</span><a href="/projects/{project}/deliverables">Deliverables</a>
-	</div>
 	<div class="header-top">
 		<div style="flex:1;min-width:0">
 			<h1 title={doc.path}>
-				{doc.name}
+				{title}
 				<span class="thread-box deliverable-pill" title="The deliverable this page is about, and which of its versions is open">
 					<FileText size={15} />
 					<span class="tb-label">Deliverable</span>
 					<span class="db-value">{snapshot ? `v${doc.version}` : 'Live'}</span>
 				</span>
 			</h1>
-			<div class="subline">
-				<span class="badge type">{doc.kind === 'markdown' ? 'Markdown' : doc.kind === 'image' ? 'Image' : 'File'}</span>
-				{#if snapshot}
-					<span class="badge published">v{doc.version}</span>
-				{:else if draft || !latest}
-					<span class="badge draft">{draft?.since ? `Draft after v${draft.since}` : 'Draft'}</span>
-				{:else}
-					<span class="badge published">Same as v{latest}</span>
-				{/if}
-				<span>{formatSize(doc.size)}</span>
-				{#if provenance.summary.label}<MmmBadge level={provenance.summary.label.level} />{/if}
-				{#if doc.path.includes('/')}<span class="mono">{doc.path}</span>{/if}
-				{#if isMarkdown && !snapshot && doc.exists}
-					<span class="save-state">{saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Unsaved changes'}</span>
-				{/if}
-			</div>
+			{#if deliverableMeta}
+				<p class="pj-goal"><span><strong>Goal</strong> {deliverableMeta.goal}</span></p>
+			{/if}
+			{#if doc.attachments.length}
+				<p class="doc-attachments">
+					<Paperclip size={13} />
+					<span>With it in Portflow:</span>
+					{#each doc.attachments as file (file)}
+						<a href={deliverableUrl(project, file)} class="mono">{file.split('/').at(-1)}</a>
+					{/each}
+				</p>
+			{/if}
 		</div>
 		<div class="header-actions">
-			<div class="thread-box" title="Notes on publishing, new feedback and the prompts made from feedback go to this thread">
-				<MessagesSquare size={15} />
-				<span class="tb-label">Thread</span>
-				{#if threadOptions.length}
-					<Dropdown bind:value={workThread} options={threadOptions} label="Thread for this page" align="end" />
-				{:else}
-					<button class="link accent" onclick={() => newThreadFlow(project)}>Create one</button>
-				{/if}
-			</div>
+			{#if isMarkdown}<button class="btn ghost small" onclick={copyMarkdown}>Copy markdown</button>{/if}
+			{#if doc.exists}
+				<button class="btn ghost small" onclick={() => open(false)}>Open</button>
+				<button class="btn ghost small" onclick={() => open(true)}>Show in folder</button>
+			{/if}
 			{#if !snapshot && doc.exists}
-				<button class="btn primary" onclick={startPublishing}>Publish version…</button>
+				<button class="btn primary small" onclick={startPublishing}>Publish version</button>
 			{/if}
 			{#if more.length}
-				<Menu class="btn ghost icon-only" label="More actions" items={more} onpick={doMore} align="end"><Ellipsis size={18} /></Menu>
+				<Menu class="btn ghost small icon-only" label="More actions" items={more} onpick={doMore} align="end"><Ellipsis size={16} /></Menu>
 			{/if}
 		</div>
 	</div>
@@ -425,18 +491,24 @@
 
 <div class="doc-body">
 <div class="page">
-	<div class="page-inner wide" bind:this={docArea}>
+	<div class="page-inner" bind:this={docArea}>
 		{#if snapshot}
 			<div class="notice info">
-				Published version {doc.version}, {dateTime(doc.modified)} — read-only.
+				Published version {doc.version}, {dateTime(doc.modified)} - read-only.
 				{#if doc.exists}
 					<a href={deliverableUrl(project, doc.basePath)}>Back to the live file</a>
 				{/if}
 			</div>
 		{/if}
 
-		{#if !doc.exists && !snapshot}
-			<div class="notice">The file is not in the project’s deliverables folder (any more).</div>
+		{#if !doc.exists && !snapshot && doc.versions.length}
+			{@const newest = doc.versions[doc.versions.length - 1]}
+			<div class="notice">
+				There is no working copy of this file, only its published versions.
+				<a href={deliverableUrl(project, snapshotPath(doc.basePath, newest))}>Open version {newest}</a>
+			</div>
+		{:else if !doc.exists && !snapshot}
+			<div class="notice">The file is not in the project's deliverables folder (any more).</div>
 		{:else if isMarkdown && snapshot}
 			<div class="doc-view"><Markdown bind:this={reader} html={doc.html ?? ''} {images} {marks} onmark={showFeedback} /></div>
 		{:else if isMarkdown}
@@ -446,7 +518,6 @@
 						<button class:on={mode === m.id} aria-pressed={mode === m.id} onclick={() => setMode(m.id)}><m.icon size={14} />{m.label}</button>
 					{/each}
 				</div>
-				<span class="hint">Last changed {ago(doc.modified)}. Changes save automatically.</span>
 			</div>
 			{#if mode === 'reading'}
 				<div class="doc-view">
@@ -459,7 +530,7 @@
 					variant="doc"
 					minHeight="58vh"
 					label={doc.name}
-					placeholder="Write it in markdown…"
+					placeholder="Write it in markdown"
 					source={mode === 'source'}
 					{images}
 					{marks}
@@ -475,7 +546,7 @@
 			<div class="panel">
 				<h2>{doc.name}</h2>
 				<p class="sub" style="margin:0">
-					This kind of file can’t be shown here. Open it with the program your system uses for it — it opens the file in the vault, so changes you
+					This kind of file can't be shown here. Open it with the program your system uses for it - it opens the file in the vault, so changes you
 					save there are picked up when you come back.
 				</p>
 				<div class="row-end" style="justify-content:flex-start">
@@ -484,12 +555,38 @@
 				</div>
 			</div>
 		{/if}
+
+		{#if evidence}
+			<section class="card doc-evidence" aria-label="Evidence description">
+				<EvidenceDescription {evidence} onsaved={evidenceSaved} />
+			</section>
+		{:else if described && doc.exists}
+			<section class="card doc-evidence" aria-label="Evidence description">
+				<EvidenceDescription deliverable={described} ondescribed={(d) => (described = d)} />
+			</section>
+		{/if}
 	</div>
 </div>
 
 <SelectionComment root={docArea} oncomment={commentOn} />
-<DocSide bind:this={side} {project} {doc} {provenance} {draft} prompts={data.prompts} {threads} thread={workThread} {threadTitle} bind:pending {lost} {here} onlocate={showPassage} />
+<DocSide bind:this={side} {project} {doc} {provenance} {draft} prompts={data.prompts} {threads} bind:thread={workThread} {threadTitle} bind:pending {lost} {here} onlocate={showPassage} />
 </div>
+
+{#if renaming}
+	<Modal title="Rename the deliverable" onclose={() => (renaming = false)}>
+		<label class="field">
+			Name
+			<!-- svelte-ignore a11y_autofocus -->
+			<input bind:value={newName} autofocus onkeydown={(e) => e.key === 'Enter' && !e.isComposing && rename()} />
+			<span class="hint">Its versions and feedback keep belonging to it.</span>
+		</label>
+		{#snippet footer()}
+			<span class="spacer-h"></span>
+			<button class="btn ghost" onclick={() => (renaming = false)}>Cancel</button>
+			<button class="btn primary" onclick={rename} disabled={renameBusy || !newName.trim()}>Rename</button>
+		{/snippet}
+	</Modal>
+{/if}
 
 {#if publishing}
 	<Modal title="Publish a version" onclose={() => (publishing = false)}>
@@ -498,8 +595,8 @@
 			records who made the change{#if workThread}, and leaves a note in <code>{threadTitle}</code>{/if}.
 			{doc.versions.length ? `Latest so far: v${doc.versions.at(-1)}.` : 'This is the first version.'}
 		</p>
-		<label class="check"><input type="radio" bind:group={bump} value="minor" /> Minor — v{preview.minor}</label>
-		<label class="check"><input type="radio" bind:group={bump} value="major" /> Major — v{preview.major}</label>
+		<label class="check"><input type="radio" bind:group={bump} value="minor" /> Minor - v{preview.minor}</label>
+		<label class="check"><input type="radio" bind:group={bump} value="major" /> Major - v{preview.major}</label>
 		<label class="check">
 			<input type="radio" bind:group={bump} value="custom" /> Custom
 			<input
@@ -517,7 +614,7 @@
 			</label>
 			<span class="hint">
 				{#if stopped}
-					Claude Code’s run of “{stopped.promptTitle}” changed this file{stopped.status === 'finished' ? '' : ` and was ${stopped.status}`}, and no version holds
+					Claude Code's run of "{stopped.promptTitle}" changed this file{stopped.status === 'finished' ? '' : ` and was ${stopped.status}`}, and no version holds
 					its changes, so this starts ticked. Untick it only if you rewrote them yourself.
 				{:else}
 					Leave it empty for what you wrote yourself. Runs started from Ledger are recorded automatically; tick this for AI used elsewhere (a chat, an editor assistant, a paste).
@@ -525,31 +622,46 @@
 			</span>
 		</div>
 		{#if aiMade && doc.prompts.length}
-			<label class="field">
+			<div class="field">
 				<span>Which prompt asked for it? (optional)</span>
-				<select bind:value={promptId}>
-					<option value="">None of them</option>
-					{#each doc.prompts as p (p.id)}<option value={p.id}>{p.threadTitle} · {p.title || 'Untitled prompt'}</option>{/each}
-				</select>
-			</label>
+				<Dropdown
+					bind:value={promptId}
+					options={[{ value: '', label: 'None of them' }, ...doc.prompts.map((p) => ({ value: p.id, label: `${p.threadTitle} | ${p.title || 'Untitled prompt'}` }))]}
+					label="Which prompt asked for it"
+					full
+				/>
+			</div>
 		{/if}
-		<label class="field">
-			<span>AI-use label for the result (optional)</span>
-			<select bind:value={level}>
-				<option value="">Not labelled</option>
-				{#each MMM as m (m.level)}<option value={m.level}>{m.name} — {m.tagline}</option>{/each}
-			</select>
+		<div class="field">
+			<span>AI-use label for the result {labelRequired ? '' : '(optional)'}{#if labelRequired}<span class="req">required in a study project</span>{/if}</span>
+			<MmmPicker bind:value={level} label="AI-use label for the result" empty="Not labelled" />
 			{#if level}
 				<span class="hint">{MMM.find((m) => m.level === level)?.meaning}</span>
 			{/if}
 			{#if manMadeConflict}
-				<span class="pv-warn">Man-Made means no generative AI, but AI is recorded {aiMade ? 'for this change' : 'in this file’s history'}.</span>
+				<span class="pv-warn">Man-Made means no generative AI, but AI is recorded {aiMade ? 'for this change' : 'in this file\'s history'}.</span>
 			{:else if suggestManMade}
 				<span class="hint">
 					Nothing here is recorded as AI. <button class="link accent" onclick={() => (level = 'man-made')}>Label it Man-Made</button> if that is true.
 				</span>
 			{/if}
-		</label>
+		</div>
+		{#if differs && intended && level}
+			<div class="pub-confront">
+				<div class="pub-confront-head">
+					<span>This project is meant to be</span>
+					<MmmBadge level={intended} />
+					<span>and you chose</span>
+					<MmmBadge level={level} />
+				</div>
+				<p class="hint" style="margin:0">{mmmInfo(level)?.meaning} Keep it if it is true; your answer is kept with the version.</p>
+				<label class="check"><input type="checkbox" bind:checked={confirmed} /> I choose {mmmInfo(level)?.name} honestly for this version</label>
+				<input class="pub-reason" bind:value={confirmReason} placeholder="Why, in your own words (optional)" />
+				<button class="link accent" style="align-self:flex-start" onclick={() => (level = intended ?? '')}>Use {mmmInfo(intended)?.name} instead</button>
+			</div>
+		{:else if labelRequired && !level}
+			<p class="pv-warn" style="margin:0">A study project's published version needs an AI-use label.</p>
+		{/if}
 		<div class="field">
 			<span>Changelog (optional)</span>
 			<MarkdownEditor bind:value={changeNote} rows={2} label="Changelog" placeholder="What changed, in your words" />
@@ -558,7 +670,21 @@
 		{#snippet footer()}
 			<span class="spacer-h"></span>
 			<button class="btn ghost" onclick={() => (publishing = false)}>Cancel</button>
-			<button class="btn primary" onclick={publish} disabled={publishBusy || (bump === 'custom' && !custom.trim())}>Publish</button>
+			<button class="btn primary" onclick={publish} disabled={publishBusy || (bump === 'custom' && !custom.trim()) || publishBlocked}>Publish</button>
 		{/snippet}
 	</Modal>
 {/if}
+
+<style>
+	/* The document takes nearly all the room beside the side window: a narrow margin instead of the page's usual one. */
+	.doc-body > .page {
+		padding: 14px 16px;
+	}
+	/* Writing on white (the card colour: white in the light themes, the card's own in a dark one). */
+	.page-inner :global(.md-editor.md-doc) {
+		background: var(--field);
+	}
+	.doc-evidence {
+		padding: 14px 18px;
+	}
+</style>

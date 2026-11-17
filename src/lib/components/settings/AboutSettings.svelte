@@ -42,7 +42,7 @@
 		<h3 style="font-size:14px">This machine</h3>
 		<div class="kv">
 			<dt>Build</dt>
-			<dd>Ledger {settings.version}{#if about} · Tauri {about.tauriVersion} · {about.os} {about.arch}{/if}</dd>
+			<dd>Ledger {settings.version}{#if about} | Tauri {about.tauriVersion} | {about.os} {about.arch}{/if}</dd>
 			<dt>Vault</dt>
 			<dd class="mono">{settings.vaultPath}</dd>
 			<dt>Settings</dt>

@@ -89,7 +89,7 @@
 	{:else}
 		<div class="dim"></div>
 	{/if}
-	<div class="hint-bar">Drag to select an area · Esc to cancel</div>
+	<div class="hint-bar">Drag to select an area | Esc to cancel</div>
 </div>
 
 <style>

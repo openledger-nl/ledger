@@ -4,19 +4,20 @@
 	import { tick } from 'svelte';
 	import { api } from '$lib/api';
 	import type { Anchor } from '$lib/anchors';
-	import { deliverableUrl, promptName, snapshotPath, threadUrl } from '$lib/actions';
+	import { deliverableUrl, newThreadFlow, promptName, snapshotPath, threadUrl } from '$lib/actions';
 	import { date, dayKey } from '$lib/format';
 	import { orderFeedback, orderVersions } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
-	import type { Deliverable, Feedback, Prompt, ThreadSummary } from '$lib/types';
+	import type { Deliverable, Feedback, FeedbackFrom, Prompt, ThreadSummary } from '$lib/types';
+	import PersonPicker from './PersonPicker.svelte';
 	import FeedbackCard from './FeedbackCard.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	import Menu, { type MenuItem } from './Menu.svelte';
 	import PromptModal from './PromptModal.svelte';
 
 	// What was said about the file: the box to say more, and the list, by thread and, within each, by version (the version
-	// each piece was given on). New feedback goes to the page's thread (`thread`, chosen at the top of the page), on the
+	// each piece was given on). New feedback goes to the deliverable's own thread (`thread`, which the page works out), on the
 	// whole document or, with `pending`, on the passage selected in it. Open feedback can be selected, and the selected ones made
 	// into a prompt, or added to one (`prompts` are the ones about this file). `lost`: the feedback whose passage is no longer
 	// in the text; `onlocate` shows a passage in the document; `here` says whether a piece belongs to what the page shows.
@@ -25,7 +26,7 @@
 		doc,
 		prompts,
 		threads,
-		thread,
+		thread = $bindable(),
 		threadTitle,
 		pending = $bindable(null),
 		lost,
@@ -52,6 +53,11 @@
 
 	let text = $state('');
 	let busy = $state(false);
+	/** Who it is from; left empty, it is yours. */
+	const nobody = (): FeedbackFrom => ({ name: null, portflowUser: null, role: null, given: null });
+	let from = $state<FeedbackFrom>(nobody());
+	/** A Portflow evidence item: its feedback is given in Portflow and comes in with the sync; sending it there isn't built. */
+	const inPortflow = $derived(!!doc.evidence);
 	let editor: MarkdownEditor | undefined = $state();
 
 	// A passage was selected in the document: the box is where to go next.
@@ -61,10 +67,11 @@
 
 	async function add() {
 		busy = true;
-		const added = await attempt(() => api.addFeedback(project, thread, doc.path, text, pending));
+		const added = await attempt(() => api.addFeedback(project, thread, doc.path, text, pending, from.name?.trim() ? from : null));
 		busy = false;
 		if (!added) return;
 		text = '';
+		from = nobody();
 		pending = null;
 		await refresh();
 	}
@@ -105,7 +112,7 @@
 		return out.sort((a, b) => (order === 'desc' ? b.last.localeCompare(a.last) : a.first.localeCompare(b.first)));
 	});
 
-	const span = (g: ThreadGroup) => (dayKey(g.first) === dayKey(g.last) ? date(g.first) : `${date(g.first)} – ${date(g.last)}`);
+	const span = (g: ThreadGroup) => (dayKey(g.first) === dayKey(g.last) ? date(g.first) : `${date(g.first)} - ${date(g.last)}`);
 	const isOpen = (f: Feedback) => f.status === 'open';
 	const versionUrl = (version: string | null) => deliverableUrl(project, version ? snapshotPath(doc.basePath, version) : doc.basePath);
 	const promptsOf = (f: Feedback) => prompts.filter((p) => p.feedback.includes(f.id)).map((p) => p.title || 'Untitled prompt');
@@ -139,17 +146,27 @@
 	}
 </script>
 
+{#if thread && !pending && !inPortflow}
+	<span class="hint">Select text in the document to comment on just that passage.</span>
+{/if}
 <div class="field">
 	<span>
 		{#if pending}On the selected text{:else if snapshot}On version {doc.version}, as a whole{:else}On the whole document{/if}
 	</span>
 	{#if !thread}
-		<span class="hint">Create a thread first — feedback is written in one.</span>
+		<span class="hint">
+			Create a thread first - feedback is written in one. <button class="link accent" onclick={() => newThreadFlow(project)}>Create one</button>
+		</span>
+	{:else if inPortflow}
+		<span class="hint">Feedback on a Portflow item is given in Portflow; it comes in with the sync.</span>
+		<div class="row-end">
+			<button class="btn small primary" disabled title="Sending feedback to Portflow isn't there yet">Add feedback</button>
+		</div>
 	{:else}
 		{#if pending}
 			<div class="quote passage pending">
 				<span class="qhead">Selected text</span>
-				<span class="qtext">“{pending.text}”</span>
+				<span class="qtext">"{pending.text}"</span>
 				<button class="icon-btn" title="Comment on the whole document instead" aria-label="Comment on the whole document instead" onclick={() => (pending = null)}>
 					<X size={14} />
 				</button>
@@ -159,16 +176,13 @@
 			bind:this={editor}
 			bind:value={text}
 			label="Feedback"
-			placeholder="What works, what doesn’t, what to change…"
+			placeholder="What works, what doesn't, what to change"
 			onsubmit={() => text.trim() && add()}
 		/>
-		<div class="row-end" style="align-items:center">
-			<span class="hint" style="margin-right:auto">In the thread “{threadTitle}”</span>
+		<PersonPicker bind:value={from} {project} />
+		<div class="row-end">
 			<button class="btn small primary" onclick={add} disabled={busy || !text.trim()}>Add feedback</button>
 		</div>
-		{#if !pending}
-			<span class="hint">To comment on a passage, select it in the document and click the comment icon beside it.</span>
-		{/if}
 	{/if}
 </div>
 
@@ -181,7 +195,7 @@
 		{#each group.versions as v (v.version ?? 'live')}
 			<div class="fb-version">
 				<a class="vchip" class:on={doc.version === v.version} href={versionUrl(v.version)}>{v.version ? `v${v.version}` : 'Live'}</a>
-				<span class="pv-meta">{v.items.filter(isOpen).length} open · {v.items.length} in all</span>
+				<span class="pv-meta">{v.items.filter(isOpen).length} open | {v.items.length} in all</span>
 				{#if v.items.some(isOpen)}<button class="link accent" onclick={() => selectOpen(v.items)}>Select open</button>{/if}
 			</div>
 			<div class="fb-list">
@@ -237,3 +251,5 @@
 		onclose={() => (creating = false)}
 	/>
 {/if}
+
+

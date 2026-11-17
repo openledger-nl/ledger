@@ -638,9 +638,9 @@ pub struct Provenance {
 
 fn excerpt(text: &str) -> String {
     let line = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
-    let mut out: String = line.chars().take(140).collect();
+    let mut out: String = line.chars().take(137).collect(); // at most 140 with the three dots
     if line.chars().count() > 140 {
-        out = format!("{}…", out.trim_end());
+        out = format!("{}...", out.trim_end());
     }
     out
 }
@@ -853,4 +853,20 @@ fn draft_of(conn: &Connection, project: &str, base: &str, resolved: &[Resolved])
         _ => live_size != size || live_modified > modified,
     };
     Ok(changed.then(|| (Some(newest.version.clone()), live_modified)))
+}
+
+/// A version published with another label than the project's intended one: the intended label and your reason (maybe
+/// none) are kept with the version's record, so it shows that the difference was seen and chosen.
+pub fn confirm_label(conn: &Connection, project: &str, path: &str, version: &str, intended: &str, reason: &str) -> Result<()> {
+    let intended = level(intended).ok_or_else(|| Error::invalid("That isn't one of the five AI-use labels"))?;
+    let base = crate::deliverables::split_version(path).0;
+    let reason = reason.trim();
+    let changed = conn.execute(
+        "UPDATE version_records SET intended_mmm = ?4, label_reason = ?5 WHERE project_slug = ?1 AND deliverable_path = ?2 AND version = ?3",
+        params![project, base, version, intended, (!reason.is_empty()).then_some(reason)],
+    )?;
+    if changed == 0 {
+        return Err(Error::not_found("Version not found"));
+    }
+    Ok(())
 }

@@ -18,10 +18,12 @@ import EncryptionSettings from './EncryptionSettings.svelte';
 import GitHubSettings from './GitHubSettings.svelte';
 import LogSettings from './LogSettings.svelte';
 import OrderSettings from './OrderSettings.svelte';
+import PortflowSettings from './PortflowSettings.svelte';
 import ScreenshotSettings from './ScreenshotSettings.svelte';
 import SemesterSettings from './SemesterSettings.svelte';
-import SidebarSettings from './SidebarSettings.svelte';
 import TemplateSettings from './TemplateSettings.svelte';
+import SidebarFoldSettings from './SidebarFoldSettings.svelte';
+import SidebarSettings from './SidebarSettings.svelte';
 import ThemeSettings from './ThemeSettings.svelte';
 import TrelloSettings from './TrelloSettings.svelte';
 import UpdateSettings from './UpdateSettings.svelte';
@@ -58,10 +60,12 @@ export const panels: Panel[] = [
 	{ id: 'semesters', group: 'semesters', title: 'Semesters', keywords: 'semester sprint sprints vacation holiday break weeks preset nj26 plan calendar half year', component: SemesterSettings },
 	{ id: 'templates', group: 'templates', title: 'Templates', keywords: 'template prompt guiding questions skeleton deliverable shared every project global', component: TemplateSettings },
 	{ id: 'theme', group: 'visual', title: 'Theme', keywords: 'colours colors dark light night appearance look accent', component: ThemeSettings },
+	{ id: 'sidebar', group: 'visual', title: 'Sidebar', keywords: 'sidebar hide fold collapse rail icons narrow half screen window resize minimise minimize', component: SidebarFoldSettings },
 	{ id: 'order', group: 'visual', title: 'Order', keywords: 'sort newest oldest first lists posts threads feedback versions', component: OrderSettings },
 	{ id: 'vault', group: 'sync', title: 'Vault', keywords: 'folder location path obsidian markdown reload disk files switch', component: VaultSettings },
 	{ id: 'github', group: 'sync', title: 'Sync to GitHub', keywords: 'repository repo branch access token private push pull status sync now', component: GitHubSettings },
 	{ id: 'encryption', group: 'sync', title: 'Encryption', keywords: 'encrypt key recovery aes secret import export generate', component: EncryptionSettings },
+	{ id: 'portflow', group: 'sync', title: 'Portflow', keywords: 'portflow fontys portfolio canvas drieam feedback coach teacher learning outcomes evidence collection semester sign in', component: PortflowSettings },
 	{ id: 'trello', group: 'sync', title: 'Sync with Trello', keywords: 'trello cards board tasks stories api key token person', component: TrelloSettings },
 	{ id: 'screenshots', group: 'tools', title: 'Screenshots', keywords: 'screenshot hotkey shortcut flameshot capture picture tool command print', component: ScreenshotSettings },
 	{ id: 'claude', group: 'tools', title: 'Claude Code', keywords: 'claude ai prompt run model permission guard rails cli program auto edit plan read', component: ClaudeCodeSettings },

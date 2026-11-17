@@ -3,6 +3,7 @@
 	import { deliverableUrl, formatSize, threadUrl } from '$lib/actions';
 	import { ago, date, dateTime, dayKey, plural } from '$lib/format';
 	import { MMM, authorLabel, sizeChange } from '$lib/mmm';
+	import { MMM_ICONS } from '$lib/mmmIcons';
 	import { orderProvenance } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { attempt, refresh } from '$lib/ui.svelte';
@@ -49,13 +50,13 @@
 	];
 
 	const levels = (v: ProvenanceVersion): MenuItem[] => [
-		...MMM.map((m) => ({ id: m.level, label: m.name, sub: m.tagline, dot: m.color, checked: v.mmm === m.level })),
+		...MMM.map((m) => ({ id: m.level, label: m.name, sub: m.tagline, image: MMM_ICONS[m.level], dot: m.color, checked: v.mmm === m.level })),
 		...(v.mmm ? [{ id: '', label: 'Remove the label', icon: X, rule: true }] : [])
 	];
 
 	/** "3 Oct", or "3 Oct – 9 Oct" when a thread's part in the file spans days. */
 	function span(first: string, last: string): string {
-		return dayKey(first) === dayKey(last) ? date(first) : `${date(first)} – ${date(last)}`;
+		return dayKey(first) === dayKey(last) ? date(first) : `${date(first)} - ${date(last)}`;
 	}
 
 	const promptUrl = (thread: string, id: string) => `${threadUrl(project, thread)}?item=pr-${id}`;
@@ -75,7 +76,7 @@
 	</div>
 	<div class="pv-counts">
 		{plural(summary.versions, 'version')}
-		· {summary.ai} made with AI · {summary.human} by you{summary.unrecorded ? ` · ${summary.unrecorded} not recorded` : ''}
+		| {summary.ai} made with AI | {summary.human} by you{summary.unrecorded ? ` | ${summary.unrecorded} not recorded` : ''}
 	</div>
 </div>
 
@@ -91,9 +92,9 @@
 			<span class="pv-meta">the live file changed {ago(draft.modified)}</span>
 			{#if draft.stoppedRun}
 				<div class="pv-warn">
-					Claude Code’s run of “{draft.stoppedRun.promptTitle}” changed this file{draft.stoppedRun.status === 'finished'
+					Claude Code's run of "{draft.stoppedRun.promptTitle}" changed this file{draft.stoppedRun.status === 'finished'
 						? ''
-						: ` and was ${draft.stoppedRun.status}`}, and no version holds it yet. Publishing starts with “made with AI” ticked.
+						: ` and was ${draft.stoppedRun.status}`}, and no version holds it yet. Publishing starts with "made with AI" ticked.
 				</div>
 			{/if}
 		{/if}
@@ -103,7 +104,7 @@
 
 {#if listOrder.order === 'desc'}{@render liveRow()}{/if}
 
-{#each groups as group (group.thread?.slug ?? '—')}
+{#each groups as group (group.thread?.slug ?? '-')}
 	<section class="pv-group">
 		<div class="pv-thread">
 			{#if group.thread}
@@ -138,8 +139,8 @@
 						<span class="glyph" title="Claude Code run"><Play size={13} /></span>
 						<span>
 							Claude Code run{e.status === 'finished' ? '' : `, ${e.status}`}
-							· {e.model || 'default model'} · {e.seconds < 60 ? `${e.seconds} s` : `${Math.floor(e.seconds / 60)} min ${e.seconds % 60} s`}
-							{e.version ? (e.status === 'finished' ? `· published v${e.version}` : `· its changes went into v${e.version}`) : '· published nothing'}
+							| {e.model || 'default model'} | {e.seconds < 60 ? `${e.seconds} s` : `${Math.floor(e.seconds / 60)} min ${e.seconds % 60} s`}
+							{e.version ? (e.status === 'finished' ? `| published v${e.version}` : `| its changes went into v${e.version}`) : '| published nothing'}
 						</span>
 					</div>
 				{:else if e.kind === 'feedback'}
@@ -175,7 +176,7 @@
 								onpick={(id) => setLevel(e, id)}
 								disabled={busy}
 							>
-								{#if e.mmm}<MmmBadge level={e.mmm} />{:else}<span class="pv-unset">Set label…</span>{/if}<ChevronDown size={12} />
+								{#if e.mmm}<MmmBadge level={e.mmm} />{:else}<span class="pv-unset">Set label</span>{/if}<ChevronDown size={12} />
 							</Menu>
 						</div>
 						<div class="pv-line">
@@ -222,7 +223,7 @@
 									<dt>Mode</dt>
 									<dd>{e.run.permissionMode || 'default'}</dd>
 									<dt>Run</dt>
-									<dd>{e.run.status} · {e.run.seconds} s{e.run.turns !== null ? ` · ${plural(e.run.turns, 'turn')}` : ''}</dd>
+									<dd>{e.run.status} | {e.run.seconds} s{e.run.turns !== null ? ` | ${plural(e.run.turns, 'turn')}` : ''}</dd>
 								{/if}
 							</dl>
 						</details>

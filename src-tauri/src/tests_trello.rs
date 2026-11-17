@@ -1805,7 +1805,7 @@ fn the_key_and_token_never_appear_anywhere_but_the_env_file() {
     let shown = serde_json::to_string(&view).unwrap();
     assert!(view.has_key && view.has_token);
     assert!(!shown.contains(KEY) && !shown.contains(TOKEN), "{shown}");
-    assert_eq!((view.key_hint.as_str(), view.token_hint.as_str()), ("…cdef", "…cdef"), "only how they end");
+    assert_eq!((view.key_hint.as_str(), view.token_hint.as_str()), ("...cdef", "...cdef"), "only how they end");
     assert!(!error.to_string().contains(KEY) && !error.to_string().contains(TOKEN));
 
     // Not in the settings, the bookkeeping, the vault or the conflicts: only in .ledger/.env.

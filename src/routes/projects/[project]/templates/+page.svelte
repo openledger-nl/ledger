@@ -5,7 +5,7 @@
 	let { data }: { data: PageData } = $props();
 </script>
 
-<svelte:head><title>Templates · {data.project.name} · Ledger</title></svelte:head>
+<svelte:head><title>Templates | {data.project.name} | Ledger</title></svelte:head>
 
 <div class="page">
 	<div class="page-inner">

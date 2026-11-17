@@ -5,8 +5,10 @@
 	import { orderVersions } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { attempt, refresh } from '$lib/ui.svelte';
-	import type { DeliverableSummary } from '$lib/types';
+	import type { DeliverableSummary, FeedbackFrom } from '$lib/types';
+	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
+	import PersonPicker from './PersonPicker.svelte';
 	import Modal from './Modal.svelte';
 
 	/** Feedback lands on a deliverable — its current file, or any version that was published. */
@@ -19,12 +21,13 @@
 	let loaded = $state(false);
 	let target = $state(start());
 	let body = $state('');
+	let from = $state<FeedbackFrom>({ name: null, portflowUser: null, role: null, given: null });
 	let saving = $state(false);
 
-	const options = $derived(
+	const options = $derived<DropdownOption[]>(
 		all.flatMap((d) => [
 			...(d.exists ? [{ value: d.path, label: d.path }] : []),
-			...orderVersions(d.versions, listOrder.order).map((v) => ({ value: snapshotPath(d.path, v), label: `${d.path} · version ${v}` }))
+			...orderVersions(d.versions, listOrder.order).map((v) => ({ value: snapshotPath(d.path, v), label: `${d.path} | version ${v}` }))
 		])
 	);
 
@@ -36,7 +39,7 @@
 
 	async function save() {
 		saving = true;
-		const saved = await attempt(() => api.addFeedback(project, thread, target, body));
+		const saved = await attempt(() => api.addFeedback(project, thread, target, body, null, from.name ? from : null));
 		saving = false;
 		if (!saved) return;
 		await refresh();
@@ -54,15 +57,14 @@
 	{#if loaded && options.length === 0}
 		<p class="notice">This project has no deliverables yet. Create one from a prompt first.</p>
 	{:else}
-		<label class="field">
-			Deliverable
-			<select bind:value={target}>
-				{#each options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
-			</select>
-		</label>
 		<div class="field">
-			Your feedback
-			<MarkdownEditor bind:value={body} rows={8} label="Your feedback" placeholder="What works, what doesn’t, what to change. Markdown works." />
+			Deliverable
+			<Dropdown bind:value={target} {options} label="Deliverable" full />
+		</div>
+		<PersonPicker bind:value={from} {project} />
+		<div class="field">
+			The feedback
+			<MarkdownEditor bind:value={body} rows={8} label="Your feedback" placeholder="What works, what doesn't, what to change. Markdown works." />
 		</div>
 	{/if}
 

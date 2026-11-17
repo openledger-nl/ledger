@@ -23,7 +23,7 @@
 
 	/** “A”, “B” and “C”. */
 	function quoted(titles: string[]) {
-		const q = titles.map((t) => `“${t.trim() || 'a prompt'}”`);
+		const q = titles.map((t) => `"${t.trim() || 'a prompt'}"`);
 		return q.length > 1 ? `${q.slice(0, -1).join(', ')} and ${q.at(-1)}` : (q[0] ?? '');
 	}
 
@@ -40,9 +40,9 @@
 				<div class="un-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent ?? undefined}>
 					<span style:width="{percent ?? 0}%"></span>
 				</div>
-				<span>Downloading… {percent ?? 0}%</span>
+				<span>Downloading... {percent ?? 0}%</span>
 			{:else if branch}
-				<span><span class="dot pulse"></span> Bringing in the new version…</span>
+				<span><span class="dot pulse"></span> Bringing in the new version...</span>
 			{:else}
 				<span><span class="dot pulse"></span> Getting the update ready. Ledger restarts when it is installed.</span>
 			{/if}
@@ -53,7 +53,7 @@
 				<span class="dot warn pulse"></span>
 				{branch ? 'Ready.' : 'Downloaded.'} Waiting for {updates.waitingFor.join(' and ')}, then Ledger {branch ? 'updates' : 'installs it and restarts'}.
 			</span>
-			<div class="un-foot"><button class="btn small ghost" onclick={stopWaiting}>Don’t install now</button></div>
+			<div class="un-foot"><button class="btn small ghost" onclick={stopWaiting}>Don't install now</button></div>
 		</div>
 	{:else if updates.phase === 'ask'}
 		<div class="un-status">
@@ -108,7 +108,7 @@
 						</li>
 					{/each}
 				</ul>
-				{#if info.more}<div class="hint">…and {plural(info.more, 'older commit')}.</div>{/if}
+				{#if info.more}<div class="hint">...and {plural(info.more, 'older commit')}.</div>{/if}
 				{#if updates.phase !== 'applied' && info.commits.some((c) => c.breaking)}
 					<div class="un-major">
 						<TriangleAlert size={15} />
@@ -120,7 +120,7 @@
 						<div class="un-status"><span><span class="dot pulse"></span> Building the new version. You can update once it is ready.</span></div>
 					{:else if info.build === 'failed'}
 						<div class="notice bad">
-							The new version doesn’t build{info.error ? `: ${info.error}` : '.'} This one keeps running. Fix it and save, and it is built again.
+							The new version doesn't build{info.error ? `: ${info.error}` : '.'} This one keeps running. Fix it and save, and it is built again.
 						</div>
 					{:else if !info.restart}
 						<div class="hint">Only the front end changed: updating reloads the window.</div>
@@ -149,7 +149,7 @@
 				<span class="un-icon"><CircleArrowUp size={18} /></span>
 				<div class="un-title">
 					<strong>Ledger v{info.version} is available</strong>
-					<span class="un-sub">You have v{info.currentVersion}{info.date ? ` · released ${date(info.date)}` : ''}</span>
+					<span class="un-sub">You have v{info.currentVersion}{info.date ? ` | released ${date(info.date)}` : ''}</span>
 				</div>
 				{#if !busy}
 					<button class="icon-btn" aria-label="Later" title="Later" onclick={later}><X size={16} /></button>

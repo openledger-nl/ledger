@@ -114,7 +114,7 @@ fn body(cwd: &str, facts: &RunFacts) -> String {
             out.push('\n');
         }
         if facts.steps.len() > MAX_STEPS {
-            out.push_str(&format!("- …and {} more\n", facts.steps.len() - MAX_STEPS));
+            out.push_str(&format!("- ...and {} more\n", facts.steps.len() - MAX_STEPS));
         }
         for denied in denials.iter().take(10) {
             out.push_str(&format!("- Refused by the permission mode: `{}`\n", without_folder(denied, cwd).replace('`', "'")));
@@ -164,8 +164,8 @@ fn shorten(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_string();
     }
-    let cut: String = text.chars().take(max).collect();
-    format!("{}…", cut.trim_end())
+    let cut: String = text.chars().take(max.saturating_sub(3)).collect(); // room for the three dots
+    format!("{}...", cut.trim_end())
 }
 
 // ---- the database -----------------------------------------------------------------------------------

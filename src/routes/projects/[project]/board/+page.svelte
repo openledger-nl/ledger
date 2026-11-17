@@ -82,7 +82,7 @@
 
 	async function deleteColumn(column: Column) {
 		const ok = await confirmDialog({
-			title: `Delete the “${column.name}” column?`,
+			title: `Delete the "${column.name}" column?`,
 			message: 'A column that still holds tasks cannot be deleted.',
 			confirmLabel: 'Delete column',
 			danger: true
@@ -91,12 +91,12 @@
 	}
 </script>
 
-<svelte:head><title>Board · {data.project.name} · Ledger</title></svelte:head>
+<svelte:head><title>Board | {data.project.name} | Ledger</title></svelte:head>
 
 <div class="board-tools">
-	<input type="search" placeholder="Filter tasks…" bind:value={filter} aria-label="Filter tasks" />
+	<input type="search" placeholder="Filter tasks" bind:value={filter} aria-label="Filter tasks" />
 	{#if filter.trim()}<span class="hint">{visible.length} of {total} shown</span>{:else}
-		<span class="hint">{plural(total, 'task')} · drag a card, or use its arrows, to change its column.</span>
+		<span class="hint">{plural(total, 'task')} | drag a card, or use its arrows, to change its column.</span>
 	{/if}
 	<span style="flex:1"></span>
 	<button class="btn ghost small" onclick={addColumn}>Add column</button>

@@ -1,24 +1,29 @@
 <script lang="ts">
+	import Package from '@lucide/svelte/icons/package';
 	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api } from '$lib/api';
-	import { projectUrl, threadUrl } from '$lib/actions';
+	import { api, portflowApi } from '$lib/api';
+	import { baseName, deliverableUrl, liveDeliverable, projectUrl, threadUrl } from '$lib/actions';
 	import Composer from '$lib/components/Composer.svelte';
+	import EvidenceCard from '$lib/components/EvidenceCard.svelte';
 	import FeedbackCard from '$lib/components/FeedbackCard.svelte';
 	import FeedbackModal from '$lib/components/FeedbackModal.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import PostCard from '$lib/components/PostCard.svelte';
 	import PromptCard from '$lib/components/PromptCard.svelte';
 	import PromptModal from '$lib/components/PromptModal.svelte';
+	import SideWindow from '$lib/components/SideWindow.svelte';
 	import StoryModal from '$lib/components/StoryModal.svelte';
 	import UploadCard from '$lib/components/UploadCard.svelte';
 	import UploadModal from '$lib/components/UploadModal.svelte';
-	import { date, dayKey, dayLabel, plural } from '$lib/format';
+	import { dayKey, dayLabel, plural } from '$lib/format';
 	import { orderFlow } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
+	import { portflow } from '$lib/portflow.svelte';
+	import { matches, threadSearch } from '$lib/threadSearch.svelte';
 	import { attempt, confirmDialog, promptDialog, refresh } from '$lib/ui.svelte';
-	import type { Feedback, Post, Prompt, Story, Upload } from '$lib/types';
+	import type { Evidence, Feedback, Post, Prompt, Story, Upload } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -26,11 +31,87 @@
 	const thread = $derived(data.thread);
 	const project = $derived(thread.projectSlug);
 	const slug = $derived(thread.slug);
-	const projectName = $derived(data.project.name);
 	const posts = $derived(thread.posts);
 	const byId = $derived(Object.fromEntries(posts.map((p) => [p.id, p])));
+
+	// Each post's kind and labels (wireframe C1), shown on the post; finding posts by them is the search's.
+	const tagsById = $derived(new Map(data.postMeta.map((m) => [m.postId, m])));
+	const tagsOf = (id: string) => tagsById.get(id) ?? null;
 	const siblings = $derived((data.projects.find((p) => p.slug === project)?.threads ?? []).filter((t) => t.slug !== slug));
 	const linked = $derived(new Set(thread.linkedThreads.map((t) => t.slug)));
+
+	// The thread's evidence items, with Portflow on: loaded again with the page's data.
+	let evidence = $state<Evidence[]>([]);
+	$effect(() => {
+		const [p, t] = [project, slug];
+		void data;
+		if (!portflow.enabled) {
+			evidence = [];
+			return;
+		}
+		let stale = false;
+		portflowApi.threadEvidence(p, t).then(
+			(items) => !stale && (evidence = items),
+			() => !stale && (evidence = [])
+		);
+		return () => (stale = true);
+	});
+	const evidenceNames = $derived(Object.fromEntries(evidence.map((e) => [e.slug, e.name])));
+
+	/**
+	 * The thread's other deliverables, for the side window beside the timeline: what its prompts ask for, what its
+	 * feedback is on and what was published into it, each by its live file with the versions seen here; an evidence
+	 * item's own files are shown with that item.
+	 */
+	const otherDeliverables = $derived.by(() => {
+		const ofEvidence = new Set(evidence.flatMap((e) => [...e.files.map((f) => f.path), ...e.versions.flatMap((v) => v.files.map((f) => f.path ?? ''))]));
+		const found = new Map<string, Set<string>>();
+		const add = (path: string, versions: string[] = []) => {
+			const seen = found.get(path) ?? new Set<string>();
+			versions.forEach((v) => seen.add(v));
+			found.set(path, seen);
+		};
+		for (const p of thread.prompts) for (const d of p.deliverables) add(d.path, d.versions);
+		for (const f of thread.feedback) if (f.deliverablePath) add(liveDeliverable(f.deliverablePath, f.deliverableVersion));
+		for (const p of posts) if (p.versionPublished && p.deliverablePath) add(p.deliverablePath, p.deliverableVersion ? [p.deliverableVersion] : []);
+		const byNumber = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+		return [...found]
+			.filter(([path]) => !ofEvidence.has(path))
+			.map(([path, versions]) => {
+				// The latest prompt that asks for it, and the feedback on it (on any of its versions).
+				const prompt = thread.prompts.filter((p) => p.deliverables.some((d) => d.path === path)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+				const feedback = thread.feedback.filter((f) => f.deliverablePath && liveDeliverable(f.deliverablePath, f.deliverableVersion) === path);
+				return {
+					path,
+					latest: [...versions].sort(byNumber).at(-1) ?? null,
+					prompt,
+					template: thread.prompts.find((p) => p.templateName && p.deliverables.some((d) => d.path === path))?.templateName ?? null,
+					feedback: feedback.length,
+					open: feedback.filter((f) => f.status === 'open').length
+				};
+			})
+			.sort((a, b) => baseName(a.path).localeCompare(baseName(b.path)));
+	});
+	const sideCount = $derived(evidence.length + otherDeliverables.length);
+	const sideSections = $derived([
+		{ id: 'deliverables', title: 'Deliverables', icon: Package, count: sideCount, headCount: sideCount ? String(sideCount) : undefined }
+	]);
+	/** What a piece of feedback is on in Portflow, to say where to go there. */
+	function portflowItemOf(f: Feedback): string | null {
+		const item = evidence.find((e) => e.slug === f.evidence);
+		if (!item?.portflowId) return null;
+		return `"${item.name}"${f.evidenceVersion ? `, version ${f.evidenceVersion}` : ''}`;
+	}
+
+	/** Replies to feedback (from Portflow) are shown inside the feedback they answer, not on their own. */
+	const feedbackReplies = $derived.by(() => {
+		const ids = new Set(thread.feedback.map((f) => f.id));
+		const replies = new Map<string, Feedback[]>();
+		for (const f of thread.feedback) {
+			if (f.replyTo && ids.has(f.replyTo)) replies.set(f.replyTo, [...(replies.get(f.replyTo) ?? []), f]);
+		}
+		return replies;
+	});
 
 	/**
 	 * Any reply chain rooted at a guiding question is pulled out of the chronological flow and shown inside
@@ -68,16 +149,29 @@
 		const entries: Entry[] = [
 			...posts.filter((p) => !structure.embedded.has(p.id)).map((post): Entry => ({ kind: 'post', key: `p-${post.id}`, at: post.createdAt, post })),
 			...thread.prompts.map((prompt): Entry => ({ kind: 'prompt', key: `pr-${prompt.id}`, at: prompt.createdAt, prompt })),
-			...thread.feedback.map((feedback): Entry => ({ kind: 'feedback', key: `f-${feedback.id}`, at: feedback.createdAt, feedback })),
+			...thread.feedback
+				.filter((f) => !(f.replyTo && thread.feedback.some((other) => other.id === f.replyTo)))
+				.map((feedback): Entry => ({ kind: 'feedback', key: `f-${feedback.id}`, at: feedback.createdAt, feedback })),
 			...thread.uploads.map((upload): Entry => ({ kind: 'upload', key: `u-${upload.id}`, at: upload.uploadedAt, upload }))
 		];
 		entries.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
 		return entries;
 	});
 
+	/** What an entry says, to search it by (the top bar's box searches this thread, see threadSearch.svelte.ts). */
+	function textOf(e: Entry): string {
+		if (e.kind === 'post') return [e.post.body, ...(structure.answers.get(e.post.id) ?? []).map((a) => a.body)].join('\n');
+		if (e.kind === 'prompt') return [e.prompt.title, e.prompt.body, e.prompt.base, ...e.prompt.deliverables.map((d) => d.path)].join('\n');
+		if (e.kind === 'feedback')
+			return [e.feedback.body, e.feedback.from ?? '', e.feedback.quote ?? '', ...(feedbackReplies.get(e.feedback.id) ?? []).map((r) => r.body)].join('\n');
+		return [e.upload.name, e.upload.description].join('\n');
+	}
+	const searching = $derived(threadSearch.query.trim());
+	const found = $derived(searching ? chronological.filter((e) => matches(textOf(e), searching)) : chronological);
+
 	/** The same entries read the way Settings says (oldest or newest first), each day under its own heading. */
 	const flow = $derived.by(() => {
-		const entries = orderFlow(chronological, listOrder.order);
+		const entries = orderFlow(found, listOrder.order);
 		return entries.map((entry, i) => ({
 			entry,
 			day: dayKey(entry.at),
@@ -144,7 +238,7 @@
 
 	async function remove() {
 		const ok = await confirmDialog({
-			title: `Delete “${thread.title}”?`,
+			title: `Delete "${thread.title}"?`,
 			message: `Its ${plural(posts.length, 'post')}, prompts, feedback and uploaded files go with it. Deliverables are kept, and its user stories lose the link.`,
 			confirmLabel: 'Delete thread',
 			danger: true
@@ -174,28 +268,19 @@
 	}
 
 	const storyIds = $derived(new Set(thread.stories.map((s) => s.id)));
-	// From the oldest-first list: the last item of `flow` is the oldest when posts read newest first.
-	const lastActivity = $derived(chronological.at(-1)?.at ?? thread.createdAt);
 </script>
 
-<svelte:head><title>{thread.title} · Ledger</title></svelte:head>
+<svelte:head><title>{thread.title} | Ledger</title></svelte:head>
 
 <div class="header-wrap">
-	<div class="crumbs">
-		<a href={projectUrl(project)}>{projectName}</a><span>/</span><a href="{projectUrl(project)}/threads">Threads</a>
-	</div>
 	<div class="header-top">
 		<div>
 			<h1>{thread.title} <span class="badge accent">Thread</span></h1>
-			<div class="sub">
-				{plural(posts.length, 'post')} · {plural(thread.prompts.length, 'prompt')} · {plural(thread.feedback.length, 'feedback item', 'feedback items')} ·
-				{plural(thread.uploads.length, 'upload')} · last activity {date(lastActivity)}
-			</div>
 		</div>
 		<div class="header-actions">
 			<button class="btn ghost small" onclick={rename}>Rename</button>
-			<button class="btn ghost small" onclick={() => (linking = true)} disabled={siblings.length === 0}>Link threads…</button>
-			<button class="btn ghost small" onclick={openStories}>Stories{thread.stories.length ? ` (${thread.stories.length})` : ''}…</button>
+			<button class="btn ghost small" onclick={() => (linking = true)} disabled={siblings.length === 0}>Link threads</button>
+			<button class="btn ghost small" onclick={openStories}>Stories{thread.stories.length ? ` (${thread.stories.length})` : ''}...</button>
 			<button class="btn ghost small danger" onclick={remove}>Delete</button>
 		</div>
 	</div>
@@ -224,60 +309,106 @@
 	{/if}
 </div>
 
-<div class="thread" bind:this={scroller}>
-	<div class="thread-inner">
-		{#each flow as item (item.entry.key)}
-			{#if item.newDay}<div class="divider">{dayLabel(item.day)}</div>{/if}
-			{@const e = item.entry}
-			{#if e.kind === 'post'}
-				{@const answers = structure.answers.get(e.post.id)}
-				<PostCard {project} thread={slug} post={e.post} {byId} onreply={(p) => (replyTo = p)} onjump={jump}>
-					{#if answers?.length}
-						<div class="answers">
-							{#each answers as a (a.id)}
-								<PostCard
-									{project}
-									thread={slug}
-									post={a}
-									{byId}
-									variant="answer"
-									quotedElsewhere={e.post.id}
-									onreply={(p) => (replyTo = p)}
-									onjump={jump}
-								/>
-							{/each}
-						</div>
+<div class="thread-body">
+	<div class="thread-main">
+		<div class="thread" bind:this={scroller}>
+			<div class="thread-inner">
+				{#if searching}
+					<div class="notice info thread-found">
+						<span>{found.length ? `${plural(found.length, 'item')} of ${chronological.length} in this thread hold "${searching}"` : `Nothing in this thread holds "${searching}"`}</span>
+						<a class="link accent" href="/search?q={encodeURIComponent(searching)}">Search everywhere</a>
+						<button class="link" onclick={() => (threadSearch.query = '')}>Show all</button>
+					</div>
+				{/if}
+				{#each flow as item (item.entry.key)}
+					{#if item.newDay}<div class="divider">{dayLabel(item.day)}</div>{/if}
+					{@const e = item.entry}
+					{#if e.kind === 'post'}
+						{@const answers = structure.answers.get(e.post.id)}
+						<PostCard {project} thread={slug} post={e.post} {byId} tags={tagsOf(e.post.id)} onreply={(p) => (replyTo = p)} onjump={jump}>
+							{#if answers?.length}
+								<div class="answers">
+									{#each answers as a (a.id)}
+										<PostCard
+											{project}
+											thread={slug}
+											post={a}
+											{byId}
+											variant="answer"
+											quotedElsewhere={e.post.id}
+											onreply={(p) => (replyTo = p)}
+											onjump={jump}
+										/>
+									{/each}
+								</div>
+							{/if}
+						</PostCard>
+					{:else if e.kind === 'prompt'}
+						<PromptCard {project} thread={slug} prompt={e.prompt} onedit={(prompt) => (promptModal = { prompt })} />
+					{:else if e.kind === 'feedback'}
+						<FeedbackCard
+							{project}
+							thread={slug}
+							feedback={e.feedback}
+							replies={feedbackReplies.get(e.feedback.id) ?? []}
+							evidenceName={e.feedback.evidence ? (evidenceNames[e.feedback.evidence] ?? null) : null}
+							portflowItem={e.feedback.portflowComment !== null ? portflowItemOf(e.feedback) : null}
+						/>
+					{:else}
+						<UploadCard {project} thread={slug} upload={e.upload} />
 					{/if}
-				</PostCard>
-			{:else if e.kind === 'prompt'}
-				<PromptCard {project} thread={slug} prompt={e.prompt} onedit={(prompt) => (promptModal = { prompt })} />
-			{:else if e.kind === 'feedback'}
-				<FeedbackCard {project} thread={slug} feedback={e.feedback} />
-			{:else}
-				<UploadCard {project} thread={slug} upload={e.upload} />
-			{/if}
-		{:else}
-			<div class="empty-state">
-				<h1>Nothing here yet</h1>
-				<p>
-					Write your first note below. Every note is saved on its own with its time. Use <b>Prompt</b> to ask for a deliverable,
-					<b>Feedback</b> to react to one, and <b>Upload</b> to add files.
-				</p>
+				{:else}
+					{#if searching}
+						<!-- Said in the notice above. -->
+					{:else}
+					<div class="empty-state">
+						<h1>Nothing here yet</h1>
+						<p>
+							Write your first note below. Every note is saved on its own with its time. Use <b>Make deliverable</b> to ask for one,
+							<b>Feedback</b> to react to one, and <b>Upload</b> to add files.
+						</p>
+					</div>
+					{/if}
+				{/each}
 			</div>
-		{/each}
-	</div>
-</div>
+		</div>
 
-<Composer
-	{project}
-	thread={slug}
-	{replyTo}
-	oncancelreply={() => (replyTo = null)}
-	onsent={() => (replyTo = null)}
-	onprompt={() => (promptModal = { prompt: null })}
-	onfeedback={() => (feedbackOpen = true)}
-	onupload={(paths) => (uploadPaths = paths)}
-/>
+		<Composer
+			{project}
+			thread={slug}
+			{replyTo}
+			oncancelreply={() => (replyTo = null)}
+			onsent={() => (replyTo = null)}
+			onprompt={() => (promptModal = { prompt: null })}
+			onfeedback={() => (feedbackOpen = true)}
+			onupload={(paths) => (uploadPaths = paths)}
+		/>
+	</div>
+
+	<!-- The thread's deliverables, in the same side window as beside a deliverable's document: hidden and shown the same way. -->
+	<SideWindow sections={sideSections} storageKey="ledger-thread-side" label="Side window of this thread">
+		{#snippet panel()}
+			{#each evidence as item (item.slug)}<EvidenceCard evidence={item} />{/each}
+			{#each otherDeliverables as d (d.path)}
+				<a class="card side-deliverable" href={deliverableUrl(project, d.path, slug)} title="Open the deliverable">
+					<strong>{baseName(d.path)}</strong>
+					<span class="meta">
+						{#if d.latest}<span class="badge published">v{d.latest}</span>{:else}<span class="badge draft">not published</span>{/if}
+						{#if d.template}<span class="badge accent">{d.template}</span>{/if}
+						{#if d.feedback}
+							<span class="hint">{plural(d.feedback, 'piece', 'pieces')} of feedback{d.open ? `, ${d.open} open` : ''}</span>
+						{/if}
+					</span>
+					{#if d.prompt}<span class="hint from">From prompt: {d.prompt.title}</span>{/if}
+				</a>
+			{:else}
+				{#if !evidence.length}
+					<p class="hint">No deliverables yet. Use <b>Make deliverable</b> below to ask for one; what this thread's prompts, feedback and published versions are about shows here.</p>
+				{/if}
+			{/each}
+		{/snippet}
+	</SideWindow>
+</div>
 
 {#if promptModal}
 	<PromptModal {project} thread={slug} prompt={promptModal.prompt} onclose={() => (promptModal = null)} />
@@ -291,7 +422,7 @@
 
 {#if linking}
 	<Modal title="Link threads" onclose={() => (linking = false)}>
-		<p style="margin:0;color:var(--muted)">Linked threads belong together — for example several threads feeding one deliverable. Links work both ways.</p>
+		<p style="margin:0;color:var(--muted)">Linked threads belong together - for example several threads feeding one deliverable. Links work both ways.</p>
 		<div class="link-grid">
 			{#each siblings as t (t.slug)}
 				<label class="check">
@@ -327,7 +458,7 @@
 				onclick={() => {
 					storiesOpen = false;
 					storyModal = { story: null };
-				}}>New user story…</button
+				}}>New user story</button
 			>
 			<span class="spacer-h"></span>
 			<button class="btn primary" onclick={() => (storiesOpen = false)}>Done</button>
@@ -344,3 +475,60 @@
 		onclose={() => (storyModal = null)}
 	/>
 {/if}
+
+<style>
+	/* Under the header: the timeline with its note box, and the thread's deliverables beside it. */
+	.thread-body {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		overflow: hidden;
+	}
+	/* The note box always stays at the bottom: only the timeline above it scrolls. */
+	.thread-main {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.thread-found {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px 14px;
+	}
+	/* Laid out like an evidence item's card above it: its name, then a row of badges. */
+	.side-deliverable {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		color: inherit;
+		text-decoration: none;
+	}
+	.side-deliverable:hover {
+		border-color: var(--accent);
+	}
+	.side-deliverable:hover strong {
+		color: var(--accent);
+		text-decoration: underline;
+	}
+	.side-deliverable strong {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+	.side-deliverable .meta {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.side-deliverable .from {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+</style>

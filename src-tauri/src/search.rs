@@ -72,5 +72,5 @@ pub fn snippet(text: &str, query: &str) -> Option<String> {
 
     let excerpt = original[from..to].iter().collect::<String>();
     let excerpt = excerpt.split_whitespace().collect::<Vec<_>>().join(" ");
-    Some(format!("{}{}{}", if from > 0 { "…" } else { "" }, excerpt, if to < original.len() { "…" } else { "" }))
+    Some(format!("{}{}{}", if from > 0 { "..." } else { "" }, excerpt, if to < original.len() { "..." } else { "" }))
 }

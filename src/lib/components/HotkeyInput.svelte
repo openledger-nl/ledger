@@ -35,7 +35,7 @@
 	class:recording
 	readonly
 	{disabled}
-	value={recording ? 'Press the new shortcut…' : prettyHotkey(value)}
+	value={recording ? 'Press the new shortcut...' : prettyHotkey(value)}
 	aria-label="Shortcut"
 	onfocus={() => setRecording(true)}
 	onblur={() => setRecording(false)}

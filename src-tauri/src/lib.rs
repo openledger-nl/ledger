@@ -5,6 +5,8 @@ mod claude_code;
 mod commands;
 mod crypto;
 mod db;
+mod daily;
+mod deliverable_facts;
 mod deliverables;
 mod devupdates;
 mod encrypted_remote;
@@ -13,12 +15,14 @@ mod feedback;
 mod frontmatter;
 mod github;
 mod ids;
+mod images;
 mod keystore;
 mod links;
 mod markdown;
 mod models;
 mod onboarding;
 mod posts;
+mod project_facts;
 mod projects;
 mod prompts;
 mod provenance;
@@ -45,6 +49,19 @@ mod trello_ledger;
 mod trello_sync;
 // ---- end Trello sync ----
 
+// ---- Portflow (feat/portflow-integration) ----
+mod portflow;
+mod portflow_api;
+mod portflow_auth;
+mod portflow_epsilon;
+mod portflow_evidence_text;
+mod portflow_config;
+mod portflow_html;
+mod portflow_store;
+mod portflow_sync;
+mod portflow_vault;
+// ---- end Portflow ----
+
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -59,6 +76,10 @@ mod tests_crypto;
 mod tests_devupdates;
 #[cfg(test)]
 mod tests_onboarding;
+#[cfg(test)]
+mod tests_portflow;
+#[cfg(test)]
+mod tests_v1;
 #[cfg(test)]
 mod tests_provenance;
 #[cfg(test)]
@@ -78,6 +99,26 @@ use tauri::{Emitter, Manager};
 use crate::syncer::Event;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Keeps the main window on Ledger itself: a navigation away from the app (a file dropped where nothing caught it, a link
+/// that slipped through) is refused, so the window can never end up showing a PDF instead of Ledger. Links outside are
+/// opened with the system's browser (the opener plugin), never in this window. Other windows (the Portflow sign-in, the
+/// screenshot overlay) are left alone.
+fn stay_in_the_app<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("stay-in-the-app")
+        .on_navigation(|webview, url| webview.label() != "main" || is_app_url(url))
+        .build()
+}
+
+/// The app's own pages: the bundled ones (tauri://, or http(s)://tauri.localhost on Windows) and, in development, the dev
+/// server on localhost.
+fn is_app_url(url: &tauri::Url) -> bool {
+    match url.scheme() {
+        "tauri" => true,
+        "http" | "https" => matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "tauri.localhost")),
+        _ => false,
+    }
+}
+
 pub fn run() {
     let builder = tauri::Builder::default();
     // First, so a second launch hands its arguments over before anything else starts. That is how a picture
@@ -95,6 +136,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(stay_in_the_app())
         .setup(|app| {
             // The vault is loaded into memory before the window shows anything.
             // LEDGER_CONFIG_DIR moves the per-machine settings (vault location, screenshot hotkey, update checks) for testing.
@@ -120,6 +162,7 @@ pub fn run() {
             let sync = core.sync.clone();
             let core = Arc::new(Mutex::new(core));
             let trello_core = core.clone(); // for the Trello sync (feat/trello-sync), started below
+            let portflow_core = core.clone(); // for Portflow (feat/portflow-integration), started below
 
             let handle = app.handle().clone();
             let syncer = syncer::spawn(
@@ -136,6 +179,7 @@ pub fn run() {
 
             app.manage(state::App::new(core, syncer, screenshot::Screenshots::new()));
             trello::start_app(app.handle(), trello_core); // feat/trello-sync: its own worker, needs the App state above
+            portflow::start_app(app.handle(), portflow_core); // feat/portflow-integration: runs only while switched on
             // Looks for new releases now and then (release builds only); it asks the syncs above whether they are busy.
             updates::start(app.handle(), config_dir);
             screenshot::register_saved(app.handle());
@@ -159,6 +203,19 @@ pub fn run() {
             commands::rename_project,
             commands::get_project,
             commands::save_readme,
+            commands::get_project_meta,
+            commands::list_project_meta,
+            commands::save_project_meta,
+            commands::list_project_people,
+            commands::set_post_meta,
+            commands::get_deliverable_meta,
+            commands::list_deliverable_meta,
+            commands::save_deliverable_meta,
+            commands::get_deliverable_description,
+            commands::save_deliverable_description,
+            commands::next_deliverable_number,
+            commands::confirm_label,
+            commands::save_project_people,
             commands::delete_project,
             commands::create_thread,
             commands::rename_thread,
@@ -180,10 +237,19 @@ pub fn run() {
             commands::attach_prompt_feedback,
             commands::detach_prompt_feedback,
             commands::add_feedback,
+            commands::list_all_feedback,
+            commands::list_daily_notes,
+            commands::get_daily_note,
+            commands::save_daily_note,
+            commands::delete_daily_note,
+            commands::record_feedback,
             commands::set_feedback_status,
             commands::update_feedback,
             commands::delete_feedback,
             commands::upload_files,
+            commands::upload_dropped,
+            commands::read_project_image,
+            commands::preview_dropped_image,
             commands::list_project_uploads,
             commands::update_upload,
             commands::delete_upload,
@@ -197,6 +263,7 @@ pub fn run() {
             commands::get_provenance,
             commands::update_version_record,
             commands::delete_deliverable,
+            commands::rename_deliverable,
             commands::list_templates,
             commands::project_templates,
             commands::effective_templates,
@@ -204,6 +271,8 @@ pub fn run() {
             commands::update_template,
             commands::override_template,
             commands::delete_template,
+            commands::template_reader_presets,
+            commands::template_skeleton,
             commands::list_stories,
             commands::create_story,
             commands::update_story,
@@ -255,11 +324,39 @@ pub fn run() {
             trello::trello_sync_now,
             trello::trello_relink_item,
             // ---- end Trello sync ----
+            // ---- Portflow (feat/portflow-integration) ----
+            portflow::portflow_get,
+            portflow::portflow_status,
+            portflow::portflow_set_enabled,
+            portflow::portflow_set_launch_url,
+            portflow::portflow_set_access,
+            portflow::portflow_sign_in,
+            portflow::portflow_sign_out,
+            portflow::portflow_sync_now,
+            portflow::portflow_collections,
+            portflow::portflow_link_collection,
+            portflow::portflow_import_collection,
+            portflow::portflow_open,
+            portflow::portflow_people,
+            portflow::portflow_project,
+            portflow::portflow_thread_evidence,
+            portflow::portflow_place_evidence,
+            portflow::portflow_save_evidence_description,
+            portflow::portflow_recent_feedback,
+            portflow::portflow_epsilon,
+            portflow::portflow_sections,
+            portflow::portflow_link_section,
+            portflow::portflow_set_intended,
+            portflow::portflow_evidence_choices,
+            // ---- end Portflow ----
             commands::set_vault_path,
             commands::reload_vault,
+            commands::set_feedback_from,
             commands::check_vault_changes,
             commands::save_screenshot_hotkey,
             commands::save_screenshot_tool,
+            commands::layout_settings,
+            commands::save_sidebar_fold,
             commands::pending_screenshot,
             commands::take_screenshot,
             commands::pause_screenshot_hotkey,
@@ -297,4 +394,19 @@ pub fn run() {
                 screenshot::open_files(_app, &paths, std::path::Path::new("/"));
             }
         });
+}
+
+#[cfg(test)]
+mod tests_navigation {
+    use super::is_app_url;
+
+    #[test]
+    fn the_main_window_stays_on_the_app() {
+        for ok in ["tauri://localhost/projects/x", "http://localhost:1420/", "http://tauri.localhost/", "https://tauri.localhost/a"] {
+            assert!(is_app_url(&ok.parse().unwrap()), "{ok}");
+        }
+        for no in ["file:///home/me/plan.pdf", "https://fhict.instructure.com/", "http://example.com/", "data:text/html,hi"] {
+            assert!(!is_app_url(&no.parse().unwrap()), "{no}");
+        }
+    }
 }

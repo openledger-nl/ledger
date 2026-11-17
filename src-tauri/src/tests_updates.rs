@@ -63,13 +63,13 @@ fn claude_code_runs_are_the_persons_call() {
 
     // Wait for them, or for them to stop: either way it waits until they are over.
     let Readiness::Wait { waiting_for } = readiness(&runs, RunsChoice::Wait) else { panic!("should wait") };
-    assert_eq!(waiting_for, ["Claude Code to finish “Call summary” and “Plan”"]);
+    assert_eq!(waiting_for, ["Claude Code to finish \"Call summary\" and \"Plan\""]);
     let Readiness::Wait { waiting_for } = readiness(&runs, RunsChoice::Stop) else { panic!("should wait") };
-    assert_eq!(waiting_for, ["Claude Code to stop “Call summary” and “Plan”"]);
+    assert_eq!(waiting_for, ["Claude Code to stop \"Call summary\" and \"Plan\""]);
 
     let three = Activity { runs: vec!["A".into(), " ".into(), "C".into()], ..idle() };
     let Readiness::Wait { waiting_for } = readiness(&three, RunsChoice::Wait) else { panic!("should wait") };
-    assert_eq!(waiting_for, ["Claude Code to finish “A”, “a prompt” and “C”"]);
+    assert_eq!(waiting_for, ["Claude Code to finish \"A\", \"a prompt\" and \"C\""]);
 }
 
 #[test]

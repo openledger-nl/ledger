@@ -535,7 +535,7 @@ impl Run<'_> {
                 continue;
             };
             let content = task_content(task, Some(list));
-            let label = format!("task “{}”", task.title);
+            let label = format!("task \"{}\"", task.title);
             let created = self.create_card(&board, list, Kind::Task, &content, &label)?;
             if let Some(card) = created {
                 let change = Change::Link { project: data.slug.clone(), kind: Kind::Task, id: task.id.clone(), card: card.id.clone() };
@@ -552,7 +552,7 @@ impl Run<'_> {
                 continue;
             };
             let content = story_content(story);
-            let label = format!("user story “{}”", story.summary);
+            let label = format!("user story \"{}\"", story.summary);
             let created = self.create_card(&board, list, Kind::Story, &content, &label)?;
             if let Some(card) = created {
                 let change = Change::Link { project: data.slug.clone(), kind: Kind::Story, id: story.id.clone(), card: card.id.clone() };
@@ -599,7 +599,7 @@ impl Run<'_> {
                         created_at,
                         updated_at: stamp,
                     };
-                    let mut step = Step::new(change, format!("card “{}”", card.name), Count::ItemCreated);
+                    let mut step = Step::new(change, format!("card \"{}\"", card.name), Count::ItemCreated);
                     step.track = Some((card.id.clone(), Tracked { project: data.slug.clone(), kind: Kind::Task, id, base: content }));
                     step
                 }
@@ -616,7 +616,7 @@ impl Run<'_> {
                         created_at,
                         updated_at: stamp,
                     };
-                    let mut step = Step::new(change, format!("card “{}”", card.name), Count::ItemCreated);
+                    let mut step = Step::new(change, format!("card \"{}\"", card.name), Count::ItemCreated);
                     step.track = Some((card.id.clone(), Tracked { project: data.slug.clone(), kind: Kind::Story, id, base: content }));
                     step
                 }
@@ -628,7 +628,7 @@ impl Run<'_> {
 
         if ledger_made > 0 {
             self.report.notes.push(format!(
-                "{}: {ledger_made} card(s) made by Ledger have no item in this vault, so they weren't added: their items may still be on their way from another machine, or were deleted here. To add one anyway, remove the “Synced with Ledger” lines from the end of its description.",
+                "{}: {ledger_made} card(s) made by Ledger have no item in this vault, so they weren't added: their items may still be on their way from another machine, or were deleted here. To add one anyway, remove the \"Synced with Ledger\" lines from the end of its description.",
                 data.name
             ));
         }
@@ -691,7 +691,7 @@ impl Run<'_> {
                 id: id.to_string(),
                 reason: "Another item is linked to the same Trello card, so this one stopped syncing.".into(),
             },
-            format!("{} “{title}”", kind.word()),
+            format!("{} \"{title}\"", kind.word()),
             Count::Detached,
         )
     }
@@ -703,7 +703,7 @@ impl Run<'_> {
             Located::Gone(reason) => {
                 let mut step = Step::new(
                     Change::Unlink { project: data.slug.clone(), kind: local.kind, id: local.id.clone(), reason },
-                    format!("{} “{}”", local.kind.word(), local.title),
+                    format!("{} \"{}\"", local.kind.word(), local.title),
                     Count::Detached,
                 );
                 step.untrack = Some(local.card.clone());
@@ -711,7 +711,7 @@ impl Run<'_> {
                 return Ok(());
             }
         };
-        let label = format!("{} “{}”", local.kind.word(), local.title);
+        let label = format!("{} \"{}\"", local.kind.word(), local.title);
         let stamp = if card.date_last_activity.is_empty() { ids::now() } else { card.date_last_activity.clone() };
 
         // The card's label says what the item is.
@@ -728,7 +728,7 @@ impl Run<'_> {
             let (change, tracked) = match wanted {
                 Kind::Story => {
                     let story = story_id_for(&card, &data.stories.iter().map(|s| s.id.to_lowercase()).collect()).ok_or_else(|| {
-                        TrelloError::message(format!("Could not find a free id for the story made from the card “{}”.", card.name))
+                        TrelloError::message(format!("Could not find a free id for the story made from the card \"{}\".", card.name))
                     })?;
                     (
                         Change::TaskToStory {
@@ -971,7 +971,7 @@ fn column_name(columns: &[Column], id: &str) -> String {
 }
 
 fn quoted(names: &BTreeSet<String>) -> String {
-    names.iter().map(|n| format!("“{n}”")).collect::<Vec<_>>().join(", ")
+    names.iter().map(|n| format!("\"{n}\"")).collect::<Vec<_>>().join(", ")
 }
 
 /// The id of the story a card becomes: `TR-<card number>`, made from the card so every machine picks the same.

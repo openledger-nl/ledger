@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
 	import { api } from '$lib/api';
 	import { deliverableUrl, formatSize, snapshotPath } from '$lib/actions';
-	import { ago, plural } from '$lib/format';
+	import { ago, deliverableTime, plural } from '$lib/format';
 	import { attempt, refresh } from '$lib/ui.svelte';
 	import type { PageData } from './$types';
 
@@ -16,9 +17,11 @@
 	let filter = $state('');
 	let creating = $state(false);
 
+	const templateOptions = $derived<DropdownOption[]>([{ value: '', label: 'Empty file' }, ...data.templates.map((t) => ({ value: t.id, label: t.name }))]);
+
 	const shown = $derived.by(() => {
 		const q = filter.trim().toLowerCase();
-		return q ? data.deliverables.filter((d) => d.path.toLowerCase().includes(q)) : data.deliverables;
+		return q ? data.deliverables.filter((d) => (d.path.toLowerCase().includes(q) || (d.evidence ?? '').toLowerCase().includes(q))) : data.deliverables;
 	});
 
 	const KIND = { markdown: 'Markdown', image: 'Image', other: 'File' } as const;
@@ -39,15 +42,15 @@
 	}
 </script>
 
-<svelte:head><title>Deliverables · {data.project.name} · Ledger</title></svelte:head>
+<svelte:head><title>Deliverables | {data.project.name} | Ledger</title></svelte:head>
 
 <div class="page">
-	<div class="page-inner wide">
+	<div class="page-inner">
 		<div class="panel">
 			<h2>New deliverable</h2>
 			<p class="sub" style="margin:0">
 				Deliverables are what prompts produce. They are plain files in <code>deliverables/</code>: markdown you can edit here, or anything
-				else — images, spreadsheets, PDFs — that you or an assistant drop into the folder. Publishing freezes a copy as
+				else - images, spreadsheets, PDFs - that you or an assistant drop into the folder. Publishing freezes a copy as
 				<code>name@v1.0.md</code> in <code>versions/</code>, so <code>deliverables/</code> keeps only the live files.
 			</p>
 			<div class="form-row">
@@ -55,13 +58,10 @@
 					File name
 					<input bind:value={name} placeholder="e.g. pricing-brief.md" onkeydown={(e) => e.key === 'Enter' && name.trim() && create()} />
 				</label>
-				<label class="field" style="width:240px">
+				<div class="field" style="width:240px">
 					Start from
-					<select bind:value={templateId}>
-						<option value="">Empty file</option>
-						{#each data.templates as t (t.scope + '/' + t.id)}<option value={t.id}>{t.name}</option>{/each}
-					</select>
-				</label>
+					<Dropdown bind:value={templateId} options={templateOptions} label="Start from" full />
+				</div>
 				<button class="btn primary" onclick={create} disabled={creating || !name.trim()}>Create</button>
 			</div>
 		</div>
@@ -71,7 +71,7 @@
 				<h2>{plural(data.deliverables.length, 'deliverable')}</h2>
 				<input
 					type="search"
-					placeholder="Filter…"
+					placeholder="Filter"
 					bind:value={filter}
 					style="padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg)"
 				/>
@@ -82,23 +82,25 @@
 				<div class="doc-list">
 					{#each shown as d (d.path)}
 						<a class="doc-row all" href={deliverableUrl(project, target(d))}>
-							<span class="doc-title" title={d.path}>{d.path}</span>
+							<span class="doc-title" title={d.path}>{d.evidence ?? d.path}</span>
 							<span class="doc-space">
 								{#if d.versions.length}
 									<span class="badge published">v{d.versions.at(-1)}</span>
 								{:else}
 									<span class="badge draft">Draft</span>
 								{/if}
+								{#if d.delivered}<span class="badge accent" title={deliverableTime(d).title}>v{d.delivered.number} in Portflow</span>{/if}
 								{#if d.mmm}<MmmBadge level={d.mmm} />{/if}
 								{#if !d.exists}<span class="badge">live file removed</span>{/if}
 								{#if d.openFeedback}<span class="badge draft">{d.openFeedback} open</span>{/if}
+								{#if d.attachments.length}<span class="badge" title={d.attachments.join('\n')}>+{plural(d.attachments.length, 'file')}</span>{/if}
 							</span>
 							<span class="doc-space">{plural(d.promptCount, 'prompt')}</span>
-							<span class="badge type">{KIND[d.kind]} · {formatSize(d.size)}</span>
-							<span class="doc-date">{d.exists ? ago(d.modified) : ''}</span>
+							<span class="badge type">{KIND[d.kind]} | {formatSize(d.size)}</span>
+							<span class="doc-date" title={deliverableTime(d).title}>{d.exists || d.latestAt ? ago(deliverableTime(d).at) : ''}</span>
 						</a>
 					{:else}
-						<div class="hint">Nothing matches “{filter}”.</div>
+						<div class="hint">Nothing matches "{filter}".</div>
 					{/each}
 				</div>
 			{/if}

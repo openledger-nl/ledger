@@ -6,8 +6,9 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 use crate::error::Error;
-use crate::models::{BaseSpec, Bump, Criterion, NewPrompt, Quote, SemesterDraft, Sprint, StoryDraft, StoryUpdate, TaskUpdate, Vacation};
+use crate::models::{BaseSpec, Bump, Criterion, NewPrompt, Quote, SemesterDraft, Sprint, StoryDraft, GuidingAnswer, StoryUpdate, TaskUpdate, TemplateDraft, TemplateReader, Vacation};
 use crate::posts::AddOptions;
+use crate::project_facts::{self, ProjectMeta, ProjectPerson};
 use crate::{activity, board, db, deliverables, semesters, feedback, links, markdown, posts, projects, prompts, search, stories, templates, threads, uploads};
 
 fn conn() -> Connection {
@@ -70,8 +71,8 @@ fn deleting_a_project_deletes_everything_in_it_and_nothing_elsewhere() {
     stories::create(&c, &p, story("S1", "story")).unwrap();
     board::create_task(&c, &p, "task", "", None, None).unwrap();
     deliverables::create(&c, &p, "Plan", "").unwrap();
-    templates::create(&c, &p, "Mine", "", &[], "").unwrap();
-    templates::create(&c, "", "Shared", "", &[], "").unwrap();
+    templates::create(&c, &p, &TemplateDraft::basic("Mine", "", &[], "")).unwrap();
+    templates::create(&c, "", &TemplateDraft::basic("Shared", "", &[], "")).unwrap();
 
     projects::delete(&c, &p).unwrap();
 
@@ -171,18 +172,77 @@ fn a_thread_summary_counts_everything_in_it_and_orders_by_latest_activity() {
 // ---- templates and prompts --------------------------------------------------------------------------
 
 #[test]
+fn a_vault_wide_template_is_offered_only_in_the_kinds_of_project_it_is_for() {
+    let c = conn();
+    let (p, _) = setup(&c);
+    let study = TemplateDraft { kinds: vec!["study".into(), "bogus".into()], ..TemplateDraft::basic("Reflection", "", &[], "") };
+    templates::create(&c, "", &study).unwrap();
+    let every = TemplateDraft { kinds: vec!["company".into(), "hobby".into(), "study".into()], ..TemplateDraft::basic("Memo", "", &[], "") };
+    assert!(templates::create(&c, "", &every).unwrap().kinds.is_empty(), "all kinds is the same as every kind");
+    assert_eq!(templates::get(&c, "", "reflection").unwrap().kinds, ["study"], "unknown kinds are dropped");
+
+    let offered = |c: &Connection| templates::effective(c, &p).unwrap().into_iter().map(|t| t.id).collect::<Vec<_>>();
+    assert_eq!(offered(&c), ["memo", "reflection"], "a project without a kind gets them all");
+    project_facts::save(&c, &p, &ProjectMeta { kind: "hobby".into(), goal: "Build a birdhouse".into(), ..Default::default() }).unwrap();
+    assert_eq!(offered(&c), ["memo"]);
+    project_facts::save(&c, &p, &ProjectMeta { kind: "study".into(), goal: "Pass the semester".into(), ..Default::default() }).unwrap();
+    assert_eq!(offered(&c), ["memo", "reflection"]);
+}
+
+#[test]
+fn a_templates_readers_are_noted_in_its_deliverable_and_told_in_its_prompt() {
+    let c = conn();
+    let (p, t) = setup(&c);
+    let readers = vec![
+        TemplateReader { who: "client".into(), needs: "reads it on a phone".into(), keep_from: "the rate".into() },
+        TemplateReader { who: "  ".into(), ..Default::default() },
+        TemplateReader { who: "Client".into(), ..Default::default() },
+        TemplateReader { who: "The supplier".into(), ..Default::default() },
+    ];
+    let draft = TemplateDraft { readers, ..TemplateDraft::basic("Plan", "", &[], "# Plan\n#project\n**Version:** 0.1\n\n## Goal\n%% What it is for %%\n") };
+    let made = templates::create(&c, "", &draft).unwrap();
+    assert_eq!(made.readers.iter().map(|r| r.who.as_str()).collect::<Vec<_>>(), ["client", "The supplier"], "blank and repeated readers are dropped");
+
+    // Hidden: a note under the title and the lines that go with it.
+    let skeleton = templates::skeleton(&c, &p, &made).unwrap();
+    assert!(skeleton.starts_with("# Plan\n#project\n**Version:** 0.1\n%% Readers: Client (not technical;"), "{skeleton}");
+    assert!(skeleton.contains("reads it on a phone; keep from them: the rate); The supplier %%\n\n## Goal"), "{skeleton}");
+
+    // Shown: a visible line as well.
+    let shown = templates::update(&c, "", "plan", &TemplateDraft { readers_shown: true, ..templates::draft_of(&made) }).unwrap();
+    assert!(templates::skeleton(&c, &p, &shown).unwrap().contains("**Version:** 0.1\n**Readers:** Client, The supplier\n%% Readers:"));
+
+    // The prompt's base tells Claude, so a prompt can name other readers by changing its base.
+    let base = prompts::suggest_base(&c, &p, &BaseSpec { template_id: Some("plan".into()), feedback: vec![] }).unwrap();
+    assert!(base.contains("It is written for: Client (not technical;") && base.contains("Write it for these readers"), "{base}");
+
+    // The project's people stand in for `people`, each as their role.
+    let people = TemplateDraft { readers: vec![TemplateReader { who: "people".into(), ..Default::default() }], ..TemplateDraft::basic("Memo", "", &[], "") };
+    let memo = templates::create(&c, "", &people).unwrap();
+    assert_eq!(templates::skeleton(&c, &p, &memo).unwrap(), "%% Readers: The project's people (none are listed yet) %%");
+    let frank = ProjectPerson { name: "Frank".into(), role: "coach".into(), ..Default::default() };
+    project_facts::save_people(&c, &p, &[frank]).unwrap();
+    assert!(templates::skeleton(&c, &p, &memo).unwrap().starts_with("%% Readers: Frank (coach: judges the work"));
+
+    // A new deliverable for a prompt from the template starts with the note.
+    let prompt = prompts::create(&c, &p, &t, &NewPrompt { body: "Write it".into(), template_id: Some("plan".into()), new_deliverable: Some("plan".into()), ..Default::default() }).unwrap();
+    let file = deliverables::get(&c, &p, &prompt.deliverables[0].path).unwrap();
+    assert!(file.body.unwrap().contains("**Readers:** Client, The supplier"));
+}
+
+#[test]
 fn project_templates_replace_vault_wide_ones_with_the_same_id() {
     let c = conn();
     let (p, _) = setup(&c);
-    templates::create(&c, "", "Interview", "after a call", &["Who?".into(), "  ".into(), "Why?".into()], "# Interview\n").unwrap();
-    templates::create(&c, "", "Memo", "", &[], "").unwrap();
+    templates::create(&c, "", &TemplateDraft::basic("Interview", "after a call", &["Who?".into(), "  ".into(), "Why?".into()], "# Interview\n")).unwrap();
+    templates::create(&c, "", &TemplateDraft::basic("Memo", "", &[], "")).unwrap();
 
     let global = templates::get(&c, "", "interview").unwrap();
     assert_eq!(global.questions, ["Who?", "Why?"]);
     assert_eq!(global.trigger, "after a call");
 
     // The project defines its own "interview".
-    templates::create(&c, &p, "Interview", "", &["Which account?".into()], "# Account interview\n").unwrap();
+    templates::create(&c, &p, &TemplateDraft::basic("Interview", "", &["Which account?".into()], "# Account interview\n")).unwrap();
     let shown = templates::for_project(&c, &p).unwrap();
     let marks: Vec<_> = shown.iter().map(|t| (t.scope.as_str(), t.id.as_str(), t.overridden)).collect();
     assert_eq!(marks, [(p.as_str(), "interview", false), ("", "interview", true), ("", "memo", false)]);
@@ -192,13 +252,13 @@ fn project_templates_replace_vault_wide_ones_with_the_same_id() {
     assert_eq!(templates::find(&c, &p, "interview").unwrap().questions, ["Which account?"]);
     assert_eq!(templates::find(&c, &p, "memo").unwrap().scope, "");
 
-    let updated = templates::update(&c, "", "interview", Some("Interviews"), None, Some(&["Last?".into(), "First?".into()]), None).unwrap();
+    let updated = templates::update(&c, "", "interview", &TemplateDraft { name: "Interviews".into(), questions: vec!["Last?".into(), "First?".into()], ..templates::draft_of(&templates::get(&c, "", "interview").unwrap()) }).unwrap();
     assert_eq!((updated.name.as_str(), updated.trigger.as_str()), ("Interviews", "after a call"));
     assert_eq!(updated.questions, ["Last?", "First?"]);
 
     templates::delete(&c, &p, "interview").unwrap();
     assert_eq!(templates::find(&c, &p, "interview").unwrap().scope, "", "the vault-wide one is back");
-    assert_eq!(message(templates::create(&c, "ghost", "x", "", &[], "").unwrap_err()), "Project not found");
+    assert_eq!(message(templates::create(&c, "ghost", &TemplateDraft::basic("x", "", &[], "")).unwrap_err()), "Project not found");
 }
 
 #[test]
@@ -215,7 +275,7 @@ fn a_typed_md_extension_is_not_part_of_a_deliverables_name() {
 fn a_project_can_copy_a_vault_wide_template_to_change_it_for_itself() {
     let c = conn();
     let (p, _) = setup(&c);
-    templates::create(&c, "", "Interview", "after a call", &["Who?".into(), "Why?".into()], "# Interview\n").unwrap();
+    templates::create(&c, "", &TemplateDraft::basic("Interview", "after a call", &["Who?".into(), "Why?".into()], "# Interview\n")).unwrap();
 
     let copy = templates::override_global(&c, &p, "interview").unwrap();
     assert_eq!((copy.scope.as_str(), copy.id.as_str(), copy.name.as_str()), (p.as_str(), "interview", "Interview"));
@@ -223,7 +283,7 @@ fn a_project_can_copy_a_vault_wide_template_to_change_it_for_itself() {
     assert_eq!(copy.questions, ["Who?", "Why?"]);
     assert!(templates::for_project(&c, &p).unwrap().iter().any(|t| t.scope.is_empty() && t.overridden));
 
-    templates::update(&c, &p, "interview", None, None, Some(&["Which account?".into()]), None).unwrap();
+    templates::update(&c, &p, "interview", &TemplateDraft { questions: vec!["Which account?".into()], ..templates::draft_of(&templates::get(&c, &p, "interview").unwrap()) }).unwrap();
     assert_eq!(templates::get(&c, "", "interview").unwrap().questions, ["Who?", "Why?"], "the shared one is untouched");
 
     assert_eq!(message(templates::override_global(&c, &p, "interview").unwrap_err()), "This project already has its own version of that template");
@@ -231,27 +291,32 @@ fn a_project_can_copy_a_vault_wide_template_to_change_it_for_itself() {
 }
 
 #[test]
-fn a_prompt_from_a_template_seeds_its_questions_once_and_comes_after_them() {
+fn a_templates_guiding_questions_are_answered_with_the_prompt_not_in_the_thread() {
     let c = conn();
     let (p, t) = setup(&c);
-    templates::create(&c, "", "Interview", "", &["Who?".into(), "Why?".into()], "# Interview\n").unwrap();
+    templates::create(&c, "", &TemplateDraft::basic("Interview", "", &["Who?".into(), "Why?".into()], "# Interview\n")).unwrap();
 
     let prompt = prompts::create_titled(&c, &p, &t, "Summary of the call", "  Write up the call with Ana.  ", Some("interview")).unwrap();
     assert_eq!((prompt.body.as_str(), prompt.template_name.as_deref()), ("Write up the call with Ana.", Some("Interview")));
+    assert!(posts::list(&c, &p, &t).unwrap().is_empty(), "the questions are not posted in the thread");
 
-    let seeded = posts::list(&c, &p, &t).unwrap();
-    assert_eq!(seeded.len(), 2);
-    assert!(seeded.iter().all(|x| x.guiding_question));
-    assert_eq!(seeded[0].body, "**Guiding question (Interview):** Who?");
-    assert!(seeded[1].created_at <= prompt.created_at, "the prompt comes after the questions it prompted");
-
-    // Editing the template afterwards never reaches back into the thread.
-    templates::update(&c, "", "interview", None, None, Some(&["Something else?".into()]), None).unwrap();
-    assert_eq!(posts::list(&c, &p, &t).unwrap().len(), 2);
+    // What was answered goes with the base; a question left blank was skipped.
+    let answers = vec![
+        GuidingAnswer { question: "Who?".into(), answer: "  Ana, the buyer.  ".into() },
+        GuidingAnswer { question: "Why?".into(), answer: " ".into() },
+    ];
+    let answered = prompts::create(&c, &p, &t, &NewPrompt { base: "Write it.".into(), template_id: Some("interview".into()), answers, ..Default::default() }).unwrap();
+    assert_eq!(answered.base, "Write it.\n\nAnswers to the guiding questions of the template \"Interview\":\n\n**Who?**\nAna, the buyer.");
+    let skipped = vec![GuidingAnswer { question: "Who?".into(), answer: String::new() }];
+    let all_skipped = prompts::create(&c, &p, &t, &NewPrompt { base: "Write it.".into(), template_id: Some("interview".into()), answers: skipped, ..Default::default() }).unwrap();
+    assert_eq!(all_skipped.base, "Write it.");
+    let only = vec![GuidingAnswer { question: "Who?".into(), answer: "Ana".into() }];
+    let only_answers = prompts::create(&c, &p, &t, &NewPrompt { template_id: Some("interview".into()), answers: only, ..Default::default() }).unwrap();
+    assert!(only_answers.base.starts_with("Answers to the guiding questions"), "answers alone are enough to ask for something");
 
     assert_eq!(message(prompts::create_titled(&c, &p, &t, "", "   ", None).unwrap_err()), "Say what you want delivered");
     assert_eq!(message(prompts::create_titled(&c, &p, &t, "", "x", Some("nope")).unwrap_err()), "Template not found");
-    assert_eq!(posts::list(&c, &p, &t).unwrap().len(), 2, "a refused prompt seeds nothing");
+    assert!(posts::list(&c, &p, &t).unwrap().is_empty());
 
     let edited = prompts::update(&c, &p, &t, &prompt.id, None, Some("Write it shorter.")).unwrap();
     assert_eq!((edited.title.as_str(), edited.body.as_str()), ("Summary of the call", "Write it shorter."), "editing what it asks doesn't rename it");
@@ -259,7 +324,7 @@ fn a_prompt_from_a_template_seeds_its_questions_once_and_comes_after_them() {
     prompts::set_title(&c, &p, &t, &prompt.id, "  Call\nnotes  ").unwrap();
     assert_eq!(prompts::get(&c, &p, &t, &prompt.id).unwrap().title, "Call notes", "a name is one line");
     prompts::delete(&c, &p, &t, &prompt.id).unwrap();
-    assert!(prompts::list(&c, &p, &t).unwrap().is_empty());
+    assert!(prompts::list(&c, &p, &t).unwrap().iter().all(|x| x.id != prompt.id));
 }
 
 #[test]
@@ -394,7 +459,7 @@ fn files_that_are_not_markdown_are_copied_and_removed_on_disk() {
 fn deliverables_can_be_started_from_a_prompts_template() {
     let c = conn();
     let (p, t) = setup(&c);
-    templates::create(&c, "", "Brief", "", &[], "# Brief\n\n## Goal\n").unwrap();
+    templates::create(&c, "", &TemplateDraft::basic("Brief", "", &[], "# Brief\n\n## Goal\n")).unwrap();
     let prompt = prompts::create_titled(&c, &p, &t, "", "write the brief", Some("brief")).unwrap();
 
     let skeleton = templates::find(&c, &p, prompt.template_id.as_deref().unwrap()).unwrap().body;
@@ -557,8 +622,8 @@ fn feedback_goes_into_a_prompts_base_with_the_version_it_was_given_on() {
     let spec = BaseSpec { template_id: None, feedback: vec![early.id.clone(), late.id.clone()] };
     let base = prompts::suggest_base(&c, &p, &spec).unwrap();
     assert!(base.starts_with("Please resolve the following feedback on plan.md."), "{base}");
-    assert!(base.contains("### On v1.0 (versions/plan@v1.0.md), from the thread “Calls”\n\n> Plan\n\nTighten this."), "{base}");
-    assert!(base.contains("### On the live file (deliverables/plan.md), as it stands, from the thread “Calls”\n\nAdd owners."), "{base}");
+    assert!(base.contains("### On v1.0 (versions/plan@v1.0.md), from the thread \"Calls\"\n\n> Plan\n\nTighten this."), "{base}");
+    assert!(base.contains("### On the live file (deliverables/plan.md), as it stands, from the thread \"Calls\"\n\nAdd owners."), "{base}");
     assert_eq!(prompts::suggest_base(&c, &p, &BaseSpec::default()).unwrap(), "", "nothing to fill it in from");
 
     // A prompt that is written already gets the pieces it hasn't got added to its base, once each, and keeps its own words.
@@ -884,7 +949,7 @@ fn semesters_are_checked_and_do_not_share_days() {
     let second = semesters::create(&c, &semester("Semester 2", "2027-02-01", "2027-07-31")).unwrap();
     assert_eq!(
         message(semesters::create(&c, &semester("Overlap", "2027-01-15", "2027-03-01")).unwrap_err()),
-        "It overlaps “Semester 1” (01-09-2026 to 31-01-2027); semesters can't share days"
+        "It overlaps \"Semester 1\" (01-09-2026 to 31-01-2027); semesters can't share days"
     );
     // Changing a semester doesn't clash with itself; listing goes by start.
     semesters::update(&c, &first.id, &semester("Semester 1", "2026-08-31", "2027-01-31")).unwrap();
@@ -961,7 +1026,7 @@ fn search_spans_posts_prompts_feedback_and_deliverables_across_projects() {
 fn snippets_are_cut_on_character_boundaries() {
     let long = format!("{}needle{}", "é".repeat(100), "ü".repeat(100));
     let s = search::snippet(&long, "NEEDLE").unwrap();
-    assert!(s.starts_with('…') && s.ends_with('…'));
+    assert!(s.starts_with("...") && s.ends_with("..."));
     assert!(s.contains("needle"));
     assert_eq!(search::snippet("short needle here", "needle").unwrap(), "short needle here");
     assert_eq!(search::snippet("İstanbul", "stanbul").unwrap(), "İstanbul");
@@ -1028,6 +1093,41 @@ fn links_list_what_a_project_can_point_at() {
     // Newest feedback first; a long one is cut to 60 characters, and a heading's mark isn't part of a name.
     assert_eq!((summary[2].0, summary[2].1, summary[2].3, summary[2].4), ("feedback", long.id.as_str(), "on pricing-brief.md, resolved", "pricing-brief.md"));
     assert_eq!(summary[2].2.chars().count(), 60, "{}", summary[2].2);
-    assert!(summary[2].2.starts_with("word word") && summary[2].2.ends_with('…'), "{}", summary[2].2);
+    assert!(summary[2].2.starts_with("word word") && summary[2].2.ends_with("..."), "{}", summary[2].2);
     assert_eq!(summary[3], ("feedback", note.id.as_str(), "Too long", "on pricing-brief.md", "pricing-brief.md"));
+}
+
+#[test]
+fn renaming_a_deliverable_keeps_its_extension_versions_and_feedback() {
+    let dir = tempdir().unwrap();
+    let c = conn();
+    let (p, t) = setup(&c);
+    deliverables::create(&c, &p, "Launch Plan", "").unwrap();
+    deliverables::publish(&c, dir.path(), &p, "launch-plan.md", Bump::Major, None).unwrap();
+    feedback::add(&c, &p, &t, "launch-plan.md", "Shorter, please.", None).unwrap();
+
+    let to = deliverables::rename(&c, dir.path(), &p, "launch-plan.md", "Go-to-market plan.md").unwrap();
+    assert_eq!(to, "Go-to-market plan.md", "the name as typed, the extension once");
+    let view = deliverables::get(&c, &p, &to).unwrap();
+    assert_eq!(view.versions, ["1.0"]);
+    assert_eq!(view.feedback.len(), 1);
+    assert!(deliverables::get(&c, &p, "Go-to-market plan@v1.0.md").is_ok());
+    assert!(deliverables::get(&c, &p, "launch-plan.md").is_err());
+
+    assert_eq!(message(deliverables::rename(&c, dir.path(), &p, &to, "  ").unwrap_err()), "Name is required");
+    assert!(deliverables::rename(&c, dir.path(), &p, "Go-to-market plan@v1.0.md", "Old").is_err(), "a version keeps its name");
+}
+
+#[test]
+fn notes_between_percent_marks_are_left_out_of_the_page() {
+    let text = "# Plan\n%% What: the plan. %%\n\nGoal %%inline%% here.\n\n%% a note\nover lines %%\nAfter.\n\n`%% code %%` and\n\n```\n%% fenced %%\n```\n\n%% open to the end\nGone.";
+    let html = markdown::render(text);
+    for gone in ["What: the plan", "inline", "a note", "over lines", "open to the end", "Gone."] {
+        assert!(!html.contains(gone), "{gone} in {html}");
+    }
+    for kept in ["<h1>Plan</h1>", "Goal  here.", "After.", "<code>%% code %%</code>", "%% fenced %%"] {
+        assert!(html.contains(kept), "{kept} not in {html}");
+    }
+    assert!(matches!(markdown::strip_comments("no notes"), std::borrow::Cow::Borrowed(_)));
+    assert_eq!(markdown::strip_comments("50%% off"), "50", "a lone %% runs to the end, as in Obsidian");
 }

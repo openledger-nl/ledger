@@ -60,13 +60,13 @@
 	const span = (items: Prompt[]) => {
 		const first = items.map((p) => p.createdAt).reduce((a, b) => (a < b ? a : b));
 		const last = items.map((p) => p.createdAt).reduce((a, b) => (a > b ? a : b));
-		return dayKey(first) === dayKey(last) ? date(first) : `${date(first)} – ${date(last)}`;
+		return dayKey(first) === dayKey(last) ? date(first) : `${date(first)} - ${date(last)}`;
 	};
 </script>
 
 <div class="pv-line" style="justify-content:space-between">
-	<button class="btn small primary" disabled={!thread} onclick={() => (dialog = { prompt: null })}>New prompt…</button>
-	{#if thread}<span class="hint">In the thread “{threadTitle}”</span>{:else}<span class="hint">Create a thread first</span>{/if}
+	<button class="btn small primary" disabled={!thread} onclick={() => (dialog = { prompt: null })}>New prompt</button>
+	{#if thread}<span class="hint">In the thread "{threadTitle}"</span>{:else}<span class="hint">Create a thread first</span>{/if}
 </div>
 
 {#each groups as group (group.slug)}
@@ -104,7 +104,7 @@
 {#if adding}
 	{@const target = adding}
 	<FeedbackPicker
-		title="Add feedback to “{promptName(target)}”"
+		title="Add feedback to '{promptName(target)}'"
 		items={addable}
 		threadTitle={titleOf}
 		onpick={(picked) => addTo(target, picked)}

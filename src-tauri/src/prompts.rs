@@ -18,8 +18,7 @@ use rusqlite::{Connection, Row, params};
 use crate::claude_code::records;
 use crate::db::{query_all, query_opt};
 use crate::error::{Error, Result};
-use crate::models::{BaseSpec, DeliverablePrompt, FeedbackView, NewPrompt, PromptDeliverable, PromptView};
-use crate::posts::{self, AddOptions};
+use crate::models::{BaseSpec, DeliverablePrompt, FeedbackView, GuidingAnswer, NewPrompt, PromptDeliverable, PromptView};
 use crate::{deliverables, feedback, ids, markdown, templates, threads};
 
 const COLUMNS: &str = "id, thread_slug, title, template_id, created_at, updated_at, base, body";
@@ -103,16 +102,24 @@ fn fence_for(text: &str) -> String {
     "`".repeat((longest + 1).max(3))
 }
 
-/// The base of a prompt for a new deliverable that starts from this template: its name and its structure.
+/// The base of a prompt for a new deliverable that starts from this template: its name, its readers and its structure.
 fn template_text(conn: &Connection, project: &str, id: &str) -> Result<String> {
     let template = templates::find(conn, project, id).map_err(|_| Error::invalid("Template not found"))?;
-    let intro = format!("Create the deliverable from the template “{}”", one_line(&template.name));
+    let mut intro = format!("Create the deliverable from the template \"{}\".", one_line(&template.name));
+    // Who it is for, so it is written for them; in the base, so a prompt can name other readers than its template.
+    let readers = templates::resolve(conn, Some(project), &template.readers)?;
+    if !readers.is_empty() {
+        intro.push_str(&format!(
+            "\n\nIt is written for: {}. Write it for these readers: their words, the detail they need and what they read first, and leave out what is to be kept from them.",
+            templates::describe(&readers)
+        ));
+    }
     let body = template.body.trim_end();
     if body.trim().is_empty() {
-        return Ok(format!("{intro}."));
+        return Ok(intro);
     }
     let fence = fence_for(body);
-    Ok(format!("{intro}. Use this structure:\n\n{fence}markdown\n{body}\n{fence}"))
+    Ok(format!("{intro}\n\nUse this structure:\n\n{fence}markdown\n{body}\n{fence}"))
 }
 
 /// Pieces of feedback as a prompt says them: each with the version it was given on, the passage, and what was said. With
@@ -149,14 +156,28 @@ pub fn suggest_base(conn: &Connection, project: &str, spec: &BaseSpec) -> Result
     }
 }
 
+/// The guiding questions that were answered, each with its answer, as the prompt tells them; nothing when all were skipped.
+fn answers_text(template: &str, answers: &[GuidingAnswer]) -> String {
+    let answered: Vec<String> = answers
+        .iter()
+        .filter(|a| !a.question.trim().is_empty() && !a.answer.trim().is_empty())
+        .map(|a| format!("**{}**\n{}", one_line(&a.question), a.answer.trim()))
+        .collect();
+    if answered.is_empty() {
+        return String::new();
+    }
+    let of = if template.is_empty() { String::new() } else { format!(" of the template \"{}\"", one_line(template)) };
+    format!("Answers to the guiding questions{of}:\n\n{}", answered.join("\n\n"))
+}
+
 /// Writes the request. All of it is checked before anything is written, so no prompt is left half made: the deliverable it
 /// asks changes to (given as any of its paths; it is linked as the live file) must exist, or the name of a new one to start
-/// for it is used (left blank, whatever produces the prompt names the file), and the feedback must be there. Started from a
-/// template, the template's guiding questions are added to the thread as posts to be answered, a one-time snapshot.
+/// for it is used (left blank, whatever produces the prompt names the file), and the feedback must be there. The answers to
+/// the template's guiding questions, given in the dialog, are added to the base; questions left blank were skipped.
 pub fn create(conn: &Connection, project: &str, thread: &str, draft: &NewPrompt) -> Result<PromptView> {
     threads::require(conn, project, thread)?;
     let (base, body) = (draft.base.trim(), draft.body.trim());
-    if base.is_empty() && body.is_empty() {
+    if base.is_empty() && body.is_empty() && draft.answers.iter().all(|a| a.answer.trim().is_empty()) {
         return Err(Error::invalid("Say what you want delivered"));
     }
     let template = match draft.template_id.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
@@ -177,18 +198,16 @@ pub fn create(conn: &Connection, project: &str, thread: &str, draft: &NewPrompt)
         feedback::require(conn, project, id)?;
     }
 
+    // The guiding questions are answered in the dialog, not in the thread: what was answered goes with the base.
+    let answered = answers_text(template.as_ref().map_or("", |t| t.name.as_str()), &draft.answers);
+    let base = match (base.is_empty(), answered.is_empty()) {
+        (_, true) => base.to_string(),
+        (true, false) => answered,
+        (false, false) => format!("{base}\n\n{answered}"),
+    };
+    let base = base.as_str();
+
     let tx = conn.unchecked_transaction()?;
-    if let Some(template) = &template {
-        for question in &template.questions {
-            posts::add(
-                &tx,
-                project,
-                thread,
-                &format!("**Guiding question ({}):** {question}", template.name),
-                AddOptions { guiding_question: true, ..Default::default() },
-            )?;
-        }
-    }
     let ids::Stamp { id, at } = ids::new_stamp();
     let title = display_title("", if body.is_empty() { base } else { body });
     tx.execute(
@@ -203,7 +222,10 @@ pub fn create(conn: &Connection, project: &str, thread: &str, draft: &NewPrompt)
     }
     if let Some(name) = new_name {
         // The file starts from the template's structure, when the prompt has one.
-        let skeleton = template.as_ref().map(|t| t.body.clone()).unwrap_or_default();
+        let skeleton = match &template {
+            Some(t) => templates::skeleton(conn, project, t)?,
+            None => String::new(),
+        };
         let created = deliverables::create(conn, project, name, &skeleton)?;
         link_deliverable(conn, project, thread, &id, &created.path)?;
     }

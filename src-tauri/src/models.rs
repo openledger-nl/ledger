@@ -81,6 +81,10 @@ pub struct PostView {
     pub updated_at: String,
     pub body: String,
     pub html: String,
+    /// What the post is: "thought", "devlog", "research" or "reflection"; `None` until you say.
+    pub kind: Option<String>,
+    /// How sure you are of it: "fact", "to-check", "assumption". Set by hand only, never by Ledger.
+    pub labels: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,6 +122,14 @@ pub struct PromptView {
 }
 
 /// What a new prompt is made of. It has no title: it is named from what it asks.
+/// A template's guiding question and what the person answered it with, in the dialog that makes the prompt.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GuidingAnswer {
+    pub question: String,
+    pub answer: String,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewPrompt {
@@ -135,6 +147,9 @@ pub struct NewPrompt {
     /// The pieces of feedback (ids) it is meant to resolve.
     #[serde(default)]
     pub feedback: Vec<String>,
+    /// The template's guiding questions as answered in the dialog; one left blank was skipped.
+    #[serde(default)]
+    pub answers: Vec<GuidingAnswer>,
 }
 
 /// What a new prompt's base text is made from.
@@ -169,6 +184,23 @@ pub struct FeedbackView {
     /// The version it was given on: the one it names, or for feedback on the live file the first version published after
     /// it was written (what that version froze). `None` while no version has been published since.
     pub given_on: Option<String>,
+    /// Who gave it, as a name; with their Portflow id and role when they are someone in Portflow.
+    pub from: Option<String>,
+    pub from_user: Option<i64>,
+    pub from_role: Option<String>,
+    /// How it was given: "in person", "meeting", "portflow", "email", "phone" or "other".
+    pub given: Option<String>,
+    /// "own" (your own note) or "someone" (given by someone else).
+    pub kind: String,
+    /// The user story it is about, by id; and the day of the meeting note it was written down in.
+    pub story: Option<String>,
+    pub daily: Option<String>,
+    /// Pulled from Portflow: the comment, the feedback it answers, its kind, and the evidence item and version it is on.
+    pub portflow_comment: Option<i64>,
+    pub reply_to: Option<String>,
+    pub comment_type: Option<String>,
+    pub evidence: Option<String>,
+    pub evidence_version: Option<i64>,
 }
 
 /// The passage feedback is about: what was selected, as plain text (marks gone, white space collapsed), and a few words
@@ -182,6 +214,18 @@ pub struct Quote {
     pub prefix: String,
     #[serde(default)]
     pub suffix: String,
+}
+
+
+/// Who gave a piece of feedback, as typed or picked when noting it.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FeedbackFrom {
+    pub name: Option<String>,
+    /// Picked from the people the portfolio is shared with in Portflow.
+    pub portflow_user: Option<i64>,
+    pub role: Option<String>,
+    pub given: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -237,6 +281,22 @@ pub struct DeliverableSummary {
     pub open_feedback: i64,
     /// The AI-use (MMM) label of the newest version that has one.
     pub mmm: Option<String>,
+    /// When the newest published version was made (its record's time; the file's otherwise).
+    pub latest_at: Option<String>,
+    /// The newest version of the evidence item it is in that is in Portflow, and when it was delivered there.
+    pub delivered: Option<Delivered>,
+    /// The Portflow evidence item this deliverable is (its name), when it is one: shown as its name.
+    pub evidence: Option<String>,
+    /// The item's other files (base paths, in a folder beside it), folded into it rather than listed on their own.
+    pub attachments: Vec<String>,
+}
+
+/// A version delivered to Portflow: its number (Ledger's major) and when Portflow got it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Delivered {
+    pub number: i64,
+    pub at: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -268,6 +328,9 @@ pub struct DeliverableView {
     pub editable: bool,
     pub prompts: Vec<DeliverablePrompt>,
     pub feedback: Vec<FeedbackView>,
+    /// See [`DeliverableSummary::evidence`] and [`DeliverableSummary::attachments`].
+    pub evidence: Option<String>,
+    pub attachments: Vec<String>,
 }
 
 // ---- templates --------------------------------------------------------------------------------------
@@ -284,10 +347,43 @@ pub struct TemplateView {
     pub questions: Vec<String>,
     /// The skeleton of the deliverable.
     pub body: String,
+    /// The kinds of project it is offered in (study, hobby, company); empty for every kind.
+    pub kinds: Vec<String>,
+    /// Who its deliverables are written for: told to Claude, and noted in the deliverable.
+    pub readers: Vec<TemplateReader>,
+    /// The readers are a visible line in a new deliverable, not only a `%%` note.
+    pub readers_shown: bool,
+    /// One the app ships, as shipped (not a file in the vault until it is changed).
+    pub builtin: bool,
+    /// The vault's own version of one the app ships: deleting it brings the shipped one back.
+    pub customised_builtin: bool,
     pub created_at: String,
     pub updated_at: String,
     /// A vault-wide template that the project has replaced with one of its own of the same id.
     pub overridden: bool,
+}
+
+/// Someone a template's deliverable is written for: a preset (`client`, `coach`, …, see `templates::PRESETS`) or
+/// someone in your own words, what they need from it, and what must be kept from them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TemplateReader {
+    pub who: String,
+    pub needs: String,
+    pub keep_from: String,
+}
+
+/// What a template says, as the editor sends it.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TemplateDraft {
+    pub name: String,
+    pub trigger: String,
+    pub questions: Vec<String>,
+    pub body: String,
+    pub kinds: Vec<String>,
+    pub readers: Vec<TemplateReader>,
+    pub readers_shown: bool,
 }
 
 // ---- stories, tasks, the board ----------------------------------------------------------------------
@@ -532,4 +628,12 @@ pub struct TaskUpdate {
     pub column_id: Option<String>,
     pub story_id: Option<String>,
     pub thread_slug: Option<String>,
+}
+
+#[cfg(test)]
+impl TemplateDraft {
+    /// A template with a name, a hint, questions and a skeleton, and nothing more.
+    pub fn basic(name: &str, trigger: &str, questions: &[String], body: &str) -> Self {
+        Self { name: name.into(), trigger: trigger.into(), questions: questions.to_vec(), body: body.into(), ..Default::default() }
+    }
 }

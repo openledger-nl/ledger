@@ -58,7 +58,7 @@ pub fn render_line(line: &str) -> Rendered {
             Some("api_retry") => {
                 let error = value.get("error").and_then(Value::as_str).unwrap_or("error");
                 let attempt = value.get("attempt").and_then(Value::as_u64).unwrap_or(0);
-                out.push_str(&format!("… The API returned an error ({error}); trying again (attempt {attempt})\n"));
+                out.push_str(&format!("... The API returned an error ({error}); trying again (attempt {attempt})\n"));
             }
             _ => {}
         },
@@ -75,7 +75,7 @@ pub fn render_line(line: &str) -> Rendered {
                     Some("tool_use") => {
                         let name = block.get("name").and_then(Value::as_str).unwrap_or("tool");
                         let detail = block.get("input").map(tool_detail).unwrap_or_default();
-                        out.push_str(&format!("→ {name}{}\n", if detail.is_empty() { String::new() } else { format!(" {detail}") }));
+                        out.push_str(&format!("- {name}{}\n", if detail.is_empty() { String::new() } else { format!(" {detail}") }));
                         steps.push(Step { name: name.to_string(), detail, failed: false });
                     }
                     _ => {}
@@ -147,8 +147,8 @@ fn shorten(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_string();
     }
-    let cut: String = text.chars().take(max).collect();
-    format!("{}…", cut.trim_end())
+    let cut: String = text.chars().take(max.saturating_sub(3)).collect(); // room for the three dots
+    format!("{}...", cut.trim_end())
 }
 
 /// The closing lines of a run: how long it took, and what was refused.
@@ -163,12 +163,12 @@ pub fn summary(result: Option<&ResultInfo>, seconds: u64) -> String {
             out.push_str(&format!("⊘ Refused by the permission mode: {}\n", shorten(denied, 160)));
         }
         if result.denials.len() > 10 {
-            out.push_str(&format!("⊘ …and {} more refused\n", result.denials.len() - 10));
+            out.push_str(&format!("⊘ ...and {} more refused\n", result.denials.len() - 10));
         }
         if result.is_error && !result.text.trim().is_empty() {
             out.push_str(&format!("✗ {}\n", shorten(first_line(&result.text), 300)));
         }
     }
-    out.push_str(&format!("— {}\n", parts.join(" · ")));
+    out.push_str(&format!("- {}\n", parts.join(" | ")));
     out
 }

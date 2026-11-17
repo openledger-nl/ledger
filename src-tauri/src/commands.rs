@@ -14,6 +14,8 @@ use crate::error::{Error, Result};
 use crate::github::GithubRemote;
 use crate::keystore::{self, EncryptionStatus, KeyStore};
 use crate::models::*;
+use crate::deliverable_facts::{self, DeliverableMeta};
+use crate::project_facts::{self, ProjectMeta, ProjectPerson};
 use crate::posts::AddOptions;
 use crate::screenshot::{self, Region, ScreenshotSettings};
 use crate::settings::{self, SyncConfig, SyncEnv};
@@ -88,8 +90,95 @@ pub fn get_project(app: State<App>, slug: String) -> Result<ProjectView> {
 }
 
 #[tauri::command]
-pub fn save_readme(app: State<App>, slug: String, text: String) -> Result<ProjectView> {
-    app.mutate(|c, _| projects::save_readme(c, &slug, &text))
+pub fn save_readme(app: State<App>, syncer: State<crate::portflow::PortflowSyncer>, slug: String, text: String) -> Result<ProjectView> {
+    let saved = app.mutate(|c, _| projects::save_readme(c, &slug, &text))?;
+    // A guide that goes to Portflow (that write switched on) follows the save; editing never waits for Portflow.
+    crate::portflow::guide_saved(&app, &syncer);
+    Ok(saved)
+}
+
+/// What a post is (a thought, devlog, research or reflection) and how sure you are of it.
+#[tauri::command]
+pub fn set_post_meta(app: State<App>, project: String, thread: String, id: String, kind: Option<String>, labels: Vec<String>) -> Result<PostView> {
+    app.mutate(|c, _| posts::set_meta(c, &project, &thread, &id, kind.as_deref(), &labels))
+}
+
+/// Keeps with a published version that it got another label than the project's intended one, and why.
+#[tauri::command]
+pub fn confirm_label(app: State<App>, project: String, path: String, version: String, intended: String, reason: String) -> Result<()> {
+    app.mutate(|c, _| provenance::confirm_label(c, &project, &path, &version, &intended, &reason))
+}
+
+/// A deliverable's number, goal, own label, question and template; `None` for one made without them.
+#[tauri::command]
+pub fn get_deliverable_meta(app: State<App>, project: String, path: String) -> Result<Option<DeliverableMeta>> {
+    app.read(|c, _| deliverable_facts::get(c, &project, &path))
+}
+
+#[tauri::command]
+pub fn list_deliverable_meta(app: State<App>, project: String) -> Result<Vec<DeliverableMeta>> {
+    app.read(|c, _| deliverable_facts::list(c, &project))
+}
+
+#[tauri::command]
+pub fn save_deliverable_meta(app: State<App>, meta: DeliverableMeta) -> Result<DeliverableMeta> {
+    app.mutate(|c, _| deliverable_facts::save(c, &meta))
+}
+
+/// A deliverable's evidence description (What? / Goal? / Why it contributes?); empty when it has none.
+#[tauri::command]
+pub fn get_deliverable_description(app: State<App>, project: String, path: String) -> Result<deliverable_facts::DescriptionView> {
+    app.read(|c, _| deliverable_facts::description(c, &project, &path))
+}
+
+/// Sets it: its three parts, or `text` as it is; empty takes it away.
+#[tauri::command]
+pub fn save_deliverable_description(
+    app: State<App>,
+    project: String,
+    path: String,
+    parts: Option<crate::portflow_evidence_text::Parts>,
+    text: Option<String>,
+) -> Result<deliverable_facts::DescriptionView> {
+    let text = match parts {
+        Some(parts) if [&parts.what, &parts.goal, &parts.why].iter().all(|t| t.trim().is_empty()) => String::new(),
+        Some(parts) => parts.to_markdown(),
+        None => text.unwrap_or_default(),
+    };
+    app.mutate(|c, _| deliverable_facts::save_description(c, &project, &path, &text))
+}
+
+/// The number the project's next deliverable gets.
+#[tauri::command]
+pub fn next_deliverable_number(app: State<App>, project: String) -> Result<i64> {
+    app.read(|c, _| deliverable_facts::next_number(c, &project))
+}
+
+/// A project's kind, goal and end; `None` while it has none.
+#[tauri::command]
+pub fn get_project_meta(app: State<App>, slug: String) -> Result<Option<ProjectMeta>> {
+    app.read(|c, _| project_facts::get(c, &slug))
+}
+
+#[tauri::command]
+pub fn list_project_meta(app: State<App>) -> Result<Vec<ProjectMeta>> {
+    app.read(|c, _| project_facts::list(c))
+}
+
+/// The people of a project (its coach, teammates, client…), or of every project without one.
+#[tauri::command]
+pub fn list_project_people(app: State<App>, slug: Option<String>) -> Result<Vec<ProjectPerson>> {
+    app.read(|c, _| project_facts::people(c, slug.as_deref()))
+}
+
+#[tauri::command]
+pub fn save_project_people(app: State<App>, slug: String, people: Vec<ProjectPerson>) -> Result<Vec<ProjectPerson>> {
+    app.mutate(|c, _| project_facts::save_people(c, &slug, &people))
+}
+
+#[tauri::command]
+pub fn save_project_meta(app: State<App>, slug: String, meta: ProjectMeta) -> Result<ProjectMeta> {
+    app.mutate(|c, _| project_facts::save(c, &slug, &meta))
 }
 
 /// Deletes the project and its whole folder, attachments and non-markdown deliverables included.
@@ -216,7 +305,7 @@ pub fn detach_prompt_feedback(app: State<App>, project: String, thread: String, 
 pub fn create_prompt_deliverable(app: State<App>, project: String, thread: String, id: String, name: String) -> Result<PromptView> {
     app.mutate(|c, _| {
         let prompt = prompts::get(c, &project, &thread, &id)?;
-        let skeleton = prompt.template_id.as_deref().and_then(|t| templates::find(c, &project, t).ok()).map(|t| t.body).unwrap_or_default();
+        let skeleton = prompt.template_id.as_deref().and_then(|t| templates::skeleton_for(c, &project, t).ok()).unwrap_or_default();
         let created = deliverables::create(c, &project, &name, &skeleton)?;
         prompts::link_deliverable(c, &project, &thread, &id, &created.path)
     })
@@ -232,13 +321,36 @@ pub fn add_feedback(
     deliverable_path: String,
     body: String,
     quote: Option<Quote>,
+    from: Option<FeedbackFrom>,
 ) -> Result<FeedbackView> {
-    app.mutate(|c, _| feedback::add(c, &project, &thread, &deliverable_path, &body, quote.as_ref()))
+    app.mutate(|c, _| feedback::add_with(c, &project, &thread, &deliverable_path, &body, quote.as_ref(), &from.unwrap_or_default()))
+}
+
+/// Every piece of feedback in the vault, newest first: the inbox.
+#[tauri::command]
+pub fn list_all_feedback(app: State<App>) -> Result<Vec<feedback::InboxFeedback>> {
+    app.read(|c, _| feedback::list_all(c))
+}
+
+/// Feedback written down from the inbox: your own note or someone else's, on a deliverable, a story or the project.
+#[tauri::command]
+pub fn record_feedback(app: State<App>, draft: feedback::FeedbackRecord) -> Result<FeedbackView> {
+    app.mutate(|c, _| feedback::record(c, &draft))
 }
 
 #[tauri::command]
-pub fn set_feedback_status(app: State<App>, project: String, thread: String, id: String, status: String) -> Result<FeedbackView> {
-    app.mutate(|c, _| feedback::set_status(c, &project, &thread, &id, &status))
+pub fn set_feedback_from(app: State<App>, project: String, thread: String, id: String, from: FeedbackFrom) -> Result<FeedbackView> {
+    app.mutate(|c, _| feedback::update_from(c, &project, &thread, &id, &from))
+}
+
+#[tauri::command]
+/// One piece of feedback, or (`all`) it and every reply to it.
+pub fn set_feedback_status(app: State<App>, project: String, thread: String, id: String, status: String, all: Option<bool>) -> Result<FeedbackView> {
+    if all.unwrap_or(false) {
+        app.mutate(|c, _| feedback::set_status_all(c, &project, &thread, &id, &status))
+    } else {
+        app.mutate(|c, _| feedback::set_status(c, &project, &thread, &id, &status))
+    }
 }
 
 #[tauri::command]
@@ -251,6 +363,30 @@ pub fn delete_feedback(app: State<App>, project: String, thread: String, id: Str
     app.mutate(|c, _| feedback::delete(c, &project, &thread, &id))
 }
 
+// ---- meeting notes (daily notes) -------------------------------------------------------------------
+
+/// The days' notes, newest first; with a project or a person (a tag), only the days with a meeting of theirs.
+#[tauri::command]
+pub fn list_daily_notes(app: State<App>, project: Option<String>, person: Option<String>) -> Result<Vec<crate::daily::DailyNote>> {
+    app.read(|c, _| crate::daily::list(c, project.as_deref(), person.as_deref()))
+}
+
+#[tauri::command]
+pub fn get_daily_note(app: State<App>, date: String) -> Result<Option<crate::daily::DailyNote>> {
+    app.read(|c, _| crate::daily::get(c, &date))
+}
+
+/// Saves a day's meetings; none (and nothing else in the note) removes its file. Returns the note, or none when it went.
+#[tauri::command]
+pub fn save_daily_note(app: State<App>, note: crate::daily::DailyDraft) -> Result<Option<crate::daily::DailyNote>> {
+    app.mutate(|c, _| crate::daily::save(c, &note))
+}
+
+#[tauri::command]
+pub fn delete_daily_note(app: State<App>, date: String) -> Result<()> {
+    app.mutate(|c, _| crate::daily::delete(c, &date))
+}
+
 // ---- uploads and project files ----------------------------------------------------------------------
 
 /// Copies files from this machine into the project's attachments and records them in the thread.
@@ -259,6 +395,40 @@ pub fn upload_files(app: State<App>, project: String, thread: String, paths: Vec
     let sources: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     app.mutate(|c, root| uploads::add_files(c, root, &project, &thread, &sources, &description))
 }
+
+/// A file dropped on the window: its bytes come as the request's raw body (no JSON, so a large file stays cheap), and
+/// where it goes in the headers `project`, `thread` and `name` (percent-encoded, as headers carry only ASCII).
+#[tauri::command]
+pub fn upload_dropped(app: State<App>, request: tauri::ipc::Request<'_>) -> Result<UploadView> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(Error::invalid("The file didn't arrive: send its bytes as the request body"));
+    };
+    let header = |key: &str| -> Result<String> {
+        let raw = request.headers().get(key).and_then(|v| v.to_str().ok()).ok_or_else(|| Error::invalid(format!("Missing `{key}`")))?;
+        percent_decode(raw).ok_or_else(|| Error::invalid(format!("`{key}` is not percent-encoded UTF-8")))
+    };
+    let (project, thread, name) = (header("project")?, header("thread")?, header("name")?);
+    app.mutate(|c, root| uploads::add_bytes(c, root, &project, &thread, &name, bytes, ""))
+}
+
+/// Undoes `encodeURIComponent`: `%XX` escapes to bytes, read as UTF-8; `None` for a broken escape or text.
+fn percent_decode(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = s.get(i + 1..i + 3)?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
 
 /// Every file uploaded in the project, from all its threads (the project's Attachments tab).
 #[tauri::command]
@@ -299,6 +469,19 @@ pub fn read_project_file(app: State<App>, project: String, path: String) -> Resu
     let file = app.read(|_, root| project_path(root, &project, &path))?;
     let bytes = std::fs::read(&file).map_err(|e| Error::io(&file, e))?;
     Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// A picture in a project's folder, as the window can show it (a JPEG XL one as PNG, see `images`).
+#[tauri::command]
+pub fn read_project_image(app: State<App>, project: String, path: String) -> Result<tauri::ipc::Response> {
+    let file = app.read(|_, root| project_path(root, &project, &path))?;
+    Ok(tauri::ipc::Response::new(crate::images::displayable_file(&file)?))
+}
+
+/// The preview of a picture being dropped onto the window, from wherever it is on this machine: pictures only.
+#[tauri::command]
+pub fn preview_dropped_image(path: String) -> Result<tauri::ipc::Response> {
+    Ok(tauri::ipc::Response::new(crate::images::preview_of(Path::new(&path))?))
 }
 
 /// Opens a file in a project's folder with the system's default program, or shows it in the file manager.
@@ -369,6 +552,12 @@ pub fn update_version_record(app: State<App>, project: String, path: String, ver
     })
 }
 
+/// Gives a deliverable another name; returns its new path.
+#[tauri::command]
+pub fn rename_deliverable(app: State<App>, project: String, path: String, name: String) -> Result<String> {
+    app.mutate(|c, root| deliverables::rename(c, root, &project, &path, &name))
+}
+
 #[tauri::command]
 pub fn delete_deliverable(app: State<App>, project: String, path: String) -> Result<()> {
     app.mutate(|c, root| deliverables::delete(c, root, &project, &path))
@@ -395,8 +584,8 @@ pub fn effective_templates(app: State<App>, project: String) -> Result<Vec<Templ
 }
 
 #[tauri::command]
-pub fn create_template(app: State<App>, scope: String, name: String, trigger: String, questions: Vec<String>, body: String) -> Result<TemplateView> {
-    app.mutate(|c, _| templates::create(c, &scope, &name, &trigger, &questions, &body))
+pub fn create_template(app: State<App>, scope: String, draft: TemplateDraft) -> Result<TemplateView> {
+    app.mutate(|c, _| templates::create(c, &scope, &draft))
 }
 
 /// Gives the project its own copy of a vault-wide template, which then replaces the shared one there.
@@ -406,16 +595,20 @@ pub fn override_template(app: State<App>, project: String, id: String) -> Result
 }
 
 #[tauri::command]
-pub fn update_template(
-    app: State<App>,
-    scope: String,
-    id: String,
-    name: Option<String>,
-    trigger: Option<String>,
-    questions: Option<Vec<String>>,
-    body: Option<String>,
-) -> Result<TemplateView> {
-    app.mutate(|c, _| templates::update(c, &scope, &id, name.as_deref(), trigger.as_deref(), questions.as_deref(), body.as_deref()))
+pub fn update_template(app: State<App>, scope: String, id: String, draft: TemplateDraft) -> Result<TemplateView> {
+    app.mutate(|c, _| templates::update(c, &scope, &id, &draft))
+}
+
+/// The readers a template can name by a word: `me`, `client`, `people` and the rest.
+#[tauri::command]
+pub fn template_reader_presets() -> Vec<templates::Preset> {
+    templates::PRESETS.to_vec()
+}
+
+/// What a new deliverable in the project starts with from this template: its skeleton with its readers noted.
+#[tauri::command]
+pub fn template_skeleton(app: State<App>, project: String, id: String) -> Result<String> {
+    app.read(|c, _| templates::skeleton_for(c, &project, &id))
 }
 
 #[tauri::command]
@@ -528,7 +721,7 @@ fn view(app: &App) -> SettingsView {
         (root, core.vault_from_env, env, core.keys.clone())
     };
     let token_hint = if env.token.chars().count() >= 8 {
-        format!("…{}", env.token.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<String>())
+        format!("...{}", env.token.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<String>())
     } else {
         String::new()
     };
@@ -771,6 +964,21 @@ pub fn save_screenshot_hotkey(app: AppHandle, hotkey: String) -> Result<Settings
     Ok(view(&state))
 }
 
+/// The shell's layout as this vault's settings have it (the folded sidebar: an icon rail or nothing).
+#[tauri::command]
+pub fn layout_settings(app: State<App>) -> settings::LayoutSettings {
+    let root = app.lock().vault.root().to_path_buf();
+    settings::read_settings(&root).layout
+}
+
+/// Saves what a folded sidebar becomes, in `.ledger/settings.json`.
+#[tauri::command]
+pub fn save_sidebar_fold(app: State<App>, fold: settings::SidebarFold) -> Result<settings::LayoutSettings> {
+    let root = app.lock().vault.root().to_path_buf();
+    settings::update_settings(&root, |s| s.layout.sidebar_fold = fold)?;
+    Ok(settings::read_settings(&root).layout)
+}
+
 /// Chooses between the built-in capture and the user's own tool (and saves the tool's command either way).
 #[tauri::command]
 pub fn save_screenshot_tool(app: State<App>, use_command: bool, command: String) -> Result<SettingsView> {
@@ -837,4 +1045,18 @@ pub fn attach_screenshot(app: AppHandle, project: String, thread: String, descri
 #[tauri::command]
 pub fn discard_screenshot(app: AppHandle) {
     screenshot::discard_pending(&app);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::percent_decode;
+
+    #[test]
+    fn percent_decoding_undoes_encode_uri_component() {
+        assert_eq!(percent_decode("Sch%C3%A9ma%20v2.png").as_deref(), Some("Schéma v2.png"));
+        assert_eq!(percent_decode("plain-name.pdf").as_deref(), Some("plain-name.pdf"));
+        assert_eq!(percent_decode("bad%2"), None);
+        assert_eq!(percent_decode("bad%zz"), None);
+        assert_eq!(percent_decode("%FF"), None);
+    }
 }

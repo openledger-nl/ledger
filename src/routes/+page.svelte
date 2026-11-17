@@ -7,14 +7,16 @@
 	import ContributionGraph from '$lib/components/ContributionGraph.svelte';
 	import ProjectLatest from '$lib/components/ProjectLatest.svelte';
 	import Onboarding from '$lib/components/Onboarding.svelte';
+	import PortflowFeedbackWidget from '$lib/components/PortflowFeedbackWidget.svelte';
 	import SyncWidget from '$lib/components/SyncWidget.svelte';
-	import { ago, LOCALE, newest, plural, stamp } from '$lib/format';
+	import { ago, newest, numericDay, plural, stamp, todayKey, weekday } from '$lib/format';
 	import { dashboard, isPinned, togglePin } from '$lib/dashboard.svelte';
+	import { daysLeft, daysLeftText, endDay } from '$lib/v1';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	const today = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+	const today = `${weekday(todayKey())} ${numericDay(todayKey())}`;
 
 	/** Every project with what it shows, the most recently active first. */
 	const cards = $derived(
@@ -38,6 +40,12 @@
 	);
 
 	type Card = (typeof cards)[number];
+
+	/** A project's goal and days left, the most important things it has (A1). */
+	function goal(slug: string) {
+		const m = data.meta.find((x) => x.slug === slug);
+		return m ? { text: m.goal, left: daysLeftText(daysLeft(endDay(m, data.semesters))) } : null;
+	}
 
 	/** Pinned projects first, in the order they were pinned; then the rest, the most recently active first. */
 	const pinned = $derived(
@@ -82,6 +90,10 @@
 				<span>{plural(p.storyCount, 'story', 'stories')}</span>
 				{#if c.openFeedback}<span class="badge draft">{c.openFeedback} open feedback</span>{/if}
 			</div>
+			{#if goal(p.slug)}
+				{@const g = goal(p.slug)}
+				<p class="proj-goal"><strong>{g?.left}</strong> {g?.text}</p>
+			{/if}
 		</header>
 
 		<ProjectLatest project={p} deliverables={data.details[p.slug]?.deliverables ?? []} />
@@ -103,7 +115,7 @@
 	<div class="empty-state">
 		<h1>Welcome to Ledger</h1>
 		<p>
-			Everything lives in a folder of markdown files — a vault — that you can open in any editor and sync to a private GitHub
+			Everything lives in a folder of markdown files - a vault - that you can open in any editor and sync to a private GitHub
 			repository. Start with a project: it holds your threads, deliverables, user stories and board.
 		</p>
 		<button class="btn primary" onclick={newProjectFlow}>Create your first project</button>
@@ -115,7 +127,7 @@
 			<div class="header-top">
 				<div>
 					<h1>Dashboard</h1>
-					<div class="sub">{today} · {plural(data.projects.length, 'project')} in your vault</div>
+					<div class="sub">{today} | {plural(data.projects.length, 'project')} in your vault</div>
 				</div>
 				<div class="header-actions">
 					<button class="btn primary" onclick={newProjectFlow}><Plus size={16} />New project</button>
@@ -127,7 +139,7 @@
 	<!-- The guide keeps its place when the first project arrives (it is not drawn twice), or a vault pulled in from GitHub would
 	     restart it instead of closing it. -->
 	<div class="page">
-		<div class="page-inner" class:wide={data.projects.length > 0}>
+		<div class="page-inner">
 			{#if data.onboarding.active}{@render guide()}{/if}
 			{#if data.projects.length > 0}
 				{#if dashboard.showActivity}
@@ -151,6 +163,7 @@
 				{/if}
 				<SyncWidget />
 			{/if}
+			<PortflowFeedbackWidget version={data} />
 		</div>
 	</div>
 {/if}

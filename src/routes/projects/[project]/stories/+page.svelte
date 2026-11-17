@@ -13,17 +13,17 @@
 	let creating = $state(false);
 </script>
 
-<svelte:head><title>Stories · {data.project.name} · Ledger</title></svelte:head>
+<svelte:head><title>Stories | {data.project.name} | Ledger</title></svelte:head>
 
 <div class="page">
-	<div class="page-inner wide">
+	<div class="page-inner">
 		<div class="panel">
 			<div class="header-top">
 				<div>
 					<h2>User stories</h2>
 					<div class="sub">What the project is for, with the criteria that say when it is done. Tasks on the board can point at a story.</div>
 				</div>
-				<button class="btn primary small" onclick={() => (creating = true)}>New user story…</button>
+				<button class="btn primary small" onclick={() => (creating = true)}>New user story</button>
 			</div>
 			{#if data.stories.length === 0}
 				<div class="hint">No user stories yet.</div>

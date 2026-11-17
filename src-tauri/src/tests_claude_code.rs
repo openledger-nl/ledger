@@ -28,7 +28,7 @@ use crate::claude_code::runs::{self, Host, MAX_CONCURRENT, MAX_OUTPUT_BYTES, Run
 use crate::claude_code::versions::{Baseline, Change};
 use crate::claude_code::{check_with, finish};
 use crate::error::Result;
-use crate::models::{BaseSpec, Bump, NewPrompt};
+use crate::models::{BaseSpec, Bump, NewPrompt, TemplateDraft};
 use crate::state::Core;
 use crate::{deliverables, ids, projects, prompts, provenance, templates, threads};
 
@@ -680,12 +680,12 @@ fn the_text_is_a_short_preamble_then_the_prompt_as_written() {
 fn the_template_reaches_the_run_in_the_base_and_a_linked_deliverable_is_named() {
     let f = Fixture::with_body("Write up the call.");
     let skeleton = "# Interview\n\n```text\nfenced\n```\n## Who\n";
-    let template = templates::create(&f.core.conn, "", "Interview", "after a call", &[], skeleton).unwrap();
+    let template = templates::create(&f.core.conn, "", &TemplateDraft::basic("Interview", "after a call", &[], skeleton)).unwrap();
 
     // The structure is in the base the dialog fills in from the template, in a fence long enough to hold the one inside it.
     let spec = BaseSpec { template_id: Some(template.id.clone()), feedback: vec![] };
     let base = prompts::suggest_base(&f.core.conn, &f.project, &spec).unwrap();
-    assert!(base.contains("the template “Interview”") && base.contains("## Who"), "{base}");
+    assert!(base.contains("the template \"Interview\"") && base.contains("## Who"), "{base}");
     assert!(base.contains("````markdown\n# Interview"), "the fence is longer than the backticks inside: {base}");
     let draft = NewPrompt { base, body: "Summarise it.".into(), template_id: Some(template.id.clone()), ..Default::default() };
     let prompt = prompts::create(&f.core.conn, &f.project, &f.thread, &draft).unwrap();
@@ -741,7 +741,7 @@ fn a_name_is_the_first_line_of_the_answer_without_decoration() {
     assert_eq!(naming::clean("  \n \n"), None);
     assert_eq!(naming::clean("\"\""), None);
     let long = naming::clean(&"word ".repeat(40)).unwrap();
-    assert!(long.chars().count() <= 61 && long.ends_with('…'), "{long}");
+    assert!(long.chars().count() <= 61 && long.ends_with("..."), "{long}");
 }
 
 #[test]
@@ -905,12 +905,12 @@ fn output_arrives_while_the_run_is_going_and_the_run_finishes() {
     assert_eq!(midway.run.status, Status::Running, "output is visible while it is still running");
 
     process.stdout(SAID);
-    wait_until("the second output", || rig.snapshot(&run.id).output.contains("→ Write deliverables/summary.md"));
+    wait_until("the second output", || rig.snapshot(&run.id).output.contains("- Write deliverables/summary.md"));
     process.stdout(RESULT_OK);
     process.exit(0);
     let done = rig.wait_for(&run.id, Status::Finished);
 
-    for expected in ["I'll write the summary.", "→ Write deliverables/summary.md", "2 turns", "Refused by the permission mode: Bash curl example.com"] {
+    for expected in ["I'll write the summary.", "- Write deliverables/summary.md", "2 turns", "Refused by the permission mode: Bash curl example.com"] {
         assert!(done.output.contains(expected), "{expected}: {}", done.output);
     }
     // The program reports a dollar figure (RESULT_OK has one); the closing line leaves it out.
@@ -1219,7 +1219,7 @@ fn a_failed_stopped_or_unstartable_run_is_noted_too() {
     let rig = Rig::new();
     let run = rig.start(&f).unwrap();
     rig.runner.handle(0).stdout(SAID);
-    wait_until("the output", || rig.snapshot(&run.id).output.contains("→ Write"));
+    wait_until("the output", || rig.snapshot(&run.id).output.contains("- Write"));
     rig.runs.cancel(&run.id).unwrap();
     rig.wait_for(&run.id, Status::Cancelled);
     let note = lock(&rig.host.records)[0].clone();
@@ -1278,7 +1278,7 @@ fn the_note_says_how_a_run_ended_and_stays_small() {
     stopped.message = Some("Claude Code stopped with exit code 1");
     let note = records::build(&request, &stopped, &Redactor::default());
     assert!(note.body.starts_with("Failed: Claude Code stopped with exit code 1\n"), "{}", note.body);
-    assert!(note.body.contains("- Read `f199.md`\n- …and 50 more\n") && !note.body.contains("f200.md"), "the list is capped");
+    assert!(note.body.contains("- Read `f199.md`\n- ...and 50 more\n") && !note.body.contains("f200.md"), "the list is capped");
     assert_eq!(note.turns, None);
 
     stopped.status = "cancelled";
@@ -1291,7 +1291,7 @@ fn the_note_says_how_a_run_ended_and_stays_small() {
 
     let long = ResultInfo { is_error: false, text: "word ".repeat(10_000), turns: None, denials: vec![] };
     let note = records::build(&request, &facts("finished", Some(&long), &[], &[]), &Redactor::default());
-    assert!(note.body.chars().count() < 20_100 && note.body.trim_end().ends_with('…'), "{} characters", note.body.chars().count());
+    assert!(note.body.chars().count() < 20_100 && note.body.trim_end().ends_with("..."), "{} characters", note.body.chars().count());
 }
 
 #[test]
@@ -1496,7 +1496,7 @@ fn streaming_json_is_shown_as_what_was_said_and_done() {
     assert_eq!(init, "● Started: claude-test, permission mode acceptEdits\n");
 
     let said = render::render_line(SAID).text;
-    assert_eq!(said, "I'll write the summary.\n→ Write deliverables/summary.md\n");
+    assert_eq!(said, "I'll write the summary.\n- Write deliverables/summary.md\n");
 
     // File contents and command output are not copied into the output; errors are.
     let ok = r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"1","content":"file contents SECRET"}]}}"#;
@@ -1524,9 +1524,9 @@ fn streaming_json_is_shown_as_what_was_said_and_done() {
     assert!(retry.contains("rate_limit") && retry.contains("attempt 2"), "{retry}");
 
     let closing = render::summary(Some(&info), 65);
-    assert!(closing.contains("— 1:05 · 2 turns\n") && closing.contains("Refused by the permission mode: Bash curl example.com"), "{closing}");
+    assert!(closing.contains("- 1:05 | 2 turns\n") && closing.contains("Refused by the permission mode: Bash curl example.com"), "{closing}");
     assert!(!closing.contains('$'), "{closing}");
-    assert_eq!(render::summary(None, 7), "— 0:07\n");
+    assert_eq!(render::summary(None, 7), "- 0:07\n");
 }
 
 // ---- the vault after a run ------------------------------------------------------------------------------

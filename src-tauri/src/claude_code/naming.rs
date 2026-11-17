@@ -38,6 +38,7 @@ pub fn clean(output: &str) -> Option<String> {
     loop {
         let next = name
             .trim()
+            // ui-text: allow (strips the quotes a model may put around a name, curly ones too)
             .trim_matches(|c: char| matches!(c, '"' | '\'' | '`' | '“' | '”' | '‘' | '’' | '*' | '#'))
             .trim()
             .trim_end_matches(['.', '。'])
@@ -52,9 +53,9 @@ pub fn clean(output: &str) -> Option<String> {
     if name.is_empty() {
         return None;
     }
-    let mut out: String = name.chars().take(MAX_NAME_CHARS).collect();
+    let mut out: String = name.chars().take(MAX_NAME_CHARS.saturating_sub(3)).collect(); // room for the three dots
     if name.chars().count() > MAX_NAME_CHARS {
-        out = format!("{}…", out.trim_end());
+        out = format!("{}...", out.trim_end());
     }
     Some(out)
 }

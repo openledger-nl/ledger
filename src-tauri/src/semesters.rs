@@ -164,7 +164,7 @@ fn check_overlap(conn: &Connection, own: Option<&str>, checked: &Checked) -> Res
     )?;
     match clash {
         Some((name, from, until)) => Err(Error::invalid(format!(
-            "It overlaps “{name}” ({} to {}); semesters can't share days",
+            "It overlaps \"{name}\" ({} to {}); semesters can't share days",
             european(&from),
             european(&until)
         ))),

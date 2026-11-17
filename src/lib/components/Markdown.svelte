@@ -3,7 +3,10 @@
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { goto } from '$app/navigation';
 	import { locate, plain, rangeIn, textOf, type Mark } from '$lib/anchors';
+	import { deliverableUrl, threadUrl } from '$lib/actions';
 	import { linkUrl, projectLinks } from '$lib/links.svelte';
+	import { openInPortflow } from '$lib/portflow.svelte';
+	import type { EvidenceMention } from '$lib/types';
 	import { toast } from '$lib/ui.svelte';
 	import { imageLoader, isVaultSrc, type ImageBase } from '$lib/vaultImages';
 
@@ -12,7 +15,20 @@
 	 * in the vault are shown too, read from there. With `marks`, passages of the text are lit up (feedback on a
 	 * selection), found again by their words each time the page or the list changes; `onmark` hears a click on one.
 	 */
-	let { html, images, marks, onmark }: { html: string; images?: ImageBase; marks?: Mark[]; onmark?: (id: string) => void } = $props();
+	let {
+		html,
+		images,
+		marks,
+		onmark,
+		mentions
+	}: {
+		html: string;
+		images?: ImageBase;
+		marks?: Mark[];
+		onmark?: (id: string) => void;
+		/** The evidence items a Portflow reading guide's `@` mentions can be: a mention of one leads to its deliverable. */
+		mentions?: EvidenceMention[];
+	} = $props();
 
 	let root: HTMLDivElement;
 	const pictures = imageLoader(() => images);
@@ -27,7 +43,7 @@
 		for (const img of root.querySelectorAll<HTMLImageElement>('img[data-src]')) {
 			pictures.load(img.dataset.src ?? '').then((url) => {
 				if (url) img.src = url;
-				else img.replaceWith(Object.assign(document.createElement('span'), { className: 'missing', textContent: `Couldn’t load ${img.alt || img.dataset.src}` }));
+				else img.replaceWith(Object.assign(document.createElement('span'), { className: 'missing', textContent: `Couldn't load ${img.alt || img.dataset.src}` }));
 			});
 		}
 	});
@@ -49,13 +65,45 @@
 			a.classList.toggle('unresolved', !target);
 			if (!target || !project) {
 				a.removeAttribute('href');
-				a.title = index ? `Nothing in this project is called “${name}”` : 'Links work inside a project';
+				a.title = index ? `Nothing in this project is called "${name}"` : 'Links work inside a project';
 				continue;
 			}
 			a.href = linkUrl(project, target);
 			a.title = target.kind === 'feedback' ? `Feedback ${target.detail}` : target.kind === 'thread' ? 'Thread' : `Deliverable ${target.id}`;
 			// Feedback has no name to type: without words of its own, the link says what the feedback says.
 			if (target.kind === 'feedback' && !a.dataset.alias) a.textContent = target.title;
+		}
+	});
+
+	// ---- @ mentions --------------------------------------------------------------------------------
+	// A Portflow mention (`[@Analysis](portflow:evidence-2110705)`) arrives as <a class="mention" data-mention="…">. One
+	// of an evidence item leads to its deliverable (or, until that's in Ledger, its thread); any other opens Portflow.
+
+	/** The number at the end of a mention's id: `evidence-2110705` → 2110705. */
+	const numberOf = (id: string) => Number(/(\d+)$/.exec(id)?.[1] ?? NaN);
+
+	$effect(() => {
+		void shown;
+		const project = links.project;
+		for (const a of root.querySelectorAll<HTMLAnchorElement>('a.mention')) {
+			// A person mentioned in a meeting's notes: the feedback they gave.
+			if (a.dataset.person) {
+				a.href = `/feedback?from=${encodeURIComponent(a.dataset.person)}`;
+				a.title = `The feedback ${a.textContent?.replace(/^@/, '') ?? ''} gave`;
+				continue;
+			}
+			const id = a.dataset.mention ?? '';
+			const item = a.dataset.mentionType === 'evidence' || id.startsWith('evidence') ? mentions?.find((m) => m.portflowId === numberOf(id)) : undefined;
+			if (item?.deliverable && project) {
+				a.href = deliverableUrl(project, item.deliverable);
+				a.title = `${item.name}: open the deliverable`;
+			} else if (item?.thread && project) {
+				a.href = threadUrl(project, item.thread);
+				a.title = `${item.name}: its thread "${item.threadTitle ?? item.thread}"`;
+			} else {
+				a.removeAttribute('href');
+				a.title = 'In Portflow';
+			}
 		}
 	});
 
@@ -125,6 +173,11 @@
 			if (anchor.classList.contains('wikilink')) {
 				if (href) void goto(href);
 				else toast(anchor.title);
+				return;
+			}
+			if (anchor.classList.contains('mention')) {
+				if (href) void goto(href);
+				else void openInPortflow(`"${(anchor.textContent ?? '').replace(/^@/, '')}"`);
 				return;
 			}
 			if (/^(https?:|mailto:)/i.test(href)) openUrl(href).catch(() => {});

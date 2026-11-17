@@ -114,6 +114,10 @@ pub fn compose(project_name: &str, prompt: &PromptView) -> String {
         }
     }
     out.push_str(&format!("The discussion the request came out of is in threads/{}/ (thread.md, and the posts/ folder next to it).\n", prompt.thread_slug));
+    // Templates carry their guidance as Obsidian comments, and a deliverable says who it is for in one of them.
+    out.push_str(
+        "Text between %% marks is a note to the writer (what a heading is for, an example): follow it, and leave it out of what you write. Keep a \"%% Readers: ... %%\" note, and a \"**Readers:**\" line, as they are: they say who the deliverable is written for, so write it for them.\n",
+    );
 
     out.push_str("\nWhen you are done, say in a sentence or two which files you wrote.\n\n---\n\n");
     out.push_str(&prompts::request_text(prompt));

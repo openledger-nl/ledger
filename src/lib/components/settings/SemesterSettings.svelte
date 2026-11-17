@@ -4,15 +4,47 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import TreePalm from '@lucide/svelte/icons/tree-palm';
 	import { page } from '$app/state';
+	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import SemesterModal from '$lib/components/SemesterModal.svelte';
 	import SprintTimeline from '$lib/components/SprintTimeline.svelte';
+	import { portflowApi } from '$lib/api';
+	import { portflow } from '$lib/portflow.svelte';
+	import { attempt } from '$lib/ui.svelte';
 	import { currentSprint, length, nj26Draft, phaseOf, spanLabel, today, workDays } from '$lib/semesters';
-	import type { Semester, SemesterDraft } from '$lib/types';
+	import type { PortflowSection, Semester, SemesterDraft } from '$lib/types';
 
 	// The semesters the dashboard's contribution graph follows: a list, and a + that adds one from a preset or from scratch.
 	// They are loaded by the settings layout, so they stay current when one is saved.
 
 	const semesters = $derived(page.data.semesters as Semester[]);
+
+	// Which Portflow section (a semester in the portfolio) each semester is: only while Portflow is on.
+	let sections = $state<PortflowSection[]>([]);
+	$effect(() => {
+		void portflow.status?.lastSyncAt;
+		if (!portflow.enabled) {
+			sections = [];
+			return;
+		}
+		let stale = false;
+		portflowApi.sections().then(
+			(all) => !stale && (sections = all),
+			() => {}
+		);
+		return () => (stale = true);
+	});
+	const sectionOf = (semester: string) => sections.find((x) => x.semester === semester)?.id ?? null;
+	async function linkSection(semester: string, value: string) {
+		const all = await attempt(() => portflowApi.linkSection(semester, value ? Number(value) : null));
+		if (all) sections = all;
+	}
+	const sectionOptions = (semester: string): DropdownOption[] => [
+		{ value: '', label: 'None' },
+		...sections.map((x) => ({
+			value: String(x.id),
+			label: `${x.name}${x.semester && x.semester !== semester ? ` (now ${x.semesterName ?? x.semester})` : ''}`
+		}))
+	];
 
 	/** The editor: undefined when closed; otherwise the semester it changes, or null for a new one (from `preset`, if given). */
 	let editor = $state<{ semester: Semester | null; preset?: SemesterDraft } | undefined>(undefined);
@@ -124,9 +156,21 @@
 					<span>{s.sprints.length} sprints</span>
 					{#if s.vacations.length}<span>{s.vacations.length} {s.vacations.length === 1 ? 'vacation' : 'vacations'}</span>{/if}
 					{#if phase === 'current'}
-						<span><b>Week {p.week}</b> of {p.weeks}{#if at >= 0} · <b>{s.sprints[at].name}</b>{/if}</span>
+						<span><b>Week {p.week}</b> of {p.weeks}{#if at >= 0} | <b>{s.sprints[at].name}</b>{/if}</span>
 					{/if}
 				</div>
+
+				{#if portflow.enabled && sections.length}
+					<div class="sem-section">
+						Portflow section
+						<!-- Section ids are numbers; the empty string is "None". Only a different pick links anew. -->
+						<Dropdown
+							bind:value={() => String(sectionOf(s.id) ?? ''), (v) => v !== String(sectionOf(s.id) ?? '') && linkSection(s.id, v)}
+							options={sectionOptions(s.id)}
+							label="Portflow section"
+						/>
+					</div>
+				{/if}
 
 				<SprintTimeline start={s.start} end={s.end} sprints={s.sprints} vacations={s.vacations} />
 
@@ -136,7 +180,7 @@
 						<li class={sphase}>
 							<span class="n">{i + 1}</span>
 							<span class="name">{sp.name}</span>
-							<span class="when">{spanLabel(sp.start, sp.end)} · {Math.round(workDays(sp.start, sp.end, s.vacations) / 7)} wk</span>
+							<span class="when">{spanLabel(sp.start, sp.end)} | {Math.round(workDays(sp.start, sp.end, s.vacations) / 7)} wk</span>
 							{#if sp.goal}<span class="goal"><Flag size={12} />{sp.goal}</span>{:else}<span class="goal"></span>{/if}
 							{#if sphase === 'current'}<span class="badge accent">Now</span>{/if}
 						</li>
@@ -146,7 +190,7 @@
 				{#if s.vacations.length}
 					<div class="sem-vacations">
 						{#each s.vacations as v, i (i)}
-							<span class="chip plain"><TreePalm size={12} />{v.name} · {spanLabel(v.start, v.end)}</span>
+							<span class="chip plain"><TreePalm size={12} />{v.name} | {spanLabel(v.start, v.end)}</span>
 						{/each}
 					</div>
 				{/if}

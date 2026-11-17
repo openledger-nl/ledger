@@ -48,7 +48,7 @@
 
 	async function remove() {
 		const ok = await confirmDialog({
-			title: `Delete “${promptName(prompt)}”?`,
+			title: `Delete "${promptName(prompt)}"?`,
 			message: 'The deliverables it produced are kept.',
 			confirmLabel: 'Delete',
 			danger: true
@@ -60,8 +60,8 @@
 
 <div class="card prompt-card" id="pr-{prompt.id}">
 	<div class="meta">
-		<span class="card-kind">Prompt</span>
 		<span class="time">{time(prompt.createdAt)}</span>
+		<span class="card-kind">Prompt</span>
 		{#if prompt.templateName}<span class="badge accent">{prompt.templateName}</span>{/if}
 		{#if prompt.updatedAt !== prompt.createdAt}<span class="file">edited</span>{/if}
 	</div>
@@ -84,7 +84,7 @@
 				{#each covered as f (f.id)}
 					<span class="chip" class:plain={f.status === 'resolved'}>
 						<button class="chip-go" title="Show the feedback" onclick={() => onfeedback?.(f.id)}>
-							{f.givenOn ? `v${f.givenOn}` : 'live'} · {f.quote ?? f.body}
+							{f.givenOn ? `v${f.givenOn}` : 'live'} | {f.quote ?? f.body}
 						</button>
 						<button class="x" aria-label="Take this feedback out of the prompt" onclick={() => detach(f.id)}><X size={12} /></button>
 					</span>
@@ -100,7 +100,7 @@
 				{#each prompt.deliverables as d (d.path)}
 					<span class="chip" class:plain={!d.exists}>
 						{#if d.exists}
-							<a href={deliverableUrl(project, d.path)} style="color:inherit;text-decoration:none">{baseName(d.path)}</a>
+							<a href={deliverableUrl(project, d.path, thread)} style="color:inherit;text-decoration:none">{baseName(d.path)}</a>
 						{:else}
 							<span title="This file is no longer in the project">{baseName(d.path)} (missing)</span>
 						{/if}
@@ -113,9 +113,9 @@
 	{/if}
 
 	<div class="actions">
-		{#if onDeliverable}<button class="link accent" onclick={() => onaddfeedback?.()}>Add feedback…</button>{/if}
-		<button class="link" onclick={() => onedit(prompt)}>Edit</button>
-		<Menu class="link more" label="More about this prompt" items={[{ id: 'delete', label: 'Delete prompt', icon: Trash, danger: true }]} onpick={() => remove()} align="end">
+		{#if onDeliverable}<button class="btn small" onclick={() => onaddfeedback?.()}>Add feedback</button>{/if}
+		<button class="btn small ghost" onclick={() => onedit(prompt)}>Edit</button>
+		<Menu class="btn small ghost more" label="More about this prompt" items={[{ id: 'delete', label: 'Delete prompt', icon: Trash, danger: true }]} onpick={() => remove()} align="end">
 			<Ellipsis size={16} />
 		</Menu>
 	</div>

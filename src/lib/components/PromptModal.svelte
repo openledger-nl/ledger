@@ -5,8 +5,10 @@
 	import { api, claudeCodeApi } from '$lib/api';
 	import { baseName } from '$lib/actions';
 	import { autoRunNewPrompt } from '$lib/claudeRuns.svelte';
-	import { attempt, refresh, toast } from '$lib/ui.svelte';
+	import { attempt, refresh } from '$lib/ui.svelte';
 	import type { DeliverableSummary, Feedback, Prompt, PromptDeliverable, Template } from '$lib/types';
+	import Dropdown, { type DropdownOption } from './Dropdown.svelte';
+	import GuidingQuestions from './GuidingQuestions.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	import Modal from './Modal.svelte';
 
@@ -62,6 +64,19 @@
 	let open = $state<Feedback[]>([]);
 	let selected = $state<string[]>(initial.selected);
 	const template = $derived(templates.find((t) => t.id === templateId));
+	/** The answers to the template's guiding questions, one per question; they start blank when the template changes. */
+	let answers = $state<string[]>([]);
+	$effect(() => {
+		answers = (template?.questions ?? []).map(() => '');
+	});
+	const answered = $derived(kind === 'new' && answers.some((a) => a.trim()));
+	const templateOptions = $derived<DropdownOption[]>([
+		{ value: '', label: 'No template' },
+		...templates.map((t) => ({ value: t.id, label: `${t.name}${t.scope ? '' : ' (all projects)'}` }))
+	]);
+	const existingOptions = $derived<DropdownOption[]>(
+		existing.map((d) => ({ value: d.path, label: `${d.path}${d.versions.length ? ` | latest version v${d.versions.at(-1)}` : ' | not published yet'}` }))
+	);
 
 	// ---- the two texts ------------------------------------------------------------------------------
 
@@ -146,7 +161,7 @@
 				? `${base.trim().split(/\s+/).length} words`
 				: kind === 'existing'
 					? `filled in from ${selected.length} piece${selected.length === 1 ? '' : 's'} of feedback`
-					: `filled in from the template “${template?.name ?? ''}”`
+					: `filled in from the template "${template?.name ?? ''}"`
 	);
 
 	// ---- the deliverables of a prompt being edited ----------------------------------------------------
@@ -170,7 +185,7 @@
 
 	// ---- saving -------------------------------------------------------------------------------------
 
-	const empty = $derived(!base.trim() && !body.trim());
+	const empty = $derived(!base.trim() && !body.trim() && !answered);
 
 	async function save() {
 		saving = true;
@@ -183,14 +198,12 @@
 						templateId: kind === 'new' ? templateId || null : null,
 						deliverable: kind === 'existing' ? chosen : null,
 						newDeliverable: kind === 'new' ? fileName.trim() || null : null,
-						feedback: kind === 'existing' ? selected : []
+						feedback: kind === 'existing' ? selected : [],
+						answers: kind === 'new' && template ? template.questions.map((question, i) => ({ question, answer: answers[i] ?? '' })) : []
 					})
 		);
 		saving = false;
 		if (!saved) return;
-		if (!prompt && kind === 'new' && template?.questions.length) {
-			toast(`Added ${template.questions.length} guiding question${template.questions.length === 1 ? '' : 's'} to the thread`);
-		}
 		await refresh();
 		// Not awaited: the prompt is made, and the run reports for itself.
 		if (!prompt) void autoRunNewPrompt(project, thread, saved);
@@ -205,9 +218,9 @@
 
 <svelte:window {onkeydown} />
 
-<Modal title={prompt ? 'Edit prompt' : 'New prompt'} wide {onclose}>
+<Modal title={prompt ? 'Edit prompt' : 'Make deliverable'} wide {onclose}>
 	<p class="hint" style="margin:0">
-		A prompt asks for a deliverable. Whatever produces it — you, an assistant — lands the file in the project’s deliverables.
+		A prompt asks for a deliverable. Whatever produces it - you, an assistant - lands the file in the project's deliverables.
 		{#if !prompt}{naming ? 'Claude Code gives the prompt a name from what it asks.' : 'The prompt is called by the start of its text.'}{/if}
 	</p>
 
@@ -225,14 +238,19 @@
 				{/each}
 			</div>
 			<div class="form-row" style="flex-wrap:nowrap; align-items:stretch">
-				<select bind:value={adding} aria-label="Add an existing deliverable" style="flex:1">
-					<option value="">Add an existing deliverable…</option>
-					{#each linkable as d (d.path)}<option value={d.path}>{d.path}</option>{/each}
-				</select>
+				<div style="flex:1;min-width:0">
+					<Dropdown
+						bind:value={adding}
+						options={linkable.map((d) => ({ value: d.path, label: d.path }))}
+						label="Add an existing deliverable"
+						placeholder="Add an existing deliverable"
+						full
+					/>
+				</div>
 				<button class="btn small" disabled={!adding} onclick={link}>Add</button>
 			</div>
 			<div class="form-row" style="flex-wrap:nowrap; align-items:stretch">
-				<input bind:value={newName} placeholder="Or start a new one, named…" aria-label="Name of a new deliverable" spellcheck="false" maxlength="120" style="flex:1" />
+				<input bind:value={newName} placeholder="Or start a new one, named" aria-label="Name of a new deliverable" spellcheck="false" maxlength="120" style="flex:1" />
 				<button class="btn small" disabled={!newName.trim()} onclick={startNew}>Create</button>
 			</div>
 		</div>
@@ -241,7 +259,7 @@
 			Deliverable
 			<label class="check">
 				<input type="radio" bind:group={kind} value="new" />
-				A new deliverable: the prompt asks for a file that doesn’t exist yet
+				A new deliverable: the prompt asks for a file that doesn't exist yet
 			</label>
 			{#if kind === 'new'}
 				<input
@@ -258,33 +276,20 @@
 				An existing deliverable: the prompt asks for changes to it{existing.length ? '' : ' (there are none in this project yet)'}
 			</label>
 			{#if kind === 'existing'}
-				<select bind:value={chosen} aria-label="The existing deliverable">
-					{#each existing as d (d.path)}
-						<option value={d.path}>{d.path}{d.versions.length ? ` · latest version v${d.versions.at(-1)}` : ' · not published yet'}</option>
-					{/each}
-				</select>
+				<Dropdown bind:value={chosen} options={existingOptions} label="The existing deliverable" full />
 			{/if}
 		</div>
 
 		{#if kind === 'new' && templates.length}
-			<label class="field">
+			<div class="field">
 				Start from a template
-				<select bind:value={templateId}>
-					<option value="">No template</option>
-					{#each templates as t (t.scope + '/' + t.id)}
-						<option value={t.id}>{t.name}{t.scope ? '' : ' (all projects)'}</option>
-					{/each}
-				</select>
-			</label>
-			{#if template}
-				<div class="notice info">
-					{#if template.trigger}<b>Use when:</b> {template.trigger}<br />{/if}
-					{#if template.questions.length}
-						{template.questions.length} guiding question{template.questions.length === 1 ? '' : 's'} will be added to this thread to answer first.
-					{:else}
-						This template has no guiding questions.
-					{/if}
-				</div>
+				<Dropdown bind:value={templateId} options={templateOptions} label="Template" full />
+			</div>
+			{#if template?.trigger}
+				<div class="notice info"><b>Use when:</b> {template.trigger}</div>
+			{/if}
+			{#if template?.questions.length}
+				<GuidingQuestions questions={template.questions} bind:answers template={template.name} />
 			{/if}
 		{/if}
 
@@ -307,7 +312,7 @@
 								<input type="checkbox" checked={selected.includes(f.id)} onchange={() => toggle(f.id)} />
 								<span class="pick-text">
 									<span class="pick-head">{f.givenOn ? `v${f.givenOn}` : 'Live file'}</span>
-									{#if f.quote}<span class="pick-quote">“{f.quote}”</span>{/if}
+									{#if f.quote}<span class="pick-quote">"{f.quote}"</span>{/if}
 									<span class="pick-body">{f.body}</span>
 								</span>
 							</label>
@@ -344,6 +349,6 @@
 		{#if !prompt && autoRun}<span class="hint">Claude Code starts on it as soon as it is created</span>{/if}
 		<span class="hint">Ctrl+Enter saves</span>
 		<button class="btn ghost" onclick={onclose}>Cancel</button>
-		<button class="btn primary" onclick={save} disabled={saving || empty || (!prompt && kind === 'existing' && !chosen)}>{prompt ? 'Save' : 'Create prompt'}</button>
+		<button class="btn primary" onclick={save} disabled={saving || empty || (!prompt && kind === 'existing' && !chosen)}>{prompt ? 'Save' : 'Make deliverable'}</button>
 	{/snippet}
 </Modal>

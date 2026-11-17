@@ -1,0 +1,169 @@
+<script lang="ts">
+	// One day's meeting note: its meetings, each under its own heading (time, title, the projects it belongs to) with
+	// the people who were there and your notes. Saved as you type, as the day's note `Meetings/<day>.md`, with frontmatter
+	// that gathers the meetings' tags. No goal and no template: a meeting is a heading and what you write under it.
+	// The people of a meeting's projects come first in its "With", and "Whole team" adds every teammate at once.
+	import Plus from '@lucide/svelte/icons/plus';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import { untrack } from 'svelte';
+	import { api } from '$lib/api';
+	import { dayLabel } from '$lib/semesters';
+	import { attempt, confirmDialog, refresh } from '$lib/ui.svelte';
+	import { teamTags } from '$lib/v1';
+	import type { DailyNote, MeetingSection, ProjectPerson } from '$lib/types';
+	import type { MentionOption } from '$lib/markdownEditor';
+	import MarkdownEditor from './MarkdownEditor.svelte';
+	import TagPicker, { type TagOption, type TagQuickPick } from './TagPicker.svelte';
+	import TimeInput from './TimeInput.svelte';
+
+	let {
+		date,
+		note,
+		projectOptions,
+		peopleOptions,
+		people = []
+	}: {
+		date: string;
+		/** The day's note as saved; null when the day has none yet. */
+		note: DailyNote | null;
+		/** The indexed project and person tags ($lib/tagIndex). */
+		projectOptions: TagOption[];
+		peopleOptions: TagOption[];
+		/** The projects' people: the meeting's own come first, and make up "Whole team". */
+		people?: ProjectPerson[];
+	} = $props();
+
+	/** Who can be picked for a meeting: the people of its projects first, then everyone else in the index. */
+	function peopleFor(m: MeetingSection): TagOption[] {
+		const own = new Set(people.filter((p) => m.projects.includes(p.project)).map((p) => p.tag));
+		return [...peopleOptions.filter((o) => own.has(o.value)), ...peopleOptions.filter((o) => !own.has(o.value))];
+	}
+
+	/** Who `@` in a meeting's notes offers: the same people as "With", in the same order. */
+	function mentionsFor(m: MeetingSection): MentionOption[] {
+		return peopleFor(m).map((o) => ({ id: o.value, label: o.label, detail: o.hint ?? o.value, link: `person:${o.value}` }));
+	}
+
+	/** The people mentioned in a meeting's notes (`[@Frank](person:coach/frank)`). */
+	const mentionedIn = (body: string) => [...body.matchAll(/\]\(person:([^)\s]+)\)/g)].map((match) => decodeURIComponent(match[1]));
+
+	/** New notes: whoever is newly mentioned in them was at the meeting too, and joins "With". */
+	function setBody(m: MeetingSection, body: string) {
+		const before = new Set(mentionedIn(m.body));
+		m.body = body;
+		const added = mentionedIn(body).filter((tag) => !before.has(tag) && !m.people.includes(tag));
+		if (added.length) m.people = [...m.people, ...added];
+	}
+
+	/** "Whole team": every teammate of the meeting's projects, in one click. */
+	function quickFor(m: MeetingSection): TagQuickPick[] {
+		const tags = teamTags(people, m.projects);
+		if (!tags.length) return [];
+		const names = tags.map((t) => people.find((p) => p.tag === t)?.name ?? t).join(', ');
+		return [{ label: 'Whole team', tags, title: `Adds ${names}` }];
+	}
+
+	// The meetings as edited here, from the saved note (the page keys this component by day).
+	let meetings = $state<MeetingSection[]>(untrack(() => structuredClone(note?.meetings ?? [])));
+	const id = untrack(() => note?.id ?? `daily-${date}`);
+	/** The meetings as this editor and the vault last agreed on them: what was loaded, or last saved. */
+	let agreed = untrack(() => JSON.stringify(note?.meetings ?? []));
+
+	// Saved a moment after the last change; a day without meetings has no file.
+	let skip = true;
+	$effect(() => {
+		const snapshot = JSON.stringify(meetings);
+		if (skip) {
+			skip = false;
+			return;
+		}
+		const timer = setTimeout(async () => {
+			const list = JSON.parse(snapshot) as MeetingSection[];
+			// A day without meetings (and nothing else in its note) has no file: the backend takes it away.
+			const saved = await attempt(() => api.saveDailyNote({ date, id, meetings: list }));
+			if (saved !== undefined) agreed = snapshot;
+			await refresh();
+		}, 700);
+		return () => clearTimeout(timer);
+	});
+
+	// The note changed somewhere else (Obsidian, a sync from another machine): it comes in, unless there is something
+	// typed here that isn't saved yet, which then wins and is saved over it.
+	$effect(() => {
+		const incoming = JSON.stringify(note?.meetings ?? []);
+		untrack(() => {
+			if (incoming === agreed || JSON.stringify(meetings) !== agreed) return;
+			agreed = incoming;
+			skip = true;
+			meetings = structuredClone(note?.meetings ?? []);
+		});
+	});
+
+	function now(): string {
+		const d = new Date();
+		return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes() < 30 ? 0 : 30).padStart(2, '0')}`;
+	}
+
+	function add() {
+		const last = meetings.at(-1);
+		meetings = [...meetings, { time: now(), title: '', projects: last?.projects ?? [], people: [], body: '' }];
+	}
+
+	async function remove(i: number) {
+		const m = meetings[i];
+		if (m.body.trim() || m.title.trim()) {
+			const ok = await confirmDialog({
+				title: `Delete "${m.title.trim() || 'this meeting'}"?`,
+				message: 'Its heading and your notes under it are taken out of the daily note.',
+				confirmLabel: 'Delete',
+				danger: true
+			});
+			if (!ok) return;
+		}
+		meetings = meetings.filter((_, k) => k !== i);
+	}
+</script>
+
+<section class="dn-day" aria-label="Meeting notes {dayLabel(date)}">
+	<header class="dn-head">
+		<div>
+			<h2>{dayLabel(date)}</h2>
+		</div>
+		<div class="header-actions">
+			<button class="btn small primary" onclick={add}><Plus size={14} />Add meeting</button>
+		</div>
+	</header>
+
+	{#each meetings as m, i (i)}
+			<article class="dn-meeting">
+				<div class="dn-heading">
+					<TimeInput bind:value={() => m.time ?? '', (v) => (m.time = v || null)} label="Time" />
+					<input class="dn-title" bind:value={m.title} placeholder="Title, e.g. Coach meeting" aria-label="Title" />
+					<button class="tb-icon" title="Delete this meeting" aria-label="Delete this meeting" onclick={() => remove(i)}><Trash2 size={15} /></button>
+				</div>
+				<div class="dn-couple">
+					<div class="field">
+						<span>Projects</span>
+						<TagPicker bind:value={m.projects} options={projectOptions} label="Projects" placeholder="Couple to a project" prefix="project/" />
+					</div>
+					<div class="field">
+						<span>With</span>
+						<TagPicker bind:value={m.people} options={peopleFor(m)} quick={quickFor(m)} label="With" placeholder="Who was there" />
+					</div>
+				</div>
+				<MarkdownEditor
+					bind:value={() => m.body, (v) => setBody(m, v)}
+					rows={4}
+					label="Notes"
+					placeholder="What was said, decided, to do... Type @ to mention someone."
+					people={mentionsFor(m)}
+				/>
+			</article>
+		{:else}
+			<div class="empty-state">
+				<p>No meetings on this day yet.</p>
+				<button class="btn primary" onclick={add}><Plus size={14} />Add a meeting</button>
+				<p class="hint">Each meeting is a heading in the day's note: one note per day, however many meetings.</p>
+			</div>
+		{/each}
+</section>

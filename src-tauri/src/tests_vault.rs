@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 use crate::frontmatter::{self, MetaExt};
-use crate::models::{Bump, Criterion, Quote, SemesterDraft, StoryDraft, TaskUpdate};
+use crate::models::{Bump, Criterion, Quote, SemesterDraft, StoryDraft, TaskUpdate, TemplateDraft, TemplateReader};
 use crate::posts::AddOptions;
 use crate::provenance::{self, Origin};
 use crate::settings::{self, SyncEnv};
@@ -39,7 +39,7 @@ fn open(root: &Path) -> (Vault, Connection) {
 
 /// A vault with a bit of everything in it. Returns the project and thread slugs.
 fn populate(conn: &Connection, root: &Path) -> (String, String) {
-    templates::create(conn, "", "Interview", "after a call", &["Who?".into(), "Why: really?".into()], "# Interview\n\n## Who\n").unwrap();
+    templates::create(conn, "", &TemplateDraft::basic("Interview", "after a call", &["Who?".into(), "Why: really?".into()], "# Interview\n\n## Who\n")).unwrap();
     let autumn = SemesterDraft {
         name: "Semester 1: autumn".into(),
         start: "2026-09-01".into(),
@@ -53,7 +53,7 @@ fn populate(conn: &Connection, root: &Path) -> (String, String) {
     sprints[0].goal = "Pick: the client".into();
     semesters::update(conn, &made.id, &SemesterDraft { sprints, ..autumn }).unwrap();
     let project = projects::create(conn, "Acme").unwrap().slug;
-    templates::create(conn, &project, "House style", "", &[], "Short sentences.").unwrap();
+    templates::create(conn, &project, &TemplateDraft::basic("House style", "", &[], "Short sentences.")).unwrap();
     projects::save_readme(conn, &project, "# Acme\n\nRead the call notes first.\n").unwrap();
 
     let alpha = threads::create(conn, &project, "Alpha: the first").unwrap().slug;
@@ -141,7 +141,7 @@ fn the_vault_has_the_agreed_folder_structure() {
     assert!(meta.contains("linkedThreadSlugs:") && meta.contains("- beta"), "{meta}");
 
     let posts = names(root, &format!("{thread}/posts"));
-    assert_eq!(posts.len(), 5, "{posts:?}"); // two notes, two seeded questions, and the note that a version was published
+    assert_eq!(posts.len(), 3, "{posts:?}"); // two notes, and the note that a version was published
     let note = posts.iter().map(|f| read(root, &format!("{thread}/posts/{f}"))).find(|x| x.contains("**bold**")).unwrap();
     assert!(note.contains("createdAt:") && note.ends_with("and a second paragraph.\n"), "{note}");
 
@@ -219,20 +219,69 @@ fn what_is_written_loads_back_identically() {
 }
 
 #[test]
+fn a_templates_kinds_and_readers_are_kept_in_its_frontmatter() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let readers = vec![
+        TemplateReader { who: "client".into(), needs: "reads the summary first".into(), keep_from: "the rate".into() },
+        TemplateReader { who: "me".into(), ..Default::default() },
+    ];
+    let draft = TemplateDraft { kinds: vec!["study".into(), "company".into()], readers, readers_shown: true, ..TemplateDraft::basic("Brief", "", &[], "# Brief\n") };
+    templates::create(&conn, "", &draft).unwrap();
+    vault.persist(&conn).unwrap();
+
+    let text = read(root, "templates/brief.md");
+    assert!(text.contains("kinds:\n- study\n- company\nreaders:\n- who: client\n  needs: reads the summary first\n  keepFrom: the rate\n- me\nreadersShown: true\n"), "{text}");
+    let (_, reloaded) = open(root);
+    let brief = templates::get(&reloaded, "", "brief").unwrap();
+    assert_eq!((brief.kinds.clone(), brief.readers.clone(), brief.readers_shown), (draft.kinds.clone(), templates::get(&conn, "", "brief").unwrap().readers, true));
+}
+
+#[test]
+fn the_shipped_project_plan_is_offered_until_the_vault_has_its_own() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let plan = templates::get(&conn, "", templates::BUILTIN_PLAN).unwrap();
+    assert!(plan.builtin && !plan.customised_builtin && plan.name == "Project plan" && plan.kinds.is_empty());
+    vault.persist(&conn).unwrap();
+    assert!(!root.join("templates/project-plan.md").exists(), "the shipped template is not a file of the vault");
+    assert!(templates::delete(&conn, "", templates::BUILTIN_PLAN).is_err(), "and it can't be deleted");
+    assert_eq!(templates::create(&conn, "", &TemplateDraft::basic("Project plan", "", &[], "")).unwrap().id, "project-plan-2", "its id stays free");
+
+    // Changed, it is the vault's own, and stays so.
+    let mine = templates::update(&conn, "", "project-plan", &TemplateDraft { body: "# My plan\n".into(), ..templates::draft_of(&plan) }).unwrap();
+    assert!(!mine.builtin && mine.customised_builtin);
+    vault.persist(&conn).unwrap();
+    assert!(read(root, "templates/project-plan.md").contains("# My plan"));
+    let (mut again, reloaded) = open(root);
+    assert_eq!(templates::get(&reloaded, "", "project-plan").unwrap().body, "# My plan");
+
+    // Deleting the vault's copy brings the shipped one back.
+    templates::delete(&reloaded, "", "project-plan").unwrap();
+    assert!(templates::get(&reloaded, "", "project-plan").unwrap().builtin);
+    again.persist(&reloaded).unwrap();
+    assert!(!root.join("templates/project-plan.md").exists());
+}
+
+#[test]
 fn things_made_in_the_same_instant_keep_their_order_after_a_reload() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let (mut vault, conn) = open(root);
-    let questions: Vec<String> = (1..=12).map(|n| format!("Question {n}?")).collect();
-    templates::create(&conn, "", "Many", "", &questions, "").unwrap();
     let p = projects::create(&conn, "P").unwrap().slug;
     let t = threads::create(&conn, &p, "T").unwrap().slug;
-    prompts::create_titled(&conn, &p, &t, "", "Answer them all", Some("many")).unwrap();
+    // Made one straight after another, most of them in the same millisecond.
+    let expected: Vec<String> = (1..=12).map(|n| format!("Note {n}")).collect();
+    for body in &expected {
+        posts::add(&conn, &p, &t, body, AddOptions::default()).unwrap();
+    }
+    prompts::create_titled(&conn, &p, &t, "", "Answer them all", None).unwrap();
     vault.persist(&conn).unwrap();
 
     let (_, reloaded) = open(root);
     let bodies: Vec<_> = posts::list(&reloaded, &p, &t).unwrap().into_iter().map(|x| x.body).collect();
-    let expected: Vec<_> = questions.iter().map(|q| format!("**Guiding question (Many):** {q}")).collect();
     assert_eq!(bodies, expected);
     assert_eq!(prompts::list(&reloaded, &p, &t).unwrap().len(), 1);
 }
@@ -866,4 +915,43 @@ fn a_prompt_may_be_all_base_with_nothing_added() {
     vault.persist(&conn).unwrap();
     let (_, again) = open(root);
     assert_eq!(prompts::list(&again, "ideas", "first").unwrap()[0].base, found[0].base);
+}
+
+#[test]
+fn the_folded_sidebar_is_a_rail_until_the_vault_settings_say_otherwise() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    // No settings file, an older one without the layout, and a value this version doesn't know: all a rail.
+    assert_eq!(settings::read_settings(root).layout.sidebar_fold, settings::SidebarFold::Rail);
+    write(root, ".ledger/settings.json", r#"{ "screenshotHotkey": "Control+Shift+S" }"#);
+    assert_eq!(settings::read_settings(root).layout.sidebar_fold, settings::SidebarFold::Rail);
+    write(root, ".ledger/settings.json", r#"{ "screenshotHotkey": "Control+Shift+S", "layout": { "sidebarFold": "sideways" } }"#);
+    let got = settings::read_settings(root);
+    assert_eq!(got.layout.sidebar_fold, settings::SidebarFold::Rail);
+    assert_eq!(got.screenshot_hotkey.as_deref(), Some("Control+Shift+S"));
+
+    // Saving it keeps the other settings and writes the choice where a person can read it.
+    settings::update_settings(root, |s| s.layout.sidebar_fold = settings::SidebarFold::Hide).unwrap();
+    assert!(read(root, ".ledger/settings.json").contains(r#""sidebarFold": "hide""#));
+    let got = settings::read_settings(root);
+    assert_eq!(got.layout.sidebar_fold, settings::SidebarFold::Hide);
+    assert_eq!(got.screenshot_hotkey.as_deref(), Some("Control+Shift+S"));
+}
+
+#[test]
+fn a_semesters_goals_written_as_gamma_are_read_and_written_back_as_epsilon() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "semesters/fall.md", "---\nname: Fall 2026\nstart: 2026-09-01\nend: 2027-01-31\ngamma:\n  layers:\n    U: 2\n---\n");
+    let (mut vault, conn) = open(root);
+    let goals = crate::portflow_epsilon::goals_of(&conn, "fall").unwrap();
+    assert_eq!(goals.layers.get("U"), Some(&2), "the goals under the old key are kept");
+
+    // The next save of the semester writes them under `epsilon:` and drops `gamma:`.
+    let fall = semesters::list(&conn).unwrap().remove(0);
+    let draft = SemesterDraft { name: fall.name, start: fall.start, end: fall.end, notes: "Renamed.".into(), ..Default::default() };
+    semesters::update(&conn, "fall", &draft).unwrap();
+    vault.persist(&conn).unwrap();
+    let written = read(root, "semesters/fall.md");
+    assert!(written.contains("epsilon:") && !written.contains("gamma:"), "{written}");
 }

@@ -240,7 +240,7 @@ fn begin(app: &AppHandle) -> Result<()> {
         release(app);
         return match outcome? {
             command::Outcome::Picture(png) => hand_over(app, png)
-                .map_err(|_| Error::screenshot("The screenshot tool didn't hand back a PNG picture. Check its command under Settings → Screenshots.")),
+                .map_err(|_| Error::screenshot("The screenshot tool didn't hand back a PNG picture. Check its command under Settings > Screenshots.")),
             command::Outcome::Cancelled => Ok(()),
         };
     }
@@ -386,7 +386,7 @@ pub(crate) mod command {
             command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         }
         let output = command.output().map_err(|e| {
-            Error::screenshot(format!("Ledger couldn't start {} ({e}). Check the command under Settings → Screenshots.", parts[0]))
+            Error::screenshot(format!("Ledger couldn't start {} ({e}). Check the command under Settings > Screenshots.", parts[0]))
         })?;
         let picture = if uses_file {
             let bytes = std::fs::read(&file).unwrap_or_default();
@@ -577,7 +577,7 @@ mod builtin {
     }
 
     #[cfg(target_os = "macos")]
-    pub const MAC_PERMISSION: &str = "Ledger needs permission to record your screen. Open System Settings → Privacy & Security → \
+    pub const MAC_PERMISSION: &str = "Ledger needs permission to record your screen. Open System Settings > Privacy & Security > \
         Screen & System Audio Recording, switch Ledger on, then quit and reopen Ledger and try again.";
 
     #[cfg(not(target_os = "linux"))]

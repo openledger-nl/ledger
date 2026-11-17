@@ -16,6 +16,9 @@ export interface Mmm {
 	color: string;
 }
 
+/** The labels' own site: what each one means, and the labels to download. */
+export const MMM_SITE = 'https://mmmlabel.tech';
+
 /** From the most AI to the least. */
 export const MMM: readonly Mmm[] = [
 	{
