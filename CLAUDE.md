@@ -106,6 +106,8 @@ So, as an agent:
 - Icons are Lucide: `import X from '@lucide/svelte/icons/x'` (one file per icon, not the package root).
 - UI text uses plain ASCII punctuation: `-` or `|`, `...`, straight quotes; no em or en dash, middle dot, ellipsis
   character, curly quotes or arrows. `pnpm run check` enforces it (`scripts/check-ui-text.mjs`).
-- In the UI the wordmark is `<Wordmark />` (`src/lib/components/Wordmark.svelte`): drawn inline so its L and cursor
-  take the theme's `--accent`. The files in `src/lib/assets/brand/` are the fixed-colour (indigo) logo for everything
-  outside the app; the app icons in `src-tauri/icons/` are generated from the mark. Don't draw new versions in code.
+- In the UI the wordmark is `<Wordmark />` (`src/lib/components/Wordmark.svelte`): drawn inline so its L (a laptop
+  seen from the side) and cursor take the theme's `--accent`, the laptop's lit top and shaded sides mixed from it. The
+  files in `src/lib/assets/brand/` are the fixed-colour (green) logo for everything outside the app; the app icons in
+  `src-tauri/icons/` are generated from the mark (`pnpm tauri icon src/lib/assets/brand/png/ledger-mark-1024.png`,
+  keeping only the desktop icons). Don't draw new versions in code.
