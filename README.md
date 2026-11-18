@@ -1,4 +1,9 @@
-# Ledger
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="src/lib/assets/brand/svg/ledger-wordmark-on-dark.svg">
+    <img src="src/lib/assets/brand/svg/ledger-wordmark-on-light.svg" alt="Ledger" width="420">
+  </picture>
+</p>
 
 A local desktop app for thinking in **threads**, asking for **deliverables** and giving feedback on them, and planning the work on a **board** — all inside **projects**. Tauri 2 (Rust) on the back, SvelteKit (Svelte 5) on the front. Your data is a **vault** — a folder of markdown files with YAML frontmatter, like an Obsidian vault — that can be mirrored to a private GitHub repository.
 
