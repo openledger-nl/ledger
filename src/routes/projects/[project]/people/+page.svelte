@@ -7,7 +7,6 @@
 	import X from '@lucide/svelte/icons/x';
 	import { api } from '$lib/api';
 	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
-	import ProjectBranding from '$lib/components/ProjectBranding.svelte';
 	import { attempt, refresh } from '$lib/ui.svelte';
 	import type { FeedbackRole, ProjectPerson } from '$lib/types';
 	import { ROLES } from '$lib/v1';
@@ -50,11 +49,6 @@
 		next !== person.role && store(plain(data.people).map((p, i) => (data.people[i] === person ? { ...p, role: next as FeedbackRole } : p)));
 
 	const remove = (person: ProjectPerson) => store(plain(data.people).filter((_, i) => data.people[i] !== person));
-
-	// For the PDFs: who they are for when no name is given (a company project's client, else the first client listed),
-	// and the other projects to take your side from.
-	const clientName = $derived(data.meta?.client ?? data.people.find((p) => p.role === 'client')?.name ?? null);
-	const others = $derived(data.projects.filter((p) => p.slug !== project).map((p) => ({ slug: p.slug, name: p.name })));
 </script>
 
 <svelte:head><title>People | {data.project.name} | Ledger</title></svelte:head>
@@ -111,8 +105,6 @@
 				</section>
 			{/each}
 		{/if}
-
-		<ProjectBranding {project} {others} client={clientName} study={data.meta?.kind === 'study'} />
 	</div>
 </div>
 

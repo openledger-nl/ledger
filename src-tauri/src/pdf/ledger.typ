@@ -1,7 +1,7 @@
 // The layout of a deliverable exported as a PDF. This is a Typst file (https://typst.app/docs): change anything in it
 // and export again to see the result.
 //
-// To make your own: in Ledger, open a project's People tab, go to "On exported PDFs" and click "Customise". That copies
+// To make your own: in Ledger, open a project's Templates tab, go to "On exported PDFs" and click "Customise". That copies
 // this file to `pdf/layout.typ` in the vault (every project) or `projects/<project>/pdf/layout.typ` (one project); a
 // project's own layout comes first, then the vault's, then Ledger's. "Back to the standard layout" deletes your copy.
 // Other files in that `pdf/` folder can be used by their name: pictures (`image("background.png")`), other Typst files
