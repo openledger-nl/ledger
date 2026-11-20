@@ -1025,7 +1025,7 @@ pub enum Live {
 /// Stores a downloaded file as published version `N.0` of `base` (with the record of where it came from), links the
 /// Portflow file to it, makes `base` one of the item's files, and, for the newest version, makes it the live file too —
 /// unless the live file was changed in Ledger since it last matched a published version.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "what a version is made from and where it is written: a struct for one call would only name them again")]
 pub fn store_download(
     conn: &Connection,
     root: &std::path::Path,

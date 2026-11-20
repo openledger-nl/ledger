@@ -32,8 +32,14 @@ data in `src/stories/fixtures.ts` and any backend call it makes answered in `src
 
 ```bash
 pnpm run check   # Svelte + TypeScript, and the UI text check
-pnpm test        # Rust tests
+pnpm test        # Rust lints (cargo clippy) and tests
 ```
+
+The Rust code may not use `unsafe`, `.unwrap()` or `.expect()`: `src-tauri/Cargo.toml`'s `[lints]` makes each one an
+error. The release build aborts on a panic, so a failed `.unwrap()` closes Ledger in the middle of someone's work:
+return an error, or recover (a poisoned lock: `.unwrap_or_else(PoisonError::into_inner)`). Tests may unwrap. Where one
+really can't be avoided, `#[expect(clippy::expect_used, reason = "...")]` says why; an `allow` or `expect` without a
+reason fails too. Clippy's other suggestions only warn.
 
 UI text uses plain punctuation: `-` or `|` instead of a dash or a middle dot, three dots `...` instead of the ellipsis
 character (and none on a button or menu item), straight quotes, and words ("to") or `>` for a path through menus instead

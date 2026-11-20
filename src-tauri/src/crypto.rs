@@ -198,6 +198,7 @@ impl Key {
 /// machine with the key, and saying nothing about the path to anyone without it.
 pub fn remote_name(key: &Key, path: &str) -> String {
     let name_key = Zeroizing::new(digest(b"ledger remote names", &key.0[..]));
+    #[expect(clippy::expect_used, reason = "HMAC takes a key of any length: it can't fail")]
     let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&name_key[..]).expect("HMAC takes a key of any length");
     mac.update(path.as_bytes());
     mac.finalize().into_bytes()[..16].iter().map(|b| format!("{b:02x}")).collect()

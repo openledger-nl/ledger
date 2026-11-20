@@ -221,6 +221,7 @@ fn stop_tree(pid: u32, child: &mut Child, _force: bool) {
 }
 
 #[cfg(unix)]
+#[expect(unsafe_code, reason = "the standard library can't signal a process group: `kill` is called directly")]
 fn stop_tree(pid: u32, child: &mut Child, force: bool) {
     const SIGKILL: i32 = 9;
     const SIGTERM: i32 = 15;

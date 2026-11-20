@@ -13,7 +13,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && node --test scripts/dev-state.test.mjs scripts/check-ui-text.test.mjs && node scripts/check-ui-text.mjs",
     "release:preview": "node scripts/release.mjs",
     "tauri": "tauri",
-    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test": "cargo clippy --all-targets --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
     "storybook": "storybook dev -p 6006 --no-open",
     "build-storybook": "storybook build"
   },

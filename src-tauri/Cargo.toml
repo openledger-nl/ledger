@@ -14,6 +14,21 @@ edition = "2024"
 name = "ledger_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# Checks on Ledger's own code that fail the build (`cargo clippy`, run by `pnpm test` and CI). Much of this code is
+# written by agents: these are the mistakes a check catches every time and a review can miss.
+# * unsafe_code: memory safety the compiler can't check.
+# * unwrap_used, expect_used: the release build aborts on a panic (`panic = "abort"` below), so a failed `.unwrap()`
+#   closes Ledger at once, in the middle of your work. Return an error, or recover. Tests may unwrap (clippy.toml).
+# * allow_attributes_without_reason: where one of these really can't be avoided, an `#[expect(..., reason = "...")]`
+#   says why. Without a reason it fails too, so a check can't be silenced without saying so.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+allow_attributes_without_reason = "deny"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

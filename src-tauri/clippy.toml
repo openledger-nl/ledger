@@ -1,0 +1,3 @@
+# A test that unwraps fails that test, not the app: `unwrap_used` and `expect_used` (Cargo.toml) leave tests alone.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

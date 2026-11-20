@@ -141,6 +141,7 @@ pub fn run() {
     // follows its git branch instead (`devupdates.rs`), without it. `updates::BUILT_IN` says the same to the rest of the app.
     #[cfg(not(debug_assertions))]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    #[expect(clippy::expect_used, reason = "without its window there is no Ledger to fall back to: stopping is all it can do")]
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

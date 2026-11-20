@@ -593,7 +593,7 @@ pub fn publish_run(conn: &Connection, root: &Path, project: &str, base: &str, he
 
 /// Writes the snapshot of the live file at `base` (or of `held`, when given) as the next version, records how it came to
 /// be, and when the origin has a thread notes it there. Returns the version.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "what a version is made from and where it is written: a struct for one call would only name them again")]
 fn freeze(
     conn: &Connection,
     root: &Path,

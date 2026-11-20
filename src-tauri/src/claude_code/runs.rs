@@ -584,7 +584,7 @@ fn spawn_failure(e: &io::Error, spec: &SpawnSpec) -> String {
 
 /// The last step: bring the vault up to date with what the run wrote (publishing and linking the deliverables), and
 /// only then say the run is over, so that the screen, refreshing on that news, sees the new files.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "the run and how it ended: a struct for one call would only name them again")]
 fn finish(inner: &Inner, sink: &Sink, request: &RunRequest, ctx: &RunContext, baseline: &Baseline, status: Status, message: Option<String>, code: Option<i32>) {
     let run = &sink.run;
     let changes: Vec<Change> = baseline.changes(&deliverables::deliverables_dir(&ctx.root, &request.project));

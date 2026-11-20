@@ -255,7 +255,7 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
 /// The first time, with nothing remembered, the description comes in; a README that said something else is set aside in
 /// `.ledger/conflicts/` first. An empty guide never empties a description. A refused or failed write is a note, not the
 /// end of the round.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "the Portflow and Ledger sides, the round and the guide: each its own value, none of them belong together")]
 fn sync_guide(
     portflow: &dyn Portflow,
     ledger: &dyn Ledger,

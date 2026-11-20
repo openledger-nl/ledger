@@ -854,7 +854,7 @@ impl Run<'_> {
         Ok(created)
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, reason = "the parts of a created card that the step keeps: a struct for one call would only name them again")]
     fn after_create(&mut self, change: Change, label: String, project: &str, kind: Kind, id: &str, card: Card, base: Content) -> Step {
         let mut step = Step::new(change, label, Count::Nothing);
         step.orphan = Some(card.id.clone());

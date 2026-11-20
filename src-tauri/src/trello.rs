@@ -131,7 +131,7 @@ fn update(status: &Mutex<TrelloStatus>, emit: &Emit, change: impl FnOnce(&mut Tr
 
 impl TrelloSyncer {
     /// Something in the vault changed (the app reaches the worker through [`notify_vault_changed`]).
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(not(test), allow(dead_code, reason = "only the tests call it"))]
     pub fn dirty(&self) {
         let _ = lock(&self.tx).send(Msg::Dirty);
     }

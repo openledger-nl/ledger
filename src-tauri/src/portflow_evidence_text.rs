@@ -259,7 +259,7 @@ pub fn sync(portflow: &dyn Portflow, p: i64, item: &Item, write_on: bool, memory
 
 /// One evidence item of a round (`portflow_sync::run`, after the item itself is stored): its description in Portflow
 /// (from the list, or asked for when the list leaves it out) and in Ledger, kept in step by `sync`.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "the Portflow and Ledger sides, the round and the item: each its own value, none of them belong together")]
 pub fn round(
     portflow: &dyn Portflow,
     ledger: &dyn crate::portflow_sync::Ledger,

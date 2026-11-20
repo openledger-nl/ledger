@@ -33,7 +33,11 @@ jobs:
       - name: Libraries Tauri links against on Linux
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      # The lints in src-tauri/Cargo.toml's [lints] (no unsafe, no unwrap or expect) fail it; other suggestions only warn.
+      - run: cargo clippy --locked --all-targets --manifest-path src-tauri/Cargo.toml
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml

@@ -124,7 +124,7 @@ impl PortflowSyncer {
     }
 
     /// Whether the worker is running.
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(not(test), allow(dead_code, reason = "only the tests call it"))]
     pub fn running(&self) -> bool {
         lock(&self.tx).is_some()
     }

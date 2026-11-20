@@ -1960,6 +1960,7 @@ fn helper_spec(role: &str, stdin: &str, cwd: &Path) -> SpawnSpec {
     }
 }
 
+#[cfg_attr(unix, expect(unsafe_code, reason = "the standard library can't ask whether a process exists"))]
 fn alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
