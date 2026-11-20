@@ -58,8 +58,21 @@ export const layout = $state({
 	/** The whole sidebar, slid in over the page from the top bar's button, below full width. */
 	drawerOpen: false,
 	/** The search box, opened over the top bar where it is only an icon. */
-	searchOpen: false
+	searchOpen: false,
+	/** The sidebar was just folded or unfolded at full width, for the moment its animation takes (see app.css). Only
+	 *  set by a toggle, so a sidebar that is simply there when the app starts doesn't animate. */
+	motion: '' as '' | 'unfold' | 'fold'
 });
+
+/** A little longer than `--motion-panel` in app.css, so the animation is over before its class goes. */
+const MOTION_MS = 320;
+let motionTimer: ReturnType<typeof setTimeout> | undefined;
+
+function playMotion(motion: 'unfold' | 'fold') {
+	clearTimeout(motionTimer);
+	layout.motion = motion;
+	motionTimer = setTimeout(() => (layout.motion = ''), MOTION_MS);
+}
 
 export function setSidebarHidden(hidden: boolean) {
 	layout.sidebarHidden = hidden;
@@ -103,7 +116,10 @@ export async function setFold(fold: Fold) {
 /** The one button for the sidebar: folds or unfolds it at full width, slides it in over the page below that. */
 export function toggleSidebar() {
 	if (layout.width !== 'full') layout.drawerOpen = !layout.drawerOpen;
-	else setSidebarHidden(!layout.sidebarHidden);
+	else {
+		playMotion(layout.sidebarHidden ? 'unfold' : 'fold');
+		setSidebarHidden(!layout.sidebarHidden);
+	}
 }
 
 /** Follows the window's width and listens for the shell's shortcuts; returns the clean-up. */

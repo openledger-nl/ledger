@@ -54,7 +54,12 @@
 {:else}
 	<!-- The shell: sidebar (or, folded, nothing or an icon rail), then the top bar over the page. How it folds with the window's width is
 	     in layout.svelte.ts and the "shell" part of app.css. -->
-	<div class="app fold-{layout.fold}" class:sidebar-hidden={layout.sidebarHidden}>
+	<div
+		class="app fold-{layout.fold}"
+		class:sidebar-hidden={layout.sidebarHidden}
+		class:unfolding={layout.motion === 'unfold'}
+		class:folding={layout.motion === 'fold'}
+	>
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div class="scrim" class:open={layout.drawerOpen} onclick={() => (layout.drawerOpen = false)}></div>
 

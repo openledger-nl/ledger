@@ -42,6 +42,11 @@
 	--shadow-toast: 0 8px 24px rgba(0, 0, 0, 0.3);
 	--shadow-drawer: 0 0 40px rgba(0, 0, 0, 0.5);
 
+	/* Motion: the sidebar sliding open (docked or as a drawer) and the scrim behind a drawer. None for whoever asks for
+	   less motion (below). */
+	--motion-panel: 200ms;
+	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
 	/* The AI-use (MMM) labels, from the most AI to the least: the colours of the official labels (https://mmmlabel.tech,
 	   by Fontys, WELGEEN and technofilosofie.com, free to use), as in src/lib/assets/mmm. Fixed, never themed. */
 	--mmm-lazy-prompter: #cc9cc7;
@@ -199,7 +204,14 @@ details[open] > summary .disclosure { transform: rotate(90deg); }
 @media (min-width: 1200px) {
 	.app.sidebar-hidden .sidebar { display: none; }
 	.app.sidebar-hidden.fold-rail .rail { display: flex; }
+	/* Unfolding (Ctrl \ or the top bar's button) makes room for the sidebar at once, so the page reflows a single time,
+	   and the sidebar slides into that room; folding it lets the rail fade in. Only while `layout.motion` says the
+	   person just did it, so nothing moves when the app starts. */
+	.app.unfolding .sidebar { animation: sidebar-in var(--motion-panel) var(--ease-out); }
+	.app.folding .rail { animation: rail-in var(--motion-panel) var(--ease-out); }
 }
+@keyframes sidebar-in { from { transform: translateX(-24px); opacity: 0; } }
+@keyframes rail-in { from { opacity: 0; } }
 
 /* The icon rail: only drawn where the sidebar is folded and the setting asks for a rail. */
 .rail {
@@ -261,13 +273,20 @@ a.tb-crumb:hover { color: var(--accent); }
 /* Below full width the whole sidebar is a drawer, slid in from the top bar's button. */
 @media (max-width: 1199px) {
 	.app.fold-rail .rail { display: flex; }
+	/* The drawer slides in and out, the scrim behind it fades; each is hidden (visibility) only once it has gone. */
 	.sidebar, .app.sidebar-hidden .sidebar {
 		display: flex; position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; width: min(86vw, 320px); height: 100dvh;
-		transform: translateX(-100%); transition: transform 0.2s ease; visibility: hidden;
+		transform: translateX(-100%); visibility: hidden;
+		transition: transform var(--motion-panel) var(--ease-out), box-shadow var(--motion-panel) var(--ease-out), visibility 0s linear var(--motion-panel);
 	}
 	/* Also when the sidebar was folded at full width: `.app.sidebar-hidden .sidebar` would otherwise win and keep it shut. */
-	.sidebar.open, .app.sidebar-hidden .sidebar.open { transform: none; box-shadow: var(--shadow-drawer); visibility: visible; }
-	.scrim.open { display: block; position: fixed; inset: 0; z-index: 20; background: var(--scrim-soft); }
+	.sidebar.open, .app.sidebar-hidden .sidebar.open { transform: none; box-shadow: var(--shadow-drawer); visibility: visible; transition-delay: 0s; }
+	.scrim {
+		display: block; position: fixed; inset: 0; z-index: 20; background: var(--scrim-soft);
+		opacity: 0; visibility: hidden; pointer-events: none;
+		transition: opacity var(--motion-panel) var(--ease-out), visibility 0s linear var(--motion-panel);
+	}
+	.scrim.open { opacity: 1; visibility: visible; pointer-events: auto; transition-delay: 0s; }
 }
 
 /* ---------- buttons and small controls ---------- */
@@ -697,6 +716,12 @@ details.more p { margin: 0; }
 /* ---------- half width: a little less room around the page ---------- */
 @media (max-width: 1199px) {
 	.thread, .page, .composer, .header-wrap, .board-tools, .board { padding-left: 24px; padding-right: 24px; }
+}
+
+/* Less motion asked for: the sidebar and the drawer appear and go at once. */
+@media (prefers-reduced-motion: reduce) {
+	:root { --motion-panel: 0s; }
+	.app.unfolding .sidebar, .app.folding .rail { animation: none; }
 }
 
 /* ---------- narrow windows (< 720 px): no rail, whatever the setting; the sidebar stays a drawer ---------- */
