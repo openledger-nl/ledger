@@ -21,6 +21,8 @@ pub enum Error {
     Crypto { path: String, cause: CryptoError },
     /// Looking for, downloading or installing an update of Ledger went wrong.
     Update(String),
+    /// Making a PDF of a deliverable went wrong.
+    Export(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -46,6 +48,10 @@ impl Error {
         Error::Update(message.into())
     }
 
+    pub fn export(message: impl Into<String>) -> Self {
+        Error::Export(message.into())
+    }
+
     /// An I/O failure with the path it happened on.
     pub fn io(path: &std::path::Path, e: std::io::Error) -> Self {
         Error::Io(format!("{}: {e}", path.display()))
@@ -55,7 +61,9 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Invalid(message) | Error::NotFound(message) | Error::Sync(message) | Error::Screenshot(message) | Error::Update(message) => f.write_str(message),
+            Error::Invalid(message) | Error::NotFound(message) | Error::Sync(message) | Error::Screenshot(message) | Error::Update(message) | Error::Export(message) => {
+                f.write_str(message)
+            }
             Error::Db(e) => write!(f, "Database error: {e}"),
             Error::Io(message) => write!(f, "Vault error: {message}"),
             Error::Rejected => f.write_str("GitHub changed while syncing"),

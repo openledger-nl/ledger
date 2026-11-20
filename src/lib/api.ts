@@ -228,6 +228,11 @@ export const api = {
 	saveDeliverable: (project: string, path: string, body: string) => call<Deliverable>('save_deliverable', { project, path, body }),
 	publishDeliverable: (project: string, path: string, bump: Bump, version: string | null = null, choices: PublishChoices | null = null) =>
 		call<Deliverable>('publish_deliverable', { project, path, bump, version, choices }),
+	/**
+	 * Makes a PDF of a markdown deliverable (the live file or a published version) in the project's `exports/` folder, and
+	 * opens it when `open` is set. Returns its path relative to the project's folder.
+	 */
+	exportDeliverablePdf: (project: string, path: string, open: boolean) => call<string>('export_deliverable_pdf', { project, path, open }),
 	/** How the versions of a deliverable came to be, by thread. `path` is the live file or any of its versions. */
 	getProvenance: (project: string, path: string) => call<Provenance>('get_provenance', { project, path }),
 	/** Says who made a version, or sets its AI-use label or change note. */

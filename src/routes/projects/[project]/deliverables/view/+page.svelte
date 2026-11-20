@@ -3,6 +3,7 @@
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import FileDown from '@lucide/svelte/icons/file-down';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
@@ -237,6 +238,23 @@
 	let bump = $state<Bump | 'custom'>('minor');
 	let custom = $state('');
 	let publishBusy = $state(false);
+	// Whether a publish also makes the version's PDF and opens it: the last choice, kept per machine.
+	const PDF_KEY = 'ledger.publish.pdf';
+	let alsoPdf = $state(readAlsoPdf());
+	function readAlsoPdf(): boolean {
+		try {
+			return localStorage.getItem(PDF_KEY) !== '0';
+		} catch {
+			return true;
+		}
+	}
+	function rememberAlsoPdf() {
+		try {
+			localStorage.setItem(PDF_KEY, alsoPdf ? '1' : '0');
+		} catch {
+			// Not kept: it starts ticked next time.
+		}
+	}
 	const preview = $derived({ minor: nextVersion(doc.versions, 'minor'), major: nextVersion(doc.versions, 'major') });
 
 	// What the person says about the change. Claude Code runs started here are recorded as they happen; the box is for AI
@@ -305,8 +323,23 @@
 			);
 		}
 		publishing = false;
-		toast(`Published version ${published.versions.at(-1) ?? ''}`.trim());
+		const version = published.versions.at(-1) ?? '';
+		toast(`Published version ${version}`.trim());
 		await refresh();
+		if (isMarkdown && alsoPdf && version) await exportPdf(snapshotPath(published.basePath || published.path, version));
+	}
+
+	// ---- PDF -----------------------------------------------------------------------------------
+	// Set by Typst inside Ledger, into the project's exports/ folder, and opened with the system's PDF viewer.
+
+	let exporting = $state(false);
+
+	async function exportPdf(path: string) {
+		exporting = true;
+		if (path === doc.path && !snapshot) await flush();
+		const made = await attempt(() => api.exportDeliverablePdf(project, path, true));
+		exporting = false;
+		if (made) toast(`PDF saved as ${made}`);
 	}
 
 	async function remove() {
@@ -339,6 +372,7 @@
 	// What else can be done with it, behind the ⋯ next to Publish. Delete only for the live file; a version is kept.
 	const more = $derived<MenuItem[]>([
 		// Copy, Open and Show in folder are buttons of their own beside it.
+		...(isMarkdown && doc.exists ? [{ id: 'pdf', label: exporting ? 'Making the PDF' : 'Export as PDF', icon: FileDown }] : []),
 		...(!snapshot && doc.exists && !doc.evidence ? [{ id: 'rename', label: 'Rename', icon: TextCursorInput }] : []),
 		...(!snapshot && doc.exists ? [{ id: 'delete', label: 'Delete deliverable', icon: Trash, danger: true, rule: true }] : [])
 	]);
@@ -347,6 +381,7 @@
 		if (id === 'copy') void copyMarkdown();
 		else if (id === 'open') void open(false);
 		else if (id === 'reveal') void open(true);
+		else if (id === 'pdf') void (exporting || exportPdf(doc.path));
 		else if (id === 'rename') startRenaming();
 		else if (id === 'delete') void remove();
 	}
@@ -667,6 +702,11 @@
 			<MarkdownEditor bind:value={changeNote} rows={2} label="Changelog" placeholder="What changed, in your words" />
 			<span class="hint">Quoted in the note in the thread, and shown with the version in the Produced by window.</span>
 		</div>
+		{#if isMarkdown}
+			<label class="check">
+				<input type="checkbox" bind:checked={alsoPdf} onchange={rememberAlsoPdf} /> Export the version as a PDF and open it
+			</label>
+		{/if}
 		{#snippet footer()}
 			<span class="spacer-h"></span>
 			<button class="btn ghost" onclick={() => (publishing = false)}>Cancel</button>

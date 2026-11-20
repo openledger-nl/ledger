@@ -42,6 +42,9 @@ hmac = "0.13"
 tauri-plugin-updater = "2"
 # JPEG XL pictures, decoded for display (`images.rs`): the web view on Linux has no JPEG XL decoder.
 jxl-oxide = { version = "0.12.6", features = ["image"] }
+typst = "0.15.1"
+typst-pdf = "0.15.1"
+typst-layout = "0.15.1"
 
 # The picture decoders are optimised in the development build too (`tauri dev`): unoptimised, decoding one JPEG XL
 # picture takes seconds (`images.rs`). Only these crates; the rest of the build stays as fast to compile as it was.

@@ -536,6 +536,25 @@ pub fn publish_deliverable(
     })
 }
 
+/// Makes a PDF of a markdown deliverable (the live file or a published version) in the project's `exports/` folder,
+/// and opens it with the system's PDF viewer when `open` is set. Returns its path relative to the project's folder.
+#[tauri::command]
+pub async fn export_deliverable_pdf(app: AppHandle, project: String, path: String, open: bool) -> Result<String> {
+    let state = app.state::<App>();
+    let (prepared, root) = state.read(|c, root| Ok((crate::pdf::prepare(c, root, &project, &path)?, root.to_path_buf())))?;
+    // Setting a long document takes a moment: off the main thread, without holding the vault.
+    let rel = tauri::async_runtime::spawn_blocking(move || crate::pdf::make(prepared))
+        .await
+        .map_err(|e| Error::export(format!("Making the PDF stopped unexpectedly: {e}")))??;
+    // The PDF is a file in the vault, so the sync takes it along.
+    state.syncer.dirty();
+    if open {
+        let file = project_path(&root, &project, &rel)?;
+        app.opener().open_path(file.display().to_string(), None::<&str>).map_err(Error::screenshot)?;
+    }
+    Ok(rel)
+}
+
 /// How the versions of a deliverable came to be, by thread. `path` is the live file or any of its versions.
 #[tauri::command]
 pub fn get_provenance(app: State<App>, project: String, path: String) -> Result<provenance::Provenance> {

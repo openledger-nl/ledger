@@ -21,6 +21,7 @@ mod links;
 mod markdown;
 mod models;
 mod onboarding;
+mod pdf;
 mod posts;
 mod project_facts;
 mod projects;
@@ -262,6 +263,7 @@ pub fn run() {
             commands::create_deliverable,
             commands::save_deliverable,
             commands::publish_deliverable,
+            commands::export_deliverable_pdf,
             commands::get_provenance,
             commands::update_version_record,
             commands::delete_deliverable,
