@@ -146,3 +146,41 @@ fn only_markdown_can_be_exported() {
     deliverables::upsert(&c, &project, "sheet.xlsx", 1, "2026-11-20T10:00:00.000Z", None).unwrap();
     assert!(prepare(&c, dir.path(), &project, "sheet.xlsx").is_err());
 }
+
+/// The project's branding names the client and you, colours the PDF and puts both logos on the cover.
+#[test]
+fn the_branding_of_the_project_goes_on_the_cover() {
+    let c = crate::db::open_in_memory().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let project = crate::projects::create(&c, "Police dashboard").unwrap().slug;
+    let doc = deliverables::create(&c, &project, "Plan", "# Project plan\n\n## Why\n\nText.\n\n## How\n\n## When\n").unwrap();
+    deliverables::publish(&c, root, &project, &doc.path, crate::models::Bump::Minor, None).unwrap();
+    let logo = |name: &str, rgb: [u8; 3]| {
+        let file = root.join(name);
+        image::RgbImage::from_pixel(300, 100, image::Rgb(rgb)).save(&file).unwrap();
+        file
+    };
+    branding::save(
+        &c,
+        &project,
+        &branding::Branding { author: Some("Sam Student".into()), accent: Some("#154273".into()), own_name: Some("Fontys ICT".into()), client_name: Some("Police".into()), ..Default::default() },
+    )
+    .unwrap();
+    branding::set_logo(&c, root, &project, branding::Side::Own, Some(&logo("fontys.png", [102, 51, 102]))).unwrap();
+    branding::set_logo(&c, root, &project, branding::Side::Client, Some(&logo("police.png", [21, 66, 115]))).unwrap();
+
+    let prepared = prepare(&c, root, &project, "plan@v0.1.md").unwrap();
+    let data: serde_json::Value = serde_json::from_slice(&prepared.files.iter().find(|(n, _)| n == "/data.json").unwrap().1).unwrap();
+    assert_eq!(data["accent"], "#154273");
+    assert_eq!(data["author"], "Sam Student");
+    assert_eq!(data["client"]["name"], "Police");
+    assert_eq!(data["client"]["logo"], "/logos/client.png");
+    assert_eq!(data["own"]["logo"], "/logos/own.png");
+    assert_eq!(data["history"][0]["by"], "Sam Student");
+    assert_eq!(data["contents"], true);
+    let rel = make(prepared).unwrap();
+    if let Ok(out) = std::env::var("LEDGER_PDF_SAMPLE") {
+        fs::copy(uploads::project_dir(root, &project).join(rel), Path::new(&out).join("branded.pdf")).unwrap();
+    }
+}

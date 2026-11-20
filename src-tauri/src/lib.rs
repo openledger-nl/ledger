@@ -1,6 +1,7 @@
 mod activity;
 mod applog;
 mod board;
+mod branding;
 mod claude_code;
 mod commands;
 mod crypto;
@@ -219,6 +220,10 @@ pub fn run() {
             commands::next_deliverable_number,
             commands::confirm_label,
             commands::save_project_people,
+            commands::get_project_branding,
+            commands::save_project_branding,
+            commands::set_project_logo,
+            commands::copy_project_branding,
             commands::delete_project,
             commands::create_thread,
             commands::rename_thread,

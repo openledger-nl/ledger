@@ -65,6 +65,17 @@ CREATE TABLE project_people (
     PRIMARY KEY (project_slug, position)
 );
 
+-- How a project's exported PDFs look and who they name (see branding.rs): one row, or none for the defaults.
+CREATE TABLE project_branding (
+    project_slug TEXT PRIMARY KEY REFERENCES projects(slug) ON DELETE CASCADE,
+    author       TEXT,
+    accent       TEXT,
+    own_name     TEXT,
+    own_logo     TEXT,
+    client_name  TEXT,
+    client_logo  TEXT
+);
+
 CREATE TABLE project_columns (
     project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
     id           TEXT NOT NULL,

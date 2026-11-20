@@ -1408,6 +1408,21 @@ export type FeedbackKind = 'own' | 'someone';
 export type FeedbackRole = 'coach' | 'expert' | 'teammate' | 'client' | 'colleague' | 'other';
 
 /** Someone who is part of a project (its coach, a teammate, the client), listed in its project.md. */
+/** How a project's exported PDFs look and who they name (branding.rs), kept in its project.md. */
+export interface Branding {
+	author: string | null;
+	/** `#rrggbb`; null for the PDF layout's own colour. */
+	accent: string | null;
+	ownName: string | null;
+	/** The logo's path in the project's folder (`branding/own.png`). */
+	ownLogo: string | null;
+	/** null: the project's client. */
+	clientName: string | null;
+	clientLogo: string | null;
+}
+
+export type BrandingSide = 'own' | 'client';
+
 export interface ProjectPerson {
 	project: string;
 	name: string;

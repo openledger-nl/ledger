@@ -14,6 +14,7 @@ use crate::error::{Error, Result};
 use crate::github::GithubRemote;
 use crate::keystore::{self, EncryptionStatus, KeyStore};
 use crate::models::*;
+use crate::branding::{self, Branding, Side};
 use crate::deliverable_facts::{self, DeliverableMeta};
 use crate::project_facts::{self, ProjectMeta, ProjectPerson};
 use crate::posts::AddOptions;
@@ -174,6 +175,31 @@ pub fn list_project_people(app: State<App>, slug: Option<String>) -> Result<Vec<
 #[tauri::command]
 pub fn save_project_people(app: State<App>, slug: String, people: Vec<ProjectPerson>) -> Result<Vec<ProjectPerson>> {
     app.mutate(|c, _| project_facts::save_people(c, &slug, &people))
+}
+
+/// How the project's exported PDFs look and who they name.
+#[tauri::command]
+pub fn get_project_branding(app: State<App>, slug: String) -> Result<Branding> {
+    app.read(|c, _| branding::get(c, &slug))
+}
+
+/// Sets the names and the colour of the project's PDFs (the logos are set with `set_project_logo`).
+#[tauri::command]
+pub fn save_project_branding(app: State<App>, slug: String, branding: Branding) -> Result<Branding> {
+    app.mutate(|c, _| branding::save(c, &slug, &branding))
+}
+
+/// Copies the picture at `source` into the project as the logo of `side` ("own" or "client"); without `source` the
+/// logo is removed.
+#[tauri::command]
+pub fn set_project_logo(app: State<App>, slug: String, side: Side, source: Option<String>) -> Result<Branding> {
+    app.mutate(|c, root| branding::set_logo(c, root, &slug, side, source.as_deref().map(Path::new)))
+}
+
+/// Takes your side of the branding (your name, your own name and logo, the colour) from another project.
+#[tauri::command]
+pub fn copy_project_branding(app: State<App>, slug: String, from: String) -> Result<Branding> {
+    app.mutate(|c, root| branding::copy_own(c, root, &slug, &from))
 }
 
 #[tauri::command]

@@ -2,6 +2,9 @@
 //! (title, subtitle, who it is for and by, version and date), the version history from the published versions, a
 //! table of contents when the document has a few headings, and then the document, with a header and a footer.
 //!
+//! Who it names and how it looks (your name, your own side and the client, each with a logo, and the accent colour) is
+//! the project's branding ([`branding`]).
+//!
 //! The PDF of a published version is `exports/<name> v<version>.pdf` in the project's folder, that of the live file
 //! `exports/<name> (draft).pdf`; exporting again replaces it. A version's PDF says what that version said, so it can
 //! be made again at any time and comes out the same (apart from its date when it is a draft).
@@ -22,7 +25,7 @@ use serde::Serialize;
 use crate::db::query_opt;
 use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
-use crate::{deliverable_facts, deliverables, images, project_facts, provenance, uploads};
+use crate::{branding, deliverable_facts, deliverables, images, project_facts, provenance, uploads};
 
 /// The accent a project gets when it has none of its own: the orange of the report template the layout follows.
 pub const DEFAULT_ACCENT: &str = "#e07a3f";
@@ -106,6 +109,17 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
         Some(name)
     };
     let converted = markdown::to_typst(&text, &mut picture);
+    let brand = branding::get(conn, project)?;
+    let mut logo = |rel: &Option<String>, side: &str| -> Option<String> {
+        let rel = rel.as_deref()?;
+        let ext = rel.rsplit_once('.')?.1.to_ascii_lowercase();
+        let bytes = fs::read(project_dir.join(rel)).ok()?;
+        let name = format!("/logos/{side}.{ext}");
+        files.push((name.clone(), bytes));
+        Some(name)
+    };
+    let own_logo = logo(&brand.own_logo, "own");
+    let client_logo = logo(&brand.client_logo, "client");
 
     let stem = file_stem(&doc.name);
     let title = meta.text("title").or(converted.title.clone()).unwrap_or_else(|| stem.clone());
@@ -126,7 +140,7 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
             by: match (r.author, r.run.is_some()) {
                 (provenance::AI, true) => "Claude Code".to_string(),
                 (provenance::AI, false) => "With AI".to_string(),
-                (provenance::HUMAN, _) => "Person".to_string(),
+                (provenance::HUMAN, _) => brand.author.clone().unwrap_or_else(|| "Person".to_string()),
                 _ => "-".to_string(),
             },
             note: if r.note.trim().is_empty() { "-".to_string() } else { r.note.trim().to_string() },
@@ -138,9 +152,9 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
         None => long_date(&chrono::Local::now().date_naive().to_string()),
     };
 
-    // Who it is for: a company project's client, else the first client among its people.
+    // Who it is for: as the branding says, else a company project's client, else the first client among its people.
     let facts = project_facts::get(conn, project)?;
-    let client_name = facts.and_then(|f| f.client).or_else(|| {
+    let client_name = brand.client_name.clone().or_else(|| facts.and_then(|f| f.client)).or_else(|| {
         project_facts::people(conn, Some(project)).ok()?.into_iter().find(|p| p.role == "client").map(|p| p.name)
     });
 
@@ -149,12 +163,12 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
         subtitle,
         version: doc.version.clone(),
         date,
-        author: None,
+        author: brand.author.clone(),
         project: project_name,
-        accent: DEFAULT_ACCENT.to_string(),
+        accent: brand.accent.clone().unwrap_or_else(|| DEFAULT_ACCENT.to_string()),
         lang: meta.text("lang").filter(|l| l.len() == 2 && l.chars().all(|c| c.is_ascii_alphabetic())).unwrap_or_else(|| "en".into()),
-        client: Party { name: client_name, logo: None },
-        own: Party::default(),
+        client: Party { name: client_name, logo: client_logo },
+        own: Party { name: brand.own_name.clone(), logo: own_logo },
         history,
         contents: converted.headings >= 3,
     };

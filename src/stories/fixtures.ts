@@ -4,6 +4,7 @@
 
 import type { Anchor, Mark } from '$lib/anchors';
 import type {
+	Branding,
 	ActivityEvent,
 	Vaults,
 	Board,
@@ -126,6 +127,16 @@ export const people: ProjectPerson[] = [
 
 export const projectOptions = projects.map((p) => ({ value: p.slug, label: p.name }));
 export const peopleOptions = people.map((p) => ({ value: p.tag, label: p.name, hint: p.tag }));
+
+/** The branding of the sample project's PDFs: both sides named, your logo chosen, the client's not yet. */
+export const branding: Branding = {
+	author: 'Sam Student',
+	accent: '#154273',
+	ownName: 'Fontys ICT',
+	ownLogo: 'branding/own.png',
+	clientName: null,
+	clientLogo: null
+};
 
 // ---- posts, feedback, prompts, uploads ----------------------------------------------------------------------
 

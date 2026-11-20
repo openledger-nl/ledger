@@ -3,6 +3,8 @@ import type { Anchor } from './anchors';
 import { capture, captureDebug, logError } from './log.svelte';
 import type {
 	ActivityEvent,
+	Branding,
+	BrandingSide,
 	Vaults,
 	ProjectMeta,
 	LabelConfirmation,
@@ -132,6 +134,14 @@ export const api = {
 	nextDeliverableNumber: (project: string) => call<number>('next_deliverable_number', { project }),
 	/** The people of one project (coach, teammates, client…), or of every project with null. */
 	listProjectPeople: (slug: string | null = null) => call<ProjectPerson[]>('list_project_people', { slug }),
+	/** How the project's exported PDFs look and who they name. */
+	getProjectBranding: (slug: string) => call<Branding>('get_project_branding', { slug }),
+	/** Sets the names and the colour (the logos are set with `setProjectLogo`). */
+	saveProjectBranding: (slug: string, branding: Branding) => call<Branding>('save_project_branding', { slug, branding }),
+	/** Copies the picture at `source` into the project as that side's logo; null removes it. */
+	setProjectLogo: (slug: string, side: BrandingSide, source: string | null) => call<Branding>('set_project_logo', { slug, side, source }),
+	/** Takes your name, your own name and logo, and the colour from another project. */
+	copyProjectBranding: (slug: string, from: string) => call<Branding>('copy_project_branding', { slug, from }),
 	/** Replaces the project's people. */
 	saveProjectPeople: (slug: string, people: Omit<ProjectPerson, 'project' | 'tag'>[]) =>
 		call<ProjectPerson[]>('save_project_people', { slug, people: people.map((p) => ({ ...p, project: slug, tag: '' })) }),
