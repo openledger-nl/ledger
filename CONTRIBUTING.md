@@ -31,7 +31,7 @@ data in `src/stories/fixtures.ts` and any backend call it makes answered in `src
 ## Before you push
 
 ```bash
-pnpm run check   # Svelte + TypeScript, and the UI text check
+pnpm run check   # Svelte + TypeScript (a warning fails too), the UI text check, and the coming checks
 pnpm test        # Rust lints (cargo clippy) and tests
 ```
 
@@ -40,6 +40,18 @@ error. The release build aborts on a panic, so a failed `.unwrap()` closes Ledge
 return an error, or recover (a poisoned lock: `.unwrap_or_else(PoisonError::into_inner)`). Tests may unwrap. Where one
 really can't be avoided, `#[expect(clippy::expect_used, reason = "...")]` says why; an `allow` or `expect` without a
 reason fails too. Clippy's other suggestions only warn.
+
+### Coming checks
+
+Some checks start as warnings: `pnpm run check` ends with what they find (`pnpm run check:warn` runs only them), and
+nothing fails on them yet. Once the existing cases are fixed, each one becomes an error. Don't add new cases:
+
+- **Unchecked indexes.** With `noUncheckedIndexedAccess` (`tsconfig.strict.json`), `list[i]` and `record[key]` may be
+  `undefined`, and TypeScript makes you say what happens then. `pnpm run check:warn --list` names every place.
+- **Duplicate code.** [jscpd](https://github.com/kucherenko/jscpd) (`.jscpd.json`) finds the same block of code twice
+  in the app (not in tests or stories). The copies already there are in `.jscpd-baseline.json`, so only new ones are
+  named, and on a pull request they show on their lines. Use the code that is there instead of copying it. After
+  removing copies, `pnpm run check:warn --update-baseline` writes the shorter list; never update it to hide a new copy.
 
 UI text uses plain punctuation: `-` or `|` instead of a dash or a middle dot, three dots `...` instead of the ellipsis
 character (and none on a button or menu item), straight quotes, and words ("to") or `>` for a path through menus instead
