@@ -105,6 +105,7 @@ fn a_document_with_everything_in_it_becomes_a_pdf() {
             HistoryRow { version: "0.3".into(), date: "20 November 2026".into(), by: "Claude Code".into(), note: "Tighter".into(), label: Some("Cyborg".into()) },
         ],
         contents: converted.headings >= 3,
+        label: None,
     };
     let main = format!("#import \"/ledger.typ\": *\n#show: ledger-doc.with(json(\"/data.json\"))\n\n{}", converted.body);
     let pdf = world::compile(&main, vec![("/data.json".into(), serde_json::to_vec(&data).unwrap())]).unwrap_or_else(|e| panic!("{e}\n{main}"));
@@ -188,8 +189,42 @@ fn the_branding_of_the_project_goes_on_the_cover() {
     assert_eq!(data["own"]["logo"], "/logos/own.png");
     assert_eq!(data["history"][0]["by"], "Sam Student");
     assert_eq!(data["contents"], true);
+    // Not a study project, so no label unless the branding asks for one.
+    assert!(data["label"].is_null());
     let rel = make(prepared).unwrap();
     if let Ok(out) = std::env::var("LEDGER_PDF_SAMPLE") {
         fs::copy(uploads::project_dir(root, &project).join(rel), Path::new(&out).join("branded.pdf")).unwrap();
     }
+}
+
+/// In a study project the cover shows the version's AI-use label by default; the project can turn it off.
+#[test]
+fn a_study_project_shows_the_label_on_the_cover_unless_it_is_turned_off() {
+    let c = crate::db::open_in_memory().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let project = crate::projects::create(&c, "Police dashboard").unwrap().slug;
+    project_facts::save(&c, &project, &project_facts::ProjectMeta { kind: "study".into(), goal: "A dashboard".into(), ..Default::default() }).unwrap();
+    let doc = deliverables::create(&c, &project, "Plan", "# Plan\n\nText.\n").unwrap();
+    let choices = crate::models::PublishChoices { mmm: Some("cyborg".into()), ..Default::default() };
+    deliverables::publish_with(&c, root, &project, &doc.path, crate::models::Bump::Minor, None, &choices).unwrap();
+
+    let data_of = |path: &str| -> serde_json::Value {
+        let prepared = prepare(&c, root, &project, path).unwrap();
+        let data: serde_json::Value = serde_json::from_slice(&prepared.files.iter().find(|(n, _)| n == "/data.json").unwrap().1).unwrap();
+        let rel = make(prepared).unwrap();
+        if let Ok(out) = std::env::var("LEDGER_PDF_SAMPLE")
+            && !data["label"].is_null()
+        {
+            fs::copy(uploads::project_dir(root, &project).join(rel), Path::new(&out).join("labelled.pdf")).unwrap();
+        }
+        data
+    };
+    let version = data_of("plan@v0.1.md");
+    assert_eq!(version["label"]["name"], "Cyborg");
+    assert_eq!(version["label"]["intended"], false);
+    assert_eq!(version["label"]["picture"], "/labels/cyborg.svg");
+
+    branding::save(&c, &project, &branding::Branding { show_label: Some(false), ..Default::default() }).unwrap();
+    assert!(data_of("plan@v0.1.md")["label"].is_null());
 }

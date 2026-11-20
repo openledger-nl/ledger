@@ -46,6 +46,17 @@ struct Data {
     own: Party,
     history: Vec<HistoryRow>,
     contents: bool,
+    /// The AI-use label on the cover, when the project shows it.
+    label: Option<Label>,
+}
+
+/// An MMM label: its name, its picture in the PDF's folder, and whether it is only the one intended (a draft has no
+/// label of its own yet).
+#[derive(Debug, Serialize)]
+struct Label {
+    name: String,
+    picture: String,
+    intended: bool,
 }
 
 /// Someone named on the cover: who the document is for (the client) or who made it (your own side).
@@ -123,7 +134,8 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
 
     let stem = file_stem(&doc.name);
     let title = meta.text("title").or(converted.title.clone()).unwrap_or_else(|| stem.clone());
-    let goal = deliverable_facts::get(conn, project, &base)?.map(|m| m.goal).filter(|g| !g.trim().is_empty());
+    let deliverable_meta = deliverable_facts::get(conn, project, &base)?;
+    let goal = deliverable_meta.as_ref().map(|m| m.goal.clone()).filter(|g| !g.trim().is_empty());
     let subtitle = meta.text("subtitle").or_else(|| meta.text("description")).or(goal);
 
     // The versions up to the one exported (all of them for the live file), oldest first.
@@ -154,9 +166,32 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
 
     // Who it is for: as the branding says, else a company project's client, else the first client among its people.
     let facts = project_facts::get(conn, project)?;
+    let kind = facts.as_ref().map(|f| f.kind.clone()).unwrap_or_default();
+    let intended_mmm = facts.as_ref().and_then(|f| f.intended_mmm.clone());
     let client_name = brand.client_name.clone().or_else(|| facts.and_then(|f| f.client)).or_else(|| {
         project_facts::people(conn, Some(project)).ok()?.into_iter().find(|p| p.role == "client").map(|p| p.name)
     });
+
+    // The AI-use label, bottom left on the cover: the version's own, else the one meant for this deliverable or for the
+    // project. Shown when the project says so, and by default in a study project (where a version must have one).
+    let label = if brand.show_label.unwrap_or(kind == "study") {
+        let recorded = match &doc.version {
+            Some(v) => versions.iter().find(|r| &r.version == v).and_then(|r| r.mmm.clone()),
+            None => None,
+        };
+        let intended = recorded.is_none();
+        recorded
+            .or_else(|| deliverable_meta.as_ref().and_then(|m| m.mmm.clone()))
+            .or(intended_mmm)
+            .and_then(|level| provenance::level(&level))
+            .map(|level| {
+                let picture = format!("/labels/{level}.svg");
+                files.push((picture.clone(), label_picture(level).to_vec()));
+                Label { name: label_name(level).unwrap_or(level).to_string(), picture, intended }
+            })
+    } else {
+        None
+    };
 
     let data = Data {
         title,
@@ -171,6 +206,7 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
         own: Party { name: brand.own_name.clone(), logo: own_logo },
         history,
         contents: converted.headings >= 3,
+        label,
     };
     files.push(("/data.json".to_string(), serde_json::to_vec(&data).map_err(|e| Error::export(e.to_string()))?));
     let main = format!("#import \"/ledger.typ\": *\n#show: ledger-doc.with(json(\"/data.json\"))\n\n{}", converted.body);
@@ -260,6 +296,17 @@ fn long_date(at: &str) -> String {
     match day {
         Some(d) => format!("{} {} {}", d.day(), MONTHS[d.month0() as usize], d.year()),
         None => at.to_string(),
+    }
+}
+
+/// The official picture of an MMM level, as the app shows it (src/lib/assets/mmm).
+fn label_picture(level: &str) -> &'static [u8] {
+    match level {
+        "lazy-prompter" => include_bytes!("../../../src/lib/assets/mmm/lazy-prompter.svg"),
+        "piggybacker" => include_bytes!("../../../src/lib/assets/mmm/piggybacker.svg"),
+        "cyborg" => include_bytes!("../../../src/lib/assets/mmm/cyborg.svg"),
+        "handyman" => include_bytes!("../../../src/lib/assets/mmm/handyman.svg"),
+        _ => include_bytes!("../../../src/lib/assets/mmm/man-made.svg"),
     }
 }
 

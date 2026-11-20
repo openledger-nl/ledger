@@ -1419,6 +1419,8 @@ export interface Branding {
 	/** null: the project's client. */
 	clientName: string | null;
 	clientLogo: string | null;
+	/** Whether the cover shows the version's AI-use (MMM) label; null for the default: only in a study project. */
+	showLabel: boolean | null;
 }
 
 export type BrandingSide = 'own' | 'client';

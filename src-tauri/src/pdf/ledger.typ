@@ -119,6 +119,23 @@
     par(version-text)
     par(data.date)
     v(1.6fr)
+    // The AI-use label, bottom left: the official Me & My Machine picture with its name.
+    if data.label != none {
+      place(bottom + left, grid(
+        columns: (auto, auto),
+        column-gutter: 10pt,
+        align: horizon,
+        image(data.label.picture, height: 1.5cm),
+        {
+          set par(spacing: 0.4em)
+          text(size: 8.5pt, fill: muted, if data.label.intended [Intended AI use] else [AI use])
+          linebreak()
+          text(size: 11pt, weight: "bold", fill: ink, data.label.name)
+          linebreak()
+          text(size: 7.5pt, fill: muted)[Me & My Machine label - mmmlabel.tech]
+        },
+      ))
+    }
   })
 
   // ---- every page after it: a header and a footer ----

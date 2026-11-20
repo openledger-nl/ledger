@@ -15,13 +15,16 @@
 	let {
 		project,
 		others = [],
-		client = null
+		client = null,
+		study = false
 	}: {
 		project: string;
 		/** The other projects, to take your side from: slug and name. */
 		others?: { slug: string; name: string }[];
 		/** Who the PDF says it is for when no name is given here: the project's client. */
 		client?: string | null;
+		/** A study project shows the AI-use label on the cover unless it is turned off. */
+		study?: boolean;
 	} = $props();
 
 	/** The PDF's own colour, when the project has none: the orange of the report layout. */
@@ -43,7 +46,7 @@
 	});
 
 	function emptyBranding(): Branding {
-		return { author: null, accent: null, ownName: null, ownLogo: null, clientName: null, clientLogo: null };
+		return { author: null, accent: null, ownName: null, ownLogo: null, clientName: null, clientLogo: null, showLabel: null };
 	}
 
 	async function save(change: Partial<Branding>) {
@@ -92,6 +95,7 @@
 	}
 
 	const accent = $derived(branding?.accent ?? DEFAULT_ACCENT);
+	const showLabel = $derived(branding?.showLabel ?? study);
 </script>
 
 {#snippet logo(side: BrandingSide, path: string | null, label: string)}
@@ -148,6 +152,18 @@
 				</label>
 				{@render logo('client', branding.clientLogo, "the client's logo")}
 			</div>
+		</div>
+
+		<div class="field">
+			<label class="check">
+				<input type="checkbox" checked={showLabel} onchange={(e) => save({ showLabel: (e.currentTarget as HTMLInputElement).checked })} disabled={busy} />
+				Show the AI-use label at the bottom left of the cover
+			</label>
+			<span class="hint">
+				The Me & My Machine label of the version exported (a draft shows the one it is meant to get). {study
+					? 'On by default in a study project.'
+					: 'Off by default outside a study project.'}
+			</span>
 		</div>
 
 		<div class="form-row">

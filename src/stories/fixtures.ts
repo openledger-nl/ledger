@@ -135,7 +135,8 @@ export const branding: Branding = {
 	ownName: 'Fontys ICT',
 	ownLogo: 'branding/own.png',
 	clientName: null,
-	clientLogo: null
+	clientLogo: null,
+	showLabel: null
 };
 
 // ---- posts, feedback, prompts, uploads ----------------------------------------------------------------------

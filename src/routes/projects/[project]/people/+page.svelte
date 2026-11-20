@@ -112,7 +112,7 @@
 			{/each}
 		{/if}
 
-		<ProjectBranding {project} {others} client={clientName} />
+		<ProjectBranding {project} {others} client={clientName} study={data.meta?.kind === 'study'} />
 	</div>
 </div>
 
