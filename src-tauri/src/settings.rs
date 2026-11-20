@@ -1,8 +1,8 @@
 //! Where the vault is, and the settings that live in it.
 //!
 //! The vault's location is the one thing that can't live in the vault, so it is kept in a small `config.json` in
-//! the app's config folder, together with the other choice that belongs to this machine's copy of Ledger rather than
-//! to a vault: whether it looks for updates by itself. Everything else belongs to the vault and sits in
+//! the app's config folder, with the vaults opened before (for the vault picker) and the other choices that belong to
+//! this machine's copy of Ledger rather than to a vault: whether it looks for updates by itself. Everything else belongs to the vault and sits in
 //! `<vault>/.ledger/`, which the vault's `.gitignore` lists, so none of it is ever pushed to GitHub:
 //!
 //! ```text
