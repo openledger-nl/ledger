@@ -4,6 +4,8 @@
 
 import type { Anchor, Mark } from '$lib/anchors';
 import type {
+	Authorship,
+	Comparison,
 	Branding,
 	ActivityEvent,
 	Vaults,
@@ -666,4 +668,782 @@ export const vaults: Vaults = {
 		{ path: '/home/student/Documents/Hobby', name: 'Hobby', exists: true, open: false },
 		{ path: '/media/usb/Old vault', name: 'Old vault', exists: false, open: false }
 	]
+};
+
+// ---- what changed, and who wrote what (DocHistory) ---------------------------------------------------
+// What the backend (history.rs) answers for sensor-research.md: v1.0 by you, v1.1 by Claude Code (a price table and two
+// notes on the sensors), and a live file in which you moved the advice up, changed it and took a note out.
+
+export const historyVersions = [
+	{ version: '1.0', by: 'human' as const, run: null },
+	{ version: '1.1', by: 'ai' as const, run: { id: 'run-1' } as never }
+];
+
+export const changes: Comparison = {
+ "addedBy": [
+  {
+   "source": 1,
+   "words": 36
+  }
+ ],
+ "blocks": [
+  {
+   "by": null,
+   "html": "<h1>Sensor research</h1>\n",
+   "state": "same"
+  },
+  {
+   "by": 1,
+   "html": "<p>Which soil moisture sensor holds up in wet soil for a whole season<ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">, and what does it cost</ins>?</p>\n",
+   "state": "changed"
+  },
+  {
+   "by": null,
+   "html": "<h2>Findings</h2>\n",
+   "state": "same"
+  },
+  {
+   "by": null,
+   "html": "<p>Capacitive sensors corrode far less than resistive ones. The datasheet says 2 years outdoors.</p>\n",
+   "state": "same"
+  },
+  {
+   "by": 1,
+   "html": "<table><thead><tr><th><ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Sensor</ins></th><th><ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Price</ins></th><th><ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Lifetime</ins></th></tr></thead><tbody>\n<tr><td><ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Capacitive v2</ins></td><td><ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">4 euro</ins></td><td><ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">2 years</ins></td></tr>\n<tr><td><ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Resistive</ins></td><td><ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">1 euro</ins></td><td><ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">3 months</ins></td></tr>\n</tbody></table>\n",
+   "state": "added"
+  },
+  {
+   "by": 1,
+   "html": "<ul>\n<li><ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Capacitive sensors need 3.3 V, which the board gives.</ins></li>\n</ul>\n",
+   "state": "added"
+  },
+  {
+   "by": 1,
+   "html": "<ul>\n<li><ins class=\"dv-ins\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Resistive sensors drift as the probe corrodes.</ins></li>\n</ul>\n",
+   "state": "added"
+  },
+  {
+   "by": null,
+   "html": "<h2>Advice</h2>\n",
+   "state": "same"
+  },
+  {
+   "by": null,
+   "html": "<p>Order three capacitive sensors and test them for two sprints.</p>\n",
+   "state": "same"
+  }
+ ],
+ "changed": 1,
+ "from": "1.0",
+ "hunks": [
+  {
+   "lines": [
+    {
+     "by": null,
+     "new": 1,
+     "old": 1,
+     "parts": [
+      {
+       "emph": false,
+       "text": "# Sensor research"
+      }
+     ],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 2,
+     "old": 2,
+     "parts": [],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": null,
+     "old": 3,
+     "parts": [
+      {
+       "emph": false,
+       "text": "Which soil moisture sensor holds up in wet soil for a whole "
+      },
+      {
+       "emph": true,
+       "text": "season?"
+      }
+     ],
+     "tag": "del"
+    },
+    {
+     "by": 0,
+     "new": 3,
+     "old": null,
+     "parts": [
+      {
+       "emph": false,
+       "text": "Which soil moisture sensor holds up in wet soil for a whole "
+      },
+      {
+       "emph": true,
+       "text": "season, and what does it cost?"
+      }
+     ],
+     "tag": "add"
+    },
+    {
+     "by": null,
+     "new": 4,
+     "old": 4,
+     "parts": [],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 5,
+     "old": 5,
+     "parts": [
+      {
+       "emph": false,
+       "text": "## Findings"
+      }
+     ],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 6,
+     "old": 6,
+     "parts": [],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 7,
+     "old": 7,
+     "parts": [
+      {
+       "emph": false,
+       "text": "Capacitive sensors corrode far less than resistive ones. The datasheet says 2 years outdoors."
+      }
+     ],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 8,
+     "old": 8,
+     "parts": [],
+     "tag": "same"
+    },
+    {
+     "by": 1,
+     "new": 9,
+     "old": null,
+     "parts": [
+      {
+       "emph": false,
+       "text": "| Sensor | Price | Lifetime |"
+      }
+     ],
+     "tag": "add"
+    },
+    {
+     "by": null,
+     "new": 10,
+     "old": null,
+     "parts": [
+      {
+       "emph": false,
+       "text": "|---|---|---|"
+      }
+     ],
+     "tag": "add"
+    },
+    {
+     "by": 1,
+     "new": 11,
+     "old": null,
+     "parts": [
+      {
+       "emph": false,
+       "text": "| Capacitive v2 | 4 euro | 2 years |"
+      }
+     ],
+     "tag": "add"
+    },
+    {
+     "by": 1,
+     "new": 12,
+     "old": null,
+     "parts": [
+      {
+       "emph": false,
+       "text": "| Resistive | 1 euro | 3 months |"
+      }
+     ],
+     "tag": "add"
+    },
+    {
+     "by": null,
+     "new": 13,
+     "old": null,
+     "parts": [],
+     "tag": "add"
+    },
+    {
+     "by": 1,
+     "new": 14,
+     "old": null,
+     "parts": [
+      {
+       "emph": false,
+       "text": "- Capacitive sensors need 3.3 V, which the board gives."
+      }
+     ],
+     "tag": "add"
+    },
+    {
+     "by": 1,
+     "new": 15,
+     "old": null,
+     "parts": [
+      {
+       "emph": false,
+       "text": "- Resistive sensors drift as the probe corrodes."
+      }
+     ],
+     "tag": "add"
+    },
+    {
+     "by": null,
+     "new": 16,
+     "old": null,
+     "parts": [],
+     "tag": "add"
+    },
+    {
+     "by": null,
+     "new": 17,
+     "old": 9,
+     "parts": [
+      {
+       "emph": false,
+       "text": "## Advice"
+      }
+     ],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 18,
+     "old": 10,
+     "parts": [],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 19,
+     "old": 11,
+     "parts": [
+      {
+       "emph": false,
+       "text": "Order three capacitive sensors and test them for two sprints."
+      }
+     ],
+     "tag": "same"
+    }
+   ],
+   "newStart": 1,
+   "oldStart": 1
+  }
+ ],
+ "moved": 0,
+ "sources": [
+  {
+   "at": "2026-11-20T13:51:56.463Z",
+   "by": "human",
+   "prompt": null,
+   "version": "1.0",
+   "who": "You"
+  },
+  {
+   "at": "2026-11-20T13:51:56.466Z",
+   "by": "ai",
+   "prompt": "Compare soil moisture sensors",
+   "version": "1.1",
+   "who": "Claude Code"
+  },
+  {
+   "at": "2026-11-20T13:51:56.468Z",
+   "by": "human",
+   "prompt": null,
+   "version": null,
+   "who": "You"
+  }
+ ],
+ "to": "1.1",
+ "wordsAdded": 36,
+ "wordsRemoved": 0
+};
+
+export const changesLive: Comparison = {
+ "addedBy": [
+  {
+   "source": 2,
+   "words": 6
+  }
+ ],
+ "blocks": [
+  {
+   "by": null,
+   "html": "<h1>Sensor research</h1>\n",
+   "state": "same"
+  },
+  {
+   "by": null,
+   "html": "<p>Which soil moisture sensor holds up in wet soil for a whole season, and what does it cost?</p>\n",
+   "state": "same"
+  },
+  {
+   "by": 0,
+   "html": "<h2>Advice</h2>\n",
+   "state": "moved"
+  },
+  {
+   "by": 2,
+   "html": "<p>Order three capacitive sensors and test them for <del class=\"dv-del\">two</del><ins class=\"dv-ins\" data-by=\"human\" data-o=\"2\" title=\"You, not published yet\">one sprint in the wettest</ins> <del class=\"dv-del\">sprints</del><ins class=\"dv-ins\" data-by=\"human\" data-o=\"2\" title=\"You, not published yet\">bed</ins>.</p>\n",
+   "state": "moved"
+  },
+  {
+   "by": null,
+   "html": "<h2>Findings</h2>\n",
+   "state": "same"
+  },
+  {
+   "by": null,
+   "html": "<p>Capacitive sensors corrode far less than resistive ones. The datasheet says 2 years outdoors.</p>\n",
+   "state": "same"
+  },
+  {
+   "by": null,
+   "html": "<table><thead><tr><th>Sensor</th><th>Price</th><th>Lifetime</th></tr></thead><tbody>\n<tr><td>Capacitive v2</td><td>4 euro</td><td>2 years</td></tr>\n<tr><td>Resistive</td><td>1 euro</td><td>3 months</td></tr>\n</tbody></table>\n",
+   "state": "same"
+  },
+  {
+   "by": null,
+   "html": "<ul>\n<li>Capacitive sensors need 3.3 V, which the board gives.</li>\n</ul>\n",
+   "state": "same"
+  },
+  {
+   "by": null,
+   "html": "<ul>\n<li>Resistive sensors drift as the probe corrodes.</li>\n</ul>\n",
+   "state": "removed"
+  },
+  {
+   "by": null,
+   "html": "",
+   "state": "movedAway"
+  },
+  {
+   "by": null,
+   "html": "",
+   "state": "movedAway"
+  }
+ ],
+ "changed": 0,
+ "from": "1.1",
+ "hunks": [
+  {
+   "lines": [
+    {
+     "by": null,
+     "new": 2,
+     "old": 2,
+     "parts": [],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 3,
+     "old": 3,
+     "parts": [
+      {
+       "emph": false,
+       "text": "Which soil moisture sensor holds up in wet soil for a whole season, and what does it cost?"
+      }
+     ],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 4,
+     "old": 4,
+     "parts": [],
+     "tag": "same"
+    },
+    {
+     "by": 0,
+     "new": 5,
+     "old": null,
+     "parts": [
+      {
+       "emph": false,
+       "text": "## Advice"
+      }
+     ],
+     "tag": "add"
+    },
+    {
+     "by": null,
+     "new": 6,
+     "old": null,
+     "parts": [],
+     "tag": "add"
+    },
+    {
+     "by": 0,
+     "new": 7,
+     "old": null,
+     "parts": [
+      {
+       "emph": false,
+       "text": "Order three capacitive sensors and test them for one sprint in the wettest bed."
+      }
+     ],
+     "tag": "add"
+    },
+    {
+     "by": null,
+     "new": 8,
+     "old": null,
+     "parts": [],
+     "tag": "add"
+    },
+    {
+     "by": null,
+     "new": 9,
+     "old": 5,
+     "parts": [
+      {
+       "emph": false,
+       "text": "## Findings"
+      }
+     ],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 10,
+     "old": 6,
+     "parts": [],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 11,
+     "old": 7,
+     "parts": [
+      {
+       "emph": false,
+       "text": "Capacitive sensors corrode far less than resistive ones. The datasheet says 2 years outdoors."
+      }
+     ],
+     "tag": "same"
+    }
+   ],
+   "newStart": 2,
+   "oldStart": 2
+  },
+  {
+   "lines": [
+    {
+     "by": null,
+     "new": 16,
+     "old": 12,
+     "parts": [
+      {
+       "emph": false,
+       "text": "| Resistive | 1 euro | 3 months |"
+      }
+     ],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 17,
+     "old": 13,
+     "parts": [],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": 18,
+     "old": 14,
+     "parts": [
+      {
+       "emph": false,
+       "text": "- Capacitive sensors need 3.3 V, which the board gives."
+      }
+     ],
+     "tag": "same"
+    },
+    {
+     "by": null,
+     "new": null,
+     "old": 15,
+     "parts": [
+      {
+       "emph": false,
+       "text": "- Resistive sensors drift as the probe corrodes."
+      }
+     ],
+     "tag": "del"
+    },
+    {
+     "by": null,
+     "new": null,
+     "old": 16,
+     "parts": [],
+     "tag": "del"
+    },
+    {
+     "by": null,
+     "new": null,
+     "old": 17,
+     "parts": [
+      {
+       "emph": false,
+       "text": "## Advice"
+      }
+     ],
+     "tag": "del"
+    },
+    {
+     "by": null,
+     "new": null,
+     "old": 18,
+     "parts": [],
+     "tag": "del"
+    },
+    {
+     "by": null,
+     "new": null,
+     "old": 19,
+     "parts": [
+      {
+       "emph": false,
+       "text": "Order three capacitive sensors and test them for two sprints."
+      }
+     ],
+     "tag": "del"
+    }
+   ],
+   "newStart": 16,
+   "oldStart": 12
+  }
+ ],
+ "moved": 2,
+ "sources": [
+  {
+   "at": "2026-11-20T13:51:56.463Z",
+   "by": "human",
+   "prompt": null,
+   "version": "1.0",
+   "who": "You"
+  },
+  {
+   "at": "2026-11-20T13:51:56.466Z",
+   "by": "ai",
+   "prompt": "Compare soil moisture sensors",
+   "version": "1.1",
+   "who": "Claude Code"
+  },
+  {
+   "at": "2026-11-20T13:51:56.468Z",
+   "by": "human",
+   "prompt": null,
+   "version": null,
+   "who": "You"
+  }
+ ],
+ "to": null,
+ "wordsAdded": 6,
+ "wordsRemoved": 9
+};
+
+export const authorship: Authorship = {
+ "at": null,
+ "blocks": [
+  {
+   "by": 0,
+   "html": "<h1><span class=\"dv-by\" data-by=\"human\" data-o=\"0\" title=\"You, v1.0\">Sensor research</span></h1>\n",
+   "state": "same"
+  },
+  {
+   "by": 0,
+   "html": "<p><span class=\"dv-by\" data-by=\"human\" data-o=\"0\" title=\"You, v1.0\">Which soil moisture sensor holds up in wet soil for a whole season</span><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">, and what does it cost</span><span class=\"dv-by\" data-by=\"human\" data-o=\"0\" title=\"You, v1.0\">?</span></p>\n",
+   "state": "same"
+  },
+  {
+   "by": 0,
+   "html": "<h2><span class=\"dv-by\" data-by=\"human\" data-o=\"0\" title=\"You, v1.0\">Advice</span></h2>\n",
+   "state": "same"
+  },
+  {
+   "by": 0,
+   "html": "<p><span class=\"dv-by\" data-by=\"human\" data-o=\"0\" title=\"You, v1.0\">Order three capacitive sensors and test them for</span> <span class=\"dv-by\" data-by=\"human\" data-o=\"2\" title=\"You, not published yet\">one sprint in the wettest</span> <span class=\"dv-by\" data-by=\"human\" data-o=\"2\" title=\"You, not published yet\">bed</span><span class=\"dv-by\" data-by=\"human\" data-o=\"0\" title=\"You, v1.0\">.</span></p>\n",
+   "state": "same"
+  },
+  {
+   "by": 0,
+   "html": "<h2><span class=\"dv-by\" data-by=\"human\" data-o=\"0\" title=\"You, v1.0\">Findings</span></h2>\n",
+   "state": "same"
+  },
+  {
+   "by": 0,
+   "html": "<p><span class=\"dv-by\" data-by=\"human\" data-o=\"0\" title=\"You, v1.0\">Capacitive sensors corrode far less than resistive ones. The datasheet says 2 years outdoors.</span></p>\n",
+   "state": "same"
+  },
+  {
+   "by": 1,
+   "html": "<table><thead><tr><th><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Sensor</span></th><th><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Price</span></th><th><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Lifetime</span></th></tr></thead><tbody>\n<tr><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Capacitive v2</span></td><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">4 euro</span></td><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">2 years</span></td></tr>\n<tr><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Resistive</span></td><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">1 euro</span></td><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">3 months</span></td></tr>\n</tbody></table>\n",
+   "state": "same"
+  },
+  {
+   "by": 1,
+   "html": "<ul>\n<li><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Capacitive sensors need 3.3 V, which the board gives</span><span class=\"dv-by\" data-by=\"human\" data-o=\"0\" title=\"You, v1.0\">.</span></li>\n</ul>\n",
+   "state": "same"
+  }
+ ],
+ "sources": [
+  {
+   "at": "2026-11-20T13:51:56.463Z",
+   "by": "human",
+   "prompt": null,
+   "version": "1.0",
+   "who": "You"
+  },
+  {
+   "at": "2026-11-20T13:51:56.466Z",
+   "by": "ai",
+   "prompt": "Compare soil moisture sensors",
+   "version": "1.1",
+   "who": "Claude Code"
+  },
+  {
+   "at": "2026-11-20T13:51:56.468Z",
+   "by": "human",
+   "prompt": null,
+   "version": null,
+   "who": "You"
+  }
+ ],
+ "trace": null,
+ "words": [
+  {
+   "source": 0,
+   "words": 39
+  },
+  {
+   "source": 1,
+   "words": 29
+  },
+  {
+   "source": 2,
+   "words": 6
+  }
+ ]
+};
+
+export const authorshipTrace: Authorship = {
+ "at": null,
+ "blocks": [
+  {
+   "by": null,
+   "html": "<h1>Sensor research</h1>\n",
+   "state": "same"
+  },
+  {
+   "by": 1,
+   "html": "<p>Which soil moisture sensor holds up in wet soil for a whole season<span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">, and what does it cost</span>?</p>\n",
+   "state": "same"
+  },
+  {
+   "by": null,
+   "html": "<h2>Advice</h2>\n",
+   "state": "same"
+  },
+  {
+   "by": null,
+   "html": "<p>Order three capacitive sensors and test them for one sprint in the wettest bed.</p>\n",
+   "state": "same"
+  },
+  {
+   "by": null,
+   "html": "<h2>Findings</h2>\n",
+   "state": "same"
+  },
+  {
+   "by": null,
+   "html": "<p>Capacitive sensors corrode far less than resistive ones. The datasheet says 2 years outdoors.</p>\n",
+   "state": "same"
+  },
+  {
+   "by": 1,
+   "html": "<table><thead><tr><th><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Sensor</span></th><th><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Price</span></th><th><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Lifetime</span></th></tr></thead><tbody>\n<tr><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Capacitive v2</span></td><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">4 euro</span></td><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">2 years</span></td></tr>\n<tr><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Resistive</span></td><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">1 euro</span></td><td><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">3 months</span></td></tr>\n</tbody></table>\n",
+   "state": "same"
+  },
+  {
+   "by": 1,
+   "html": "<ul>\n<li><span class=\"dv-by\" data-by=\"ai\" data-o=\"1\" title=\"Claude Code, v1.1\">Capacitive sensors need 3.3 V, which the board gives</span>.</li>\n</ul>\n",
+   "state": "same"
+  }
+ ],
+ "sources": [
+  {
+   "at": "2026-11-20T13:51:56.463Z",
+   "by": "human",
+   "prompt": null,
+   "version": "1.0",
+   "who": "You"
+  },
+  {
+   "at": "2026-11-20T13:51:56.466Z",
+   "by": "ai",
+   "prompt": "Compare soil moisture sensors",
+   "version": "1.1",
+   "who": "Claude Code"
+  },
+  {
+   "at": "2026-11-20T13:51:56.468Z",
+   "by": "human",
+   "prompt": null,
+   "version": null,
+   "who": "You"
+  }
+ ],
+ "trace": {
+  "kept": 29,
+  "removedBy": [
+   {
+    "source": 2,
+    "words": 7
+   }
+  ],
+  "source": 1,
+  "wrote": 36
+ },
+ "words": [
+  {
+   "source": 0,
+   "words": 39
+  },
+  {
+   "source": 1,
+   "words": 29
+  },
+  {
+   "source": 2,
+   "words": 6
+  }
+ ]
 };

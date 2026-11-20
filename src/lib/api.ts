@@ -20,6 +20,8 @@ import type {
 	SemesterDraft,
 	Board,
 	Bump,
+	Authorship,
+	Comparison,
 	Column,
 	Deliverable,
 	DeliverableSummary,
@@ -255,6 +257,12 @@ export const api = {
 	exportDeliverablePdf: (project: string, path: string, open: boolean) => call<string>('export_deliverable_pdf', { project, path, open }),
 	/** How the versions of a deliverable came to be, by thread. `path` is the live file or any of its versions. */
 	getProvenance: (project: string, path: string) => call<Provenance>('get_provenance', { project, path }),
+	/** What changed in a markdown deliverable from `from` to `to`: each a version ("0.3") or "live". */
+	deliverableChanges: (project: string, path: string, from: string, to: string) =>
+		call<Comparison>('deliverable_changes', { project, path, from, to }),
+	/** Who wrote what is in it at `at` (a version or "live"); with `focus`, only what that version wrote. */
+	deliverableAuthors: (project: string, path: string, at: string, focus: string | null = null) =>
+		call<Authorship>('deliverable_authors', { project, path, at, focus }),
 	/** Says who made a version, or sets its AI-use label or change note. */
 	updateVersionRecord: (project: string, path: string, version: string, update: VersionUpdate) =>
 		call<Provenance>('update_version_record', { project, path, version, update }),

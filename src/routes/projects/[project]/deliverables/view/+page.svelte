@@ -5,13 +5,16 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FileDown from '@lucide/svelte/icons/file-down';
 	import FileText from '@lucide/svelte/icons/file-text';
+	import GitCompareArrows from '@lucide/svelte/icons/git-compare-arrows';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
 	import TextCursorInput from '@lucide/svelte/icons/text-cursor-input';
+	import UserRoundPen from '@lucide/svelte/icons/user-round-pen';
 	import Trash from '@lucide/svelte/icons/trash';
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import Dropdown from '$lib/components/Dropdown.svelte';
+	import DocHistory from '$lib/components/DocHistory.svelte';
 	import DocSide from '$lib/components/DocSide.svelte';
 	import EvidenceDescription from '$lib/components/EvidenceDescription.svelte';
 	import FileImage from '$lib/components/FileImage.svelte';
@@ -136,6 +139,7 @@
 	}
 	function setMode(next: Mode) {
 		mode = next;
+		history = 'off';
 		try {
 			localStorage.setItem('ledger-doc-mode', next);
 		} catch {
@@ -478,9 +482,78 @@
 	const draft = $derived<ProvenanceDraft | null>(
 		sameAsLatest === null ? provenance.draft : sameAsLatest ? null : { since: latest, modified: editedAt, stoppedRun: provenance.draft?.stoppedRun ?? null }
 	);
+
+	// ---- what changed, and who wrote what ----------------------------------------------------------
+	// Worked out from the published versions (and the live file, when it holds more): two of them compared as Word's track
+	// changes or line by line as in git, or one of them with who wrote each passage. The Produced by window links here
+	// with `?history=changes&from=0.2&to=0.3` or `?history=authors&focus=0.3`.
+
+	type History = 'off' | 'changes' | 'authors';
+	let history = $state<History>('off');
+	let historyFrom = $state('');
+	let historyTo = $state('');
+	let historyFocus = $state('');
+	const hasDraft = $derived(!snapshot && !!draft);
+	/** What can be shown or compared, oldest first: the versions, and the live file when it differs from the last. */
+	const steps = $derived([...doc.versions, ...(hasDraft ? ['live'] : [])]);
+	const historyVersions = $derived(
+		doc.versions.map((v) => published.find((p) => p.version === v) ?? { version: v, by: 'unknown' as const, run: null })
+	);
+	const canCompare = $derived(steps.length >= 2);
+
+	async function openHistory(next: Exclude<History, 'off'>, wanted: { from?: string | null; to?: string | null; focus?: string | null } = {}) {
+		if (!snapshot) await flush();
+		const shown = snapshot ? (doc.version ?? '') : (steps.at(-1) ?? 'live');
+		const to = wanted.to && steps.includes(wanted.to) ? wanted.to : shown;
+		const i = steps.indexOf(to);
+		historyTo = to;
+		historyFrom = wanted.from && steps.includes(wanted.from) && wanted.from !== to ? wanted.from : (steps[i - 1] ?? steps[i + 1] ?? '');
+		historyFocus = wanted.focus && steps.indexOf(wanted.focus) <= i ? wanted.focus : '';
+		history = next;
+	}
+
+	const toggleHistory = (next: Exclude<History, 'off'>) => (history === next ? (history = 'off') : void openHistory(next));
+
+	// Another file, its own history: closed.
+	$effect(() => {
+		void doc.path;
+		untrack(() => (history = 'off'));
+	});
+
+	const wantedHistory = $derived(page.url.searchParams.get('history'));
+	$effect(() => {
+		const view = wantedHistory;
+		if (view !== 'changes' && view !== 'authors') return;
+		untrack(() => {
+			const params = page.url.searchParams;
+			void openHistory(view, { from: params.get('from'), to: params.get('to'), focus: params.get('focus') });
+			const url = new URL(page.url);
+			for (const key of ['history', 'from', 'to', 'focus']) url.searchParams.delete(key);
+			replaceState(url, page.state);
+		});
+	});
 </script>
 
 <svelte:head><title>{title} | Ledger</title></svelte:head>
+
+{#snippet historyButtons()}
+	<div class="seg" role="group" aria-label="History">
+		<button
+			class:on={history === 'changes'}
+			aria-pressed={history === 'changes'}
+			disabled={!canCompare}
+			title={canCompare ? 'What changed between two versions, and who changed it' : 'Nothing to compare yet: publish a version, then change the file'}
+			onclick={() => toggleHistory('changes')}><GitCompareArrows size={14} />Changes</button
+		>
+		<button
+			class:on={history === 'authors'}
+			aria-pressed={history === 'authors'}
+			disabled={!steps.length}
+			title={steps.length ? 'Which passages you wrote and which AI wrote' : 'Publish a version first: who wrote what is worked out from the versions'}
+			onclick={() => toggleHistory('authors')}><UserRoundPen size={14} />Who wrote what</button
+		>
+	</div>
+{/snippet}
 
 <!-- No tabs under it, so it keeps its own space below the buttons (`flat`), like the other pages' headers. -->
 <div class="header-wrap flat">
@@ -545,16 +618,24 @@
 		{:else if !doc.exists && !snapshot}
 			<div class="notice">The file is not in the project's deliverables folder (any more).</div>
 		{:else if isMarkdown && snapshot}
-			<div class="doc-view"><Markdown bind:this={reader} html={doc.html ?? ''} {images} {marks} onmark={showFeedback} /></div>
+			<div class="form-row" style="justify-content:flex-end">{@render historyButtons()}</div>
+			{#if history !== 'off'}
+				<DocHistory {project} path={doc.basePath} view={history} versions={historyVersions} {hasDraft} {images} bind:from={historyFrom} bind:to={historyTo} bind:focus={historyFocus} />
+			{:else}
+				<div class="doc-view"><Markdown bind:this={reader} html={doc.html ?? ''} {images} {marks} onmark={showFeedback} /></div>
+			{/if}
 		{:else if isMarkdown}
 			<div class="form-row" style="justify-content:space-between">
 				<div class="seg" role="group" aria-label="View">
 					{#each modes as m (m.id)}
-						<button class:on={mode === m.id} aria-pressed={mode === m.id} onclick={() => setMode(m.id)}><m.icon size={14} />{m.label}</button>
+						<button class:on={history === 'off' && mode === m.id} aria-pressed={history === 'off' && mode === m.id} onclick={() => setMode(m.id)}><m.icon size={14} />{m.label}</button>
 					{/each}
 				</div>
+				{@render historyButtons()}
 			</div>
-			{#if mode === 'reading'}
+			{#if history !== 'off'}
+				<DocHistory {project} path={doc.basePath} view={history} versions={historyVersions} {hasDraft} {images} bind:from={historyFrom} bind:to={historyTo} bind:focus={historyFocus} />
+			{:else if mode === 'reading'}
 				<div class="doc-view">
 					{#if body.trim()}<Markdown bind:this={reader} {html} {images} {marks} onmark={showFeedback} />{:else}<span class="hint">Nothing here yet.</span>{/if}
 				</div>

@@ -129,7 +129,7 @@ fn the_vault_has_the_agreed_folder_structure() {
     let thread = format!("{project}/threads/{t}");
 
     // The project: its definition, its reading guide, and the folders hanging off it.
-    assert_eq!(names(root, &project), ["README.md", "attachments", "deliverables", "project.md", "tasks", "templates", "threads", "userstories", "versions"]);
+    assert_eq!(names(root, &project), ["README.md", "attachments", "deliverables", "history", "project.md", "tasks", "templates", "threads", "userstories", "versions"]);
     let definition = read(root, &format!("{project}/project.md"));
     assert!(definition.contains("name: Acme") && definition.contains("- id: backlog") && definition.contains("name: In review"), "{definition}");
     assert_eq!(read(root, &format!("{project}/README.md")), "# Acme\n\nRead the call notes first.\n");
@@ -187,6 +187,11 @@ fn the_vault_has_the_agreed_folder_structure() {
         "{record}"
     );
     assert!(!record.contains("prompt:") && !record.contains("run:") && !record.contains("mmm:"), "what isn't known is left out: {record}");
+
+    // What changed in each version and who made it, as a note of its own in history/, apart from the versions.
+    assert_eq!(names(root, &format!("{project}/history/call-summary")), ["v1.0.md"]);
+    let note = read(root, &format!("{project}/history/call-summary/v1.0.md"));
+    assert!(note.contains("madeBy: You") && note.contains("# call-summary.md v1.0"), "{note}");
 
     // Stories and tasks, and the two kinds of template.
     let story = read(root, &format!("{project}/userstories/MM01.md"));

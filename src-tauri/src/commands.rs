@@ -12,6 +12,7 @@ use zeroize::Zeroizing;
 
 use crate::error::{Error, Result};
 use crate::github::GithubRemote;
+use crate::history;
 use crate::keystore::{self, EncryptionStatus, KeyStore};
 use crate::models::*;
 use crate::branding::{self, Branding, Side};
@@ -541,6 +542,18 @@ pub fn get_deliverable(app: State<App>, project: String, path: String) -> Result
 #[tauri::command]
 pub fn create_deliverable(app: State<App>, project: String, name: String, body: String) -> Result<DeliverableView> {
     app.mutate(|c, _| deliverables::create(c, &project, &name, &body))
+}
+
+/// What changed in a markdown deliverable from `from` to `to`: each a version ("0.3") or "live".
+#[tauri::command]
+pub fn deliverable_changes(app: State<App>, project: String, path: String, from: String, to: String) -> Result<history::Comparison> {
+    app.read(|c, _| history::compare(c, &project, &path, &from, &to))
+}
+
+/// Who wrote what is in a markdown deliverable at `at` (a version or "live"); with `focus`, only what that version wrote.
+#[tauri::command]
+pub fn deliverable_authors(app: State<App>, project: String, path: String, at: String, focus: Option<String>) -> Result<history::Authorship> {
+    app.read(|c, _| history::authors(c, &project, &path, &at, focus.as_deref()))
 }
 
 #[tauri::command]

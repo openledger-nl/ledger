@@ -15,6 +15,8 @@
 //! projects/<project>/versions/<id>.md            how a published version came to be: who made it, its thread, its AI-use label
 //! projects/<project>/versions/…                  the published versions themselves, "@v1.0" in the name, each at the same
 //!                                                place under versions/ as its live file is under deliverables/
+//! projects/<project>/history/<deliverable>/v0.3.md  what changed in a markdown deliverable's v0.3, and who made it:
+//!                                                made from the versions (see `history`), never read back
 //! projects/<project>/userstories/<id>.md         a user story
 //! projects/<project>/tasks/<id>.md               a task on the board
 //! projects/<project>/templates/<id>.md           the project's own templates
@@ -349,6 +351,8 @@ pub fn export(conn: &Connection) -> Result<BTreeMap<String, String>> {
     export_stories_and_tasks(conn, &mut files)?;
     export_deliverables(conn, &mut files)?;
     export_version_records(conn, &mut files)?;
+    // Made from the versions, never read back: what changed in each, readable in Obsidian.
+    crate::history::export(conn, &mut files)?;
     for (path, text) in crate::daily::export(conn)? {
         files.insert(path, text);
     }

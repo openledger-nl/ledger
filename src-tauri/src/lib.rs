@@ -16,6 +16,7 @@ mod error;
 mod feedback;
 mod frontmatter;
 mod github;
+mod history;
 mod ids;
 mod images;
 mod keystore;
@@ -85,6 +86,8 @@ mod tests_portflow;
 mod tests_v1;
 #[cfg(test)]
 mod tests_provenance;
+#[cfg(test)]
+mod tests_history;
 #[cfg(test)]
 mod tests_screenshot;
 #[cfg(test)]
@@ -268,6 +271,8 @@ pub fn run() {
             commands::get_deliverable,
             commands::create_deliverable,
             commands::save_deliverable,
+            commands::deliverable_changes,
+            commands::deliverable_authors,
             commands::publish_deliverable,
             commands::export_deliverable_pdf,
             commands::pdf_layout,

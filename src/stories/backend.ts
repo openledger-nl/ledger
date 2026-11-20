@@ -64,6 +64,8 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	list_deliverables: fx.deliverables,
 	get_deliverable: fx.deliverable,
 	get_provenance: fx.provenance,
+	deliverable_changes: (a: Record<string, unknown>) => (a.from === '1.1' && a.to === 'live' ? fx.changesLive : fx.changes),
+	deliverable_authors: (a: Record<string, unknown>) => (a.focus ? fx.authorshipTrace : fx.authorship),
 	list_deliverable_prompts: [fx.prompt],
 	list_deliverable_meta: [],
 	get_deliverable_meta: null,

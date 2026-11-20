@@ -411,6 +411,67 @@ export interface Provenance {
 	suggestedLabel: MmmLevel | null;
 }
 
+// ---- what changed, and who wrote what (history.rs) ----------------------------------------------------
+
+/** Where words came from: a version (or the live file, `version` null) and who made it. */
+export interface HistorySource {
+	version: string | null;
+	by: 'ai' | 'human' | 'unknown';
+	/** "Claude Code", "AI, as declared", "You", "Origin not recorded". */
+	who: string;
+	at: string;
+	prompt: string | null;
+}
+
+export interface HistoryBlock {
+	state: 'same' | 'added' | 'removed' | 'changed' | 'moved' | 'movedAway';
+	html: string;
+	/** The source (an index into `sources`) most of its words come from. */
+	by: number | null;
+}
+
+export interface HistoryShare {
+	source: number;
+	words: number;
+}
+
+export interface HistoryLine {
+	tag: 'same' | 'add' | 'del';
+	old: number | null;
+	new: number | null;
+	parts: { text: string; emph: boolean }[];
+	by: number | null;
+}
+
+export interface HistoryHunk {
+	oldStart: number;
+	newStart: number;
+	lines: HistoryLine[];
+}
+
+/** A deliverable from one version (or the live file) to another. */
+export interface Comparison {
+	from: string | null;
+	to: string | null;
+	sources: HistorySource[];
+	blocks: HistoryBlock[];
+	hunks: HistoryHunk[];
+	wordsAdded: number;
+	wordsRemoved: number;
+	moved: number;
+	changed: number;
+	addedBy: HistoryShare[];
+}
+
+/** Who wrote what is in a deliverable; with a focus, what became of that version's words. */
+export interface Authorship {
+	at: string | null;
+	sources: HistorySource[];
+	blocks: HistoryBlock[];
+	words: HistoryShare[];
+	trace: { source: number; wrote: number; kept: number; removedBy: HistoryShare[] } | null;
+}
+
 /** What the person says about a version when publishing it. `thread`: null picks the default, "" files it in no thread. */
 export interface PublishChoices {
 	thread: string | null;
