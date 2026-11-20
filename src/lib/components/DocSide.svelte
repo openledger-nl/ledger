@@ -1,9 +1,12 @@
 <script lang="ts">
 	import FileClock from '@lucide/svelte/icons/file-clock';
+	import GitCompareArrows from '@lucide/svelte/icons/git-compare-arrows';
 	import MessageSquareText from '@lucide/svelte/icons/message-square-text';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import type { Anchor } from '$lib/anchors';
+	import type { ChangeTracker } from '$lib/liveChanges.svelte';
 	import type { Deliverable, Feedback, Prompt, Provenance, ProvenanceDraft, ThreadSummary } from '$lib/types';
+	import ChangesPanel from './ChangesPanel.svelte';
 	import FeedbackPanel from './FeedbackPanel.svelte';
 	import PromptsPanel from './PromptsPanel.svelte';
 	import ProvenancePanel from './ProvenancePanel.svelte';
@@ -28,7 +31,10 @@
 		pending = $bindable(null),
 		lost,
 		here,
-		onlocate
+		onlocate,
+		changes,
+		live = false,
+		onhistory
 	}: {
 		project: string;
 		doc: Deliverable;
@@ -42,13 +48,29 @@
 		lost: Set<string>;
 		here: (f: Feedback) => boolean;
 		onlocate: (id: string) => void;
+		/** A markdown deliverable's changes since a version; without it, no Changes section. */
+		changes?: ChangeTracker;
+		/** The live file is open, so its changes are followed. */
+		live?: boolean;
+		onhistory?: (view: 'changes' | 'authors') => void;
 	} = $props();
 
-	type Section = 'provenance' | 'feedback' | 'prompts';
+	type Section = 'provenance' | 'changes' | 'feedback' | 'prompts';
 
 	const openCount = $derived(doc.feedback.filter((f) => f.status === 'open').length);
 	const sections = $derived([
 		{ id: 'provenance', title: 'Produced by', icon: FileClock },
+		...(changes
+			? [
+					{
+						id: 'changes',
+						title: 'Changes',
+						icon: GitCompareArrows,
+						count: live ? changes.changes.length : undefined,
+						headCount: live && changes.data?.against ? `since v${changes.data.against}` : undefined
+					}
+				]
+			: []),
 		{
 			id: 'feedback',
 			title: 'Feedback',
@@ -71,6 +93,8 @@
 	{#snippet panel(id)}
 		{#if id === 'provenance'}
 			<ProvenancePanel {project} {doc} {provenance} {draft} />
+		{:else if id === 'changes' && changes}
+			<ChangesPanel tracker={changes} {live} onhistory={(view) => onhistory?.(view)} />
 		{:else if id === 'feedback'}
 			<FeedbackPanel {project} {doc} {prompts} {threads} bind:thread {threadTitle} bind:pending {lost} {here} {onlocate} onopenprompts={() => void reveal('prompts')} />
 		{:else}

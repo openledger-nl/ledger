@@ -5,6 +5,7 @@
 	import type { Mark } from '$lib/anchors';
 	import type { EvidenceMention } from '$lib/types';
 	import { projectLinks } from '$lib/links.svelte';
+	import { changeRect, changeTracking, revealChange, revertChange, showChanges, type ChangeView } from '$lib/editorChanges';
 	import { markdownEditor, refreshLinks, revealMark, setSourceMode, showMarks, type MentionOption } from '$lib/markdownEditor';
 	import { imageLoader, type ImageBase } from '$lib/vaultImages';
 
@@ -31,7 +32,9 @@
 		marks,
 		onmark,
 		mentions,
-		people
+		people,
+		changes,
+		onchangeclick
 	}: {
 		value?: string;
 		placeholder?: string;
@@ -60,6 +63,10 @@
 		mentions?: EvidenceMention[];
 		/** Or the people `@` offers (a meeting's), each written as `[@Name](person:<tag>)`. */
 		people?: MentionOption[];
+		/** The changes since a version, in the margin (and in the text with `inline`); see editorChanges.ts. */
+		changes?: ChangeView | null;
+		/** A click on a change's bar or mark. Given, the editor has a margin for the changes. */
+		onchangeclick?: (id: string, rect: DOMRect) => void;
 	} = $props();
 
 	// [[links]] point at the threads, deliverables and feedback of the project the window is in (none outside a project).
@@ -75,7 +82,7 @@
 	onMount(() => {
 		held = value;
 		const pictures = imageLoader(() => images);
-		extensions = markdownEditor({
+		const editor = markdownEditor({
 			placeholder,
 			label,
 			spellcheck,
@@ -100,8 +107,10 @@
 				oninput?.();
 			}
 		});
+		extensions = onchangeclick ? [editor, changeTracking((id, rect) => onchangeclick?.(id, rect))] : editor;
 		view = new EditorView({ parent: host, state: EditorState.create({ doc: value, extensions }) });
 		pushMarks(marks ?? []);
+		pushChanges(untrack(() => changes));
 		if (autofocus || focusWhenReady) focus(autofocus);
 		return () => {
 			view?.destroy();
@@ -119,7 +128,31 @@
 		view.setState(EditorState.create({ doc: next, selection: { anchor: head }, extensions }));
 		setSourceMode(view, untrack(() => source));
 		pushMarks(untrack(() => marks) ?? []);
+		pushChanges(untrack(() => changes));
 	});
+
+	$effect(() => pushChanges(changes));
+
+	function pushChanges(next: ChangeView | null | undefined) {
+		if (view && onchangeclick) showChanges(view, next ?? { data: null, inline: false, focus: null });
+	}
+
+	/** Undoes one change: puts back what the version said there. */
+	export function revert(id: string): boolean {
+		return view ? revertChange(view, id) : false;
+	}
+
+	/** Scrolls a change into view, and says where it then is on the screen. */
+	export function showChange(id: string): DOMRect | null {
+		if (!view) return null;
+		revealChange(view, id);
+		return changeRect(view, id);
+	}
+
+	/** Where a change is on the screen. */
+	export function rectOf(id: string): DOMRect | null {
+		return view ? changeRect(view, id) : null;
+	}
 
 	$effect(() => pushMarks(marks ?? []));
 

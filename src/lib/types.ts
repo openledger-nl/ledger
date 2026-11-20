@@ -463,6 +463,34 @@ export interface Comparison {
 	addedBy: HistoryShare[];
 }
 
+/** A change in the text being typed, since a version, positioned as the editor counts (UTF-16). */
+export interface LiveChange {
+	/** The same for the same change while the text around it changes. */
+	id: string;
+	kind: 'added' | 'changed' | 'removed' | 'moved';
+	/** The block it is in now; for "removed", `from === to` where the block was. */
+	from: number;
+	to: number;
+	/** Who made most of it (an index into `sources`); null when it only took words out. */
+	by: number | null;
+	/** What the block said before. */
+	old: string;
+	inserts: { from: number; to: number; by: number }[];
+	deletes: { at: number; text: string; block: boolean }[];
+	/** The edits that put back what was there, in the coordinates of the text now. */
+	revert: { from: number; to: number; insert: string }[];
+	wordsAdded: number;
+	wordsRemoved: number;
+}
+
+export interface LiveChanges {
+	/** The version compared with; null before the first one. */
+	against: string | null;
+	/** The versions, and last the text being typed. */
+	sources: HistorySource[];
+	changes: LiveChange[];
+}
+
 /** Who wrote what is in a deliverable; with a focus, what became of that version's words. */
 export interface Authorship {
 	at: string | null;

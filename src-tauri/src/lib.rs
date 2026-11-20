@@ -273,6 +273,7 @@ pub fn run() {
             commands::save_deliverable,
             commands::deliverable_changes,
             commands::deliverable_authors,
+            commands::deliverable_live_changes,
             commands::publish_deliverable,
             commands::export_deliverable_pdf,
             commands::pdf_layout,

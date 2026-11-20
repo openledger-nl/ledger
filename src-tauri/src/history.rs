@@ -19,7 +19,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
@@ -120,7 +120,9 @@ fn tokenize(text: &str) -> Vec<Tok> {
 /// A line that is a rule: a thematic break, a setext heading's underline, or a table's `|---|---|`.
 fn is_rule(line: &str) -> bool {
     let t: Vec<u8> = line.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
-    let Some(&first) = t.first() else { return false };
+    let Some(&first) = t.first() else {
+        return false;
+    };
     let same = t.iter().all(|&b| b == first);
     (same && first == b'=' && t.len() >= 2)
         || (same && matches!(first, b'-' | b'*' | b'_') && t.len() >= 3)
@@ -500,87 +502,116 @@ fn walk(docs: &[Doc]) -> Walk {
     let mut removed: Vec<HashMap<u16, usize>> = Vec::with_capacity(docs.len());
     for (j, doc) in docs.iter().enumerate() {
         let here = u16::try_from(j).unwrap_or(u16::MAX);
-        let mut next = vec![here; doc.toks.len()];
-        let mut gone: HashMap<u16, usize> = HashMap::new();
-        if let (Some(prev_doc), Some(prev)) = (j.checked_sub(1).map(|p| &docs[p]), origins.last()) {
-            let ops = diff(Algorithm::Myers, &prev_doc.keys(0, prev_doc.toks.len()), &doc.keys(0, doc.toks.len()));
-            let mut deleted = vec![false; prev_doc.toks.len()];
-            let mut inserted = vec![false; doc.toks.len()];
-            for op in &ops {
-                match *op {
-                    DiffOp::Equal { old_index, new_index, len } => next[new_index..new_index + len].copy_from_slice(&prev[old_index..old_index + len]),
-                    DiffOp::Delete { old_index, old_len, .. } => deleted[old_index..old_index + old_len].fill(true),
-                    DiffOp::Insert { new_index, new_len, .. } => inserted[new_index..new_index + new_len].fill(true),
-                    DiffOp::Replace { old_index, old_len, new_index, new_len } => {
-                        deleted[old_index..old_index + old_len].fill(true);
-                        inserted[new_index..new_index + new_len].fill(true);
-                    }
-                }
-            }
-            // A block that went out in one place and came in, word for word, in another was moved: its words keep who
-            // wrote them. (The comparison may have kept a few of its words where they were, a "the" or a full stop.)
-            let mut away: HashMap<&str, Vec<usize>> = HashMap::new();
-            for (k, b) in prev_doc.blocks.iter().enumerate() {
-                let key = prev_doc.block_text(b).trim_end();
-                if key.len() >= MOVE_MIN_CHARS && (b.t0..b.t1).any(|i| deleted[i] && prev_doc.toks[i].kind.counts()) {
-                    away.entry(key).or_default().push(k);
-                }
-            }
-            let mut claimed = vec![false; prev_doc.blocks.len()];
-            let mut open: Vec<usize> = Vec::new();
-            for (n, b) in doc.blocks.iter().enumerate() {
-                let key = doc.block_text(b).trim_end();
-                if !(b.t0..b.t1).any(|i| inserted[i] && doc.toks[i].kind.counts()) {
-                    continue;
-                }
-                if let Some(k) = away.get_mut(key).and_then(Vec::pop) {
-                    let from = prev_doc.blocks[k];
-                    if from.t1 - from.t0 == b.t1 - b.t0 {
-                        next[b.t0..b.t1].copy_from_slice(&prev[from.t0..from.t1]);
-                        deleted[from.t0..from.t1].fill(false);
-                        claimed[k] = true;
-                        continue;
-                    }
-                }
-                if mostly(doc, b, &inserted) {
-                    open.push(n);
-                }
-            }
-            // One that came in edited: the words it kept keep who wrote them.
-            let gone_blocks: Vec<usize> = (0..prev_doc.blocks.len()).filter(|&k| !claimed[k] && mostly(prev_doc, &prev_doc.blocks[k], &deleted)).collect();
-            if open.len() * gone_blocks.len() <= MOVE_PAIRS {
-                let mut taken = vec![false; gone_blocks.len()];
-                for n in open {
-                    let b = doc.blocks[n];
-                    let best = gone_blocks
-                        .iter()
-                        .enumerate()
-                        .filter(|&(g, &k)| !taken[g] && compatible(prev_doc.blocks[k].kind, b.kind))
-                        .map(|(g, &k)| (g, likeness(prev_doc, &prev_doc.blocks[k], doc, &b)))
-                        .filter(|&(_, l)| l >= MOVED_EDITED)
-                        .max_by(|x, y| x.1.total_cmp(&y.1));
-                    let Some((g, _)) = best else { continue };
-                    taken[g] = true;
-                    let from = prev_doc.blocks[gone_blocks[g]];
-                    for op in diff(Algorithm::Myers, &prev_doc.keys(from.t0, from.t1), &doc.keys(b.t0, b.t1)) {
-                        if let DiffOp::Equal { old_index, new_index, len } = op {
-                            let (o, n) = (from.t0 + old_index, b.t0 + new_index);
-                            next[n..n + len].copy_from_slice(&prev[o..o + len]);
-                            deleted[o..o + len].fill(false);
-                        }
-                    }
-                }
-            }
-            for (k, &d) in deleted.iter().enumerate() {
-                if d && prev_doc.toks[k].kind.counts() {
-                    *gone.entry(prev[k]).or_default() += 1;
-                }
-            }
-        }
+        let (next, gone) = match (j.checked_sub(1), origins.last()) {
+            (Some(p), Some(prev)) => step(&docs[p], prev, doc, here),
+            _ => (vec![here; doc.toks.len()], HashMap::new()),
+        };
         origins.push(next);
         removed.push(gone);
     }
     Walk { origins, removed }
+}
+
+/// One step of [`walk`]: who wrote each token of `doc` (by the version at index `here`), given who wrote each of
+/// `prev_doc`'s; and how many words of each earlier version this step took out.
+fn step(prev_doc: &Doc, prev: &[u16], doc: &Doc, here: u16) -> (Vec<u16>, HashMap<u16, usize>) {
+    let mut next = vec![here; doc.toks.len()];
+    let mut gone: HashMap<u16, usize> = HashMap::new();
+    let ops = diff(Algorithm::Myers, &prev_doc.keys(0, prev_doc.toks.len()), &doc.keys(0, doc.toks.len()));
+    let mut deleted = vec![false; prev_doc.toks.len()];
+    let mut inserted = vec![false; doc.toks.len()];
+    for op in &ops {
+        match *op {
+            DiffOp::Equal { old_index, new_index, len } => next[new_index..new_index + len].copy_from_slice(&prev[old_index..old_index + len]),
+            DiffOp::Delete { old_index, old_len, .. } => deleted[old_index..old_index + old_len].fill(true),
+            DiffOp::Insert { new_index, new_len, .. } => inserted[new_index..new_index + new_len].fill(true),
+            DiffOp::Replace { old_index, old_len, new_index, new_len } => {
+                deleted[old_index..old_index + old_len].fill(true);
+                inserted[new_index..new_index + new_len].fill(true);
+            }
+        }
+    }
+    // A block that went out in one place and came in, word for word, in another was moved: its words keep who
+    // wrote them. (The comparison may have kept a few of its words where they were, a "the" or a full stop.)
+    let mut away: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (k, b) in prev_doc.blocks.iter().enumerate() {
+        let key = prev_doc.block_text(b).trim_end();
+        if key.len() >= MOVE_MIN_CHARS && (b.t0..b.t1).any(|i| deleted[i] && prev_doc.toks[i].kind.counts()) {
+            away.entry(key).or_default().push(k);
+        }
+    }
+    let mut claimed = vec![false; prev_doc.blocks.len()];
+    let mut open: Vec<usize> = Vec::new();
+    for (n, b) in doc.blocks.iter().enumerate() {
+        let key = doc.block_text(b).trim_end();
+        if !(b.t0..b.t1).any(|i| inserted[i] && doc.toks[i].kind.counts()) {
+            continue;
+        }
+        if let Some(k) = away.get_mut(key).and_then(Vec::pop) {
+            let from = prev_doc.blocks[k];
+            if from.t1 - from.t0 == b.t1 - b.t0 {
+                next[b.t0..b.t1].copy_from_slice(&prev[from.t0..from.t1]);
+                deleted[from.t0..from.t1].fill(false);
+                claimed[k] = true;
+                continue;
+            }
+        }
+        if mostly(doc, b, &inserted) {
+            open.push(n);
+        }
+    }
+    // One that came in edited: the words it kept keep who wrote them.
+    let gone_blocks: Vec<usize> = (0..prev_doc.blocks.len()).filter(|&k| !claimed[k] && mostly(prev_doc, &prev_doc.blocks[k], &deleted)).collect();
+    if open.len() * gone_blocks.len() <= MOVE_PAIRS {
+        let mut taken = vec![false; gone_blocks.len()];
+        for n in open {
+            let b = doc.blocks[n];
+            let best = gone_blocks
+                .iter()
+                .enumerate()
+                .filter(|&(g, &k)| !taken[g] && compatible(prev_doc.blocks[k].kind, b.kind))
+                .map(|(g, &k)| (g, likeness(prev_doc, &prev_doc.blocks[k], doc, &b)))
+                .filter(|&(_, l)| l >= MOVED_EDITED)
+                .max_by(|x, y| x.1.total_cmp(&y.1));
+            let Some((g, _)) = best else { continue };
+            taken[g] = true;
+            let from = prev_doc.blocks[gone_blocks[g]];
+            for op in diff(Algorithm::Myers, &prev_doc.keys(from.t0, from.t1), &doc.keys(b.t0, b.t1)) {
+                if let DiffOp::Equal { old_index, new_index, len } = op {
+                    let (o, n) = (from.t0 + old_index, b.t0 + new_index);
+                    next[n..n + len].copy_from_slice(&prev[o..o + len]);
+                    deleted[o..o + len].fill(false);
+                }
+            }
+        }
+    }
+    for (k, &d) in deleted.iter().enumerate() {
+        if d && prev_doc.toks[k].kind.counts() {
+            *gone.entry(prev[k]).or_default() += 1;
+        }
+    }
+    (next, gone)
+}
+
+/// [`walk`] over the published versions, kept: a text being typed only needs the last step from the newest version.
+/// Who wrote each token, for each of a row of versions.
+type Origins = Arc<Vec<Vec<u16>>>;
+
+fn published_origins(texts: &[String], docs: &[Doc]) -> Origins {
+    static WALKS: LazyLock<Mutex<HashMap<u64, Origins>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+    let mut hasher = DefaultHasher::new();
+    texts.hash(&mut hasher);
+    let key = hasher.finish();
+    let mut cache = WALKS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(found) = cache.get(&key) {
+        return found.clone();
+    }
+    if cache.len() > 64 {
+        cache.clear();
+    }
+    let origins = Arc::new(walk(docs).origins);
+    cache.insert(key, origins.clone());
+    origins
 }
 
 // ---- comparing two texts ----------------------------------------------------------------------------
@@ -1081,6 +1112,15 @@ fn prompt_title(conn: &Connection, id: Option<&str>) -> Result<Option<String>> {
     Ok(query_opt(conn, "SELECT title FROM prompts WHERE id = ?1", [id], |r| r.get::<_, String>(0))?.filter(|t| !t.trim().is_empty()))
 }
 
+/// Who wrote what the live file holds beyond the versions: a Claude Code run that changed it and published nothing, or you.
+fn live_source(conn: &Connection, project: &str, base: &str) -> Result<Source> {
+    let stopped = provenance::stopped_run(conn, project, base)?;
+    let modified: String =
+        query_opt(conn, "SELECT modified FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, base], |r| r.get(0))?.unwrap_or_default();
+    let (by, who) = if stopped.is_some() { ("ai", "Claude Code") } else { ("human", "You") };
+    Ok(Source { version: None, by, who: who.into(), at: modified, prompt: stopped.map(|s| s.prompt_title) })
+}
+
 fn chain(conn: &Connection, project: &str, base: &str) -> Result<Chain> {
     let base = split_version(base).0;
     if !deliverables::is_markdown(&base) {
@@ -1089,7 +1129,9 @@ fn chain(conn: &Connection, project: &str, base: &str) -> Result<Chain> {
     let mut texts = Vec::new();
     let mut sources = Vec::new();
     for v in provenance::resolve(conn, project, &base)? {
-        let Some(text) = body_of(conn, project, &deliverables::snapshot_path(&base, &v.version))? else { continue };
+        let Some(text) = body_of(conn, project, &deliverables::snapshot_path(&base, &v.version))? else {
+            continue;
+        };
         let (by, who) = who(v.author, v.run.is_some());
         texts.push(text);
         sources.push(Source { version: Some(v.version), by, who: who.into(), at: v.at, prompt: prompt_title(conn, v.prompt.as_deref())? });
@@ -1097,12 +1139,8 @@ fn chain(conn: &Connection, project: &str, base: &str) -> Result<Chain> {
     if let Some(live) = body_of(conn, project, &base)?
         && texts.last() != Some(&live)
     {
-        let stopped = provenance::stopped_run(conn, project, &base)?;
-        let modified: String =
-            query_opt(conn, "SELECT modified FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, &base], |r| r.get(0))?.unwrap_or_default();
-        let (by, who) = if stopped.is_some() { ("ai", "Claude Code") } else { ("human", "You") };
         texts.push(live);
-        sources.push(Source { version: None, by, who: who.into(), at: modified, prompt: stopped.map(|s| s.prompt_title) });
+        sources.push(live_source(conn, project, &base)?);
     }
     if texts.is_empty() {
         return Err(Error::not_found("Deliverable not found"));
@@ -1242,11 +1280,7 @@ fn hunks(a: &Doc, b: &Doc, origin: &[u16]) -> Vec<Hunk> {
                     lines.push(Line { tag, old: change.old_index().map(|i| i + 1), new: change.new_index().map(|i| i + 1), parts, by });
                 }
             }
-            Hunk {
-                old_start: first.map_or(0, |op| op.old_range().start + 1),
-                new_start: first.map_or(0, |op| op.new_range().start + 1),
-                lines,
-            }
+            Hunk { old_start: first.map_or(0, |op| op.old_range().start + 1), new_start: first.map_or(0, |op| op.new_range().start + 1), lines }
         })
         .collect()
 }
@@ -1311,6 +1345,295 @@ pub fn authors(conn: &Connection, project: &str, base: &str, at: &str, focus: Op
     })
 }
 
+// ---- the live file, as it is being typed ------------------------------------------------------------
+// What the editor shows beside the text: each change since a version (the newest unless another is asked for), where it
+// is in the text as it is now, who made it, what was there before, and the edit that undoes it. Positions are in UTF-16
+// code units, as the editor counts.
+
+/// Added text, `from..to`, by the source at `by`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Span {
+    pub from: usize,
+    pub to: usize,
+    pub by: u16,
+}
+
+/// Text that was taken out, and where it was: inside a block, or a whole block (`block`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Gone {
+    pub at: usize,
+    pub text: String,
+    pub block: bool,
+}
+
+/// Replace `from..to` with `insert`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Edit {
+    pub from: usize,
+    pub to: usize,
+    pub insert: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveChange {
+    /// The same for the same change, while the text around it changes.
+    pub id: String,
+    /// "added", "changed", "removed" or "moved".
+    pub kind: &'static str,
+    /// The block it is in the text now; for "removed", `from == to` where the block was.
+    pub from: usize,
+    pub to: usize,
+    /// Who made most of it (an index into `sources`); none for "removed".
+    pub by: Option<u16>,
+    /// What the block said before.
+    pub old: String,
+    pub inserts: Vec<Span>,
+    pub deletes: Vec<Gone>,
+    /// The edits that put back what was there, all in the coordinates of the text now.
+    pub revert: Vec<Edit>,
+    pub words_added: usize,
+    pub words_removed: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveChanges {
+    /// The version compared with; none when there is no version yet.
+    pub against: Option<String>,
+    /// The versions, and last the text being typed.
+    pub sources: Vec<Source>,
+    pub changes: Vec<LiveChange>,
+}
+
+/// Byte offsets in a text as UTF-16 offsets.
+struct Utf16(Vec<u32>);
+
+impl Utf16 {
+    fn new(text: &str) -> Utf16 {
+        let mut table = vec![0u32; text.len() + 1];
+        let mut at = 0u32;
+        for (i, c) in text.char_indices() {
+            table[i] = at;
+            at += c.len_utf16() as u32;
+        }
+        table[text.len()] = at;
+        Utf16(table)
+    }
+
+    fn at(&self, byte: usize) -> usize {
+        self.0.get(byte).copied().unwrap_or_else(|| self.0.last().copied().unwrap_or(0)) as usize
+    }
+}
+
+/// The added text among `range` of `d`'s tokens, as runs by who wrote them: a run stops at a line's start, emphasis and
+/// the end of a line, and leaves out the spaces at its ends.
+fn runs(d: &Doc, range: std::ops::Range<usize>, origin: &[u16], pos: &Utf16) -> Vec<Span> {
+    let mut out = Vec::new();
+    let mut open: Option<(usize, usize, u16)> = None;
+    let close = |open: &mut Option<(usize, usize, u16)>, out: &mut Vec<Span>| {
+        if let Some((from, to, by)) = open.take() {
+            out.push(Span { from: pos.at(from), to: pos.at(to), by });
+        }
+    };
+    for i in range {
+        let t = d.toks[i];
+        if !t.kind.markable() {
+            close(&mut open, &mut out);
+        } else if t.kind != Kind::Space {
+            match open.as_mut() {
+                Some((_, to, by)) if *by == origin[i] => *to = t.end,
+                _ => {
+                    close(&mut open, &mut out);
+                    open = Some((t.start, t.end, origin[i]));
+                }
+            }
+        }
+    }
+    close(&mut open, &mut out);
+    out
+}
+
+/// What changed inside a block: the runs added, the text taken out and where, and the words of each.
+fn inline_changes(a: &Doc, x: &Block, b: &Doc, y: &Block, origin: &[u16], pos: &Utf16) -> (Vec<Span>, Vec<Gone>, usize, usize, Vec<u16>) {
+    let (mut inserts, mut deletes, mut plus, mut minus, mut by) = (Vec::new(), Vec::new(), 0, 0, Vec::new());
+    for op in diff(Algorithm::Myers, &a.keys(x.t0, x.t1), &b.keys(y.t0, y.t1)) {
+        if op.tag() == similar::DiffTag::Equal {
+            continue;
+        }
+        let (old, new) = (op.old_range(), op.new_range());
+        if !old.is_empty() {
+            let text: String = old.clone().filter(|&k| a.toks[x.t0 + k].kind != Kind::Struct).map(|k| a.tok(x.t0 + k)).collect();
+            minus += old.clone().filter(|&k| a.toks[x.t0 + k].kind.counts()).count();
+            if !text.trim().is_empty() {
+                let at = if y.t0 + new.start < y.t1 { b.toks[y.t0 + new.start].start } else { y.end };
+                deletes.push(Gone { at: pos.at(at), text: text.trim().to_string(), block: false });
+            }
+        }
+        if !new.is_empty() {
+            for k in new.clone() {
+                let kind = b.toks[y.t0 + k].kind;
+                plus += usize::from(kind.counts());
+                // Who added it goes by everything visible that was added, a full stop or an emoji too.
+                if kind.markable() && kind != Kind::Space {
+                    by.push(origin[y.t0 + k]);
+                }
+            }
+            inserts.extend(runs(b, y.t0 + new.start..y.t0 + new.end, origin, pos));
+        }
+    }
+    (inserts, deletes, plus, minus, by)
+}
+
+/// The deliverable at `base` as it is being typed (`text`) against a version (`against`, the newest when none).
+pub fn live_changes(conn: &Connection, project: &str, base: &str, text: &str, against: Option<&str>) -> Result<LiveChanges> {
+    let base = split_version(base).0;
+    let live = live_source(conn, project, &base)?;
+    let mut chain = match chain(conn, project, &base) {
+        Ok(chain) => chain,
+        Err(_) => return Ok(LiveChanges { against: None, sources: vec![live], changes: Vec::new() }),
+    };
+    if chain.sources.last().is_some_and(|s| s.version.is_none()) {
+        chain.texts.pop();
+        chain.sources.pop();
+    }
+    let published = chain.texts.len();
+    if published == 0 {
+        return Ok(LiveChanges { against: None, sources: vec![live], changes: Vec::new() });
+    }
+    let ai = match against.filter(|a| !a.is_empty() && *a != "live") {
+        Some(v) => chain.index(v)?,
+        None => published - 1,
+    };
+    let docs: Vec<Doc> = chain.texts.iter().map(|t| Doc::new(t)).collect();
+    let before = published_origins(&chain.texts, &docs);
+    let b = Doc::new(text);
+    let here = u16::try_from(published).unwrap_or(u16::MAX);
+    let (origin, _) = step(&docs[published - 1], &before[published - 1], &b, here);
+    let a = &docs[ai];
+    let pos = Utf16::new(text);
+    let items = compare_blocks(a, &b);
+
+    // Where a block that went would go back: before the next block that is there now, or at the end.
+    let mut back: Vec<Option<usize>> = vec![None; items.len()];
+    let mut next: Option<usize> = None;
+    for (i, item) in items.iter().enumerate().rev() {
+        back[i] = next;
+        if let Item::Same(n) | Item::Added(n) | Item::Changed(_, n) | Item::Moved(n, _) = *item {
+            next = Some(b.blocks[n].start);
+        }
+    }
+    let put_back = |at: Option<usize>, old: &str| -> Edit {
+        match at {
+            Some(at) => Edit { from: pos.at(at), to: pos.at(at), insert: format!("{old}\n\n") },
+            None => {
+                let end = pos.at(text.trim_end().len());
+                Edit { from: end, to: end, insert: if end == 0 { old.to_string() } else { format!("\n\n{old}") } }
+            }
+        }
+    };
+    let away: HashMap<usize, Option<usize>> =
+        items.iter().enumerate().filter_map(|(i, item)| if let Item::MovedAway(o) = *item { Some((o, back[i])) } else { None }).collect();
+    // Taking a block out takes the blank line after it too (or before it, for the last).
+    let take_out = |n: usize| -> Edit {
+        let y = b.blocks[n];
+        let (from, to) = match (b.blocks.get(n + 1), n.checked_sub(1).map(|p| b.blocks[p])) {
+            (Some(next), _) => (y.start, next.start),
+            (None, Some(prev)) => (prev.end, y.end),
+            (None, None) => (y.start, y.end),
+        };
+        Edit { from: pos.at(from), to: pos.at(to), insert: String::new() }
+    };
+    let id = |kind: &str, old: &str, new: &str| {
+        let mut hasher = DefaultHasher::new();
+        (kind, old, new).hash(&mut hasher);
+        format!("{:016x}", hasher.finish())
+    };
+
+    let mut changes = Vec::new();
+    for (i, item) in items.iter().enumerate() {
+        let change = match *item {
+            Item::Same(_) | Item::MovedAway(_) => continue,
+            Item::Added(n) => {
+                let y = b.blocks[n];
+                let words: Vec<u16> = (y.t0..y.t1).filter(|&k| b.toks[k].kind.counts()).map(|k| origin[k]).collect();
+                LiveChange {
+                    id: id("added", "", b.block_text(&y)),
+                    kind: "added",
+                    from: pos.at(y.start),
+                    to: pos.at(y.end),
+                    by: majority(words.iter().copied()),
+                    old: String::new(),
+                    inserts: runs(&b, y.t0..y.t1, &origin, &pos),
+                    deletes: Vec::new(),
+                    revert: vec![take_out(n)],
+                    words_added: words.len(),
+                    words_removed: 0,
+                }
+            }
+            Item::Removed(o) => {
+                let x = a.blocks[o];
+                let old = a.block_text(&x).to_string();
+                let edit = put_back(back[i], &old);
+                LiveChange {
+                    id: id("removed", &old, ""),
+                    kind: "removed",
+                    from: edit.from,
+                    to: edit.from,
+                    by: None,
+                    deletes: vec![Gone { at: edit.from, text: old.clone(), block: true }],
+                    old,
+                    inserts: Vec::new(),
+                    revert: vec![edit],
+                    words_added: 0,
+                    words_removed: a.words(&x),
+                }
+            }
+            Item::Changed(o, n) | Item::Moved(n, o) => {
+                let (x, y) = (a.blocks[o], b.blocks[n]);
+                let old = a.block_text(&x).to_string();
+                let moved = matches!(item, Item::Moved(..));
+                let (inserts, deletes, plus, minus, by) = inline_changes(a, &x, &b, &y, &origin, &pos);
+                // Who added most of it; a change that only took words out says nothing of who did (a block that only moved is its
+                // writer's).
+                let by = match (by.is_empty(), moved) {
+                    (false, _) => majority(by.into_iter()),
+                    (true, true) => majority((y.t0..y.t1).filter(|&k| b.toks[k].kind.counts()).map(|k| origin[k])),
+                    (true, false) => None,
+                };
+                let in_place = Edit { from: pos.at(y.start), to: pos.at(y.end), insert: old.clone() };
+                let revert = match away.get(&o).copied().filter(|_| moved) {
+                    // Moved: taken out here and put back where it was, as it was, unless that is right here.
+                    Some(at) => {
+                        let (out, back) = (take_out(n), put_back(at, &old));
+                        if back.from >= out.from && back.from <= out.to { vec![in_place] } else { vec![out, back] }
+                    }
+                    None => vec![in_place],
+                };
+                LiveChange {
+                    id: id(if moved { "moved" } else { "changed" }, &old, b.block_text(&y)),
+                    kind: if moved { "moved" } else { "changed" },
+                    from: pos.at(y.start),
+                    to: pos.at(y.end),
+                    by,
+                    old,
+                    inserts,
+                    deletes,
+                    revert,
+                    words_added: plus,
+                    words_removed: minus,
+                }
+            }
+        };
+        changes.push(change);
+    }
+    chain.sources.push(live);
+    Ok(LiveChanges { against: chain.sources[ai].version.clone(), sources: chain.sources, changes })
+}
+
 // ---- the history notes in the vault -----------------------------------------------------------------
 
 /// The notes, kept by what they are made from: a note is only worked out again when a version or its record changes.
@@ -1340,10 +1663,22 @@ pub fn export(conn: &Connection, files: &mut BTreeMap<String, String>) -> Result
         let mut previous: Option<(String, String)> = None;
         for v in provenance::resolve(conn, &project, &base)? {
             let snapshot = deliverables::snapshot_path(&base, &v.version);
-            let Some(text) = body_of(conn, &project, &snapshot)? else { continue };
+            let Some(text) = body_of(conn, &project, &snapshot)? else {
+                continue;
+            };
             let (by, who) = who(v.author, v.run.is_some());
             let prompt = prompt_title(conn, v.prompt.as_deref())?;
-            let head = Head { base: &base, snapshot: &snapshot, version: &v.version, by, who, mmm: v.mmm.as_deref(), at: &v.at, prompt: prompt.as_deref(), note: &v.note };
+            let head = Head {
+                base: &base,
+                snapshot: &snapshot,
+                version: &v.version,
+                by,
+                who,
+                mmm: v.mmm.as_deref(),
+                at: &v.at,
+                prompt: prompt.as_deref(),
+                note: &v.note,
+            };
             let mut hasher = DefaultHasher::new();
             (previous.as_ref(), &text, &head).hash(&mut hasher);
             let key = hasher.finish();
@@ -1500,7 +1835,8 @@ fn note_changes(a: &Doc, b: &Doc) -> NoteChanges {
                     let segs = changed_segs(a, &old, b, &blk, &none);
                     out.added += segs.iter().filter(|s| s.kind.counts() && matches!(s.mark, Mark::Ins(_))).count();
                     out.removed += segs.iter().filter(|s| s.kind.counts() && s.mark == Mark::Del).count();
-                    let text = if blk.kind.prose() && old.kind.prose() { emit(&segs, false, Style::Note) } else { lines_diff(a.block_text(&old), b.block_text(&blk)) };
+                    let text =
+                        if blk.kind.prose() && old.kind.prose() { emit(&segs, false, Style::Note) } else { lines_diff(a.block_text(&old), b.block_text(&blk)) };
                     format!("*Moved here, and changed:*\n\n{text}")
                 }
             }
@@ -1540,7 +1876,9 @@ mod tests {
 
     #[test]
     fn blocks_are_paragraphs_headings_items_and_code() {
-        let doc = Doc::new("---\ntitle: x\n---\n# Plan\n\nOne line\nand another.\n\n- a\n- b\n  more of b\n\n```js\nlet x;\n\nlet y;\n```\n| a | b |\n|---|---|\n| 1 | 2 |\n");
+        let doc = Doc::new(
+            "---\ntitle: x\n---\n# Plan\n\nOne line\nand another.\n\n- a\n- b\n  more of b\n\n```js\nlet x;\n\nlet y;\n```\n| a | b |\n|---|---|\n| 1 | 2 |\n",
+        );
         let kinds: Vec<BlockKind> = doc.blocks.iter().map(|b| b.kind).collect();
         assert_eq!(kinds, vec![BlockKind::Meta, BlockKind::Heading, BlockKind::Para, BlockKind::Item, BlockKind::Item, BlockKind::Code, BlockKind::Table]);
         assert_eq!(doc.block_text(&doc.blocks[4]), "- b\n  more of b");
@@ -1595,7 +1933,10 @@ mod tests {
         let doc = Doc::new("A [link](x.md) here\n");
         let segs = block_segs(&doc, &doc.blocks[0], |_| Mark::Ins(0));
         let html = html_of(&segs, false, &sources);
-        assert!(html.contains("<ins class=\"dv-ins\" data-by=\"ai\" data-o=\"0\" title=\"Claude Code, v0.1\">A <a href=\"x.md\">link</a> here</ins>"), "{html}");
+        assert!(
+            html.contains("<ins class=\"dv-ins\" data-by=\"ai\" data-o=\"0\" title=\"Claude Code, v0.1\">A <a href=\"x.md\">link</a> here</ins>"),
+            "{html}"
+        );
         assert_eq!(expand("<p>\u{E001}x\u{E002}y</p>", &sources), "<p>x<del class=\"dv-del\">y</del></p>");
     }
 }

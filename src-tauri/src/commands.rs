@@ -550,6 +550,13 @@ pub fn deliverable_changes(app: State<App>, project: String, path: String, from:
     app.read(|c, _| history::compare(c, &project, &path, &from, &to))
 }
 
+/// The changes in a markdown deliverable's text as it is being typed (`text`), since a version (`against`, the newest
+/// when none): where each is, who made it, and how to undo it.
+#[tauri::command]
+pub fn deliverable_live_changes(app: State<App>, project: String, path: String, text: String, against: Option<String>) -> Result<history::LiveChanges> {
+    app.read(|c, _| history::live_changes(c, &project, &path, &text, against.as_deref()))
+}
+
 /// Who wrote what is in a markdown deliverable at `at` (a version or "live"); with `focus`, only what that version wrote.
 #[tauri::command]
 pub fn deliverable_authors(app: State<App>, project: String, path: String, at: String, focus: Option<String>) -> Result<history::Authorship> {

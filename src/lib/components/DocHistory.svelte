@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
+	import X from '@lucide/svelte/icons/x';
 	import { api } from '$lib/api';
 	import { authorLabel } from '$lib/mmm';
 	import type { Authorship, Comparison, HistoryBlock, HistorySource, ProvenanceVersion } from '$lib/types';
@@ -24,7 +25,8 @@
 		images,
 		from = $bindable(),
 		to = $bindable(),
-		focus = $bindable()
+		focus = $bindable(),
+		onclose
 	}: {
 		project: string;
 		/** The live file's path. */
@@ -38,6 +40,8 @@
 		from: string;
 		to: string;
 		focus: string;
+		/** Back to the text: a button at the end of the bar. */
+		onclose?: () => void;
 	} = $props();
 
 	const options = $derived([
@@ -208,6 +212,9 @@
 				<span class="hint">{at < 0 ? count : `${at + 1} of ${count}`} {at < 0 ? `${stopName}${count === 1 ? '' : 's'}` : ''}</span>
 				<button class="btn ghost small icon-only" title="Next {stopName}" aria-label="Next {stopName}" onclick={() => step(1)}><ChevronDown size={15} /></button>
 			</span>
+		{/if}
+		{#if onclose}
+			<button class="btn ghost small" title="Back to the text (Ctrl+E)" onclick={onclose}><X size={14} />Close</button>
 		{/if}
 	</div>
 

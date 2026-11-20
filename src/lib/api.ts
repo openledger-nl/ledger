@@ -22,6 +22,7 @@ import type {
 	Bump,
 	Authorship,
 	Comparison,
+	LiveChanges,
 	Column,
 	Deliverable,
 	DeliverableSummary,
@@ -260,6 +261,9 @@ export const api = {
 	/** What changed in a markdown deliverable from `from` to `to`: each a version ("0.3") or "live". */
 	deliverableChanges: (project: string, path: string, from: string, to: string) =>
 		call<Comparison>('deliverable_changes', { project, path, from, to }),
+	/** The changes in the text being typed since a version (the newest when null): where, by whom, and how to undo each. */
+	deliverableLiveChanges: (project: string, path: string, text: string, against: string | null = null) =>
+		call<LiveChanges>('deliverable_live_changes', { project, path, text, against }),
 	/** Who wrote what is in it at `at` (a version or "live"); with `focus`, only what that version wrote. */
 	deliverableAuthors: (project: string, path: string, at: string, focus: string | null = null) =>
 		call<Authorship>('deliverable_authors', { project, path, at, focus }),

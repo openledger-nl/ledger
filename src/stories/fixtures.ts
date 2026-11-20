@@ -6,6 +6,7 @@ import type { Anchor, Mark } from '$lib/anchors';
 import type {
 	Authorship,
 	Comparison,
+	LiveChanges,
 	Branding,
 	ActivityEvent,
 	Vaults,
@@ -1444,6 +1445,340 @@ export const authorshipTrace: Authorship = {
   {
    "source": 2,
    "words": 6
+  }
+ ]
+};
+
+// The live file of sensor-research.md being written, and its changes as the editor's margin shows them: since v1.1 (the
+// newest), and since v1.0 (going through what Claude Code changed in v1.1).
+export const liveText: string = "# Sensor research\n\nWhich soil moisture sensor holds up in wet soil for a whole season, and what does it cost?\n\n## Findings\n\nCapacitive sensors corrode far less than resistive ones. The datasheet says 2 years outdoors, and our own test agrees.\n\n| Sensor | Price | Lifetime |\n|---|---|---|\n| Capacitive v2 | 4 euro | 2 years |\n| Resistive | 1 euro | 3 months |\n\n- Capacitive sensors need 3.3 V, which the board gives.\n\n## Advice\n\nOrder three capacitive sensors and test them for one sprint in the wettest bed.\n";
+
+export const liveChanges: LiveChanges = {
+ "against": "1.1",
+ "changes": [
+  {
+   "by": 2,
+   "deletes": [],
+   "from": 124,
+   "id": "b223fe832b87f77a",
+   "inserts": [
+    {
+     "by": 2,
+     "from": 216,
+     "to": 241
+    }
+   ],
+   "kind": "changed",
+   "old": "Capacitive sensors corrode far less than resistive ones. The datasheet says 2 years outdoors.",
+   "revert": [
+    {
+     "from": 124,
+     "insert": "Capacitive sensors corrode far less than resistive ones. The datasheet says 2 years outdoors.",
+     "to": 242
+    }
+   ],
+   "to": 242,
+   "wordsAdded": 5,
+   "wordsRemoved": 0
+  },
+  {
+   "by": null,
+   "deletes": [
+    {
+     "at": 417,
+     "block": true,
+     "text": "- Resistive sensors drift as the probe corrodes."
+    }
+   ],
+   "from": 417,
+   "id": "1e3baef5cc333852",
+   "inserts": [],
+   "kind": "removed",
+   "old": "- Resistive sensors drift as the probe corrodes.",
+   "revert": [
+    {
+     "from": 417,
+     "insert": "- Resistive sensors drift as the probe corrodes.\n\n",
+     "to": 417
+    }
+   ],
+   "to": 417,
+   "wordsAdded": 0,
+   "wordsRemoved": 7
+  },
+  {
+   "by": 2,
+   "deletes": [
+    {
+     "at": 477,
+     "block": false,
+     "text": "two"
+    },
+    {
+     "at": 503,
+     "block": false,
+     "text": "sprints"
+    }
+   ],
+   "from": 428,
+   "id": "88a0136b9b75b4d0",
+   "inserts": [
+    {
+     "by": 2,
+     "from": 477,
+     "to": 502
+    },
+    {
+     "by": 2,
+     "from": 503,
+     "to": 506
+    }
+   ],
+   "kind": "changed",
+   "old": "Order three capacitive sensors and test them for two sprints.",
+   "revert": [
+    {
+     "from": 428,
+     "insert": "Order three capacitive sensors and test them for two sprints.",
+     "to": 507
+    }
+   ],
+   "to": 507,
+   "wordsAdded": 6,
+   "wordsRemoved": 2
+  }
+ ],
+ "sources": [
+  {
+   "at": "2026-11-20T14:33:48.787Z",
+   "by": "human",
+   "prompt": null,
+   "version": "1.0",
+   "who": "You"
+  },
+  {
+   "at": "2026-11-20T14:33:48.790Z",
+   "by": "ai",
+   "prompt": null,
+   "version": "1.1",
+   "who": "Claude Code"
+  },
+  {
+   "at": "2026-11-20T14:33:48.789Z",
+   "by": "human",
+   "prompt": null,
+   "version": null,
+   "who": "You"
+  }
+ ]
+};
+
+export const liveChangesReview: LiveChanges = {
+ "against": "1.0",
+ "changes": [
+  {
+   "by": 1,
+   "deletes": [],
+   "from": 19,
+   "id": "716d63bd197a4de8",
+   "inserts": [
+    {
+     "by": 1,
+     "from": 85,
+     "to": 108
+    }
+   ],
+   "kind": "changed",
+   "old": "Which soil moisture sensor holds up in wet soil for a whole season?",
+   "revert": [
+    {
+     "from": 19,
+     "insert": "Which soil moisture sensor holds up in wet soil for a whole season?",
+     "to": 109
+    }
+   ],
+   "to": 109,
+   "wordsAdded": 5,
+   "wordsRemoved": 0
+  },
+  {
+   "by": 2,
+   "deletes": [],
+   "from": 124,
+   "id": "b223fe832b87f77a",
+   "inserts": [
+    {
+     "by": 2,
+     "from": 216,
+     "to": 241
+    }
+   ],
+   "kind": "changed",
+   "old": "Capacitive sensors corrode far less than resistive ones. The datasheet says 2 years outdoors.",
+   "revert": [
+    {
+     "from": 124,
+     "insert": "Capacitive sensors corrode far less than resistive ones. The datasheet says 2 years outdoors.",
+     "to": 242
+    }
+   ],
+   "to": 242,
+   "wordsAdded": 5,
+   "wordsRemoved": 0
+  },
+  {
+   "by": 1,
+   "deletes": [],
+   "from": 244,
+   "id": "1a25e61982c33777",
+   "inserts": [
+    {
+     "by": 1,
+     "from": 246,
+     "to": 252
+    },
+    {
+     "by": 1,
+     "from": 255,
+     "to": 260
+    },
+    {
+     "by": 1,
+     "from": 263,
+     "to": 271
+    },
+    {
+     "by": 1,
+     "from": 290,
+     "to": 303
+    },
+    {
+     "by": 1,
+     "from": 306,
+     "to": 312
+    },
+    {
+     "by": 1,
+     "from": 315,
+     "to": 322
+    },
+    {
+     "by": 1,
+     "from": 327,
+     "to": 336
+    },
+    {
+     "by": 1,
+     "from": 339,
+     "to": 345
+    },
+    {
+     "by": 1,
+     "from": 348,
+     "to": 356
+    }
+   ],
+   "kind": "added",
+   "old": "",
+   "revert": [
+    {
+     "from": 244,
+     "insert": "",
+     "to": 360
+    }
+   ],
+   "to": 358,
+   "wordsAdded": 14,
+   "wordsRemoved": 0
+  },
+  {
+   "by": 1,
+   "deletes": [],
+   "from": 360,
+   "id": "34c283b5ea06b2db",
+   "inserts": [
+    {
+     "by": 1,
+     "from": 362,
+     "to": 415
+    }
+   ],
+   "kind": "added",
+   "old": "",
+   "revert": [
+    {
+     "from": 360,
+     "insert": "",
+     "to": 417
+    }
+   ],
+   "to": 415,
+   "wordsAdded": 10,
+   "wordsRemoved": 0
+  },
+  {
+   "by": 2,
+   "deletes": [
+    {
+     "at": 477,
+     "block": false,
+     "text": "two"
+    },
+    {
+     "at": 503,
+     "block": false,
+     "text": "sprints"
+    }
+   ],
+   "from": 428,
+   "id": "88a0136b9b75b4d0",
+   "inserts": [
+    {
+     "by": 2,
+     "from": 477,
+     "to": 502
+    },
+    {
+     "by": 2,
+     "from": 503,
+     "to": 506
+    }
+   ],
+   "kind": "changed",
+   "old": "Order three capacitive sensors and test them for two sprints.",
+   "revert": [
+    {
+     "from": 428,
+     "insert": "Order three capacitive sensors and test them for two sprints.",
+     "to": 507
+    }
+   ],
+   "to": 507,
+   "wordsAdded": 6,
+   "wordsRemoved": 2
+  }
+ ],
+ "sources": [
+  {
+   "at": "2026-11-20T14:33:48.787Z",
+   "by": "human",
+   "prompt": null,
+   "version": "1.0",
+   "who": "You"
+  },
+  {
+   "at": "2026-11-20T14:33:48.790Z",
+   "by": "ai",
+   "prompt": null,
+   "version": "1.1",
+   "who": "Claude Code"
+  },
+  {
+   "at": "2026-11-20T14:33:48.789Z",
+   "by": "human",
+   "prompt": null,
+   "version": null,
+   "who": "You"
   }
  ]
 };
