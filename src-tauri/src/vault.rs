@@ -140,7 +140,7 @@ impl Vault {
     pub fn load(&mut self) -> Result<Connection> {
         let conn = db::open_in_memory()?;
         move_versions_out_of_deliverables(&self.root);
-        crate::daily::move_out_of_daily(&self.root);
+        crate::daily::bring_notes_over(&self.root);
         let listing = managed_listing(&self.root);
         import(&conn, &self.root, &listing)?;
 

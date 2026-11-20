@@ -1,6 +1,6 @@
 <script lang="ts">
 	// One day's meeting note: its meetings, each under its own heading (time, title, the projects it belongs to) with
-	// the people who were there and your notes. Saved as you type, as the day's note `Meetings/<day>.md`, with frontmatter
+	// the people who were there and your notes. Saved as you type, as the day's note `meetings/<day>.md`, with frontmatter
 	// that gathers the meetings' tags. No goal and no template: a meeting is a heading and what you write under it.
 	// The people of a meeting's projects come first in its "With", and "Whole team" adds every teammate at once.
 	import Plus from '@lucide/svelte/icons/plus';

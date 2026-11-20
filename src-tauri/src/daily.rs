@@ -1,6 +1,6 @@
-//! Meeting notes, kept as daily notes: one file a day, `Meetings/<YYYY-MM-DD>.md` at the root of the vault, written
+//! Meeting notes, kept as daily notes: one file a day, `meetings/<YYYY-MM-DD>.md` at the root of the vault, written
 //! the way Obsidian writes daily notes, so the same note opens in both. Before, they were in `Daily/`, Obsidian's own
-//! folder; `move_out_of_daily` brings them over (see there).
+//! folder, and then in `Meetings/`; [`bring_notes_over`] moves them (see there).
 //!
 //! ```text
 //! ---
@@ -33,8 +33,11 @@ use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
 use crate::ids;
 
-/// The folder of the meeting notes, at the vault's root.
-pub const FOLDER: &str = "Meetings";
+/// The folder of the meeting notes, at the vault's root, in lower case like the vault's other folders.
+pub const FOLDER: &str = "meetings";
+
+/// Where they were kept before that, with a capital.
+pub const CAPITALISED_FOLDER: &str = "Meetings";
 
 /// Where they were kept before: `Daily/`, the folder of Obsidian's daily notes.
 pub const OLD_FOLDER: &str = "Daily";
@@ -82,13 +85,44 @@ pub struct ParsedDaily {
     pub own_tags: Vec<String>,
 }
 
-/// Brings meeting notes over from `Daily/` to `Meetings/`, on every load: a day's note in `Daily/` that holds a
-/// meeting moves; a day without meetings (a journal entry, say) and any other file there are not Ledger's and stay.
-/// When the day is in `Meetings/` already (another machine with an older Ledger wrote it in `Daily/` meanwhile), the
-/// two are put together: the meetings `Meetings/` doesn't have yet are added after its own, and the old note goes.
-/// `Daily/` itself goes once nothing is left in it. A move that fails is tried again on the next load.
-pub fn move_out_of_daily(root: &Path) {
-    let from_dir = root.join(OLD_FOLDER);
+/// Brings meeting notes over into `meetings/`, on every load, from where earlier versions kept them.
+///
+/// `Meetings/`, with a capital, is renamed to `meetings/` (in two steps, so it works where a name's case doesn't count,
+/// as on Windows and macOS). When both are there (another machine with an older Ledger wrote in `Meetings/`
+/// meanwhile), everything in `Meetings/` moves over, and a day in both is put together as below.
+///
+/// From `Daily/`, a day's note that holds a meeting moves; a day without meetings (a journal entry, say) and any other
+/// file there are not Ledger's and stay. When the day is in `meetings/` already, the two are put together: the meetings
+/// it doesn't have yet are added after its own, and the old note goes.
+///
+/// A folder goes once nothing is left in it. A move that fails is tried again on the next load.
+pub fn bring_notes_over(root: &Path) {
+    lower_the_folder(root);
+    move_notes(root, OLD_FOLDER, true);
+}
+
+/// `Meetings/` to `meetings/`.
+fn lower_the_folder(root: &Path) {
+    // The names as they are on disk: `exists()` can't tell the two apart where case doesn't count.
+    let Ok(entries) = fs::read_dir(root) else { return };
+    let names: HashSet<String> = entries.flatten().filter_map(|e| e.file_name().to_str().map(str::to_string)).collect();
+    if !names.contains(CAPITALISED_FOLDER) {
+        return;
+    }
+    if names.contains(FOLDER) {
+        move_notes(root, CAPITALISED_FOLDER, false);
+        return;
+    }
+    let between = root.join(".meetings-renaming");
+    if fs::rename(root.join(CAPITALISED_FOLDER), &between).is_ok() && fs::rename(&between, root.join(FOLDER)).is_err() {
+        let _ = fs::rename(&between, root.join(CAPITALISED_FOLDER));
+    }
+}
+
+/// Moves the notes in the folder `from` into `meetings/`: with `only_meetings` only the days that hold a meeting,
+/// else every file (one that isn't a day only when `meetings/` has no file of that name).
+fn move_notes(root: &Path, from: &str, only_meetings: bool) {
+    let from_dir = root.join(from);
     let Ok(entries) = fs::read_dir(&from_dir) else { return };
     let read = |path: &Path| -> Option<ParsedDaily> {
         let text = fs::read_to_string(path).ok()?;
@@ -100,12 +134,19 @@ pub fn move_out_of_daily(root: &Path) {
     };
     for entry in entries.flatten() {
         let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
-        let Some(date) = name.strip_suffix(".md").filter(|stem| is_day(stem)).map(str::to_string) else { continue };
         if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
             continue;
         }
         let from = entry.path();
-        let Some(old) = read(&from).filter(|note| !note.meetings.is_empty()) else { continue };
+        let Some(date) = name.strip_suffix(".md").filter(|stem| is_day(stem)).map(str::to_string) else {
+            // Not a day: from `Meetings/` it comes along all the same, unless that would replace something.
+            let to = root.join(FOLDER).join(&name);
+            if !only_meetings && !to.exists() && fs::create_dir_all(root.join(FOLDER)).is_ok() {
+                let _ = fs::rename(&from, &to);
+            }
+            continue;
+        };
+        let Some(old) = read(&from).filter(|note| !only_meetings || !note.meetings.is_empty()) else { continue };
         let to = root.join(file(&date));
         if !to.exists() {
             if to.parent().is_some_and(|dir| fs::create_dir_all(dir).is_ok()) {
