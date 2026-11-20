@@ -153,7 +153,7 @@ pub fn strip_comments(source: &str) -> std::borrow::Cow<'_, str> {
 }
 
 /// A line that opens or closes a code fence: its mark (`` ` `` or `~`) and how many of them.
-fn fence_of(line: &str) -> Option<(u8, usize)> {
+pub(crate) fn fence_of(line: &str) -> Option<(u8, usize)> {
     let trimmed = line.trim_start_matches(' ');
     if line.len() - trimmed.len() > 3 {
         return None;

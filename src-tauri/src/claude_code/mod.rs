@@ -285,10 +285,12 @@ fn prepare_request(app: &AppHandle, project: &str, thread: &str, id: &str) -> Re
     state.read(|conn, root| Ok((root.to_path_buf(), prompt::prepare(conn, root, project, thread, id)?)))
 }
 
+/// `model`: the model chosen in the confirmation for this run, in place of the one in Settings ("" is Claude Code's own
+/// default); left out, the one in Settings.
 #[tauri::command]
-pub fn claude_code_preview(app: AppHandle, project: String, thread: String, id: String) -> Result<RunPreview> {
+pub fn claude_code_preview(app: AppHandle, project: String, thread: String, id: String, model: Option<String>) -> Result<RunPreview> {
     let (root, request) = prepare_request(&app, &project, &thread, &id)?;
-    let settings = config::load(&root);
+    let settings = config::load(&root).for_run(model.as_deref())?;
     let guard_file = config::guard_path(&root);
     let (program, problem) = match cli::resolve(&settings.cli_path, &Search::host()) {
         Ok(program) => (program, None),
@@ -307,11 +309,12 @@ pub fn claude_code_preview(app: AppHandle, project: String, thread: String, id: 
 }
 
 /// Starts the run. `confirmed` is the text the person was shown: if the prompt has changed since, nothing starts.
+/// `model` as for the preview: the one chosen for this run, or left out for the one in Settings.
 #[tauri::command]
-pub fn claude_code_start(app: AppHandle, project: String, thread: String, id: String, confirmed: String) -> Result<RunView> {
+pub fn claude_code_start(app: AppHandle, project: String, thread: String, id: String, confirmed: String, model: Option<String>) -> Result<RunView> {
     let (root, request) = prepare_request(&app, &project, &thread, &id)?;
     prompt::ensure_confirmed(&request, &confirmed)?;
-    let settings = config::load(&root);
+    let settings = config::load(&root).for_run(model.as_deref())?;
     manager(&app).start(request, RunContext { root, settings }, &Search::host())
 }
 

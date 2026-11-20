@@ -12,6 +12,7 @@ use zeroize::Zeroizing;
 
 use crate::error::{Error, Result};
 use crate::github::GithubRemote;
+use crate::history;
 use crate::keystore::{self, EncryptionStatus, KeyStore};
 use crate::models::*;
 use crate::branding::{self, Branding, Side};
@@ -543,6 +544,25 @@ pub fn create_deliverable(app: State<App>, project: String, name: String, body: 
     app.mutate(|c, _| deliverables::create(c, &project, &name, &body))
 }
 
+/// What changed in a markdown deliverable from `from` to `to`: each a version ("0.3") or "live".
+#[tauri::command]
+pub fn deliverable_changes(app: State<App>, project: String, path: String, from: String, to: String) -> Result<history::Comparison> {
+    app.read(|c, _| history::compare(c, &project, &path, &from, &to))
+}
+
+/// The changes in a markdown deliverable's text as it is being typed (`text`), since a version (`against`, the newest
+/// when none): where each is, who made it, and how to undo it.
+#[tauri::command]
+pub fn deliverable_live_changes(app: State<App>, project: String, path: String, text: String, against: Option<String>) -> Result<history::LiveChanges> {
+    app.read(|c, _| history::live_changes(c, &project, &path, &text, against.as_deref()))
+}
+
+/// Who wrote what is in a markdown deliverable at `at` (a version or "live"); with `focus`, only what that version wrote.
+#[tauri::command]
+pub fn deliverable_authors(app: State<App>, project: String, path: String, at: String, focus: Option<String>) -> Result<history::Authorship> {
+    app.read(|c, _| history::authors(c, &project, &path, &at, focus.as_deref()))
+}
+
 #[tauri::command]
 pub fn save_deliverable(app: State<App>, project: String, path: String, body: String) -> Result<DeliverableView> {
     app.mutate(|c, _| deliverables::save(c, &project, &path, &body))
@@ -579,6 +599,52 @@ pub async fn export_deliverable_pdf(app: AppHandle, project: String, path: Strin
         app.opener().open_path(file.display().to_string(), None::<&str>).map_err(Error::screenshot)?;
     }
     Ok(rel)
+}
+
+/// Which layout the project's PDFs are set in, and where the layouts of one's own are.
+#[tauri::command]
+pub fn pdf_layout(app: State<App>, project: String) -> Result<crate::pdf::LayoutView> {
+    app.read(|c, root| {
+        projects::require(c, &project)?;
+        crate::pdf::layout_view(root, &project)
+    })
+}
+
+/// Starts a layout of one's own for the project or the whole vault: a copy of the one used now, to change.
+#[tauri::command]
+pub fn customise_pdf_layout(app: State<App>, project: String, scope: crate::pdf::LayoutScope) -> Result<crate::pdf::LayoutView> {
+    let view = app.read(|c, root| {
+        projects::require(c, &project)?;
+        crate::pdf::customise_layout(root, &project, scope)
+    })?;
+    app.syncer.dirty();
+    Ok(view)
+}
+
+/// Deletes a layout of one's own, so the one under it is used again.
+#[tauri::command]
+pub fn reset_pdf_layout(app: State<App>, project: String, scope: crate::pdf::LayoutScope) -> Result<crate::pdf::LayoutView> {
+    let view = app.read(|c, root| {
+        projects::require(c, &project)?;
+        crate::pdf::reset_layout(root, &project, scope)
+    })?;
+    app.syncer.dirty();
+    Ok(view)
+}
+
+/// Opens a layout of one's own in the program the system uses for it, or shows it in its folder.
+#[tauri::command]
+pub fn open_pdf_layout(app: AppHandle, project: String, scope: crate::pdf::LayoutScope, reveal: bool) -> Result<()> {
+    let file = app.state::<App>().read(|_, root| crate::pdf::layout_file(root, &project, scope))?;
+    let Some((file, _)) = file else { return Err(Error::not_found("There is no layout of your own there yet")) };
+    let opener = app.opener();
+    if reveal {
+        opener.reveal_item_in_dir(&file).map_err(Error::screenshot)
+    } else {
+        opener.open_path(file.display().to_string(), None::<&str>).map_err(|_| {
+            Error::invalid("No program is set to open .typ files. Show it in its folder and open it with a text editor")
+        })
+    }
 }
 
 /// How the versions of a deliverable came to be, by thread. `path` is the live file or any of its versions.

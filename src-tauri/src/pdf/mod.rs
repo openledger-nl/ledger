@@ -9,6 +9,10 @@
 //! `exports/<name> (draft).pdf`; exporting again replaces it. A version's PDF says what that version said, so it can
 //! be made again at any time and comes out the same (apart from its date when it is a draft).
 //!
+//! The layout is Ledger's (`ledger.typ`, which explains what it is handed), or one's own: `projects/<project>/pdf/
+//! layout.typ` for one project, `pdf/layout.typ` for the vault, each starting as a copy of the one under it
+//! ([`customise_layout`]); the files of its folder (pictures, fonts, other Typst files) can be used by it.
+//!
 //! Exporting is two steps, so the vault is only held while it is read: [`prepare`] gathers the text, the pictures and
 //! what is known about the versions, and [`make`] sets it and writes the file.
 
@@ -18,14 +22,13 @@ mod world;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use chrono::{Datelike, NaiveDate};
 use rusqlite::Connection;
 use serde::Serialize;
 
 use crate::db::query_opt;
 use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
-use crate::{branding, deliverable_facts, deliverables, images, project_facts, provenance, uploads};
+use crate::{branding, dates, deliverable_facts, deliverables, images, project_facts, provenance, uploads};
 
 /// The accent a project gets when it has none of its own: the orange of the report template the layout follows.
 pub const DEFAULT_ACCENT: &str = "#e07a3f";
@@ -46,6 +49,17 @@ struct Data {
     own: Party,
     history: Vec<HistoryRow>,
     contents: bool,
+    /// The AI-use label on the cover, when the project shows it.
+    label: Option<Label>,
+}
+
+/// An MMM label: its name, its picture in the PDF's folder, and whether it is only the one intended (a draft has no
+/// label of its own yet).
+#[derive(Debug, Serialize)]
+struct Label {
+    name: String,
+    picture: String,
+    intended: bool,
 }
 
 /// Someone named on the cover: who the document is for (the client) or who made it (your own side).
@@ -69,6 +83,7 @@ struct HistoryRow {
 pub struct Prepared {
     main: String,
     files: Vec<(String, Vec<u8>)>,
+    layout: world::Layout,
     /// Where it goes, on disk and relative to the project's folder.
     out: PathBuf,
     rel: String,
@@ -123,7 +138,8 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
 
     let stem = file_stem(&doc.name);
     let title = meta.text("title").or(converted.title.clone()).unwrap_or_else(|| stem.clone());
-    let goal = deliverable_facts::get(conn, project, &base)?.map(|m| m.goal).filter(|g| !g.trim().is_empty());
+    let deliverable_meta = deliverable_facts::get(conn, project, &base)?;
+    let goal = deliverable_meta.as_ref().map(|m| m.goal.clone()).filter(|g| !g.trim().is_empty());
     let subtitle = meta.text("subtitle").or_else(|| meta.text("description")).or(goal);
 
     // The versions up to the one exported (all of them for the live file), oldest first.
@@ -149,14 +165,37 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
         .collect();
     let date = match &doc.version {
         Some(v) => versions.iter().find(|r| &r.version == v).map_or_else(|| long_date(&doc.modified), |r| long_date(&r.at)),
-        None => long_date(&chrono::Local::now().date_naive().to_string()),
+        None => dates::long_day(dates::today()),
     };
 
     // Who it is for: as the branding says, else a company project's client, else the first client among its people.
     let facts = project_facts::get(conn, project)?;
+    let kind = facts.as_ref().map(|f| f.kind.clone()).unwrap_or_default();
+    let intended_mmm = facts.as_ref().and_then(|f| f.intended_mmm.clone());
     let client_name = brand.client_name.clone().or_else(|| facts.and_then(|f| f.client)).or_else(|| {
         project_facts::people(conn, Some(project)).ok()?.into_iter().find(|p| p.role == "client").map(|p| p.name)
     });
+
+    // The AI-use label, bottom left on the cover: the version's own, else the one meant for this deliverable or for the
+    // project. Shown when the project says so, and by default in a study project (where a version must have one).
+    let label = if brand.show_label.unwrap_or(kind == "study") {
+        let recorded = match &doc.version {
+            Some(v) => versions.iter().find(|r| &r.version == v).and_then(|r| r.mmm.clone()),
+            None => None,
+        };
+        let intended = recorded.is_none();
+        recorded
+            .or_else(|| deliverable_meta.as_ref().and_then(|m| m.mmm.clone()))
+            .or(intended_mmm)
+            .and_then(|level| provenance::level(&level))
+            .map(|level| {
+                let picture = format!("/labels/{level}.svg");
+                files.push((picture.clone(), label_picture(level).to_vec()));
+                Label { name: label_name(level).unwrap_or(level).to_string(), picture, intended }
+            })
+    } else {
+        None
+    };
 
     let data = Data {
         title,
@@ -171,6 +210,7 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
         own: Party { name: brand.own_name.clone(), logo: own_logo },
         history,
         contents: converted.headings >= 3,
+        label,
     };
     files.push(("/data.json".to_string(), serde_json::to_vec(&data).map_err(|e| Error::export(e.to_string()))?));
     let main = format!("#import \"/ledger.typ\": *\n#show: ledger-doc.with(json(\"/data.json\"))\n\n{}", converted.body);
@@ -180,17 +220,137 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
         None => format!("{} (draft).pdf", safe_file_name(&stem)),
     };
     let rel = format!("exports/{file_name}");
-    Ok(Prepared { main, files, out: project_dir.join("exports").join(&file_name), rel })
+    let layout = layout_for(root, project)?;
+    Ok(Prepared { main, files, layout, out: project_dir.join("exports").join(&file_name), rel })
 }
 
 /// Sets the PDF and writes it. Returns where it is, relative to the project's folder.
 pub fn make(prepared: Prepared) -> Result<String> {
-    let pdf = world::compile(&prepared.main, prepared.files)?;
+    let pdf = world::compile(&prepared.main, &prepared.layout, prepared.files)?;
     if let Some(dir) = prepared.out.parent() {
         fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
     }
     fs::write(&prepared.out, pdf).map_err(|e| Error::io(&prepared.out, e))?;
     Ok(prepared.rel)
+}
+
+// ---- the layout, as Ledger has it or of one's own ---------------------------------------------------
+
+/// The file a layout of one's own is kept in, in a `pdf/` folder: the vault's, or a project's.
+pub const LAYOUT_FILE: &str = "layout.typ";
+
+/// The most the files of a layout's folder may hold together, so a folder full of other things can't stall an export.
+const LAYOUT_FOLDER_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Whose layout: the project's own, the vault's, or Ledger's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LayoutScope {
+    Project,
+    Vault,
+    Ledger,
+}
+
+/// Which layout a project's PDFs are set in, and where the layouts of one's own are (vault-relative paths).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutView {
+    pub used: LayoutScope,
+    pub project: Option<String>,
+    pub vault: Option<String>,
+}
+
+/// The `pdf/` folder of a scope, on disk and as the vault names it.
+fn layout_dir(root: &Path, project: &str, scope: LayoutScope) -> Result<(PathBuf, String)> {
+    match scope {
+        LayoutScope::Project => Ok((uploads::project_dir(root, project).join("pdf"), format!("projects/{project}/pdf"))),
+        LayoutScope::Vault => Ok((root.join("pdf"), "pdf".to_string())),
+        LayoutScope::Ledger => Err(Error::invalid("Ledger's own layout is not a file in the vault")),
+    }
+}
+
+/// The layout file of a scope on disk, and its vault-relative name, when there is one.
+pub fn layout_file(root: &Path, project: &str, scope: LayoutScope) -> Result<Option<(PathBuf, String)>> {
+    let (dir, name) = layout_dir(root, project, scope)?;
+    let file = dir.join(LAYOUT_FILE);
+    Ok(file.is_file().then(|| (file, format!("{name}/{LAYOUT_FILE}"))))
+}
+
+pub fn layout_view(root: &Path, project: &str) -> Result<LayoutView> {
+    let project_layout = layout_file(root, project, LayoutScope::Project)?.map(|(_, n)| n);
+    let vault_layout = layout_file(root, project, LayoutScope::Vault)?.map(|(_, n)| n);
+    let used = if project_layout.is_some() {
+        LayoutScope::Project
+    } else if vault_layout.is_some() {
+        LayoutScope::Vault
+    } else {
+        LayoutScope::Ledger
+    };
+    Ok(LayoutView { used, project: project_layout, vault: vault_layout })
+}
+
+/// Starts a layout of one's own: a copy of the one used now (a project's starts from the vault's when there is one),
+/// written only when the scope has none yet.
+pub fn customise_layout(root: &Path, project: &str, scope: LayoutScope) -> Result<LayoutView> {
+    let (dir, _) = layout_dir(root, project, scope)?;
+    let file = dir.join(LAYOUT_FILE);
+    if !file.exists() {
+        let start = match (scope, layout_file(root, project, LayoutScope::Vault)?) {
+            (LayoutScope::Project, Some((vault, _))) => fs::read_to_string(&vault).map_err(|e| Error::io(&vault, e))?,
+            _ => world::LAYOUT.to_string(),
+        };
+        fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
+        fs::write(&file, start).map_err(|e| Error::io(&file, e))?;
+    }
+    layout_view(root, project)
+}
+
+/// Goes back to the layout under it: deletes the scope's `layout.typ` (the other files of its folder stay).
+pub fn reset_layout(root: &Path, project: &str, scope: LayoutScope) -> Result<LayoutView> {
+    if let Some((file, _)) = layout_file(root, project, scope)? {
+        fs::remove_file(&file).map_err(|e| Error::io(&file, e))?;
+    }
+    layout_view(root, project)
+}
+
+/// The layout a project's PDFs are set in, with the files of its folder.
+fn layout_for(root: &Path, project: &str) -> Result<world::Layout> {
+    for scope in [LayoutScope::Project, LayoutScope::Vault] {
+        let Some((file, name)) = layout_file(root, project, scope)? else { continue };
+        let source = fs::read_to_string(&file).map_err(|e| Error::io(&file, e))?;
+        let dir = file.parent().unwrap_or(root);
+        let mut files = Vec::new();
+        let mut budget = LAYOUT_FOLDER_BYTES;
+        collect_folder(dir, "", &mut files, &mut budget)?;
+        files.retain(|(rel, _)| rel != LAYOUT_FILE);
+        return Ok(world::Layout { source, name, files });
+    }
+    Ok(world::Layout::builtin())
+}
+
+/// Every file under `dir` (hidden ones left out), with its path relative to it, while the budget lasts.
+fn collect_folder(dir: &Path, rel: &str, out: &mut Vec<(String, Vec<u8>)>, budget: &mut u64) -> Result<()> {
+    let entries = fs::read_dir(dir).map_err(|e| Error::io(dir, e))?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        let child = if rel.is_empty() { name } else { format!("{rel}/{name}") };
+        let Ok(kind) = entry.file_type() else { continue };
+        if kind.is_dir() {
+            collect_folder(&path, &child, out, budget)?;
+        } else if kind.is_file() {
+            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            if size > *budget {
+                return Err(Error::export(format!("The files beside the layout are too large together (more than {} MB)", LAYOUT_FOLDER_BYTES / 1024 / 1024)));
+            }
+            *budget -= size;
+            out.push((child, fs::read(&path).map_err(|e| Error::io(&path, e))?));
+        }
+    }
+    Ok(())
 }
 
 /// The project path a picture's address points at from `dir`, or `None` for a web address or one that leaves the
@@ -252,14 +412,19 @@ fn safe_file_name(name: &str) -> String {
     if cleaned.is_empty() { "deliverable".to_string() } else { cleaned }
 }
 
-/// "2026-11-20T10:19:32Z" (or a plain day) as "20 November 2026"; anything else as it is.
+/// A stored moment (or a plain day) as "20 November 2026", the day it was in Amsterdam; anything else as it is.
 fn long_date(at: &str) -> String {
-    const MONTHS: [&str; 12] =
-        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    let day = at.get(..10).and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
-    match day {
-        Some(d) => format!("{} {} {}", d.day(), MONTHS[d.month0() as usize], d.year()),
-        None => at.to_string(),
+    dates::day_of(at).or_else(|| dates::parse_day(at)).map_or_else(|| at.to_string(), dates::long_day)
+}
+
+/// The official picture of an MMM level, as the app shows it (src/lib/assets/mmm).
+fn label_picture(level: &str) -> &'static [u8] {
+    match level {
+        "lazy-prompter" => include_bytes!("../../../src/lib/assets/mmm/lazy-prompter.svg"),
+        "piggybacker" => include_bytes!("../../../src/lib/assets/mmm/piggybacker.svg"),
+        "cyborg" => include_bytes!("../../../src/lib/assets/mmm/cyborg.svg"),
+        "handyman" => include_bytes!("../../../src/lib/assets/mmm/handyman.svg"),
+        _ => include_bytes!("../../../src/lib/assets/mmm/man-made.svg"),
     }
 }
 

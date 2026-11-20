@@ -796,7 +796,7 @@ pub fn portflow_recent_feedback(app: State<App>, limit: Option<i64>) -> Result<V
 #[tauri::command]
 pub fn portflow_epsilon(app: State<App>, semester: Option<String>) -> Result<EpsilonView> {
     let me = me(&require_on(&root_of(&app))?);
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::dates::day_key(crate::dates::today());
     app.read(|conn, _| epsilon::epsilon(conn, semester.as_deref(), &today, me))
 }
 
@@ -821,7 +821,7 @@ pub fn portflow_link_section(app: State<App>, semester: String, section: Option<
 #[tauri::command]
 pub fn portflow_set_intended(app: State<App>, semester: String, goals: EpsilonGoals) -> Result<EpsilonView> {
     let me = me(&require_on(&root_of(&app))?);
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::dates::day_key(crate::dates::today());
     app.mutate(|conn, _| {
         epsilon::set_goals(conn, &semester, &goals)?;
         epsilon::epsilon(conn, Some(&semester), &today, me)

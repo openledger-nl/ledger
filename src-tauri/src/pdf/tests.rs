@@ -45,10 +45,19 @@ fn lists_tables_code_and_pictures_become_calls() {
     let c = convert("- [x] done\n- open\n\n1. one\n\n| A | B |\n|:-|-:|\n| 1 | 2 |\n\n```rust\nfn x() {}\n```\n\n![A chart](chart.png) ![gone](https://x.y/z.png)\n");
     assert!(c.body.contains("#list([#ledger-task(true) done], [open], )"), "{}", c.body);
     assert!(c.body.contains("#enum(start: 1, [one], )"), "{}", c.body);
-    assert!(c.body.contains("#table(columns: (auto,) * 1 + (1fr,), align: (left, right,), table.header([A], [B], ), [1], [2], )"), "{}", c.body);
+    assert!(c.body.contains("#table(columns: (auto, auto,), align: (left, right,), table.header([A], [B], ), [1], [2], )"), "{}", c.body);
     assert!(c.body.contains("#raw(block: true, lang: \"rust\", \"fn x() {}\")"), "{}", c.body);
     assert!(c.body.contains("#ledger-image(\"/pictures/0.png\", [A chart])"), "{}", c.body);
     assert!(c.body.contains("#ledger-missing-image([gone])"), "{}", c.body);
+}
+
+#[test]
+fn short_columns_are_as_wide_as_their_text_and_long_ones_share_the_rest() {
+    let c = convert(
+        "| Risk | Likelihood | What I do |\n|---|---|---|\n| Too little time at one day a week (version 2 counted about six build days) | High | Tidal and Qobuz have already moved to phase 2; riskiest path first |\n| Platform unknowns: Tiny Core Linux, persistent partition | Medium | Measure on the MU2 early |\n",
+    );
+    assert!(c.body.contains("#table(columns: (44fr, auto, 33fr,),"), "{}", c.body);
+    assert!(!c.body.contains('\u{0}'));
 }
 
 #[test]
@@ -96,9 +105,10 @@ fn a_document_with_everything_in_it_becomes_a_pdf() {
             HistoryRow { version: "0.3".into(), date: "20 November 2026".into(), by: "Claude Code".into(), note: "Tighter".into(), label: Some("Cyborg".into()) },
         ],
         contents: converted.headings >= 3,
+        label: None,
     };
     let main = format!("#import \"/ledger.typ\": *\n#show: ledger-doc.with(json(\"/data.json\"))\n\n{}", converted.body);
-    let pdf = world::compile(&main, vec![("/data.json".into(), serde_json::to_vec(&data).unwrap())]).unwrap_or_else(|e| panic!("{e}\n{main}"));
+    let pdf = world::compile(&main, &world::Layout::builtin(), vec![("/data.json".into(), serde_json::to_vec(&data).unwrap())]).unwrap_or_else(|e| panic!("{e}\n{main}"));
     assert!(pdf.starts_with(b"%PDF"));
     if let Ok(dir) = std::env::var("LEDGER_PDF_SAMPLE") {
         std::fs::write(Path::new(&dir).join("sample.pdf"), &pdf).unwrap();
@@ -179,8 +189,85 @@ fn the_branding_of_the_project_goes_on_the_cover() {
     assert_eq!(data["own"]["logo"], "/logos/own.png");
     assert_eq!(data["history"][0]["by"], "Sam Student");
     assert_eq!(data["contents"], true);
+    // Not a study project, so no label unless the branding asks for one.
+    assert!(data["label"].is_null());
     let rel = make(prepared).unwrap();
     if let Ok(out) = std::env::var("LEDGER_PDF_SAMPLE") {
         fs::copy(uploads::project_dir(root, &project).join(rel), Path::new(&out).join("branded.pdf")).unwrap();
     }
+}
+
+/// In a study project the cover shows the version's AI-use label by default; the project can turn it off.
+#[test]
+fn a_study_project_shows_the_label_on_the_cover_unless_it_is_turned_off() {
+    let c = crate::db::open_in_memory().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let project = crate::projects::create(&c, "Police dashboard").unwrap().slug;
+    project_facts::save(&c, &project, &project_facts::ProjectMeta { kind: "study".into(), goal: "A dashboard".into(), ..Default::default() }).unwrap();
+    let doc = deliverables::create(&c, &project, "Plan", "# Plan\n\nText.\n").unwrap();
+    let choices = crate::models::PublishChoices { mmm: Some("cyborg".into()), ..Default::default() };
+    deliverables::publish_with(&c, root, &project, &doc.path, crate::models::Bump::Minor, None, &choices).unwrap();
+
+    let data_of = |path: &str| -> serde_json::Value {
+        let prepared = prepare(&c, root, &project, path).unwrap();
+        let data: serde_json::Value = serde_json::from_slice(&prepared.files.iter().find(|(n, _)| n == "/data.json").unwrap().1).unwrap();
+        let rel = make(prepared).unwrap();
+        if let Ok(out) = std::env::var("LEDGER_PDF_SAMPLE")
+            && !data["label"].is_null()
+        {
+            fs::copy(uploads::project_dir(root, &project).join(rel), Path::new(&out).join("labelled.pdf")).unwrap();
+        }
+        data
+    };
+    let version = data_of("plan@v0.1.md");
+    assert_eq!(version["label"]["name"], "Cyborg");
+    assert_eq!(version["label"]["intended"], false);
+    assert_eq!(version["label"]["picture"], "/labels/cyborg.svg");
+
+    branding::save(&c, &project, &branding::Branding { show_label: Some(false), ..Default::default() }).unwrap();
+    assert!(data_of("plan@v0.1.md")["label"].is_null());
+}
+
+/// A layout of one's own comes first, can use the files of its folder, and says where it went wrong.
+#[test]
+fn a_layout_of_ones_own_is_used_and_its_mistakes_are_located() {
+    let c = crate::db::open_in_memory().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let project = crate::projects::create(&c, "P").unwrap().slug;
+    let doc = deliverables::create(&c, &project, "Plan", "# Plan\n\nText.\n").unwrap();
+    assert_eq!(layout_view(root, &project).unwrap().used, LayoutScope::Ledger);
+
+    // The vault's layout starts as Ledger's; a project's starts as the vault's.
+    let view = customise_layout(root, &project, LayoutScope::Vault).unwrap();
+    assert_eq!(view.used, LayoutScope::Vault);
+    assert_eq!(view.vault.as_deref(), Some("pdf/layout.typ"));
+    let vault_file = root.join("pdf/layout.typ");
+    assert_eq!(fs::read_to_string(&vault_file).unwrap(), world::LAYOUT);
+    fs::write(&vault_file, format!("{}\n// mine\n", world::LAYOUT)).unwrap();
+    let view = customise_layout(root, &project, LayoutScope::Project).unwrap();
+    assert_eq!(view.used, LayoutScope::Project);
+    let project_file = uploads::project_dir(root, &project).join("pdf/layout.typ");
+    assert!(fs::read_to_string(&project_file).unwrap().ends_with("// mine\n"));
+
+    // It can read a picture beside it, by its name.
+    image::RgbImage::from_pixel(10, 10, image::Rgb([200, 0, 0])).save(project_file.with_file_name("corner.png")).unwrap();
+    fs::write(
+        &project_file,
+        "#let ledger-doc(data, doc) = { place(top + right, image(\"corner.png\", width: 1cm)); doc }\n#let ledger-rule() = line()\n",
+    )
+    .unwrap();
+    assert!(make(prepare(&c, root, &project, &doc.path).unwrap()).is_ok());
+
+    // A mistake names the file and the line.
+    fs::write(&project_file, "#let ledger-doc(data, doc) = {\n  doc\n  nonsense-here\n}\n").unwrap();
+    let err = make(prepare(&c, root, &project, &doc.path).unwrap()).unwrap_err().to_string();
+    assert!(err.contains(&format!("projects/{project}/pdf/layout.typ, line 3")), "{err}");
+    assert!(err.contains("unknown variable: nonsense-here"), "{err}");
+
+    // Back to the vault's, then to Ledger's.
+    assert_eq!(reset_layout(root, &project, LayoutScope::Project).unwrap().used, LayoutScope::Vault);
+    assert!(project_file.with_file_name("corner.png").exists(), "the other files of the folder stay");
+    assert_eq!(reset_layout(root, &project, LayoutScope::Vault).unwrap().used, LayoutScope::Ledger);
 }

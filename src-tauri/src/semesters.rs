@@ -19,8 +19,6 @@ use crate::ids;
 use crate::models::{SemesterDraft, SemesterView, Sprint, Vacation};
 
 const DEFAULT_WEEKS: i64 = 3;
-const FORMAT: &str = "%Y-%m-%d";
-const EUROPEAN: &str = "%d-%m-%Y";
 
 /// A draft that passed every check, with its sprints filled in.
 pub struct Checked {
@@ -34,19 +32,16 @@ pub struct Checked {
 }
 
 fn day(text: &str, what: &str) -> Result<NaiveDate> {
-    let text = text.trim();
-    NaiveDate::parse_from_str(text, FORMAT)
-        .or_else(|_| NaiveDate::parse_from_str(text, EUROPEAN))
-        .map_err(|_| Error::invalid(format!("{what} is not a date (use DD-MM-YYYY)")))
+    crate::dates::parse_typed_day(text).ok_or_else(|| Error::invalid(format!("{what} is not a date (use DD-MM-YYYY)")))
 }
 
-/// "01-09-2026", for messages.
+/// "1-9-2026", for messages, as the app writes a day.
 fn european(stored: &str) -> String {
-    NaiveDate::parse_from_str(stored, FORMAT).map_or_else(|_| stored.to_string(), |d| d.format(EUROPEAN).to_string())
+    crate::dates::parse_day(stored).map_or_else(|| stored.to_string(), crate::dates::numeric_day)
 }
 
 fn text(date: NaiveDate) -> String {
-    date.format(FORMAT).to_string()
+    crate::dates::day_key(date)
 }
 
 fn after(date: NaiveDate, days: u64) -> NaiveDate {

@@ -392,7 +392,7 @@ pub fn record(conn: &Connection, draft: &FeedbackRecord) -> Result<FeedbackView>
     }
     let daily = some(&draft.daily);
     if let Some(day) = &daily
-        && chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").is_err()
+        && !crate::dates::is_day(day)
     {
         return Err(Error::invalid("The meeting's day is written as 2026-11-09"));
     }

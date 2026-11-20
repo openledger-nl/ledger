@@ -60,6 +60,8 @@
 	}
 
 	const promptUrl = (thread: string, id: string) => `${threadUrl(project, thread)}?item=pr-${id}`;
+	/** The live file's page, opened on what changed or on who wrote what. */
+	const historyUrl = (params: Record<string, string>) => `${deliverableUrl(project, doc.basePath)}&${new URLSearchParams(params)}`;
 </script>
 
 <div class="pv-summary">
@@ -184,6 +186,13 @@
 							{#if e.sizeChange}<span class="pv-size">{sizeChange(e.sizeChange)}</span>{/if}
 						</div>
 						{#if e.note}<p class="pv-note">{e.note}</p>{/if}
+						{#if doc.kind === 'markdown'}
+							{@const before = doc.versions[doc.versions.indexOf(e.version) - 1]}
+							<div class="pv-meta pv-history">
+								{#if before}<a href={historyUrl({ history: 'changes', from: before, to: e.version })}>What changed since v{before}</a>{/if}
+								{#if e.by === 'ai'}<a href={historyUrl({ history: 'authors', focus: e.version })}>Where its words are now</a>{/if}
+							</div>
+						{/if}
 						{#if e.prompt}
 							<div class="pv-meta">
 								from the prompt

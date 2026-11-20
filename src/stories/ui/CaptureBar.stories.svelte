@@ -7,7 +7,7 @@
 	const { Story } = defineMeta({ title: 'UI/CaptureBar', component: CaptureBar });
 </script>
 
-<!-- Shown only while a debug capture runs (Ctrl+Shift+D); the story starts one in Ledger's state, without the backend. -->
+<!-- Shown only while a debug capture runs (Ctrl+Alt+Shift+D unless changed); the story starts one in Ledger's state, without the backend. -->
 <Story name="Recording" asChild>
 	<Setup
 		run={() => Object.assign(capture, { active: true, startedAt: new Date().toISOString(), events: 12 })}

@@ -11,6 +11,7 @@
 //!   client:
 //!     name: Police                 left out: the project's client, or the first client among its people
 //!     logo: branding/client.png
+//!   showLabel: true                the version's AI-use label on the cover; left out: only in a study project
 //! ```
 //!
 //! The logos are copied into the project's `branding/` folder when they are chosen, so they sync with the vault and a
@@ -42,6 +43,8 @@ pub struct Branding {
     pub own_logo: Option<String>,
     pub client_name: Option<String>,
     pub client_logo: Option<String>,
+    /// Whether the cover shows the version's AI-use (MMM) label; `None` for the default: only in a study project.
+    pub show_label: Option<bool>,
 }
 
 impl Branding {
@@ -104,6 +107,7 @@ fn clean(b: &Branding) -> Result<Branding> {
         own_logo: b.own_logo.as_deref().and_then(inside),
         client_name: trimmed(b.client_name.as_deref()),
         client_logo: b.client_logo.as_deref().and_then(inside),
+        show_label: b.show_label,
     })
 }
 
@@ -112,7 +116,7 @@ pub fn get(conn: &Connection, project: &str) -> Result<Branding> {
     projects::require(conn, project)?;
     Ok(query_opt(
         conn,
-        "SELECT author, accent, own_name, own_logo, client_name, client_logo FROM project_branding WHERE project_slug = ?1",
+        "SELECT author, accent, own_name, own_logo, client_name, client_logo, show_label FROM project_branding WHERE project_slug = ?1",
         [project],
         |r| {
             Ok(Branding {
@@ -122,6 +126,7 @@ pub fn get(conn: &Connection, project: &str) -> Result<Branding> {
                 own_logo: r.get(3)?,
                 client_name: r.get(4)?,
                 client_logo: r.get(5)?,
+                show_label: r.get(6)?,
             })
         },
     )?
@@ -132,9 +137,9 @@ fn store(conn: &Connection, project: &str, b: &Branding) -> Result<()> {
     conn.execute("DELETE FROM project_branding WHERE project_slug = ?1", [project])?;
     if !b.is_empty() {
         conn.execute(
-            "INSERT INTO project_branding (project_slug, author, accent, own_name, own_logo, client_name, client_logo)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![project, b.author, b.accent, b.own_name, b.own_logo, b.client_name, b.client_logo],
+            "INSERT INTO project_branding (project_slug, author, accent, own_name, own_logo, client_name, client_logo, show_label)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![project, b.author, b.accent, b.own_name, b.own_logo, b.client_name, b.client_logo, b.show_label],
         )?;
     }
     Ok(())
@@ -229,6 +234,9 @@ pub fn export(conn: &Connection, project: &str, meta: &mut Mapping) -> Result<()
     if let Some(client) = side(&b.client_name, &b.client_logo) {
         frontmatter::set(&mut m, "client", client);
     }
+    if let Some(show) = b.show_label {
+        frontmatter::set(&mut m, "showLabel", show);
+    }
     frontmatter::set(meta, "branding", Value::Mapping(m));
     Ok(())
 }
@@ -244,6 +252,11 @@ pub fn import(conn: &Connection, project: &str, meta: &Mapping) -> Result<()> {
         own_logo: side("own").and_then(|s| s.text("logo")),
         client_name: side("client").and_then(|s| s.text("name")),
         client_logo: side("client").and_then(|s| s.text("logo")),
+        show_label: m.text("showLabel").and_then(|v| match v.trim().to_lowercase().as_str() {
+            "true" | "yes" => Some(true),
+            "false" | "no" => Some(false),
+            _ => None,
+        }),
     };
     store(conn, project, &clean(&read)?)
 }
@@ -276,7 +289,13 @@ mod tests {
         let saved = save(
             &c,
             &p,
-            &Branding { author: Some(" Sam ".into()), accent: Some("154273".into()), own_name: Some("Fontys ICT".into()), ..Default::default() },
+            &Branding {
+                author: Some(" Sam ".into()),
+                accent: Some("154273".into()),
+                own_name: Some("Fontys ICT".into()),
+                show_label: Some(false),
+                ..Default::default()
+            },
         )
         .unwrap();
         assert_eq!(saved.author.as_deref(), Some("Sam"));
@@ -293,7 +312,7 @@ mod tests {
         let mut meta = Mapping::new();
         export(&c, &p, &mut meta).unwrap();
         let text = serde_yaml_ng::to_string(&meta).unwrap();
-        assert!(text.contains("branding:") && text.contains("logo: branding/own.png"), "{text}");
+        assert!(text.contains("branding:") && text.contains("logo: branding/own.png") && text.contains("showLabel: false"), "{text}");
         store(&c, &p, &Branding::default()).unwrap();
         import(&c, &p, &meta).unwrap();
         assert_eq!(get(&c, &p).unwrap(), with_logo);

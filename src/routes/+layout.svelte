@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
 	import CaptureBar from '$lib/components/CaptureBar.svelte';
+	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import Dialogs from '$lib/components/Dialogs.svelte';
 	import ScreenshotModal from '$lib/components/ScreenshotModal.svelte';
 	import FileDrop from '$lib/components/FileDrop.svelte';
@@ -17,6 +18,7 @@
 	import VaultPicker from '$lib/components/VaultPicker.svelte';
 	import { initTheme, startBackendEvents } from '$lib/ui.svelte';
 	import { layout, startLayout } from '$lib/layout.svelte';
+	import { startCommands } from '$lib/commands.svelte';
 	import { startUpdates } from '$lib/updates.svelte';
 	import { startPortflow } from '$lib/portflow.svelte';
 	import { captureDebug, startLogEvents } from '$lib/log.svelte';
@@ -45,7 +47,9 @@
 		const stopEvents = startBackendEvents();
 		const stopUpdates = startUpdates();
 		const stopPortflow = startPortflow();
+		const stopCommands = startCommands();
 		return () => {
+			stopCommands();
 			stopPortflow();
 			stopLog();
 			stopEvents();
@@ -86,6 +90,7 @@
 	<FileDrop projects={data.projects} />
 	<UpdateNotice />
 	<ProjectDialogs />
+	<CommandPalette />
 	{#if vaultPicker.vaults}
 		<VaultPicker vaults={vaultPicker.vaults} modal onclose={closeVaultPicker} />
 	{/if}

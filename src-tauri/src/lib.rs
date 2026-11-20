@@ -5,6 +5,7 @@ mod branding;
 mod claude_code;
 mod commands;
 mod crypto;
+mod dates;
 mod db;
 mod daily;
 mod deliverable_facts;
@@ -15,6 +16,7 @@ mod error;
 mod feedback;
 mod frontmatter;
 mod github;
+mod history;
 mod ids;
 mod images;
 mod keystore;
@@ -84,6 +86,8 @@ mod tests_portflow;
 mod tests_v1;
 #[cfg(test)]
 mod tests_provenance;
+#[cfg(test)]
+mod tests_history;
 #[cfg(test)]
 mod tests_screenshot;
 #[cfg(test)]
@@ -267,8 +271,15 @@ pub fn run() {
             commands::get_deliverable,
             commands::create_deliverable,
             commands::save_deliverable,
+            commands::deliverable_changes,
+            commands::deliverable_authors,
+            commands::deliverable_live_changes,
             commands::publish_deliverable,
             commands::export_deliverable_pdf,
+            commands::pdf_layout,
+            commands::customise_pdf_layout,
+            commands::reset_pdf_layout,
+            commands::open_pdf_layout,
             commands::get_provenance,
             commands::update_version_record,
             commands::delete_deliverable,

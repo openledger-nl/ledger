@@ -411,6 +411,95 @@ export interface Provenance {
 	suggestedLabel: MmmLevel | null;
 }
 
+// ---- what changed, and who wrote what (history.rs) ----------------------------------------------------
+
+/** Where words came from: a version (or the live file, `version` null) and who made it. */
+export interface HistorySource {
+	version: string | null;
+	by: 'ai' | 'human' | 'unknown';
+	/** "Claude Code", "AI, as declared", "You", "Origin not recorded". */
+	who: string;
+	at: string;
+	prompt: string | null;
+}
+
+export interface HistoryBlock {
+	state: 'same' | 'added' | 'removed' | 'changed' | 'moved' | 'movedAway';
+	html: string;
+	/** The source (an index into `sources`) most of its words come from. */
+	by: number | null;
+}
+
+export interface HistoryShare {
+	source: number;
+	words: number;
+}
+
+export interface HistoryLine {
+	tag: 'same' | 'add' | 'del';
+	old: number | null;
+	new: number | null;
+	parts: { text: string; emph: boolean }[];
+	by: number | null;
+}
+
+export interface HistoryHunk {
+	oldStart: number;
+	newStart: number;
+	lines: HistoryLine[];
+}
+
+/** A deliverable from one version (or the live file) to another. */
+export interface Comparison {
+	from: string | null;
+	to: string | null;
+	sources: HistorySource[];
+	blocks: HistoryBlock[];
+	hunks: HistoryHunk[];
+	wordsAdded: number;
+	wordsRemoved: number;
+	moved: number;
+	changed: number;
+	addedBy: HistoryShare[];
+}
+
+/** A change in the text being typed, since a version, positioned as the editor counts (UTF-16). */
+export interface LiveChange {
+	/** The same for the same change while the text around it changes. */
+	id: string;
+	kind: 'added' | 'changed' | 'removed' | 'moved';
+	/** The block it is in now; for "removed", `from === to` where the block was. */
+	from: number;
+	to: number;
+	/** Who made most of it (an index into `sources`); null when it only took words out. */
+	by: number | null;
+	/** What the block said before. */
+	old: string;
+	inserts: { from: number; to: number; by: number }[];
+	deletes: { at: number; text: string; block: boolean }[];
+	/** The edits that put back what was there, in the coordinates of the text now. */
+	revert: { from: number; to: number; insert: string }[];
+	wordsAdded: number;
+	wordsRemoved: number;
+}
+
+export interface LiveChanges {
+	/** The version compared with; null before the first one. */
+	against: string | null;
+	/** The versions, and last the text being typed. */
+	sources: HistorySource[];
+	changes: LiveChange[];
+}
+
+/** Who wrote what is in a deliverable; with a focus, what became of that version's words. */
+export interface Authorship {
+	at: string | null;
+	sources: HistorySource[];
+	blocks: HistoryBlock[];
+	words: HistoryShare[];
+	trace: { source: number; wrote: number; kept: number; removedBy: HistoryShare[] } | null;
+}
+
 /** What the person says about a version when publishing it. `thread`: null picks the default, "" files it in no thread. */
 export interface PublishChoices {
 	thread: string | null;
@@ -1390,7 +1479,7 @@ export interface MeetingSection {
 }
 
 /**
- * A daily note, `Meetings/<day>.md`: one per day, made in Ledger or Obsidian, holding that day's meetings, each under its
+ * A daily note, `meetings/<year>/<month>/<day>.md`: one per day, made in Ledger or Obsidian, holding that day's meetings, each under its
  * own heading. Its frontmatter (`type: daily`, `id`, `date`, `tags`) gathers the tags of its meetings, so the day is
  * found by project and by person in Ledger and in Obsidian.
  */
@@ -1419,9 +1508,21 @@ export interface Branding {
 	/** null: the project's client. */
 	clientName: string | null;
 	clientLogo: string | null;
+	/** Whether the cover shows the version's AI-use (MMM) label; null for the default: only in a study project. */
+	showLabel: boolean | null;
 }
 
 export type BrandingSide = 'own' | 'client';
+
+/** Whose PDF layout: a project's own, the vault's, or Ledger's (pdf/mod.rs). */
+export type PdfLayoutScope = 'project' | 'vault' | 'ledger';
+
+/** Which layout a project's PDFs are set in, and where the layouts of one's own are (vault-relative paths). */
+export interface PdfLayoutView {
+	used: PdfLayoutScope;
+	project: string | null;
+	vault: string | null;
+}
 
 export interface ProjectPerson {
 	project: string;

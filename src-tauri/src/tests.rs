@@ -949,7 +949,7 @@ fn semesters_are_checked_and_do_not_share_days() {
     let second = semesters::create(&c, &semester("Semester 2", "2027-02-01", "2027-07-31")).unwrap();
     assert_eq!(
         message(semesters::create(&c, &semester("Overlap", "2027-01-15", "2027-03-01")).unwrap_err()),
-        "It overlaps \"Semester 1\" (01-09-2026 to 31-01-2027); semesters can't share days"
+        "It overlaps \"Semester 1\" (1-9-2026 to 31-1-2027); semesters can't share days"
     );
     // Changing a semester doesn't clash with itself; listing goes by start.
     semesters::update(&c, &first.id, &semester("Semester 1", "2026-08-31", "2027-01-31")).unwrap();

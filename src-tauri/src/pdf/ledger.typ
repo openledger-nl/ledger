@@ -1,12 +1,33 @@
-// The layout of a deliverable exported as a PDF: a cover, the version history, the contents, then the document, with
-// a header and a footer on every page after the cover. Ledger writes `/main.typ`, which imports this file, applies
-// `ledger-doc` with what it knows about the deliverable (`/data.json`, see pdf/mod.rs) and holds the document itself,
-// converted from its markdown (pdf/markdown.rs). Pictures and logos are files in the same virtual folder.
+// The layout of a deliverable exported as a PDF. This is a Typst file (https://typst.app/docs): change anything in it
+// and export again to see the result.
 //
-// The look follows a report template made in LibreOffice: Inter, an A4 page, a coloured rule under each chapter
-// heading, quotes with a coloured bar. The one colour, `accent`, is the project's (Settings of the project), so
-// everything coloured here is mixed from it.
+// To make your own: in Ledger, open a project's Templates tab, go to "On exported PDFs" and click "Customise". That copies
+// this file to `pdf/layout.typ` in the vault (every project) or `projects/<project>/pdf/layout.typ` (one project); a
+// project's own layout comes first, then the vault's, then Ledger's. "Back to the standard layout" deletes your copy.
+// Other files in that `pdf/` folder can be used by their name: pictures (`image("background.png")`), other Typst files
+// (`#import "parts.typ": *`) and fonts (a `.ttf` or `.otf` there can be named in `text(font: ...)`). Packages from
+// Typst Universe can't be imported, and nothing outside the folder can be read.
+//
+// What Ledger hands over. It writes a document that imports this file and starts with
+//   #show: ledger-doc.with(json("/data.json"))
+// so `ledger-doc(data, doc)` below must stay, with `data` holding (each field that may be missing is `none`):
+//   title, subtitle         the cover's title, and a line under it
+//   version                 "0.3", or none for a draft (the live file)
+//   date                    "20 November 2026": the version's day, or today for a draft
+//   author                  your name; project: the project's name
+//   accent                  the project's colour, "#e07a3f" when it has none of its own
+//   lang                    "en", or the deliverable's frontmatter `lang`
+//   client, own             (name: ..., logo: ...): who it is for and who made it; a logo is a path to read with image()
+//   history                 the published versions, oldest first: (version, date, by, note, label)
+//   contents                true when the document has three headings or more
+//   label                   none, or (name: "Cyborg", picture: path, intended: bool): the AI-use label for the cover
+// `doc` is the document itself. It calls the helpers below (ledger-image, ledger-missing-image, ledger-task,
+// ledger-rule), so they must stay too, and everything else is ordinary Typst: headings, lists, tables, quotes, raw.
 
+// ---- things to tweak first --------------------------------------------------------------------------------
+
+#let cover-logo-height = 1.1cm
+#let footer-logo-height = 0.45cm
 #let ink = rgb("#2b323b")
 #let ink-2 = rgb("#48535f")
 #let muted = rgb("#6b7785")
@@ -97,7 +118,7 @@
   // ---- the cover ----
   page(margin: (x: 2.5cm, top: 2cm, bottom: 2cm), header: none, footer: none, {
     // The logos: the client's on the left, your own on the right.
-    let logo(path) = if path != none { image(path, height: 1.6cm, fit: "contain") }
+    let logo(path) = if path != none { image(path, height: cover-logo-height, fit: "contain") }
     grid(
       columns: (1fr, 1fr),
       align(left + horizon, logo(data.client.logo)), align(right + horizon, logo(data.own.logo)),
@@ -119,6 +140,23 @@
     par(version-text)
     par(data.date)
     v(1.6fr)
+    // The AI-use label, bottom left: the official Me & My Machine picture with its name.
+    if data.label != none {
+      place(bottom + left, grid(
+        columns: (auto, auto),
+        column-gutter: 10pt,
+        align: horizon,
+        image(data.label.picture, height: 1.5cm),
+        {
+          set par(spacing: 0.4em)
+          text(size: 8.5pt, fill: muted, if data.label.intended [Intended AI use] else [AI use])
+          linebreak()
+          text(size: 11pt, weight: "bold", fill: ink, data.label.name)
+          linebreak()
+          text(size: 7.5pt, fill: muted)[Me & My Machine label - mmmlabel.tech]
+        },
+      ))
+    }
   })
 
   // ---- every page after it: a header and a footer ----
@@ -134,8 +172,13 @@
     },
     footer: context {
       set text(size: 8.5pt, fill: muted)
+      // Both logos, small, on the left; then the subtitle; the version and page on the right.
+      let logos = (data.client.logo, data.own.logo).filter(l => l != none).map(l => image(l, height: footer-logo-height, fit: "contain"))
       grid(
-        columns: (1fr, auto),
+        columns: (auto, 1fr, auto),
+        column-gutter: if logos.len() > 0 { 10pt } else { 0pt },
+        align: horizon,
+        stack(dir: ltr, spacing: 6pt, ..logos),
         if data.subtitle != none { data.subtitle },
         [#version-text | Page #counter(page).display() of #counter(page).final().first()],
       )

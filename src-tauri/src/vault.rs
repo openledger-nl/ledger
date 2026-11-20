@@ -15,6 +15,8 @@
 //! projects/<project>/versions/<id>.md            how a published version came to be: who made it, its thread, its AI-use label
 //! projects/<project>/versions/…                  the published versions themselves, "@v1.0" in the name, each at the same
 //!                                                place under versions/ as its live file is under deliverables/
+//! projects/<project>/history/<deliverable>/v0.3.md  what changed in a markdown deliverable's v0.3, and who made it:
+//!                                                made from the versions (see `history`), never read back
 //! projects/<project>/userstories/<id>.md         a user story
 //! projects/<project>/tasks/<id>.md               a task on the board
 //! projects/<project>/templates/<id>.md           the project's own templates
@@ -140,7 +142,7 @@ impl Vault {
     pub fn load(&mut self) -> Result<Connection> {
         let conn = db::open_in_memory()?;
         move_versions_out_of_deliverables(&self.root);
-        crate::daily::move_out_of_daily(&self.root);
+        crate::daily::bring_notes_over(&self.root);
         let listing = managed_listing(&self.root);
         import(&conn, &self.root, &listing)?;
 
@@ -349,6 +351,8 @@ pub fn export(conn: &Connection) -> Result<BTreeMap<String, String>> {
     export_stories_and_tasks(conn, &mut files)?;
     export_deliverables(conn, &mut files)?;
     export_version_records(conn, &mut files)?;
+    // Made from the versions, never read back: what changed in each, readable in Obsidian.
+    crate::history::export(conn, &mut files)?;
     for (path, text) in crate::daily::export(conn)? {
         files.insert(path, text);
     }
@@ -799,12 +803,19 @@ fn import(conn: &Connection, root: &Path, listing: &BTreeMap<String, Fingerprint
     Ok(())
 }
 
-/// Meeting notes: every `Meetings/<YYYY-MM-DD>.md`. Other files in `Meetings/` are not Ledger's and are left alone.
+/// Meeting notes: every `meetings/<YYYY>/<MM>/<YYYY-MM-DD>.md` (see `daily::file`; a note elsewhere was moved there on
+/// load). Other files in `meetings/` are not Ledger's and are left alone.
 fn import_daily(conn: &Connection, source: &Source) -> Result<()> {
-    for stem in source.stems(crate::daily::FOLDER) {
-        if !crate::daily::is_day(&stem) {
-            continue;
-        }
+    let prefix = format!("{}/", crate::daily::FOLDER);
+    let days: Vec<String> = source
+        .listing
+        .keys()
+        .filter(|p| p.starts_with(&prefix))
+        .filter_map(|p| p.rsplit('/').next()?.strip_suffix(".md").filter(|stem| crate::daily::is_day(stem)).map(|stem| (p, stem)))
+        .filter(|(p, stem)| **p == crate::daily::file(stem))
+        .map(|(_, stem)| stem.to_string())
+        .collect();
+    for stem in days {
         let rel = crate::daily::file(&stem);
         let Some((meta, body)) = source.parsed(&rel) else { continue };
         let parsed = crate::daily::parse(&meta, &body);
@@ -1061,7 +1072,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             let extra = crate::portflow_vault::FeedbackExtra::read(&meta);
             let kind = meta.text("kind").filter(|k| k == "own" || k == "someone");
             let story = meta.text("story").filter(|s| !s.trim().is_empty());
-            let daily = meta.text("daily").filter(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok());
+            let daily = meta.text("daily").filter(|d| crate::dates::is_day(d));
             // Feedback from Portflow is on an evidence item and may have no deliverable; feedback recorded from the
             // inbox may be on a story or on the whole project.
             let unattached = extra.evidence.is_some() || kind.is_some() || story.is_some();

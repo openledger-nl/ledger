@@ -2,19 +2,19 @@
 	// What the sidebar becomes when it folds: when you hide it (Ctrl \), and on a window narrower than 1200 px (Ledger
 	// snapped to half the screen). Kept in the vault's .ledger/settings.json, which never syncs: each machine has its own.
 	import { layout, setFold, type Fold } from '$lib/layout.svelte';
-	import { prettyHotkey } from '$lib/hotkey';
+	import { prettyKeyOf } from '$lib/commands.svelte';
 
 	const choices: { value: Fold; label: string }[] = [
 		{ value: 'rail', label: 'Icon rail' },
 		{ value: 'hide', label: 'Hide it' }
 	];
-	const key = prettyHotkey('CommandOrControl+\\');
+	const key = $derived(prettyKeyOf('sidebar.toggle'));
 </script>
 
 <div class="panel">
 	<h2>Sidebar</h2>
 	<p class="sub" style="margin:0">
-		What the sidebar becomes when it folds: when you hide it ({key}) and when the window is narrower than 1200 px, for example snapped to half the
+		What the sidebar becomes when it folds: when you hide it{#if key} ({key}){/if} and when the window is narrower than 1200 px, for example snapped to half the
 		screen. Saved in this vault's <code>.ledger/settings.json</code>, which never syncs, so each machine can choose its own.
 	</p>
 

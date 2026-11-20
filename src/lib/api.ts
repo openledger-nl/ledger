@@ -5,6 +5,8 @@ import type {
 	ActivityEvent,
 	Branding,
 	BrandingSide,
+	PdfLayoutScope,
+	PdfLayoutView,
 	Vaults,
 	ProjectMeta,
 	LabelConfirmation,
@@ -18,6 +20,9 @@ import type {
 	SemesterDraft,
 	Board,
 	Bump,
+	Authorship,
+	Comparison,
+	LiveChanges,
 	Column,
 	Deliverable,
 	DeliverableSummary,
@@ -142,6 +147,14 @@ export const api = {
 	setProjectLogo: (slug: string, side: BrandingSide, source: string | null) => call<Branding>('set_project_logo', { slug, side, source }),
 	/** Takes your name, your own name and logo, and the colour from another project. */
 	copyProjectBranding: (slug: string, from: string) => call<Branding>('copy_project_branding', { slug, from }),
+	/** Which layout the project's PDFs are set in, and where the layouts of one's own are. */
+	pdfLayout: (project: string) => call<PdfLayoutView>('pdf_layout', { project }),
+	/** Starts a layout of one's own (a copy of the one used now) for the project or the whole vault. */
+	customisePdfLayout: (project: string, scope: PdfLayoutScope) => call<PdfLayoutView>('customise_pdf_layout', { project, scope }),
+	/** Deletes a layout of one's own, so the one under it is used again. */
+	resetPdfLayout: (project: string, scope: PdfLayoutScope) => call<PdfLayoutView>('reset_pdf_layout', { project, scope }),
+	/** Opens a layout of one's own in its program, or shows it in its folder. */
+	openPdfLayout: (project: string, scope: PdfLayoutScope, reveal: boolean) => call<null>('open_pdf_layout', { project, scope, reveal }),
 	/** Replaces the project's people. */
 	saveProjectPeople: (slug: string, people: Omit<ProjectPerson, 'project' | 'tag'>[]) =>
 		call<ProjectPerson[]>('save_project_people', { slug, people: people.map((p) => ({ ...p, project: slug, tag: '' })) }),
@@ -185,7 +198,7 @@ export const api = {
 	createPromptDeliverable: (project: string, thread: string, id: string, name: string) =>
 		call<Prompt>('create_prompt_deliverable', { project, thread, id, name }),
 
-	// meeting notes: one daily note per day, Meetings/<date>.md
+	// meeting notes: one daily note per day, meetings/<year>/<month>/<date>.md
 	/** Newest first; with a project or a person tag, only the days with a meeting of theirs. */
 	listDailyNotes: (filter: { project?: string; person?: string } = {}) =>
 		call<DailyNote[]>('list_daily_notes', { project: filter.project ?? null, person: filter.person ?? null }),
@@ -245,6 +258,15 @@ export const api = {
 	exportDeliverablePdf: (project: string, path: string, open: boolean) => call<string>('export_deliverable_pdf', { project, path, open }),
 	/** How the versions of a deliverable came to be, by thread. `path` is the live file or any of its versions. */
 	getProvenance: (project: string, path: string) => call<Provenance>('get_provenance', { project, path }),
+	/** What changed in a markdown deliverable from `from` to `to`: each a version ("0.3") or "live". */
+	deliverableChanges: (project: string, path: string, from: string, to: string) =>
+		call<Comparison>('deliverable_changes', { project, path, from, to }),
+	/** The changes in the text being typed since a version (the newest when null): where, by whom, and how to undo each. */
+	deliverableLiveChanges: (project: string, path: string, text: string, against: string | null = null) =>
+		call<LiveChanges>('deliverable_live_changes', { project, path, text, against }),
+	/** Who wrote what is in it at `at` (a version or "live"); with `focus`, only what that version wrote. */
+	deliverableAuthors: (project: string, path: string, at: string, focus: string | null = null) =>
+		call<Authorship>('deliverable_authors', { project, path, at, focus }),
 	/** Says who made a version, or sets its AI-use label or change note. */
 	updateVersionRecord: (project: string, path: string, version: string, update: VersionUpdate) =>
 		call<Provenance>('update_version_record', { project, path, version, update }),
@@ -360,11 +382,13 @@ export const claudeCodeApi = {
 		call<ClaudeCodeSettings>('save_claude_code_settings', { cliPath, permissionMode, model, confine, autoRun, namePrompts }),
 	/** Runs `claude --version` with the path as typed (blank: look on the PATH). Doesn't save anything. */
 	check: (cliPath: string) => call<ClaudeCodeCheck>('check_claude_code', { cliPath }),
-	/** Everything a run would send and where, for the confirmation. */
-	preview: (project: string, thread: string, id: string) => call<ClaudeRunPreview>('claude_code_preview', { project, thread, id }),
-	/** `confirmed` is the prompt text from the preview: if the prompt changed since, nothing starts. */
-	start: (project: string, thread: string, id: string, confirmed: string) =>
-		call<ClaudeRun>('claude_code_start', { project, thread, id, confirmed }),
+	/** Everything a run would send and where, for the confirmation. `model`: one chosen for this run ("" for Claude Code's
+	 *  default), in place of the one in Settings; left out, the one in Settings. */
+	preview: (project: string, thread: string, id: string, model?: string) =>
+		call<ClaudeRunPreview>('claude_code_preview', { project, thread, id, model: model ?? null }),
+	/** `confirmed` is the prompt text from the preview: if the prompt changed since, nothing starts. `model` as for the preview. */
+	start: (project: string, thread: string, id: string, confirmed: string, model?: string) =>
+		call<ClaudeRun>('claude_code_start', { project, thread, id, confirmed, model: model ?? null }),
 	cancel: (runId: string) => call<ClaudeRun>('claude_code_cancel', { runId }),
 	runs: () => call<ClaudeRunSnapshot[]>('claude_code_runs'),
 	run: (runId: string) => call<ClaudeRunSnapshot>('claude_code_run', { runId })

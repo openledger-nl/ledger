@@ -27,8 +27,9 @@ export default defineConfig(() => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell Vite to ignore watching `src-tauri`, and the agents' worktrees in `.claude/worktrees` (each a whole
+      //    copy of the repo: watching them adds thousands of watches and can run out of the system's)
+      ignored: ["**/src-tauri/**", "**/.claude/**"],
     },
   },
 }));

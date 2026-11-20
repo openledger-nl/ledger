@@ -9,7 +9,7 @@
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import { logApi } from '$lib/api';
 	import { ago, dateTime } from '$lib/format';
-	import { prettyHotkey } from '$lib/hotkey';
+	import { prettyKeyOf } from '$lib/commands.svelte';
 	import { capture, startCapture, stopCapture } from '$lib/log.svelte';
 	import { captureAiPrompt, captureIssueUrl } from '$lib/report';
 	import { attempt, toast } from '$lib/ui.svelte';
@@ -20,6 +20,7 @@
 		logApi.about().then((a) => (about = a), () => {});
 	});
 
+	const key = $derived(prettyKeyOf('debug.capture'));
 	const last = $derived(capture.last);
 	const errors = $derived(last ? last.entries.filter((e) => e.level === 'error').length : 0);
 	const name = $derived(last ? (last.path.split(/[\\/]/).pop() ?? last.path) : '');
@@ -65,7 +66,7 @@
 		<div class="notice bad">
 			<strong>Recording</strong>
 			{#if capture.startedAt}since <span title={dateTime(capture.startedAt)}>{ago(capture.startedAt)}</span>{/if} | {capture.events} steps so far. Go and
-			do what goes wrong; stop here, with the bar at the top, or with {prettyHotkey('CommandOrControl+Shift+D')}.
+			do what goes wrong; stop here or with the bar at the top{#if key}, or with {key}{/if}.
 		</div>
 		<div class="row-end" style="justify-content:flex-start">
 			<button class="btn primary" onclick={stop} disabled={capture.busy}><CircleStop size={14} />Stop capture</button>
@@ -73,7 +74,7 @@
 	{:else}
 		<div class="row-end" style="justify-content:flex-start">
 			<button class="btn primary" onclick={start} disabled={capture.busy}><CircleDot size={14} />Start capture</button>
-			<span class="hint" style="align-self:center">or press {prettyHotkey('CommandOrControl+Shift+D')} on any screen</span>
+			{#if key}<span class="hint" style="align-self:center">or press {key} on any screen</span>{/if}
 		</div>
 	{/if}
 

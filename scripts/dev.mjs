@@ -211,10 +211,33 @@ const vite = await createServer({
 await vite.listen();
 vite.printUrls();
 
-fs.watch(TAURI, { recursive: true }, (_event, file) => {
-	if (file && !rustIgnored(file.toString())) held.rustChanged();
+// src-tauri is watched folder by folder, leaving out what rustIgnored skips: a recursive watch of all of it would
+// also watch target/ (tens of thousands of files, each a watch on Linux) and can run out of the system's watches.
+// Running out (ENOSPC) is said, not a crash: the app keeps running, and only that folder's changes go unnoticed.
+function watch(dir, options, onChange) {
+	try {
+		fs.watch(dir, options, onChange).on('error', (e) => say(`Not watching ${path.relative(ROOT, dir)} for changes: ${e.message}`));
+	} catch (e) {
+		say(`Not watching ${path.relative(ROOT, dir)} for changes: ${e.message}`);
+	}
+}
+const watched = new Set();
+function watchRustFolder(name) {
+	const dir = path.join(TAURI, name);
+	if (watched.has(name) || rustIgnored(name) || !fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return;
+	watched.add(name);
+	watch(dir, { recursive: true }, (_event, file) => {
+		if (file && !rustIgnored(path.join(name, file.toString()))) held.rustChanged();
+	});
+}
+fs.readdirSync(TAURI).forEach(watchRustFolder);
+watch(TAURI, {}, (_event, file) => {
+	const name = file?.toString();
+	if (!name || rustIgnored(name)) return;
+	watchRustFolder(name);
+	held.rustChanged();
 });
-fs.watch(ROOT, (_event, file) => {
+watch(ROOT, {}, (_event, file) => {
 	const name = file?.toString();
 	if (name === 'package.json' || name === 'pnpm-lock.yaml') held.dependenciesChanged();
 });

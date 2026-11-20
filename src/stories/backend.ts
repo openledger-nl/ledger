@@ -57,12 +57,16 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	list_project_meta: [fx.projectMeta],
 	list_project_people: fx.people,
 	get_project_branding: fx.branding,
+	pdf_layout: { used: 'vault', project: null, vault: 'pdf/layout.typ' },
 	get_thread: fx.threadView,
 	list_semesters: [fx.semester],
 	list_activity: fx.activity,
 	list_deliverables: fx.deliverables,
 	get_deliverable: fx.deliverable,
 	get_provenance: fx.provenance,
+	deliverable_changes: (a: Record<string, unknown>) => (a.from === '1.1' && a.to === 'live' ? fx.changesLive : fx.changes),
+	deliverable_live_changes: (a: Record<string, unknown>) => (a.against === '1.0' ? fx.liveChangesReview : fx.liveChanges),
+	deliverable_authors: (a: Record<string, unknown>) => (a.focus ? fx.authorshipTrace : fx.authorship),
 	list_deliverable_prompts: [fx.prompt],
 	list_deliverable_meta: [],
 	get_deliverable_meta: null,
@@ -175,6 +179,19 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	},
 	check_claude_code: { ok: true, version: '2.1.0', path: '/usr/local/bin/claude', message: 'Claude Code 2.1.0' },
 	claude_code_runs: [],
+	// The confirmation before a run: its command follows the model chosen for the run (null: the one in Settings, here none).
+	claude_code_preview: (a: Record<string, unknown>) => {
+		const model = typeof a.model === 'string' ? a.model : '';
+		return {
+			folder: '/home/student/Documents/Ledger/projects/smart-greenhouse',
+			command: `claude -p --output-format stream-json --verbose --permission-mode acceptEdits${model ? ` --model ${model}` : ''}`,
+			prompt: fx.prompt.body,
+			guard: null,
+			permissionMode: 'acceptEdits',
+			model,
+			problem: null
+		};
+	},
 
 	// Portflow
 	portflow_get: portflow,

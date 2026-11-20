@@ -1,6 +1,6 @@
-//! Meeting notes, kept as daily notes: one file a day, `Meetings/<YYYY-MM-DD>.md` at the root of the vault, written
-//! the way Obsidian writes daily notes, so the same note opens in both. Before, they were in `Daily/`, Obsidian's own
-//! folder; `move_out_of_daily` brings them over (see there).
+//! Meeting notes, kept as daily notes: one file a day, `meetings/<YYYY>/<MM>/<YYYY-MM-DD>.md` at the root of the vault,
+//! written the way Obsidian writes daily notes (date format `YYYY/MM/YYYY-MM-DD`), so the same note opens in both. Before, they were in `Daily/`, Obsidian's own
+//! folder, and then in `Meetings/`; [`bring_notes_over`] moves them (see there).
 //!
 //! ```text
 //! ---
@@ -33,8 +33,11 @@ use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
 use crate::ids;
 
-/// The folder of the meeting notes, at the vault's root.
-pub const FOLDER: &str = "Meetings";
+/// The folder of the meeting notes, at the vault's root, in lower case like the vault's other folders.
+pub const FOLDER: &str = "meetings";
+
+/// Where they were kept before that, with a capital.
+pub const CAPITALISED_FOLDER: &str = "Meetings";
 
 /// Where they were kept before: `Daily/`, the folder of Obsidian's daily notes.
 pub const OLD_FOLDER: &str = "Daily";
@@ -82,14 +85,104 @@ pub struct ParsedDaily {
     pub own_tags: Vec<String>,
 }
 
-/// Brings meeting notes over from `Daily/` to `Meetings/`, on every load: a day's note in `Daily/` that holds a
-/// meeting moves; a day without meetings (a journal entry, say) and any other file there are not Ledger's and stay.
-/// When the day is in `Meetings/` already (another machine with an older Ledger wrote it in `Daily/` meanwhile), the
-/// two are put together: the meetings `Meetings/` doesn't have yet are added after its own, and the old note goes.
-/// `Daily/` itself goes once nothing is left in it. A move that fails is tried again on the next load.
-pub fn move_out_of_daily(root: &Path) {
-    let from_dir = root.join(OLD_FOLDER);
+/// Brings meeting notes over into `meetings/`, on every load, from where earlier versions kept them.
+///
+/// `Meetings/`, with a capital, is renamed to `meetings/` (in two steps, so it works where a name's case doesn't count,
+/// as on Windows and macOS). When both are there (another machine with an older Ledger wrote in `Meetings/`
+/// meanwhile), everything in `Meetings/` moves over, and a day in both is put together as below.
+///
+/// From `Daily/`, a day's note that holds a meeting moves; a day without meetings (a journal entry, say) and any other
+/// file there are not Ledger's and stay. When the day is in `meetings/` already, the two are put together: the meetings
+/// it doesn't have yet are added after its own, and the old note goes.
+///
+/// In `meetings/` itself, every day's note goes into its year and month folder ([`file`]), wherever it is now.
+///
+/// A folder goes once nothing is left in it. A move that fails is tried again on the next load.
+pub fn bring_notes_over(root: &Path) {
+    lower_the_folder(root);
+    move_notes(root, OLD_FOLDER, true);
+    file_by_month(root);
+}
+
+/// `Meetings/` to `meetings/`.
+fn lower_the_folder(root: &Path) {
+    // The names as they are on disk: `exists()` can't tell the two apart where case doesn't count.
+    let Ok(entries) = fs::read_dir(root) else { return };
+    let names: HashSet<String> = entries.flatten().filter_map(|e| e.file_name().to_str().map(str::to_string)).collect();
+    if !names.contains(CAPITALISED_FOLDER) {
+        return;
+    }
+    if names.contains(FOLDER) {
+        move_notes(root, CAPITALISED_FOLDER, false);
+        return;
+    }
+    let between = root.join(".meetings-renaming");
+    if fs::rename(root.join(CAPITALISED_FOLDER), &between).is_ok() && fs::rename(&between, root.join(FOLDER)).is_err() {
+        let _ = fs::rename(&between, root.join(CAPITALISED_FOLDER));
+    }
+}
+
+/// Moves the notes in the folder `from` into `meetings/`: with `only_meetings` only the days that hold a meeting,
+/// else every file (one that isn't a day only when `meetings/` has no file of that name).
+fn move_notes(root: &Path, from: &str, only_meetings: bool) {
+    let from_dir = root.join(from);
     let Ok(entries) = fs::read_dir(&from_dir) else { return };
+    for entry in entries.flatten() {
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
+        if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+            continue;
+        }
+        let from = entry.path();
+        let Some(date) = name.strip_suffix(".md").filter(|stem| is_day(stem)).map(str::to_string) else {
+            // Not a day: from `Meetings/` it comes along all the same, unless that would replace something.
+            let to = root.join(FOLDER).join(&name);
+            if !only_meetings && !to.exists() && fs::create_dir_all(root.join(FOLDER)).is_ok() {
+                let _ = fs::rename(&from, &to);
+            }
+            continue;
+        };
+        move_day(root, &from, &date, only_meetings);
+    }
+    let _ = fs::remove_dir(&from_dir); // only when it is empty
+}
+
+/// Puts every day's note in `meetings/` in its year and month folder (`meetings/2026/11/2026-11-20.md`), wherever in
+/// `meetings/` it is now: loose in it, as before, or in a folder of the wrong month. Folders left empty go.
+fn file_by_month(root: &Path) {
+    fn walk(dir: &Path, rel: &str, days: &mut Vec<(std::path::PathBuf, String, String)>, dirs: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
+            let Ok(kind) = entry.file_type() else { continue };
+            if name.starts_with('.') || kind.is_symlink() {
+                continue;
+            }
+            let child = format!("{rel}/{name}");
+            if kind.is_dir() {
+                walk(&entry.path(), &child, days, dirs);
+                dirs.push(entry.path());
+            } else if let Some(date) = name.strip_suffix(".md").filter(|stem| is_day(stem)) {
+                days.push((entry.path(), child, date.to_string()));
+            }
+        }
+    }
+    let (mut days, mut dirs) = (Vec::new(), Vec::new());
+    walk(&root.join(FOLDER), FOLDER, &mut days, &mut dirs);
+    for (path, rel, date) in days {
+        if rel != file(&date) {
+            move_day(root, &path, &date, false);
+        }
+    }
+    // Deepest first, so a year folder goes once its month folders have.
+    for dir in dirs {
+        let _ = fs::remove_dir(dir); // only when it is empty
+    }
+}
+
+/// Moves the note at `from` to where the note of `date` belongs. With `only_meetings` a note without meetings stays.
+/// When that day has a note already the two are put together: the meetings it lacks are added after its own, as are
+/// text, frontmatter and tags of the old one it doesn't have, and the old note goes.
+fn move_day(root: &Path, from: &Path, date: &str, only_meetings: bool) {
     let read = |path: &Path| -> Option<ParsedDaily> {
         let text = fs::read_to_string(path).ok()?;
         let (meta, body) = match frontmatter::parse(&text) {
@@ -98,54 +191,50 @@ pub fn move_out_of_daily(root: &Path) {
         };
         Some(parse(&meta, &body))
     };
-    for entry in entries.flatten() {
-        let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
-        let Some(date) = name.strip_suffix(".md").filter(|stem| is_day(stem)).map(str::to_string) else { continue };
-        if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
-            continue;
+    let Some(old) = read(from).filter(|note| !only_meetings || !note.meetings.is_empty()) else { return };
+    let to = root.join(file(date));
+    if !to.exists() {
+        if to.parent().is_some_and(|dir| fs::create_dir_all(dir).is_ok()) {
+            let _ = fs::rename(from, &to);
         }
-        let from = entry.path();
-        let Some(old) = read(&from).filter(|note| !note.meetings.is_empty()) else { continue };
-        let to = root.join(file(&date));
-        if !to.exists() {
-            if to.parent().is_some_and(|dir| fs::create_dir_all(dir).is_ok()) {
-                let _ = fs::rename(&from, &to);
-            }
-            continue;
-        }
-        let Some(mut note) = read(&to) else { continue };
-        for meeting in old.meetings {
-            if !note.meetings.contains(&meeting) {
-                note.meetings.push(meeting);
-            }
-        }
-        let old_preamble = old.preamble.trim();
-        if !old_preamble.is_empty() && !note.preamble.contains(old_preamble) {
-            note.preamble = [note.preamble.trim(), old_preamble].iter().filter(|p| !p.is_empty()).copied().collect::<Vec<_>>().join("\n\n");
-        }
-        for (key, value) in old.extra {
-            note.extra.entry(key).or_insert(value);
-        }
-        for tag in old.own_tags {
-            if !note.own_tags.contains(&tag) {
-                note.own_tags.push(tag);
-            }
-        }
-        let id = note.id.clone().or(old.id).unwrap_or_else(|| format!("daily-{date}"));
-        let text = render(&date, &id, &note.meetings, &note.preamble, &note.extra, &note.own_tags);
-        if fs::write(&to, text).is_ok() {
-            let _ = fs::remove_file(&from);
+        return;
+    }
+    let Some(mut note) = read(&to) else { return };
+    for meeting in old.meetings {
+        if !note.meetings.contains(&meeting) {
+            note.meetings.push(meeting);
         }
     }
-    let _ = fs::remove_dir(&from_dir); // only when it is empty
+    let old_preamble = old.preamble.trim();
+    if !old_preamble.is_empty() && !note.preamble.contains(old_preamble) {
+        note.preamble = [note.preamble.trim(), old_preamble].iter().filter(|p| !p.is_empty()).copied().collect::<Vec<_>>().join("\n\n");
+    }
+    for (key, value) in old.extra {
+        note.extra.entry(key).or_insert(value);
+    }
+    for tag in old.own_tags {
+        if !note.own_tags.contains(&tag) {
+            note.own_tags.push(tag);
+        }
+    }
+    let id = note.id.clone().or(old.id).unwrap_or_else(|| format!("daily-{date}"));
+    let text = render(date, &id, &note.meetings, &note.preamble, &note.extra, &note.own_tags);
+    if fs::write(&to, text).is_ok() {
+        let _ = fs::remove_file(from);
+    }
 }
 
 pub fn is_day(text: &str) -> bool {
-    text.len() == 10 && chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").is_ok()
+    crate::dates::is_day(text)
 }
 
+/// Where the note of a day is kept: in a folder per year and per month, `meetings/2026/11/2026-11-20.md`, as
+/// Obsidian's Daily notes plugin writes it with the date format `YYYY/MM/YYYY-MM-DD` and the folder `meetings`.
 pub fn file(date: &str) -> String {
-    format!("{FOLDER}/{date}.md")
+    match (date.get(..4), date.get(5..7)) {
+        (Some(year), Some(month)) if is_day(date) => format!("{FOLDER}/{year}/{month}/{date}.md"),
+        _ => format!("{FOLDER}/{date}.md"),
+    }
 }
 
 /// A `#tag` ends at the first character that can't be in one, as in Obsidian: letters, digits, `_`, `-` and `/`.

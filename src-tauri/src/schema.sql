@@ -73,7 +73,8 @@ CREATE TABLE project_branding (
     own_name     TEXT,
     own_logo     TEXT,
     client_name  TEXT,
-    client_logo  TEXT
+    client_logo  TEXT,
+    show_label   INTEGER
 );
 
 CREATE TABLE project_columns (

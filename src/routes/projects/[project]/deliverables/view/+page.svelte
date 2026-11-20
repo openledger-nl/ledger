@@ -12,7 +12,10 @@
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import Dropdown from '$lib/components/Dropdown.svelte';
+	import DocHistory from '$lib/components/DocHistory.svelte';
 	import DocSide from '$lib/components/DocSide.svelte';
+	import LiveChanges from '$lib/components/LiveChanges.svelte';
+	import { ChangeTracker } from '$lib/liveChanges.svelte';
 	import EvidenceDescription from '$lib/components/EvidenceDescription.svelte';
 	import FileImage from '$lib/components/FileImage.svelte';
 	import Markdown from '$lib/components/Markdown.svelte';
@@ -120,13 +123,9 @@
 
 	// ---- view mode -----------------------------------------------------------------------------
 
-	// As in Obsidian: the raw markdown, the live preview (marks hidden away from the cursor), or the rendered page.
+	// As in Obsidian: the raw markdown, the live preview (marks hidden away from the cursor), or the rendered page. One icon
+	// at the top switches between reading and editing (Ctrl+E); Source mode is a choice in the ... menu.
 	type Mode = 'source' | 'live' | 'reading';
-	const modes: { id: Mode; label: string; icon: typeof BookOpen }[] = [
-		{ id: 'source', label: 'Source', icon: CodeXml },
-		{ id: 'live', label: 'Live preview', icon: PencilLine },
-		{ id: 'reading', label: 'Reading', icon: BookOpen }
-	];
 	let mode = $state<Mode>('live');
 	try {
 		const saved = localStorage.getItem('ledger-doc-mode');
@@ -134,8 +133,28 @@
 	} catch {
 		// Storage unavailable: the default is fine.
 	}
+	/** The editing mode reading goes back to: live preview or source, as last used. */
+	let editMode = $state<'live' | 'source'>('live');
+	$effect.pre(() => {
+		if (mode !== 'reading') untrack(() => (editMode = mode as 'live' | 'source'));
+	});
+
+	/** Reading to editing and back; out of a view over the whole text, back to the text. */
+	function toggleReading() {
+		if (history !== 'off') history = 'off';
+		else setMode(mode === 'reading' ? editMode : 'reading');
+	}
+
+	function onkeydown(e: KeyboardEvent) {
+		if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'e' && isMarkdown && !snapshot && doc.exists) {
+			e.preventDefault();
+			toggleReading();
+		}
+	}
+
 	function setMode(next: Mode) {
 		mode = next;
+		history = 'off';
 		try {
 			localStorage.setItem('ledger-doc-mode', next);
 		} catch {
@@ -371,14 +390,16 @@
 
 	// What else can be done with it, behind the ⋯ next to Publish. Delete only for the live file; a version is kept.
 	const more = $derived<MenuItem[]>([
+		...(isMarkdown && !snapshot && doc.exists ? [{ id: 'source', label: 'Source mode', sub: 'The markdown as it is, every mark shown', icon: CodeXml, checked: mode === 'source' }] : []),
 		// Copy, Open and Show in folder are buttons of their own beside it.
-		...(isMarkdown && doc.exists ? [{ id: 'pdf', label: exporting ? 'Making the PDF' : 'Export as PDF', icon: FileDown }] : []),
+		...(isMarkdown && doc.exists ? [{ id: 'pdf', label: exporting ? 'Making the PDF' : 'Export as PDF', icon: FileDown, rule: !snapshot }] : []),
 		...(!snapshot && doc.exists && !doc.evidence ? [{ id: 'rename', label: 'Rename', icon: TextCursorInput }] : []),
 		...(!snapshot && doc.exists ? [{ id: 'delete', label: 'Delete deliverable', icon: Trash, danger: true, rule: true }] : [])
 	]);
 
 	function doMore(id: string) {
-		if (id === 'copy') void copyMarkdown();
+		if (id === 'source') setMode(mode === 'source' ? 'live' : 'source');
+		else if (id === 'copy') void copyMarkdown();
 		else if (id === 'open') void open(false);
 		else if (id === 'reveal') void open(true);
 		else if (id === 'pdf') void (exporting || exportPdf(doc.path));
@@ -478,9 +499,64 @@
 	const draft = $derived<ProvenanceDraft | null>(
 		sameAsLatest === null ? provenance.draft : sameAsLatest ? null : { since: latest, modified: editedAt, stoppedRun: provenance.draft?.stoppedRun ?? null }
 	);
+
+	// ---- what changed, and who wrote what ----------------------------------------------------------
+	// Worked out from the published versions (and the live file, when it holds more): two of them compared as Word's track
+	// changes or line by line as in git, or one of them with who wrote each passage. The Produced by window links here
+	// with `?history=changes&from=0.2&to=0.3` or `?history=authors&focus=0.3`.
+
+	type History = 'off' | 'changes' | 'authors';
+	let history = $state<History>('off');
+	let historyFrom = $state('');
+	let historyTo = $state('');
+	let historyFocus = $state('');
+	const hasDraft = $derived(!snapshot && !!draft);
+	/** What can be shown or compared, oldest first: the versions, and the live file when it differs from the last. */
+	const steps = $derived([...doc.versions, ...(hasDraft ? ['live'] : [])]);
+	const historyVersions = $derived(
+		doc.versions.map((v) => published.find((p) => p.version === v) ?? { version: v, by: 'unknown' as const, run: null })
+	);
+
+	async function openHistory(next: Exclude<History, 'off'>, wanted: { from?: string | null; to?: string | null; focus?: string | null } = {}) {
+		if (!snapshot) await flush();
+		const shown = snapshot ? (doc.version ?? '') : (steps.at(-1) ?? 'live');
+		const to = wanted.to && steps.includes(wanted.to) ? wanted.to : shown;
+		const i = steps.indexOf(to);
+		historyTo = to;
+		historyFrom = wanted.from && steps.includes(wanted.from) && wanted.from !== to ? wanted.from : (steps[i - 1] ?? steps[i + 1] ?? '');
+		historyFocus = wanted.focus && steps.indexOf(wanted.focus) <= i ? wanted.focus : '';
+		history = next;
+	}
+
+	// The changes since a version, beside the text while it is written: the bars in the editor's margin, the card of a
+	// change, and the Changes section of the side window (liveChanges.svelte.ts).
+	const tracker = new ChangeTracker();
+	const following = $derived(isMarkdown && !snapshot && doc.exists);
+
+
+	// Another file, its own history: closed.
+	$effect(() => {
+		void doc.path;
+		untrack(() => (history = 'off'));
+	});
+
+	const wantedHistory = $derived(page.url.searchParams.get('history'));
+	$effect(() => {
+		const view = wantedHistory;
+		if (view !== 'changes' && view !== 'authors') return;
+		untrack(() => {
+			const params = page.url.searchParams;
+			void openHistory(view, { from: params.get('from'), to: params.get('to'), focus: params.get('focus') });
+			const url = new URL(page.url);
+			for (const key of ['history', 'from', 'to', 'focus']) url.searchParams.delete(key);
+			replaceState(url, page.state);
+		});
+	});
 </script>
 
 <svelte:head><title>{title} | Ledger</title></svelte:head>
+<svelte:window {onkeydown} />
+
 
 <!-- No tabs under it, so it keeps its own space below the buttons (`flat`), like the other pages' headers. -->
 <div class="header-wrap flat">
@@ -508,6 +584,15 @@
 			{/if}
 		</div>
 		<div class="header-actions">
+			{#if following}
+				{@const reading = mode === 'reading' && history === 'off'}
+				<button
+					class="btn ghost small icon-only"
+					title={history !== 'off' ? 'Back to the text (Ctrl+E)' : reading ? 'Edit (Ctrl+E)' : 'Read (Ctrl+E)'}
+					aria-label={history !== 'off' ? 'Back to the text' : reading ? 'Edit' : 'Read'}
+					onclick={toggleReading}>{#if reading || history !== 'off'}<PencilLine size={16} />{:else}<BookOpen size={16} />{/if}</button
+				>
+			{/if}
 			{#if isMarkdown}<button class="btn ghost small" onclick={copyMarkdown}>Copy markdown</button>{/if}
 			{#if doc.exists}
 				<button class="btn ghost small" onclick={() => open(false)}>Open</button>
@@ -545,16 +630,16 @@
 		{:else if !doc.exists && !snapshot}
 			<div class="notice">The file is not in the project's deliverables folder (any more).</div>
 		{:else if isMarkdown && snapshot}
-			<div class="doc-view"><Markdown bind:this={reader} html={doc.html ?? ''} {images} {marks} onmark={showFeedback} /></div>
+			{#if history !== 'off'}
+				<DocHistory {project} path={doc.basePath} view={history} versions={historyVersions} {hasDraft} {images} bind:from={historyFrom} bind:to={historyTo} bind:focus={historyFocus} onclose={() => (history = 'off')} />
+			{:else}
+				<div class="doc-view"><Markdown bind:this={reader} html={doc.html ?? ''} {images} {marks} onmark={showFeedback} /></div>
+			{/if}
 		{:else if isMarkdown}
-			<div class="form-row" style="justify-content:space-between">
-				<div class="seg" role="group" aria-label="View">
-					{#each modes as m (m.id)}
-						<button class:on={mode === m.id} aria-pressed={mode === m.id} onclick={() => setMode(m.id)}><m.icon size={14} />{m.label}</button>
-					{/each}
-				</div>
-			</div>
-			{#if mode === 'reading'}
+			<LiveChanges {tracker} {project} path={doc.basePath} text={body} enabled={following} versions={historyVersions} {editor} />
+			{#if history !== 'off'}
+				<DocHistory {project} path={doc.basePath} view={history} versions={historyVersions} {hasDraft} {images} bind:from={historyFrom} bind:to={historyTo} bind:focus={historyFocus} onclose={() => (history = 'off')} />
+			{:else if mode === 'reading'}
 				<div class="doc-view">
 					{#if body.trim()}<Markdown bind:this={reader} {html} {images} {marks} onmark={showFeedback} />{:else}<span class="hint">Nothing here yet.</span>{/if}
 				</div>
@@ -571,6 +656,8 @@
 					{marks}
 					onmark={showFeedback}
 					oninput={edited}
+					changes={tracker.view}
+					onchangeclick={(id, rect) => tracker.open(id, rect)}
 				/>
 			{/if}
 		{:else if doc.kind === 'image'}
@@ -604,7 +691,7 @@
 </div>
 
 <SelectionComment root={docArea} oncomment={commentOn} />
-<DocSide bind:this={side} {project} {doc} {provenance} {draft} prompts={data.prompts} {threads} bind:thread={workThread} {threadTitle} bind:pending {lost} {here} onlocate={showPassage} />
+<DocSide bind:this={side} {project} {doc} {provenance} {draft} prompts={data.prompts} {threads} bind:thread={workThread} {threadTitle} bind:pending {lost} {here} onlocate={showPassage} changes={isMarkdown ? tracker : undefined} live={following} onhistory={(view) => void openHistory(view)} />
 </div>
 
 {#if renaming}

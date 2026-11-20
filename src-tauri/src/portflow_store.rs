@@ -165,7 +165,7 @@ pub struct PersonView {
 }
 
 pub fn people(conn: &Connection) -> Result<Vec<PersonView>> {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::dates::day_key(crate::dates::today());
     query_all(conn, "SELECT id, name, role, share_type, expires FROM portflow_people ORDER BY position", [], |r| {
         let until: Option<String> = r.get(4)?;
         Ok(PersonView {

@@ -12,6 +12,7 @@
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
+	import { prettyKeyOf } from '$lib/commands.svelte';
 	import { deliverableTarget, deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
 	import { deliverableTime, newest } from '$lib/format';
 	import { orderThreads } from '$lib/order';
@@ -29,6 +30,7 @@
 	let { projects, vaultName = '' }: { projects: ProjectSummary[]; vaultName?: string } = $props();
 
 	const OPEN_KEY = 'ledger-open-project';
+	const sidebarKey = $derived(prettyKeyOf('sidebar.toggle'));
 
 	/** The project that is unfolded: one at a time, null when none is. */
 	let open = $state<string | null>(load());
@@ -137,7 +139,7 @@
 	<div class="brand">
 		<a href="/" class="brand-link" aria-label="Home"><Wordmark /></a>
 		<a class="icon-btn side-settings" class:active={on('/settings')} href="/settings" title="Settings" aria-label="Settings"><Settings size={18} /></a>
-		<button class="icon-btn side-hide" title="Hide sidebar (Ctrl+\)" aria-label="Hide sidebar" onclick={toggleSidebar}>
+		<button class="icon-btn side-hide" title={sidebarKey ? `Hide sidebar (${sidebarKey})` : 'Hide sidebar'} aria-label="Hide sidebar" onclick={toggleSidebar}>
 			<PanelLeftClose size={18} />
 		</button>
 	</div>

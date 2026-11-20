@@ -23,6 +23,7 @@ import ScreenshotSettings from './ScreenshotSettings.svelte';
 import SemesterSettings from './SemesterSettings.svelte';
 import TemplateSettings from './TemplateSettings.svelte';
 import SidebarFoldSettings from './SidebarFoldSettings.svelte';
+import ShortcutSettings from './ShortcutSettings.svelte';
 import SidebarSettings from './SidebarSettings.svelte';
 import ThemeSettings from './ThemeSettings.svelte';
 import TrelloSettings from './TrelloSettings.svelte';
@@ -67,6 +68,7 @@ export const panels: Panel[] = [
 	{ id: 'encryption', group: 'sync', title: 'Encryption', keywords: 'encrypt key recovery aes secret import export generate', component: EncryptionSettings },
 	{ id: 'portflow', group: 'sync', title: 'Portflow', keywords: 'portflow fontys portfolio canvas drieam feedback coach teacher learning outcomes evidence collection semester sign in', component: PortflowSettings },
 	{ id: 'trello', group: 'sync', title: 'Sync with Trello', keywords: 'trello cards board tasks stories api key token person', component: TrelloSettings },
+	{ id: 'shortcuts', group: 'tools', title: 'Keyboard shortcuts', keywords: 'keyboard shortcut shortcuts hotkey hotkeys keys bindings command palette ctrl p commands', component: ShortcutSettings },
 	{ id: 'screenshots', group: 'tools', title: 'Screenshots', keywords: 'screenshot hotkey shortcut flameshot capture picture tool command print', component: ScreenshotSettings },
 	{ id: 'claude', group: 'tools', title: 'Claude Code', keywords: 'claude ai prompt run model permission guard rails cli program auto edit plan read', component: ClaudeCodeSettings },
 	{ id: 'about', group: 'about', title: 'About Ledger', keywords: 'about version info project source code releases changelog machine paths config build', component: AboutSettings },
