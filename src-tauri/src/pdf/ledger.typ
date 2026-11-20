@@ -13,6 +13,9 @@
 #let line-colour = rgb("#d5dce3")
 #let paper-2 = rgb("#f3f0ec")
 
+#let cover-logo-height = 1.1cm
+#let footer-logo-height = 0.45cm
+
 // ---- helpers the converted document calls ------------------------------------------------------------
 
 /// A picture: as large as it is, but never wider than the column; its alt text is its caption.
@@ -97,7 +100,7 @@
   // ---- the cover ----
   page(margin: (x: 2.5cm, top: 2cm, bottom: 2cm), header: none, footer: none, {
     // The logos: the client's on the left, your own on the right.
-    let logo(path) = if path != none { image(path, height: 1.6cm, fit: "contain") }
+    let logo(path) = if path != none { image(path, height: cover-logo-height, fit: "contain") }
     grid(
       columns: (1fr, 1fr),
       align(left + horizon, logo(data.client.logo)), align(right + horizon, logo(data.own.logo)),
@@ -151,8 +154,13 @@
     },
     footer: context {
       set text(size: 8.5pt, fill: muted)
+      // Both logos, small, on the left; then the subtitle; the version and page on the right.
+      let logos = (data.client.logo, data.own.logo).filter(l => l != none).map(l => image(l, height: footer-logo-height, fit: "contain"))
       grid(
-        columns: (1fr, auto),
+        columns: (auto, 1fr, auto),
+        column-gutter: if logos.len() > 0 { 10pt } else { 0pt },
+        align: horizon,
+        stack(dir: ltr, spacing: 6pt, ..logos),
         if data.subtitle != none { data.subtitle },
         [#version-text | Page #counter(page).display() of #counter(page).final().first()],
       )
