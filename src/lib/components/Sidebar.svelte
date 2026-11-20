@@ -14,12 +14,10 @@
 	import { api } from '$lib/api';
 	import { prettyKeyOf } from '$lib/commands.svelte';
 	import { deliverableTarget, deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
-	import { deliverableTime, newest } from '$lib/format';
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
 	import { sync, syncFooter } from '$lib/ui.svelte';
 	import { layout, toggleSidebar } from '$lib/layout.svelte';
-	import { sidebar } from '$lib/sidebar.svelte';
 	import { portflow, portflowFooter } from '$lib/portflow.svelte';
 	import { openVaultPicker } from '$lib/vaults.svelte';
 	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
@@ -87,8 +85,8 @@
 		if (slug) untrack(() => unfold(slug));
 	});
 
-	// Every project's deliverables, by project: the unfolded project's list and the Latest section read them. They are
-	// looked up again whenever the vault changes (the projects are loaded afresh then).
+	// Every project's deliverables, by project, for the unfolded project's list. They are looked up again whenever the
+	// vault changes (the projects are loaded afresh then).
 	let deliverables = $state<Record<string, DeliverableSummary[]>>({});
 	$effect(() => {
 		const slugs = projects.map((p) => p.slug);
@@ -99,15 +97,6 @@
 		return () => (stale = true);
 	});
 	const byPath = (items: DeliverableSummary[]) => [...items].sort((a, b) => a.path.localeCompare(b.path));
-
-	/** What was last worked on across all projects: the newest threads and deliverables. */
-	const LATEST = 3;
-	const latestThreads = $derived(
-		newest(projects.flatMap((project) => project.threads.map((thread) => ({ thread, project }))), (x) => x.thread.lastActivity).slice(0, LATEST)
-	);
-	const latestDeliverables = $derived(
-		newest(projects.flatMap((project) => (deliverables[project.slug] ?? []).map((d) => ({ d, project }))), (x) => deliverableTime(x.d).at).slice(0, LATEST)
-	);
 
 	// "just now" and "5 min ago" are worked out when drawn, so the footer redraws every half minute to keep them true.
 	let tick = $state(0);
@@ -209,42 +198,6 @@
 			<div class="space-empty">No projects yet</div>
 		{/each}
 	</nav>
-
-	{#if sidebar.showLatest && (latestThreads.length || latestDeliverables.length)}
-		<div class="section-head"><span>Latest</span></div>
-		<nav class="space-list" aria-label="Latest">
-			{#if latestThreads.length}
-				<div class="tree-label plain">Threads</div>
-				{#each latestThreads as { thread, project } (project.slug + '/' + thread.slug)}
-					<a class="tree-item" class:active={path === threadUrl(project.slug, thread.slug)} href={threadUrl(project.slug, thread.slug)}>
-						<span class="dot"></span>
-						<span class="stack">
-							<span class="name">{thread.title}</span>
-							<span class="of">{project.name}</span>
-						</span>
-					</a>
-				{/each}
-			{/if}
-			{#if latestDeliverables.length}
-				<div class="tree-label plain">Deliverables</div>
-				{#each latestDeliverables as { d, project } (project.slug + '/' + d.path)}
-					{@const target = deliverableTarget(d)}
-					<a
-						class="tree-item"
-						class:active={currentProject === project.slug && (viewing === target || viewing === d.path)}
-						href={deliverableUrl(project.slug, target)}
-						title={d.path}
-					>
-						<span class="file"><FileText size={13} /></span>
-						<span class="stack">
-							<span class="name">{d.name}</span>
-							<span class="of">{project.name}</span>
-						</span>
-					</a>
-				{/each}
-			{/if}
-		</nav>
-	{/if}
 
 	<div class="spacer"></div>
 

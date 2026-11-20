@@ -24,7 +24,6 @@ import SemesterSettings from './SemesterSettings.svelte';
 import TemplateSettings from './TemplateSettings.svelte';
 import SidebarFoldSettings from './SidebarFoldSettings.svelte';
 import ShortcutSettings from './ShortcutSettings.svelte';
-import SidebarSettings from './SidebarSettings.svelte';
 import ThemeSettings from './ThemeSettings.svelte';
 import TrelloSettings from './TrelloSettings.svelte';
 import UpdateSettings from './UpdateSettings.svelte';
@@ -57,7 +56,6 @@ export interface Panel {
 
 export const panels: Panel[] = [
 	{ id: 'dashboard', group: 'features', title: 'Contribution graph', keywords: 'dashboard home activity heatmap squares days', component: DashboardSettings },
-	{ id: 'latest', group: 'features', title: 'Latest in the explorer', keywords: 'sidebar explorer latest recent newest threads deliverables navigation hide show', component: SidebarSettings },
 	{ id: 'semesters', group: 'semesters', title: 'Semesters', keywords: 'semester sprint sprints vacation holiday break weeks preset nj26 plan calendar half year', component: SemesterSettings },
 	{ id: 'templates', group: 'templates', title: 'Templates', keywords: 'template prompt guiding questions skeleton deliverable shared every project global', component: TemplateSettings },
 	{ id: 'theme', group: 'visual', title: 'Theme', keywords: 'colours colors dark light night appearance look accent', component: ThemeSettings },

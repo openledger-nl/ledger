@@ -786,9 +786,6 @@ details.more p { margin: 0; }
 .tree-label:first-child { margin-top: 2px; }
 .tree-label:hover, .tree-label.active { color: var(--side-ink); }
 .tree-label .count { font-size: 11px; font-weight: 500; letter-spacing: 0; }
-.tree-label.plain:hover { color: var(--side-faint); }
-.tree-item .stack { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.tree-item .of { font-size: 11px; font-weight: 400; color: var(--side-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 
 /* ---------- thread timeline extras ---------- */
