@@ -799,12 +799,19 @@ fn import(conn: &Connection, root: &Path, listing: &BTreeMap<String, Fingerprint
     Ok(())
 }
 
-/// Meeting notes: every `Meetings/<YYYY-MM-DD>.md`. Other files in `Meetings/` are not Ledger's and are left alone.
+/// Meeting notes: every `meetings/<YYYY>/<MM>/<YYYY-MM-DD>.md` (see `daily::file`; a note elsewhere was moved there on
+/// load). Other files in `meetings/` are not Ledger's and are left alone.
 fn import_daily(conn: &Connection, source: &Source) -> Result<()> {
-    for stem in source.stems(crate::daily::FOLDER) {
-        if !crate::daily::is_day(&stem) {
-            continue;
-        }
+    let prefix = format!("{}/", crate::daily::FOLDER);
+    let days: Vec<String> = source
+        .listing
+        .keys()
+        .filter(|p| p.starts_with(&prefix))
+        .filter_map(|p| p.rsplit('/').next()?.strip_suffix(".md").filter(|stem| crate::daily::is_day(stem)).map(|stem| (p, stem)))
+        .filter(|(p, stem)| **p == crate::daily::file(stem))
+        .map(|(_, stem)| stem.to_string())
+        .collect();
+    for stem in days {
         let rel = crate::daily::file(&stem);
         let Some((meta, body)) = source.parsed(&rel) else { continue };
         let parsed = crate::daily::parse(&meta, &body);
