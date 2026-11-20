@@ -5,10 +5,11 @@
 	// The people of a meeting's projects come first in its "With", and "Whole team" adds every teammate at once.
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { api } from '$lib/api';
+	import { meetingStart } from '$lib/commands.svelte';
 	import { time } from '$lib/format';
-	import { dayLabel } from '$lib/semesters';
+	import { dayLabel, today } from '$lib/semesters';
 	import { attempt, confirmDialog, refresh } from '$lib/ui.svelte';
 	import { teamTags } from '$lib/v1';
 	import type { DailyNote, MeetingSection, ProjectPerson } from '$lib/types';
@@ -106,10 +107,26 @@
 		return `${hours}:${Number(minutes) < 30 ? '00' : '30'}`;
 	}
 
-	function add() {
+	let root = $state<HTMLElement>();
+
+	/** Adds a meeting (or, when the last one is still empty, keeps that one) and puts the cursor in its title. */
+	async function add() {
 		const last = meetings.at(-1);
-		meetings = [...meetings, { time: now(), title: '', projects: last?.projects ?? [], people: [], body: '' }];
+		const blank = last && !last.title.trim() && !last.body.trim();
+		if (!blank) meetings = [...meetings, { time: now(), title: '', projects: last?.projects ?? [], people: [], body: '' }];
+		await tick();
+		const titles = root?.querySelectorAll<HTMLInputElement>('.dn-title');
+		const input = titles?.[titles.length - 1];
+		input?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+		input?.focus();
 	}
+
+	// "Start a meeting note" (Ctrl+Shift+D unless changed) opens today and asks for a meeting here.
+	$effect(() => {
+		if (!meetingStart.pending || date !== today()) return;
+		meetingStart.pending = false;
+		void untrack(add);
+	});
 
 	async function remove(i: number) {
 		const m = meetings[i];
@@ -126,7 +143,7 @@
 	}
 </script>
 
-<section class="dn-day" aria-label="Meeting notes {dayLabel(date)}">
+<section class="dn-day" aria-label="Meeting notes {dayLabel(date)}" bind:this={root}>
 	<header class="dn-head">
 		<div>
 			<h2>{dayLabel(date)}</h2>

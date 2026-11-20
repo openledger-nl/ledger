@@ -55,9 +55,60 @@ export function prettyHotkey(accel: string): string {
 			case 'command':
 			case 'cmd':
 				return mac ? '⌘' : platform().includes('win') ? 'Win' : 'Super';
+			case 'backslash':
+				return '\\';
 			default:
 				return part.replace(/^Arrow/, '');
 		}
 	});
 	return names.join(mac ? '' : ' + ');
+}
+
+/** Set while a shortcut is being recorded (HotkeyInput), so the key pressed is not also run as a command. */
+export const hotkeyRecorder = { active: false };
+
+const MODIFIER_ORDER = ['Control', 'Alt', 'Shift', 'Super'];
+
+/**
+ * A shortcut in one spelling, to compare two: the modifiers in a fixed order, "CommandOrControl" read as this platform
+ * has it (Super on a Mac, Control elsewhere). Takes a stored shortcut or a key press; null for a press of only modifiers.
+ */
+export function canonicalHotkey(shortcut: string | KeyboardEvent): string | null {
+	const accel = typeof shortcut === 'string' ? shortcut : accelerator(shortcut);
+	if (!accel) return null;
+	const mods = new Set<string>();
+	let key = '';
+	for (const part of accel.split('+')) {
+		switch (part.toLowerCase()) {
+			case 'commandorcontrol':
+			case 'commandorctrl':
+			case 'cmdorcontrol':
+			case 'cmdorctrl':
+				mods.add(onMac() ? 'Super' : 'Control');
+				break;
+			case 'control':
+			case 'ctrl':
+				mods.add('Control');
+				break;
+			case 'alt':
+			case 'option':
+				mods.add('Alt');
+				break;
+			case 'shift':
+				mods.add('Shift');
+				break;
+			case 'super':
+			case 'command':
+			case 'cmd':
+			case 'meta':
+				mods.add('Super');
+				break;
+			default:
+				key = part.length === 1 ? part.toUpperCase() : part;
+		}
+	}
+	if (!key) return null;
+	// "Backslash" and "\" are the same key, as stored by hand or recorded.
+	if (key === '\\') key = 'Backslash';
+	return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key].join('+');
 }

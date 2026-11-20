@@ -1,18 +1,21 @@
 <script lang="ts">
-	import { accelerator, prettyHotkey } from '$lib/hotkey';
+	import { accelerator, hotkeyRecorder, prettyHotkey } from '$lib/hotkey';
 
 	/** A key recorder: focus it and press the shortcut you want; Esc leaves it as it was. */
 	let {
 		value = $bindable(),
 		disabled = false,
+		placeholder = '',
+		label = 'Shortcut',
 		onrecording
-	}: { value: string; disabled?: boolean; onrecording?: (recording: boolean) => void } = $props();
+	}: { value: string; disabled?: boolean; placeholder?: string; label?: string; onrecording?: (recording: boolean) => void } = $props();
 
 	let recording = $state(false);
 
 	function setRecording(next: boolean) {
 		if (next === recording) return;
 		recording = next;
+		hotkeyRecorder.active = next;
 		onrecording?.(next);
 	}
 
@@ -35,8 +38,9 @@
 	class:recording
 	readonly
 	{disabled}
-	value={recording ? 'Press the new shortcut...' : prettyHotkey(value)}
-	aria-label="Shortcut"
+	value={recording ? 'Press the new shortcut...' : value ? prettyHotkey(value) : ''}
+	{placeholder}
+	aria-label={label}
 	onfocus={() => setRecording(true)}
 	onblur={() => setRecording(false)}
 	{onkeydown}

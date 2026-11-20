@@ -141,11 +141,8 @@ export function startLayout(): () => void {
 	narrow.addEventListener('change', measure);
 
 	const onKey = (e: KeyboardEvent) => {
-		const mod = e.ctrlKey || e.metaKey;
-		if (mod && !e.altKey && !e.shiftKey && (e.code === 'Backslash' || e.key === '\\')) {
-			e.preventDefault();
-			toggleSidebar();
-		} else if (e.key === 'Escape' && (layout.drawerOpen || layout.searchOpen)) {
+		// Ctrl+\ (folding the sidebar) is a command: commands.svelte.ts.
+		if (e.key === 'Escape' && (layout.drawerOpen || layout.searchOpen)) {
 			layout.drawerOpen = false;
 			layout.searchOpen = false;
 		}

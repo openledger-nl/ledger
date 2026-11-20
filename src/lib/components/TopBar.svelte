@@ -4,7 +4,7 @@
 	// - half width: search is an icon that opens the box over the bar; the sidebar button is a menu that slides the
 	//   whole sidebar in over the page (beside the icon rail, if folding makes one) (A6).
 	// - narrow: as half, and Capture is an icon (A7).
-	// Ctrl K (⌘K) goes to search at every width, Ctrl \ (⌘\) folds the sidebar.
+	// Ctrl K (⌘K) goes to search at every width, Ctrl \ (⌘\) folds the sidebar: commands, so they can be given other keys.
 	import Camera from '@lucide/svelte/icons/camera';
 	import Menu from '@lucide/svelte/icons/menu';
 	import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
@@ -15,7 +15,7 @@
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
 	import { projectUrl, threadUrl } from '$lib/actions';
-	import { prettyHotkey } from '$lib/hotkey';
+	import { prettyKeyOf, provide } from '$lib/commands.svelte';
 	import { layout, toggleSidebar } from '$lib/layout.svelte';
 	import { attempt } from '$lib/ui.svelte';
 	import { groups } from '$lib/components/settings/panels';
@@ -26,8 +26,8 @@
 		href?: string;
 	}
 
-	const searchKey = prettyHotkey('CommandOrControl+K');
-	const sidebarKey = prettyHotkey('CommandOrControl+\\');
+	const searchKey = $derived(prettyKeyOf('search'));
+	const sidebarKey = $derived(prettyKeyOf('sidebar.toggle'));
 
 	// ---- where you are -----------------------------------------------------------------------------
 
@@ -144,12 +144,7 @@
 		search(true);
 	}
 
-	function onKey(e: KeyboardEvent) {
-		if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'KeyK' || e.key.toLowerCase() === 'k')) {
-			e.preventDefault();
-			openSearch();
-		}
-	}
+	$effect(() => provide('search', openSearch));
 
 	// ---- the sidebar button ------------------------------------------------------------------------
 
@@ -160,11 +155,9 @@
 	});
 </script>
 
-<svelte:window onkeydown={onKey} />
-
 <header class="topbar" class:searching={compact && layout.searchOpen}>
 	{#if sidebarButton.show}
-		<button class="tb-icon" title="{sidebarButton.label} ({sidebarKey})" aria-label={sidebarButton.label} onclick={toggleSidebar}>
+		<button class="tb-icon" title={sidebarKey ? `${sidebarButton.label} (${sidebarKey})` : sidebarButton.label} aria-label={sidebarButton.label} onclick={toggleSidebar}>
 			<sidebarButton.icon size={18} />
 		</button>
 	{/if}
@@ -202,11 +195,11 @@
 				{#if compact}
 					<button type="button" class="tb-icon" aria-label="Close search" onclick={closeSearch}><X size={16} /></button>
 				{:else}
-					<kbd>{searchKey}</kbd>
+					{#if searchKey}<kbd>{searchKey}</kbd>{/if}
 				{/if}
 			</form>
 		{:else}
-			<button class="tb-icon" title="Search ({searchKey})" aria-label="Search" onclick={openSearch}><Search size={18} /></button>
+			<button class="tb-icon" title={searchKey ? `Search (${searchKey})` : 'Search'} aria-label="Search" onclick={openSearch}><Search size={18} /></button>
 		{/if}
 
 		<button class="btn small tb-capture" title="Take a screenshot for a thread" onclick={() => attempt(api.takeScreenshot)}>
