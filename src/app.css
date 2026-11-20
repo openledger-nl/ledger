@@ -46,6 +46,9 @@
 	   less motion (below). */
 	--motion-panel: 200ms;
 	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+	/* The docked sidebar's width, and the icon rail's (the sidebar folded). */
+	--sidebar-width: 260px;
+	--rail-width: 56px;
 
 	/* The AI-use (MMM) labels, from the most AI to the least: the colours of the official labels (https://mmmlabel.tech,
 	   by Fontys, WELGEEN and technofilosofie.com, free to use), as in src/lib/assets/mmm. Fixed, never themed. */
@@ -140,7 +143,7 @@ h1, h2, h3 { margin: 0; }
 
 /* ---------- sidebar ---------- */
 .sidebar {
-	width: 260px; flex-shrink: 0; height: 100vh;
+	width: var(--sidebar-width); flex-shrink: 0; height: 100vh;
 	background: var(--side); color: var(--side-text);
 	display: flex; flex-direction: column; padding: 20px 14px; gap: 2px; overflow-y: auto;
 }
@@ -207,18 +210,22 @@ a.sync-line:hover { background: var(--side-hover); }
 @media (min-width: 1200px) {
 	.app.sidebar-hidden .sidebar { display: none; }
 	.app.sidebar-hidden.fold-rail .rail { display: flex; }
-	/* Unfolding (Ctrl \ or the top bar's button) makes room for the sidebar at once, so the page reflows a single time,
-	   and the sidebar slides into that room; folding it lets the rail fade in. Only while `layout.motion` says the
-	   person just did it, so nothing moves when the app starts. */
-	.app.unfolding .sidebar { animation: sidebar-in var(--motion-panel) var(--ease-out); }
-	.app.folding .rail { animation: rail-in var(--motion-panel) var(--ease-out); }
+	/* Unfolding (Ctrl \ or the top bar's button) widens the sidebar from the rail (or from nothing), and folding narrows
+	   the rail from the sidebar's width, with the page moving along. Always opaque: fading a dark panel in over a light
+	   page flickers. The sidebar's contents keep their full width meanwhile and are cut off, so nothing in it rewraps.
+	   Only while `layout.motion` says the person just did it, so nothing moves when the app starts. */
+	.app.unfolding .sidebar { animation: sidebar-grow var(--motion-panel) var(--ease-out); overflow: hidden; }
+	.app.unfolding.fold-rail .sidebar { animation-name: sidebar-grow-from-rail; }
+	.app.unfolding .sidebar > * { min-width: calc(var(--sidebar-width) - 28px); }
+	.app.folding.fold-rail .rail { animation: rail-narrow var(--motion-panel) var(--ease-out); overflow: hidden; }
 }
-@keyframes sidebar-in { from { transform: translateX(-24px); opacity: 0; } }
-@keyframes rail-in { from { opacity: 0; } }
+@keyframes sidebar-grow { from { width: 0; padding-left: 0; padding-right: 0; } }
+@keyframes sidebar-grow-from-rail { from { width: var(--rail-width); } }
+@keyframes rail-narrow { from { width: var(--sidebar-width); } }
 
 /* The icon rail: only drawn where the sidebar is folded and the setting asks for a rail. */
 .rail {
-	display: none; width: 56px; flex-shrink: 0; height: 100vh; background: var(--side); color: var(--side-text);
+	display: none; width: var(--rail-width); flex-shrink: 0; height: 100vh; background: var(--side); color: var(--side-text);
 	flex-direction: column; align-items: center; gap: 4px; padding: 14px 0 12px;
 }
 .rail-mark { display: flex; padding: 4px 0 14px; }
