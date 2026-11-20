@@ -429,7 +429,7 @@ mod tests_navigation {
         for ok in ["tauri://localhost/projects/x", "http://localhost:1420/", "http://tauri.localhost/", "https://tauri.localhost/a"] {
             assert!(is_app_url(&ok.parse().unwrap()), "{ok}");
         }
-        for no in ["file:///home/me/plan.pdf", "https://fhict.instructure.com/", "http://example.com/", "data:text/html,hi"] {
+        for no in ["file:///home/me/plan.pdf", "https://fontysict.instructure.com/", "http://example.com/", "data:text/html,hi"] {
             assert!(!is_app_url(&no.parse().unwrap()), "{no}");
         }
     }

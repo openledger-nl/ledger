@@ -21,7 +21,11 @@ use crate::error::{Error, Result};
 use crate::settings::{self, LEDGER_DIR};
 
 /// Where Fontys ICT students open Portflow: the Canvas page that launches it.
-pub const DEFAULT_LAUNCH_URL: &str = "https://fhict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation";
+pub const DEFAULT_LAUNCH_URL: &str = "https://fontysict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation&toolId=portfolio-23360";
+
+/// Fontys ICT's Canvas before it moved to `fontysict.instructure.com`, and the page that launched Portflow there.
+const OLD_CANVAS_HOST: &str = "fhict.instructure.com";
+const OLD_DEFAULT_LAUNCH_URL: &str = "https://fhict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation";
 
 /// The write that puts a project's reading guide (its README.md) in the description of the collection it is linked to
 /// for the current semester. Replaces "edit-descriptions": the guide is how a description is edited in Ledger, so a
@@ -98,12 +102,26 @@ fn settings_file(root: &Path) -> PathBuf {
 pub fn read_settings(root: &Path) -> PortflowSettings {
     let mut settings: PortflowSettings =
         fs::read_to_string(settings_file(root)).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default();
-    if settings.launch_url.trim().is_empty() {
-        settings.launch_url = DEFAULT_LAUNCH_URL.to_string();
-    }
+    settings.launch_url = moved_launch_url(&settings.launch_url);
     // A write kind this version doesn't know is dropped rather than allowed.
     settings.access.writes.retain(|kind| WRITE_KINDS.iter().any(|(k, _)| k == kind));
     settings
+}
+
+/// The launch address to use for a saved one. Blank, or the old default (saved with every change of the settings), is
+/// the default; any other page on the old Canvas moves to the new one, at the same path.
+fn moved_launch_url(saved: &str) -> String {
+    let saved = saved.trim();
+    if saved.is_empty() || saved == OLD_DEFAULT_LAUNCH_URL {
+        return DEFAULT_LAUNCH_URL.to_string();
+    }
+    match tauri::Url::parse(saved) {
+        Ok(mut url) if url.host_str() == Some(OLD_CANVAS_HOST) => match url.set_host(Some("fontysict.instructure.com")) {
+            Ok(()) => url.to_string(),
+            Err(_) => saved.to_string(),
+        },
+        _ => saved.to_string(),
+    }
 }
 
 /// Whether the feature is on in the vault at `root`. Everything Portflow does asks this first.

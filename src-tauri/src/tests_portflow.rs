@@ -1346,6 +1346,21 @@ fn a_machine_that_had_edit_descriptions_on_starts_with_the_guide_write_off() {
 }
 
 #[test]
+fn a_launch_address_on_the_old_canvas_moves_to_the_new_one() {
+    let m = Machine::new();
+    fs::create_dir_all(m.root().join(".ledger")).unwrap();
+    let saved = |url: &str| {
+        fs::write(m.root().join(".ledger/portflow.json"), serde_json::json!({ "enabled": true, "launchUrl": url }).to_string()).unwrap();
+        m.settings().launch_url
+    };
+    let old_default = "https://fhict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation";
+    assert_eq!(saved(old_default), config::DEFAULT_LAUNCH_URL, "the old default is the new default");
+    assert_eq!(saved(""), config::DEFAULT_LAUNCH_URL);
+    assert_eq!(saved("https://fhict.instructure.com/courses/12/assignments/34"), "https://fontysict.instructure.com/courses/12/assignments/34");
+    assert_eq!(saved("https://canvas.example.edu/courses/1"), "https://canvas.example.edu/courses/1", "another school's page stays");
+}
+
+#[test]
 fn only_writes_that_are_listed_can_be_built_and_switched_on() {
     for built in crate::portflow_config::BUILT_WRITES {
         assert!(crate::portflow_config::WRITE_KINDS.iter().any(|(id, _)| *id == built), "{built} is built but not listed");
