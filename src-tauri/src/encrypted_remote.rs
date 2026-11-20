@@ -11,7 +11,7 @@
 //! is refused rather than converted, since its history would keep the names (see `sync::READABLE_NAMES`).
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
 use crate::crypto::{self, CryptoError, Key};
 use crate::error::{Error, Result};
@@ -49,7 +49,7 @@ impl<R: Remote> EncryptedRemote<R> {
 
     /// The real paths of the files in `head`, from its manifest. `stored` is the head's tree, if it was read already.
     fn paths(&self, head: &Head, stored: Option<&BTreeMap<String, String>>) -> Result<BTreeSet<String>> {
-        if let Some((tree, paths)) = &*self.manifest.lock().unwrap()
+        if let Some((tree, paths)) = &*self.manifest.lock().unwrap_or_else(PoisonError::into_inner)
             && *tree == head.tree
         {
             return Ok(paths.clone());
@@ -87,7 +87,7 @@ impl<R: Remote> EncryptedRemote<R> {
     }
 
     fn remember(&self, tree: &str, paths: &BTreeSet<String>) {
-        *self.manifest.lock().unwrap() = Some((tree.to_string(), paths.clone()));
+        *self.manifest.lock().unwrap_or_else(PoisonError::into_inner) = Some((tree.to_string(), paths.clone()));
     }
 }
 
@@ -139,7 +139,7 @@ impl<R: Remote> Remote for EncryptedRemote<R> {
         }
         // Only adding or removing a file changes the manifest; an edit leaves it as it was.
         if paths != before {
-            let list = serde_json::to_vec(&paths).expect("a set of strings serialises");
+            let list = serde_json::to_vec(&paths).map_err(|_| failed(MANIFEST, CryptoError::Failed))?;
             sealed.push(Change::Put { path: MANIFEST.to_string(), bytes: self.seal(MANIFEST_SEALED_AS, &list).map_err(|cause| failed(MANIFEST, cause))? });
         }
         let head = self.inner.push(parent, &sealed, message)?;

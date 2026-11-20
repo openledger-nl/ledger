@@ -29,7 +29,7 @@ use std::fs;
 use std::path::Path;
 #[cfg(test)]
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
@@ -636,15 +636,15 @@ fn fetch_all(remote: &dyn Remote, wanted: &BTreeMap<String, String>) -> Result<H
                 loop {
                     let i = next.fetch_add(1, Ordering::Relaxed);
                     let Some(&(path, sha)) = jobs.get(i) else { return };
-                    if failure.lock().unwrap().is_some() {
+                    if failure.lock().unwrap_or_else(PoisonError::into_inner).is_some() {
                         return;
                     }
                     match remote.blob(path, sha) {
                         Ok(bytes) => {
-                            results.lock().unwrap().insert(path.to_string(), bytes);
+                            results.lock().unwrap_or_else(PoisonError::into_inner).insert(path.to_string(), bytes);
                         }
                         Err(e) => {
-                            failure.lock().unwrap().get_or_insert(e);
+                            failure.lock().unwrap_or_else(PoisonError::into_inner).get_or_insert(e);
                             return;
                         }
                     }
@@ -653,10 +653,10 @@ fn fetch_all(remote: &dyn Remote, wanted: &BTreeMap<String, String>) -> Result<H
         }
     });
 
-    if let Some(e) = failure.into_inner().unwrap() {
+    if let Some(e) = failure.into_inner().unwrap_or_else(PoisonError::into_inner) {
         return Err(e);
     }
-    let mut results = results.into_inner().unwrap();
+    let mut results = results.into_inner().unwrap_or_else(PoisonError::into_inner);
     if share {
         for (path, sha) in wanted {
             if !results.contains_key(path) {
