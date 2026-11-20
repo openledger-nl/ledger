@@ -460,6 +460,9 @@ export const portflowApi = {
 	/** Opens the sign-in window and resolves once Portflow handed over its session. */
 	signIn: () => call<PortflowView>('portflow_sign_in'),
 	signOut: (forget = false) => call<PortflowView>('portflow_sign_out', { forget }),
+	/** Signs in by itself from now on: the password goes in the system keychain, never in the vault. */
+	saveLogin: (username: string, password: string) => call<PortflowView>('portflow_save_login', { username, password }),
+	forgetLogin: () => call<PortflowView>('portflow_forget_login'),
 	syncNow: () => call<void>('portflow_sync_now'),
 	/** The portfolio's collections, asked from Portflow. */
 	collections: () => call<PortflowCollectionChoice[]>('portflow_collections'),

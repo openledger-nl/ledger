@@ -46,6 +46,9 @@ typst = "0.15.1"
 typst-pdf = "0.15.1"
 typst-layout = "0.15.1"
 similar = { version = "2", features = ["inline"] }
+# The Fontys password for signing in to Portflow by itself (`portflow_login.rs`), in the system's keychain: the Secret
+# Service on Linux, the Keychain on macOS, the Credential Manager on Windows.
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 
 # The picture decoders are optimised in the development build too (`tauri dev`): unoptimised, decoding one JPEG XL
 # picture takes seconds (`images.rs`). Only these crates; the rest of the build stays as fast to compile as it was.

@@ -35,6 +35,11 @@
 	let launchUrl = $state('');
 	let editingUrl = $state(false);
 
+	// Remember me: the Fontys login, saved so that Ledger signs in by itself (portflow_login.rs).
+	let remembering = $state(false);
+	let loginName = $state('');
+	let loginPassword = $state('');
+
 	async function load() {
 		try {
 			view = await portflowApi.get();
@@ -140,6 +145,36 @@
 		view = saved;
 		live = null;
 		collections = null;
+	}
+
+	// ---- remember me ---------------------------------------------------------------------------
+	// The password goes to the system keychain and nowhere else; this screen keeps it only while it is being typed.
+
+	async function setRemember(on: boolean) {
+		if (on) {
+			remembering = true;
+			return;
+		}
+		remembering = false;
+		loginPassword = '';
+		if (!view?.savedLogin) return;
+		busy = 'login';
+		const saved = await attempt(() => portflowApi.forgetLogin());
+		busy = null;
+		if (!saved) return;
+		view = saved;
+		toast('Ledger forgot your Fontys password');
+	}
+
+	async function saveLogin() {
+		busy = 'login';
+		const saved = await attempt(() => portflowApi.saveLogin(loginName, loginPassword));
+		busy = null;
+		if (!saved) return;
+		view = saved;
+		remembering = false;
+		loginPassword = '';
+		toast('Remembered: Ledger signs in to Fontys by itself from now on');
 	}
 
 	// ---- access -------------------------------------------------------------------------------
@@ -328,8 +363,44 @@
 					{/if}
 				</div>
 			{/if}
+			<div class="remember">
+				<Switch checked={view.savedLogin !== null || remembering} label="Remember me" disabled={busy !== null} onchange={setRemember} />
+				<div class="remember-text">
+					<strong>Remember me</strong>
+					{#if view.savedLogin}
+						<span class="hint">Signs in by itself as <span class="mono">{view.savedLogin}</span>, also when Canvas has forgotten you.</span>
+					{:else}
+						<span class="hint">Ledger types your Fontys login in for you, also when Canvas has forgotten you.</span>
+					{/if}
+				</div>
+			</div>
+			{#if remembering && !view.savedLogin}
+				<form
+					class="form-row"
+					onsubmit={(e) => {
+						e.preventDefault();
+						void saveLogin();
+					}}
+				>
+					<label class="field grow">
+						Fontys username
+						<input bind:value={loginName} type="email" autocomplete="off" spellcheck="false" placeholder="i123456@fontysict.nl" />
+					</label>
+					<label class="field grow">
+						Password
+						<input bind:value={loginPassword} type="password" autocomplete="off" />
+					</label>
+					<button class="btn small primary" type="submit" disabled={busy !== null || !loginName.trim() || !loginPassword}>Remember</button>
+				</form>
+			{/if}
+			{#if remembering || view.savedLogin}
+				<div class="hint">
+					Your password is kept in the system keychain on Linux and macOS (the Credential Manager on Windows), not in your vault. Ledger types it only into the
+					Fontys login page, and stops when Fontys asks for anything else.
+				</div>
+			{/if}
 			<div class="hint">
-				A Ledger window opens Portflow the way Canvas does; you sign in there as usual. Ledger never sees or stores your password: once Portflow has opened,
+				A Ledger window opens Portflow the way Canvas does; you sign in there as usual. Unless you choose Remember me, Ledger never sees or stores your password: once Portflow has opened,
 				it takes only the session Portflow's own page uses (valid for eight hours) and closes the window. The session is kept in this vault's
 				<code>.ledger/.env</code>, like the Trello key: on this machine only, never uploaded. Signing out or switching Portflow off removes it.
 			</div>
@@ -538,6 +609,18 @@
 </div>
 
 <style>
+	.remember {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		margin-top: 4px;
+	}
+	.remember-text {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		font-size: 13px;
+	}
 	.choice {
 		display: flex;
 		gap: 8px;

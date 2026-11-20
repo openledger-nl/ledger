@@ -86,11 +86,14 @@ pub struct PortflowSettings {
     pub launch_url: String,
     pub access: Access,
     pub portfolio: Option<Portfolio>,
+    /// The Fontys username whose password is in the system keychain, to sign in by itself (`portflow_login.rs`).
+    /// Never the password.
+    pub saved_login: Option<String>,
 }
 
 impl Default for PortflowSettings {
     fn default() -> Self {
-        PortflowSettings { enabled: false, launch_url: DEFAULT_LAUNCH_URL.to_string(), access: Access::default(), portfolio: None }
+        PortflowSettings { enabled: false, launch_url: DEFAULT_LAUNCH_URL.to_string(), access: Access::default(), portfolio: None, saved_login: None }
     }
 }
 

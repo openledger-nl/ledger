@@ -3,8 +3,10 @@
 //! Portflow is an LTI tool inside Canvas: there is no login of its own and no API key. So Ledger opens the Canvas page
 //! that launches Portflow (Settings → Portflow → the launch address) in a window, and the student signs in there the
 //! way they always do (Fontys, Microsoft, two-factor). Ledger never sees what is typed into that window and never
-//! stores a password: it waits until Portflow's page has started and then takes the one thing it needs, the session
-//! token Portflow's own web app uses (`document.body.dataset.session`, a JWT that lives eight hours).
+//! stores a password, unless the person lets it sign in by itself (`portflow_login.rs`: the password in the system
+//! keychain, typed into the Fontys login page only). It waits until Portflow's page has started and then takes the one
+//! thing it needs, the session token Portflow's own web app uses (`document.body.dataset.session`, a JWT that lives
+//! eight hours).
 //!
 //! The hand-over goes through a script that runs in every frame of that window:
 //!
@@ -28,9 +30,11 @@ use std::time::Duration;
 
 use base64::Engine;
 use serde::Deserialize;
+use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use crate::portflow_api::{Credentials, PResult, PortflowError};
+use crate::portflow_login::{self, Login};
 use crate::settings;
 
 pub const LOGIN_LABEL: &str = "portflow-login";
@@ -233,7 +237,11 @@ fn finish(waiting: &Mutex<Vec<Waiter>>, outcome: std::result::Result<Session, St
 
 /// Opens the sign-in window (or, `visible` false, a hidden one for a refresh) and waits for the session. Blocking: call
 /// it off the main thread.
-pub fn sign_in(app: &AppHandle, auth: &Auth, launch_url: &str, visible: bool) -> PResult<Session> {
+///
+/// With a saved `login` (`portflow_login.rs`), the Fontys login page is filled in and sent, once. A hidden refresh that
+/// meets the login page and can't get past it (no login saved, or the page came back) stops there rather than waiting
+/// for its time-out.
+pub fn sign_in(app: &AppHandle, auth: &Auth, launch_url: &str, visible: bool, login: Option<Login>) -> PResult<Session> {
     let url = tauri::Url::parse(launch_url).map_err(|_| PortflowError::message("The Portflow launch address isn't a web address"))?;
     if url.scheme() != "https" {
         return Err(PortflowError::message("The Portflow launch address must start with https://"));
@@ -254,11 +262,34 @@ pub fn sign_in(app: &AppHandle, auth: &Auth, launch_url: &str, visible: bool) ->
     } else if first {
         let waiting = auth.waiting.clone();
         let closer = app.clone();
+        let (stuck, stuck_closer) = (auth.waiting.clone(), app.clone());
+        let login = Mutex::new(login);
         let mut builder = WebviewWindowBuilder::new(app, LOGIN_LABEL, WebviewUrl::External(url))
             .title("Sign in to Portflow")
             .inner_size(560.0, 760.0)
             .visible(visible)
             .initialization_script_for_all_frames(SCRIPT)
+            .on_page_load(move |window, payload| {
+                if payload.event() != PageLoadEvent::Finished || !portflow_login::is_login_page(payload.url()) {
+                    return;
+                }
+                match lock(&login).take() {
+                    Some(login) => {
+                        let _ = window.eval(portflow_login::fill_script(&login).as_str());
+                    }
+                    None if !visible => {
+                        finish(&stuck, Err("Fontys asks to sign in".into()));
+                        let closer = stuck_closer.clone();
+                        std::thread::spawn(move || {
+                            if let Some(window) = closer.get_webview_window(LOGIN_LABEL) {
+                                let _ = window.destroy();
+                            }
+                        });
+                    }
+                    // In sight: the person signs in.
+                    None => {}
+                }
+            })
             .on_navigation(move |target| {
                 if target.host_str() != Some(SENTINEL_HOST) {
                     return target.scheme() == "https" || target.scheme() == "about";

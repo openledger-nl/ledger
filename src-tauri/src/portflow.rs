@@ -23,6 +23,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::error::{Error, Result};
 use crate::portflow_api::{Gate, HttpPortflow, PResult, Portflow, PortflowError};
 use crate::portflow_auth::{self as auth, Auth, Session};
+use crate::portflow_login::{self as login, Keychain};
 use crate::portflow_epsilon::{self as epsilon, EvidenceChoice, EpsilonGoals, EpsilonView, SectionView};
 use crate::portflow_config::{self as config, Portfolio, PortflowSettings, WRITE_KINDS};
 use crate::portflow_store::{self as store, CollectionView, EvidenceView, Imported, PersonView, RecentFeedback};
@@ -312,7 +313,8 @@ pub fn start_app(handle: &AppHandle, core: Arc<Mutex<Core>>) {
         connect_to_portflow(),
         Some(Arc::new(move |launch_url: &str| {
             let auth = refresher.state::<PortflowSyncer>().auth.clone();
-            auth::sign_in(&refresher, &auth, launch_url, false)
+            let saved = login::saved(&root_of(&refresher.state::<App>()), &Keychain);
+            auth::sign_in(&refresher, &auth, launch_url, false, saved)
         })),
         POLL,
     );
@@ -360,6 +362,8 @@ pub struct PortflowView {
     pub outcomes: i64,
     pub people: i64,
     pub unplaced: i64,
+    /// The Fontys username Ledger signs in with by itself; its password is in the system keychain, never here.
+    pub saved_login: Option<String>,
 }
 
 fn view(app: &App, syncer: &PortflowSyncer) -> Result<PortflowView> {
@@ -404,6 +408,7 @@ fn view(app: &App, syncer: &PortflowSyncer) -> Result<PortflowView> {
         outcomes,
         people,
         unplaced,
+        saved_login: settings.saved_login.clone(),
     })
 }
 
@@ -454,10 +459,10 @@ pub async fn portflow_set_enabled(handle: AppHandle, app: State<'_, App>, syncer
     if !enabled {
         auth::close_window(&handle);
         if forget.unwrap_or(false) {
-            let (handle, auth) = (handle.clone(), syncer.auth.clone());
+            let (handle, auth, root) = (handle.clone(), syncer.auth.clone(), root.clone());
             blocking(move || {
                 auth::forget_everything(&handle, &auth);
-                Ok(())
+                login::forget(&root, &Keychain)
             })
             .await?;
         }
@@ -503,8 +508,10 @@ pub async fn portflow_sign_in(handle: AppHandle, app: State<'_, App>, syncer: St
     let auth = syncer.auth.clone();
     let connect = syncer.connect.clone();
     let gate = Gate::new(true, &settings.access);
+    let keep = root.clone();
     let portfolio = blocking(move || {
-        let session = auth::sign_in(&handle, &auth, &settings.launch_url, true)?;
+        let saved = login::saved(&keep, &Keychain);
+        let session = auth::sign_in(&handle, &auth, &settings.launch_url, true, saved)?;
         let client = connect(&session, gate)?;
         let me = client.current_user()?;
         let id = session.portfolio.or(settings.portfolio.as_ref().map(|p| p.id)).ok_or_else(|| {
@@ -539,10 +546,10 @@ pub async fn portflow_sign_out(handle: AppHandle, app: State<'_, App>, syncer: S
     auth::clear_session(&root);
     auth::close_window(&handle);
     if forget.unwrap_or(false) {
-        let auth = syncer.auth.clone();
+        let (auth, keep) = (syncer.auth.clone(), root.clone());
         blocking(move || {
             auth::forget_everything(&handle, &auth);
-            Ok(())
+            login::forget(&keep, &Keychain)
         })
         .await?;
         config::update_settings(&root, |s| s.portfolio = None)?;
@@ -552,6 +559,29 @@ pub async fn portflow_sign_out(handle: AppHandle, app: State<'_, App>, syncer: S
             s.state = "signed-out".into();
         }
     });
+    view(&app, &syncer)
+}
+
+/// Saves the Fontys login so that Ledger signs in by itself: the password in the system keychain, the username in the
+/// settings (`portflow_login.rs`).
+#[tauri::command]
+pub async fn portflow_save_login(app: State<'_, App>, syncer: State<'_, PortflowSyncer>, username: String, password: String) -> Result<PortflowView> {
+    let root = root_of(&app);
+    require_on(&root)?;
+    let password = zeroize::Zeroizing::new(password);
+    let keep = root.clone();
+    blocking(move || login::save(&keep, &Keychain, &username, &password)).await?;
+    crate::applog::info("portflow", "Saved the Fontys login in the system keychain");
+    view(&app, &syncer)
+}
+
+/// Forgets the saved Fontys login: from the keychain and from the settings.
+#[tauri::command]
+pub async fn portflow_forget_login(app: State<'_, App>, syncer: State<'_, PortflowSyncer>) -> Result<PortflowView> {
+    let root = root_of(&app);
+    let keep = root.clone();
+    blocking(move || login::forget(&keep, &Keychain)).await?;
+    crate::applog::info("portflow", "Forgot the saved Fontys login");
     view(&app, &syncer)
 }
 

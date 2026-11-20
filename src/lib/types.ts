@@ -1181,6 +1181,8 @@ export interface PortflowView {
 	outcomes: number;
 	people: number;
 	unplaced: number;
+	/** The Fontys username Ledger signs in with by itself (its password is in the system keychain), or null. */
+	savedLogin: string | null;
 }
 
 export interface PortflowCollectionChoice {

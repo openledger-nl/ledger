@@ -31,7 +31,8 @@ const portflow: PortflowView = {
 	links: [],
 	outcomes: 12,
 	people: 3,
-	unplaced: 0
+	unplaced: 0,
+	savedLogin: null
 };
 
 const updates: UpdateView = {
@@ -205,6 +206,8 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	portflow_sections: [{ id: 1, name: 'ICT & Software', template: 'S3', importedAt: '2026-09-02T10:00:00.000Z', semester: 's3-2026', semesterName: 'S3 - najaar 2026' }],
 	portflow_collections: [],
 	portflow_save_evidence_description: [fx.evidence],
+	portflow_save_login: (args: Record<string, unknown>) => ({ ...portflow, savedLogin: String(args.username ?? '').trim() }),
+	portflow_forget_login: portflow,
 
 	// writes: answered with what they would have saved, near enough
 	add_post: fx.posts[1],

@@ -61,6 +61,7 @@ mod portflow_epsilon;
 mod portflow_evidence_text;
 mod portflow_config;
 mod portflow_html;
+mod portflow_login;
 mod portflow_store;
 mod portflow_sync;
 mod portflow_vault;
@@ -352,6 +353,8 @@ pub fn run() {
             portflow::portflow_set_access,
             portflow::portflow_sign_in,
             portflow::portflow_sign_out,
+            portflow::portflow_save_login,
+            portflow::portflow_forget_login,
             portflow::portflow_sync_now,
             portflow::portflow_collections,
             portflow::portflow_link_collection,
