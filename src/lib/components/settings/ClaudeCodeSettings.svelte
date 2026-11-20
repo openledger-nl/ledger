@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { claudeCodeApi } from '$lib/api';
+	import ModelPicker from '$lib/components/ModelPicker.svelte';
 	import { attempt, toast } from '$lib/ui.svelte';
 	import type { ClaudeCodeCheck, ClaudeCodeSettings, ClaudePermissionMode } from '$lib/types';
 
@@ -124,11 +125,14 @@
 		<span class="hint">{modes.find((m) => m.id === mode)?.hint}</span>
 	</div>
 
-	<label class="field" style="max-width:320px">
+	<div class="field" style="max-width:520px">
 		Model
-		<input bind:value={model} placeholder="Blank: the default of Claude Code" spellcheck="false" autocomplete="off" />
-		<span class="hint">A name or alias Claude Code accepts, such as <code>sonnet</code> or <code>opus</code>.</span>
-	</label>
+		<ModelPicker bind:value={model} defaultLabel="Claude Code's default" />
+		<span class="hint">
+			The model every run uses, unless you choose another in the run's confirmation. Opus, Sonnet and Haiku always mean the newest of each; under
+			Other, any name Claude Code accepts, such as a full model id.
+		</span>
+	</div>
 
 	<label class="check">
 		<input type="checkbox" bind:checked={confine} /> Extra guard rails (recommended)

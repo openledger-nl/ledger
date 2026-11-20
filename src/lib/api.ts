@@ -378,11 +378,13 @@ export const claudeCodeApi = {
 		call<ClaudeCodeSettings>('save_claude_code_settings', { cliPath, permissionMode, model, confine, autoRun, namePrompts }),
 	/** Runs `claude --version` with the path as typed (blank: look on the PATH). Doesn't save anything. */
 	check: (cliPath: string) => call<ClaudeCodeCheck>('check_claude_code', { cliPath }),
-	/** Everything a run would send and where, for the confirmation. */
-	preview: (project: string, thread: string, id: string) => call<ClaudeRunPreview>('claude_code_preview', { project, thread, id }),
-	/** `confirmed` is the prompt text from the preview: if the prompt changed since, nothing starts. */
-	start: (project: string, thread: string, id: string, confirmed: string) =>
-		call<ClaudeRun>('claude_code_start', { project, thread, id, confirmed }),
+	/** Everything a run would send and where, for the confirmation. `model`: one chosen for this run ("" for Claude Code's
+	 *  default), in place of the one in Settings; left out, the one in Settings. */
+	preview: (project: string, thread: string, id: string, model?: string) =>
+		call<ClaudeRunPreview>('claude_code_preview', { project, thread, id, model: model ?? null }),
+	/** `confirmed` is the prompt text from the preview: if the prompt changed since, nothing starts. `model` as for the preview. */
+	start: (project: string, thread: string, id: string, confirmed: string, model?: string) =>
+		call<ClaudeRun>('claude_code_start', { project, thread, id, confirmed, model: model ?? null }),
 	cancel: (runId: string) => call<ClaudeRun>('claude_code_cancel', { runId }),
 	runs: () => call<ClaudeRunSnapshot[]>('claude_code_runs'),
 	run: (runId: string) => call<ClaudeRunSnapshot>('claude_code_run', { runId })

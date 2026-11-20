@@ -88,13 +88,17 @@ impl ClaudeSettings {
     /// since it ends up in the command line.
     pub fn validated(cli_path: &str, permission_mode: &str, model: &str, confine: bool, auto_run: bool, name_prompts: bool) -> Result<ClaudeSettings> {
         let mode = PermissionMode::parse(permission_mode).ok_or_else(|| Error::invalid("Choose one of the permission modes offered"))?;
-        let model = model.trim();
-        if !model.is_empty() && !valid_model(model) {
-            return Err(Error::invalid(
-                "That doesn't look like a model name. Use letters, digits and . _ : - / [ ] only, for example sonnet, opus or claude-sonnet-4-5",
-            ));
+        let model = checked_model(model)?;
+        Ok(ClaudeSettings { cli_path: clean_path(cli_path)?, permission_mode: mode, model, confine, auto_run, name_prompts })
+    }
+
+    /// These settings for one run: with the model chosen in the run's confirmation in place of the one in Settings,
+    /// when one was chosen there ("" is Claude Code's own default). `None` keeps the one in Settings.
+    pub fn for_run(self, model: Option<&str>) -> Result<ClaudeSettings> {
+        match model {
+            None => Ok(self),
+            Some(model) => Ok(ClaudeSettings { model: checked_model(model)?, ..self }),
         }
-        Ok(ClaudeSettings { cli_path: clean_path(cli_path)?, permission_mode: mode, model: model.to_string(), confine, auto_run, name_prompts })
     }
 
     fn to_json(&self) -> Value {
@@ -107,6 +111,17 @@ impl ClaudeSettings {
             "namePrompts": self.name_prompts,
         })
     }
+}
+
+/// A model name as typed, trimmed; refused when it doesn't look like one, since it ends up in the command line.
+fn checked_model(model: &str) -> Result<String> {
+    let model = model.trim();
+    if !model.is_empty() && !valid_model(model) {
+        return Err(Error::invalid(
+            "That doesn't look like a model name. Use letters, digits and . _ : - / [ ] only, for example sonnet, opus or claude-sonnet-4-5",
+        ));
+    }
+    Ok(model.to_string())
 }
 
 /// A model name as the CLI takes it: an alias (`sonnet`, `opus[1m]`) or a full id. Starting with a letter or digit

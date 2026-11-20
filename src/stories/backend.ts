@@ -178,6 +178,19 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	},
 	check_claude_code: { ok: true, version: '2.1.0', path: '/usr/local/bin/claude', message: 'Claude Code 2.1.0' },
 	claude_code_runs: [],
+	// The confirmation before a run: its command follows the model chosen for the run (null: the one in Settings, here none).
+	claude_code_preview: (a: Record<string, unknown>) => {
+		const model = typeof a.model === 'string' ? a.model : '';
+		return {
+			folder: '/home/student/Documents/Ledger/projects/smart-greenhouse',
+			command: `claude -p --output-format stream-json --verbose --permission-mode acceptEdits${model ? ` --model ${model}` : ''}`,
+			prompt: fx.prompt.body,
+			guard: null,
+			permissionMode: 'acceptEdits',
+			model,
+			problem: null
+		};
+	},
 
 	// Portflow
 	portflow_get: portflow,

@@ -433,6 +433,23 @@ fn what_is_typed_in_settings_is_checked_because_it_reaches_the_command_line() {
     assert_eq!(ClaudeSettings::validated("", "dontAsk", "", true, false, true).unwrap().permission_mode, PermissionMode::DontAsk);
 }
 
+#[test]
+fn the_model_chosen_for_one_run_replaces_the_setting_and_is_checked_the_same_way() {
+    let settings = ClaudeSettings { model: "sonnet".into(), ..Default::default() };
+    assert_eq!(settings.clone().for_run(None).unwrap().model, "sonnet");
+    assert_eq!(settings.clone().for_run(Some(" opus ")).unwrap().model, "opus");
+    // "" is Claude Code's own default: no --model at all.
+    let default = settings.clone().for_run(Some("")).unwrap();
+    assert_eq!(default.model, "");
+    assert!(!cli::run_args(&default, None).iter().any(|a| a == "--model"));
+    for bad in ["--dangerously-skip-permissions", "two words", "$(id)"] {
+        assert!(settings.clone().for_run(Some(bad)).is_err(), "{bad:?}");
+    }
+    // Only the model changes.
+    let chosen = ClaudeSettings { permission_mode: PermissionMode::Plan, confine: false, ..settings }.for_run(Some("haiku")).unwrap();
+    assert_eq!((chosen.permission_mode, chosen.confine), (PermissionMode::Plan, false));
+}
+
 // ---- the command line ---------------------------------------------------------------------------------
 
 #[test]
