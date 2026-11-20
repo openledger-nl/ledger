@@ -57,6 +57,7 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	list_project_meta: [fx.projectMeta],
 	list_project_people: fx.people,
 	get_project_branding: fx.branding,
+	pdf_layout: { used: 'vault', project: null, vault: 'pdf/layout.typ' },
 	get_thread: fx.threadView,
 	list_semesters: [fx.semester],
 	list_activity: fx.activity,

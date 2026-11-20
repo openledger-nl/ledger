@@ -108,7 +108,7 @@ fn a_document_with_everything_in_it_becomes_a_pdf() {
         label: None,
     };
     let main = format!("#import \"/ledger.typ\": *\n#show: ledger-doc.with(json(\"/data.json\"))\n\n{}", converted.body);
-    let pdf = world::compile(&main, vec![("/data.json".into(), serde_json::to_vec(&data).unwrap())]).unwrap_or_else(|e| panic!("{e}\n{main}"));
+    let pdf = world::compile(&main, &world::Layout::builtin(), vec![("/data.json".into(), serde_json::to_vec(&data).unwrap())]).unwrap_or_else(|e| panic!("{e}\n{main}"));
     assert!(pdf.starts_with(b"%PDF"));
     if let Ok(dir) = std::env::var("LEDGER_PDF_SAMPLE") {
         std::fs::write(Path::new(&dir).join("sample.pdf"), &pdf).unwrap();
@@ -227,4 +227,47 @@ fn a_study_project_shows_the_label_on_the_cover_unless_it_is_turned_off() {
 
     branding::save(&c, &project, &branding::Branding { show_label: Some(false), ..Default::default() }).unwrap();
     assert!(data_of("plan@v0.1.md")["label"].is_null());
+}
+
+/// A layout of one's own comes first, can use the files of its folder, and says where it went wrong.
+#[test]
+fn a_layout_of_ones_own_is_used_and_its_mistakes_are_located() {
+    let c = crate::db::open_in_memory().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let project = crate::projects::create(&c, "P").unwrap().slug;
+    let doc = deliverables::create(&c, &project, "Plan", "# Plan\n\nText.\n").unwrap();
+    assert_eq!(layout_view(root, &project).unwrap().used, LayoutScope::Ledger);
+
+    // The vault's layout starts as Ledger's; a project's starts as the vault's.
+    let view = customise_layout(root, &project, LayoutScope::Vault).unwrap();
+    assert_eq!(view.used, LayoutScope::Vault);
+    assert_eq!(view.vault.as_deref(), Some("pdf/layout.typ"));
+    let vault_file = root.join("pdf/layout.typ");
+    assert_eq!(fs::read_to_string(&vault_file).unwrap(), world::LAYOUT);
+    fs::write(&vault_file, format!("{}\n// mine\n", world::LAYOUT)).unwrap();
+    let view = customise_layout(root, &project, LayoutScope::Project).unwrap();
+    assert_eq!(view.used, LayoutScope::Project);
+    let project_file = uploads::project_dir(root, &project).join("pdf/layout.typ");
+    assert!(fs::read_to_string(&project_file).unwrap().ends_with("// mine\n"));
+
+    // It can read a picture beside it, by its name.
+    image::RgbImage::from_pixel(10, 10, image::Rgb([200, 0, 0])).save(project_file.with_file_name("corner.png")).unwrap();
+    fs::write(
+        &project_file,
+        "#let ledger-doc(data, doc) = { place(top + right, image(\"corner.png\", width: 1cm)); doc }\n#let ledger-rule() = line()\n",
+    )
+    .unwrap();
+    assert!(make(prepare(&c, root, &project, &doc.path).unwrap()).is_ok());
+
+    // A mistake names the file and the line.
+    fs::write(&project_file, "#let ledger-doc(data, doc) = {\n  doc\n  nonsense-here\n}\n").unwrap();
+    let err = make(prepare(&c, root, &project, &doc.path).unwrap()).unwrap_err().to_string();
+    assert!(err.contains(&format!("projects/{project}/pdf/layout.typ, line 3")), "{err}");
+    assert!(err.contains("unknown variable: nonsense-here"), "{err}");
+
+    // Back to the vault's, then to Ledger's.
+    assert_eq!(reset_layout(root, &project, LayoutScope::Project).unwrap().used, LayoutScope::Vault);
+    assert!(project_file.with_file_name("corner.png").exists(), "the other files of the folder stay");
+    assert_eq!(reset_layout(root, &project, LayoutScope::Vault).unwrap().used, LayoutScope::Ledger);
 }

@@ -9,6 +9,10 @@
 //! `exports/<name> (draft).pdf`; exporting again replaces it. A version's PDF says what that version said, so it can
 //! be made again at any time and comes out the same (apart from its date when it is a draft).
 //!
+//! The layout is Ledger's (`ledger.typ`, which explains what it is handed), or one's own: `projects/<project>/pdf/
+//! layout.typ` for one project, `pdf/layout.typ` for the vault, each starting as a copy of the one under it
+//! ([`customise_layout`]); the files of its folder (pictures, fonts, other Typst files) can be used by it.
+//!
 //! Exporting is two steps, so the vault is only held while it is read: [`prepare`] gathers the text, the pictures and
 //! what is known about the versions, and [`make`] sets it and writes the file.
 
@@ -80,6 +84,7 @@ struct HistoryRow {
 pub struct Prepared {
     main: String,
     files: Vec<(String, Vec<u8>)>,
+    layout: world::Layout,
     /// Where it goes, on disk and relative to the project's folder.
     out: PathBuf,
     rel: String,
@@ -216,17 +221,137 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
         None => format!("{} (draft).pdf", safe_file_name(&stem)),
     };
     let rel = format!("exports/{file_name}");
-    Ok(Prepared { main, files, out: project_dir.join("exports").join(&file_name), rel })
+    let layout = layout_for(root, project)?;
+    Ok(Prepared { main, files, layout, out: project_dir.join("exports").join(&file_name), rel })
 }
 
 /// Sets the PDF and writes it. Returns where it is, relative to the project's folder.
 pub fn make(prepared: Prepared) -> Result<String> {
-    let pdf = world::compile(&prepared.main, prepared.files)?;
+    let pdf = world::compile(&prepared.main, &prepared.layout, prepared.files)?;
     if let Some(dir) = prepared.out.parent() {
         fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
     }
     fs::write(&prepared.out, pdf).map_err(|e| Error::io(&prepared.out, e))?;
     Ok(prepared.rel)
+}
+
+// ---- the layout, as Ledger has it or of one's own ---------------------------------------------------
+
+/// The file a layout of one's own is kept in, in a `pdf/` folder: the vault's, or a project's.
+pub const LAYOUT_FILE: &str = "layout.typ";
+
+/// The most the files of a layout's folder may hold together, so a folder full of other things can't stall an export.
+const LAYOUT_FOLDER_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Whose layout: the project's own, the vault's, or Ledger's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LayoutScope {
+    Project,
+    Vault,
+    Ledger,
+}
+
+/// Which layout a project's PDFs are set in, and where the layouts of one's own are (vault-relative paths).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutView {
+    pub used: LayoutScope,
+    pub project: Option<String>,
+    pub vault: Option<String>,
+}
+
+/// The `pdf/` folder of a scope, on disk and as the vault names it.
+fn layout_dir(root: &Path, project: &str, scope: LayoutScope) -> Result<(PathBuf, String)> {
+    match scope {
+        LayoutScope::Project => Ok((uploads::project_dir(root, project).join("pdf"), format!("projects/{project}/pdf"))),
+        LayoutScope::Vault => Ok((root.join("pdf"), "pdf".to_string())),
+        LayoutScope::Ledger => Err(Error::invalid("Ledger's own layout is not a file in the vault")),
+    }
+}
+
+/// The layout file of a scope on disk, and its vault-relative name, when there is one.
+pub fn layout_file(root: &Path, project: &str, scope: LayoutScope) -> Result<Option<(PathBuf, String)>> {
+    let (dir, name) = layout_dir(root, project, scope)?;
+    let file = dir.join(LAYOUT_FILE);
+    Ok(file.is_file().then(|| (file, format!("{name}/{LAYOUT_FILE}"))))
+}
+
+pub fn layout_view(root: &Path, project: &str) -> Result<LayoutView> {
+    let project_layout = layout_file(root, project, LayoutScope::Project)?.map(|(_, n)| n);
+    let vault_layout = layout_file(root, project, LayoutScope::Vault)?.map(|(_, n)| n);
+    let used = if project_layout.is_some() {
+        LayoutScope::Project
+    } else if vault_layout.is_some() {
+        LayoutScope::Vault
+    } else {
+        LayoutScope::Ledger
+    };
+    Ok(LayoutView { used, project: project_layout, vault: vault_layout })
+}
+
+/// Starts a layout of one's own: a copy of the one used now (a project's starts from the vault's when there is one),
+/// written only when the scope has none yet.
+pub fn customise_layout(root: &Path, project: &str, scope: LayoutScope) -> Result<LayoutView> {
+    let (dir, _) = layout_dir(root, project, scope)?;
+    let file = dir.join(LAYOUT_FILE);
+    if !file.exists() {
+        let start = match (scope, layout_file(root, project, LayoutScope::Vault)?) {
+            (LayoutScope::Project, Some((vault, _))) => fs::read_to_string(&vault).map_err(|e| Error::io(&vault, e))?,
+            _ => world::LAYOUT.to_string(),
+        };
+        fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
+        fs::write(&file, start).map_err(|e| Error::io(&file, e))?;
+    }
+    layout_view(root, project)
+}
+
+/// Goes back to the layout under it: deletes the scope's `layout.typ` (the other files of its folder stay).
+pub fn reset_layout(root: &Path, project: &str, scope: LayoutScope) -> Result<LayoutView> {
+    if let Some((file, _)) = layout_file(root, project, scope)? {
+        fs::remove_file(&file).map_err(|e| Error::io(&file, e))?;
+    }
+    layout_view(root, project)
+}
+
+/// The layout a project's PDFs are set in, with the files of its folder.
+fn layout_for(root: &Path, project: &str) -> Result<world::Layout> {
+    for scope in [LayoutScope::Project, LayoutScope::Vault] {
+        let Some((file, name)) = layout_file(root, project, scope)? else { continue };
+        let source = fs::read_to_string(&file).map_err(|e| Error::io(&file, e))?;
+        let dir = file.parent().unwrap_or(root);
+        let mut files = Vec::new();
+        let mut budget = LAYOUT_FOLDER_BYTES;
+        collect_folder(dir, "", &mut files, &mut budget)?;
+        files.retain(|(rel, _)| rel != LAYOUT_FILE);
+        return Ok(world::Layout { source, name, files });
+    }
+    Ok(world::Layout::builtin())
+}
+
+/// Every file under `dir` (hidden ones left out), with its path relative to it, while the budget lasts.
+fn collect_folder(dir: &Path, rel: &str, out: &mut Vec<(String, Vec<u8>)>, budget: &mut u64) -> Result<()> {
+    let entries = fs::read_dir(dir).map_err(|e| Error::io(dir, e))?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        let child = if rel.is_empty() { name } else { format!("{rel}/{name}") };
+        let Ok(kind) = entry.file_type() else { continue };
+        if kind.is_dir() {
+            collect_folder(&path, &child, out, budget)?;
+        } else if kind.is_file() {
+            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            if size > *budget {
+                return Err(Error::export(format!("The files beside the layout are too large together (more than {} MB)", LAYOUT_FOLDER_BYTES / 1024 / 1024)));
+            }
+            *budget -= size;
+            out.push((child, fs::read(&path).map_err(|e| Error::io(&path, e))?));
+        }
+    }
+    Ok(())
 }
 
 /// The project path a picture's address points at from `dir`, or `None` for a web address or one that leaves the

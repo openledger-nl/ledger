@@ -2,6 +2,8 @@
 	// How the project's exported PDFs look and who they name: your name and your own side (a school or a company) with
 	// its logo, the client with theirs, and one accent colour for the headings and rules. Kept in the project's
 	// project.md, the logos in its branding/ folder. Each change is saved straight away.
+	import FileCode from '@lucide/svelte/icons/file-code';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import ImagePlus from '@lucide/svelte/icons/image-plus';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import X from '@lucide/svelte/icons/x';
@@ -10,7 +12,7 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import FileImage from '$lib/components/FileImage.svelte';
 	import { attempt, toast } from '$lib/ui.svelte';
-	import type { Branding, BrandingSide } from '$lib/types';
+	import type { Branding, BrandingSide, PdfLayoutScope, PdfLayoutView } from '$lib/types';
 
 	let {
 		project,
@@ -35,6 +37,33 @@
 	let busy = $state(false);
 	/** Counts logo changes, so a new picture under the same name is shown. */
 	let logoVersion = $state(0);
+
+	// The layout the PDFs are set in: Ledger's, the vault's own (pdf/layout.typ) or this project's.
+	let layout = $state<PdfLayoutView | null>(null);
+
+	$effect(() => {
+		const slug = project;
+		layout = null;
+		void api.pdfLayout(slug).then(
+			(l) => slug === project && (layout = l),
+			() => {}
+		);
+	});
+
+	async function layoutAction(run: () => Promise<PdfLayoutView>, done?: string) {
+		busy = true;
+		const view = await attempt(run);
+		busy = false;
+		if (view) {
+			layout = view;
+			if (done) toast(done);
+		}
+	}
+
+	const customise = (scope: PdfLayoutScope) =>
+		layoutAction(() => api.customisePdfLayout(project, scope), 'Layout copied: open it to change it');
+	const resetLayout = (scope: PdfLayoutScope) => layoutAction(() => api.resetPdfLayout(project, scope));
+	const openLayout = (scope: PdfLayoutScope, reveal: boolean) => attempt(() => api.openPdfLayout(project, scope, reveal));
 
 	$effect(() => {
 		const slug = project;
@@ -196,6 +225,43 @@
 	{:else}
 		<span class="hint">Loading...</span>
 	{/if}
+
+	{#if layout}
+		<div class="br-layout">
+			<h3>Layout</h3>
+			<p class="hint" style="margin:0">
+				How the PDF is laid out is a Typst file you can change: the cover, the fonts, the margins, the header and footer, everything. Pictures and fonts
+				(.ttf, .otf) in its folder can be used by their name. The file explains what Ledger hands it; Typst itself is explained at typst.app/docs.
+			</p>
+			{#snippet own(scope: PdfLayoutScope, path: string, label: string, back: string)}
+				<div class="br-layout-row">
+					<FileCode size={15} />
+					<span class="br-layout-name">{label} <code>{path}</code>{#if layout?.used === scope}<span class="badge">used</span>{/if}</span>
+					<span class="spacer-h"></span>
+					<button class="btn small" onclick={() => openLayout(scope, false)} disabled={busy}>Open</button>
+					<button class="btn small ghost" onclick={() => openLayout(scope, true)} disabled={busy}><FolderOpen size={14} />Show in folder</button>
+					<button class="btn small ghost" onclick={() => resetLayout(scope)} disabled={busy} title="Deletes this layout file; the other files in its folder stay">{back}</button>
+				</div>
+			{/snippet}
+			{#if layout.project}
+				{@render own('project', layout.project, 'This project', layout.vault ? "Back to the vault's layout" : 'Back to the standard layout')}
+			{/if}
+			{#if layout.vault}
+				{@render own('vault', layout.vault, 'Every project', 'Back to the standard layout')}
+			{/if}
+			{#if layout.used === 'ledger'}
+				<p class="hint" style="margin:0">Now: Ledger's standard layout.</p>
+			{/if}
+			<div class="row-end" style="justify-content:flex-start">
+				{#if !layout.project}
+					<button class="btn small" onclick={() => customise('project')} disabled={busy}>Customise for this project</button>
+				{/if}
+				{#if !layout.vault}
+					<button class="btn small ghost" onclick={() => customise('vault')} disabled={busy}>Customise for every project</button>
+				{/if}
+			</div>
+		</div>
+	{/if}
 </section>
 
 <style>
@@ -241,6 +307,29 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
+	}
+	.br-layout {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding-top: 12px;
+		border-top: 1px solid var(--line);
+	}
+	.br-layout h3 {
+		margin: 0;
+		font-size: 13px;
+	}
+	.br-layout-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.br-layout-name {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 13px;
 	}
 	.br-colour {
 		display: flex;

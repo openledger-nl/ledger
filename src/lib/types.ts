@@ -1425,6 +1425,16 @@ export interface Branding {
 
 export type BrandingSide = 'own' | 'client';
 
+/** Whose PDF layout: a project's own, the vault's, or Ledger's (pdf/mod.rs). */
+export type PdfLayoutScope = 'project' | 'vault' | 'ledger';
+
+/** Which layout a project's PDFs are set in, and where the layouts of one's own are (vault-relative paths). */
+export interface PdfLayoutView {
+	used: PdfLayoutScope;
+	project: string | null;
+	vault: string | null;
+}
+
 export interface ProjectPerson {
 	project: string;
 	name: string;

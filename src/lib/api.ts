@@ -5,6 +5,8 @@ import type {
 	ActivityEvent,
 	Branding,
 	BrandingSide,
+	PdfLayoutScope,
+	PdfLayoutView,
 	Vaults,
 	ProjectMeta,
 	LabelConfirmation,
@@ -142,6 +144,14 @@ export const api = {
 	setProjectLogo: (slug: string, side: BrandingSide, source: string | null) => call<Branding>('set_project_logo', { slug, side, source }),
 	/** Takes your name, your own name and logo, and the colour from another project. */
 	copyProjectBranding: (slug: string, from: string) => call<Branding>('copy_project_branding', { slug, from }),
+	/** Which layout the project's PDFs are set in, and where the layouts of one's own are. */
+	pdfLayout: (project: string) => call<PdfLayoutView>('pdf_layout', { project }),
+	/** Starts a layout of one's own (a copy of the one used now) for the project or the whole vault. */
+	customisePdfLayout: (project: string, scope: PdfLayoutScope) => call<PdfLayoutView>('customise_pdf_layout', { project, scope }),
+	/** Deletes a layout of one's own, so the one under it is used again. */
+	resetPdfLayout: (project: string, scope: PdfLayoutScope) => call<PdfLayoutView>('reset_pdf_layout', { project, scope }),
+	/** Opens a layout of one's own in its program, or shows it in its folder. */
+	openPdfLayout: (project: string, scope: PdfLayoutScope, reveal: boolean) => call<null>('open_pdf_layout', { project, scope, reveal }),
 	/** Replaces the project's people. */
 	saveProjectPeople: (slug: string, people: Omit<ProjectPerson, 'project' | 'tag'>[]) =>
 		call<ProjectPerson[]>('save_project_people', { slug, people: people.map((p) => ({ ...p, project: slug, tag: '' })) }),

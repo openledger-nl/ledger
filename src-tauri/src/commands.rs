@@ -581,6 +581,52 @@ pub async fn export_deliverable_pdf(app: AppHandle, project: String, path: Strin
     Ok(rel)
 }
 
+/// Which layout the project's PDFs are set in, and where the layouts of one's own are.
+#[tauri::command]
+pub fn pdf_layout(app: State<App>, project: String) -> Result<crate::pdf::LayoutView> {
+    app.read(|c, root| {
+        projects::require(c, &project)?;
+        crate::pdf::layout_view(root, &project)
+    })
+}
+
+/// Starts a layout of one's own for the project or the whole vault: a copy of the one used now, to change.
+#[tauri::command]
+pub fn customise_pdf_layout(app: State<App>, project: String, scope: crate::pdf::LayoutScope) -> Result<crate::pdf::LayoutView> {
+    let view = app.read(|c, root| {
+        projects::require(c, &project)?;
+        crate::pdf::customise_layout(root, &project, scope)
+    })?;
+    app.syncer.dirty();
+    Ok(view)
+}
+
+/// Deletes a layout of one's own, so the one under it is used again.
+#[tauri::command]
+pub fn reset_pdf_layout(app: State<App>, project: String, scope: crate::pdf::LayoutScope) -> Result<crate::pdf::LayoutView> {
+    let view = app.read(|c, root| {
+        projects::require(c, &project)?;
+        crate::pdf::reset_layout(root, &project, scope)
+    })?;
+    app.syncer.dirty();
+    Ok(view)
+}
+
+/// Opens a layout of one's own in the program the system uses for it, or shows it in its folder.
+#[tauri::command]
+pub fn open_pdf_layout(app: AppHandle, project: String, scope: crate::pdf::LayoutScope, reveal: bool) -> Result<()> {
+    let file = app.state::<App>().read(|_, root| crate::pdf::layout_file(root, &project, scope))?;
+    let Some((file, _)) = file else { return Err(Error::not_found("There is no layout of your own there yet")) };
+    let opener = app.opener();
+    if reveal {
+        opener.reveal_item_in_dir(&file).map_err(Error::screenshot)
+    } else {
+        opener.open_path(file.display().to_string(), None::<&str>).map_err(|_| {
+            Error::invalid("No program is set to open .typ files. Show it in its folder and open it with a text editor")
+        })
+    }
+}
+
 /// How the versions of a deliverable came to be, by thread. `path` is the live file or any of its versions.
 #[tauri::command]
 pub fn get_provenance(app: State<App>, project: String, path: String) -> Result<provenance::Provenance> {
