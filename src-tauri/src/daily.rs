@@ -182,7 +182,7 @@ fn move_notes(root: &Path, from: &str, only_meetings: bool) {
 }
 
 pub fn is_day(text: &str) -> bool {
-    text.len() == 10 && chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").is_ok()
+    crate::dates::is_day(text)
 }
 
 pub fn file(date: &str) -> String {

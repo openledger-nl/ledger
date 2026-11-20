@@ -117,7 +117,7 @@ impl World for Sandbox {
     }
 
     fn today(&self, _offset: Option<typst::foundations::Duration>) -> Option<Datetime> {
-        let today = chrono::Local::now().date_naive();
+        let today = crate::dates::today();
         Datetime::from_ymd(today.year(), today.month() as u8, today.day() as u8)
     }
 }

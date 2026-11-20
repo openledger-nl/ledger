@@ -1061,7 +1061,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             let extra = crate::portflow_vault::FeedbackExtra::read(&meta);
             let kind = meta.text("kind").filter(|k| k == "own" || k == "someone");
             let story = meta.text("story").filter(|s| !s.trim().is_empty());
-            let daily = meta.text("daily").filter(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok());
+            let daily = meta.text("daily").filter(|d| crate::dates::is_day(d));
             // Feedback from Portflow is on an evidence item and may have no deliverable; feedback recorded from the
             // inbox may be on a story or on the whole project.
             let unattached = extra.evidence.is_some() || kind.is_some() || story.is_some();

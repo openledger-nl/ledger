@@ -26,7 +26,6 @@
 //!
 //! A person goes by a tag, `role/name` (`coach/frank-de-vries`): how meetings and feedback name them.
 
-use chrono::NaiveDate;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::Mapping;
@@ -104,7 +103,7 @@ fn clean(meta: &ProjectMeta) -> Result<ProjectMeta> {
     let end = trimmed(&meta.end);
     if let Some(end) = &end
         && end != "semester"
-        && NaiveDate::parse_from_str(end, "%Y-%m-%d").is_err()
+        && !crate::dates::is_day(end)
     {
         return Err(Error::invalid("A project ends with its semester, on a day (2027-01-31), or not at all"));
     }
@@ -161,7 +160,7 @@ pub fn import(conn: &Connection, slug: &str, meta: &Mapping) -> Result<()> {
     let kind = meta.text("kind").map(|k| k.trim().to_lowercase()).filter(|k| KINDS.contains(&k.as_str()));
     let goal = meta.text("goal").map(|g| g.trim().to_string()).filter(|g| !g.is_empty());
     let (Some(kind), Some(goal)) = (kind, goal) else { return Ok(()) };
-    let end = meta.text("end").map(|e| e.trim().to_lowercase()).filter(|e| e == "semester" || NaiveDate::parse_from_str(e, "%Y-%m-%d").is_ok());
+    let end = meta.text("end").map(|e| e.trim().to_lowercase()).filter(|e| e == "semester" || crate::dates::is_day(e));
     let intended = meta.text("intendedMmm").and_then(|l| provenance::level(l.trim()).map(str::to_string));
     conn.execute(
         "UPDATE projects SET kind = ?2, goal = ?3, project_end = ?4, semester = ?5, intended_mmm = ?6, main_question = ?7, client = ?8 WHERE slug = ?1",

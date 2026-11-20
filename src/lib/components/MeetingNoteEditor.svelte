@@ -7,6 +7,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
+	import { time } from '$lib/format';
 	import { dayLabel } from '$lib/semesters';
 	import { attempt, confirmDialog, refresh } from '$lib/ui.svelte';
 	import { teamTags } from '$lib/v1';
@@ -99,9 +100,10 @@
 		});
 	});
 
+	/** The time now in Amsterdam, rounded down to the half hour ("14:30"), as the app shows every time (format.ts). */
 	function now(): string {
-		const d = new Date();
-		return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes() < 30 ? 0 : 30).padStart(2, '0')}`;
+		const [hours, minutes] = time(new Date().toISOString()).split(':');
+		return `${hours}:${Number(minutes) < 30 ? '00' : '30'}`;
 	}
 
 	function add() {

@@ -5,6 +5,7 @@ mod branding;
 mod claude_code;
 mod commands;
 mod crypto;
+mod dates;
 mod db;
 mod daily;
 mod deliverable_facts;

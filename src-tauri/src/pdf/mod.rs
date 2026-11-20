@@ -22,14 +22,13 @@ mod world;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use chrono::{Datelike, NaiveDate};
 use rusqlite::Connection;
 use serde::Serialize;
 
 use crate::db::query_opt;
 use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
-use crate::{branding, deliverable_facts, deliverables, images, project_facts, provenance, uploads};
+use crate::{branding, dates, deliverable_facts, deliverables, images, project_facts, provenance, uploads};
 
 /// The accent a project gets when it has none of its own: the orange of the report template the layout follows.
 pub const DEFAULT_ACCENT: &str = "#e07a3f";
@@ -166,7 +165,7 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
         .collect();
     let date = match &doc.version {
         Some(v) => versions.iter().find(|r| &r.version == v).map_or_else(|| long_date(&doc.modified), |r| long_date(&r.at)),
-        None => long_date(&chrono::Local::now().date_naive().to_string()),
+        None => dates::long_day(dates::today()),
     };
 
     // Who it is for: as the branding says, else a company project's client, else the first client among its people.
@@ -413,15 +412,9 @@ fn safe_file_name(name: &str) -> String {
     if cleaned.is_empty() { "deliverable".to_string() } else { cleaned }
 }
 
-/// "2026-11-20T10:19:32Z" (or a plain day) as "20 November 2026"; anything else as it is.
+/// A stored moment (or a plain day) as "20 November 2026", the day it was in Amsterdam; anything else as it is.
 fn long_date(at: &str) -> String {
-    const MONTHS: [&str; 12] =
-        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    let day = at.get(..10).and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
-    match day {
-        Some(d) => format!("{} {} {}", d.day(), MONTHS[d.month0() as usize], d.year()),
-        None => at.to_string(),
-    }
+    dates::day_of(at).or_else(|| dates::parse_day(at)).map_or_else(|| at.to_string(), dates::long_day)
 }
 
 /// The official picture of an MMM level, as the app shows it (src/lib/assets/mmm).
