@@ -45,10 +45,19 @@ fn lists_tables_code_and_pictures_become_calls() {
     let c = convert("- [x] done\n- open\n\n1. one\n\n| A | B |\n|:-|-:|\n| 1 | 2 |\n\n```rust\nfn x() {}\n```\n\n![A chart](chart.png) ![gone](https://x.y/z.png)\n");
     assert!(c.body.contains("#list([#ledger-task(true) done], [open], )"), "{}", c.body);
     assert!(c.body.contains("#enum(start: 1, [one], )"), "{}", c.body);
-    assert!(c.body.contains("#table(columns: (auto,) * 1 + (1fr,), align: (left, right,), table.header([A], [B], ), [1], [2], )"), "{}", c.body);
+    assert!(c.body.contains("#table(columns: (auto, auto,), align: (left, right,), table.header([A], [B], ), [1], [2], )"), "{}", c.body);
     assert!(c.body.contains("#raw(block: true, lang: \"rust\", \"fn x() {}\")"), "{}", c.body);
     assert!(c.body.contains("#ledger-image(\"/pictures/0.png\", [A chart])"), "{}", c.body);
     assert!(c.body.contains("#ledger-missing-image([gone])"), "{}", c.body);
+}
+
+#[test]
+fn short_columns_are_as_wide_as_their_text_and_long_ones_share_the_rest() {
+    let c = convert(
+        "| Risk | Likelihood | What I do |\n|---|---|---|\n| Too little time at one day a week (version 2 counted about six build days) | High | Tidal and Qobuz have already moved to phase 2; riskiest path first |\n| Platform unknowns: Tiny Core Linux, persistent partition | Medium | Measure on the MU2 early |\n",
+    );
+    assert!(c.body.contains("#table(columns: (44fr, auto, 33fr,),"), "{}", c.body);
+    assert!(!c.body.contains('\u{0}'));
 }
 
 #[test]

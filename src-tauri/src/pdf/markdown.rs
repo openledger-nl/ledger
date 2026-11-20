@@ -148,6 +148,43 @@ enum Capture {
     Code { lang: Option<String> },
 }
 
+/// Where a table's column sizes go, until they are known: nothing a person types can contain it (a NUL is read as
+/// U+FFFD).
+const COLUMNS: &str = "\u{0}columns\u{0}";
+
+/// How much text each column of a table holds.
+#[derive(Default)]
+struct TableSizes {
+    /// Per column: its longest cell and all its cells together, in characters.
+    longest: Vec<usize>,
+    total: Vec<usize>,
+    rows: usize,
+    column: usize,
+    /// The characters in the cell being written.
+    cell: usize,
+}
+
+impl TableSizes {
+    /// The table's columns: a column whose cells are all short (a number, a word like "High") is as wide as its
+    /// text; the others share the rest of the width by how much text they hold, so a column of sentences never
+    /// squeezes another one to a word per line.
+    fn columns(&self) -> String {
+        let sizes: Vec<String> = self
+            .longest
+            .iter()
+            .zip(&self.total)
+            .map(|(&longest, &total)| {
+                if longest <= 16 {
+                    "auto".to_string()
+                } else {
+                    format!("{}fr", (total / self.rows.max(1)).max(8))
+                }
+            })
+            .collect();
+        format!("({},)", sizes.join(", "))
+    }
+}
+
 struct Writer<'a> {
     out: String,
     /// Text set aside while a picture's alt text or a code block is read; written out at its end.
@@ -155,15 +192,15 @@ struct Writer<'a> {
     shift: bool,
     notes: &'a HashMap<String, String>,
     headings: usize,
-    /// Per open table: whether its head is being written.
-    in_head: Vec<bool>,
+    /// The table being written, measured as it goes so its columns can be sized when it ends.
+    table: Option<TableSizes>,
     /// Per open link: whether it is written as a link (`#link(…)[…]`) or as its words.
     links: Vec<bool>,
 }
 
 impl<'a> Writer<'a> {
     fn new(shift: bool, notes: &'a HashMap<String, String>) -> Self {
-        Writer { out: String::new(), captures: Vec::new(), shift, notes, headings: 0, in_head: Vec::new(), links: Vec::new() }
+        Writer { out: String::new(), captures: Vec::new(), shift, notes, headings: 0, table: None, links: Vec::new() }
     }
 
     fn finish(self) -> String {
@@ -180,6 +217,13 @@ impl<'a> Writer<'a> {
 
     fn push(&mut self, text: &str) {
         self.sink().push_str(text);
+    }
+
+    /// Counts text towards the table cell it is in.
+    fn measure(&mut self, text: &str) {
+        if let Some(table) = &mut self.table {
+            table.cell += text.chars().count();
+        }
     }
 
     fn run(&mut self, events: &[Event], picture: &mut dyn FnMut(&str) -> Option<String>) {
@@ -204,10 +248,12 @@ impl<'a> Writer<'a> {
             Event::Start(tag) => self.start(tag, picture),
             Event::End(tag) => self.end(*tag),
             Event::Text(t) => {
+                self.measure(t);
                 let text = escape(t);
                 self.push(&text);
             }
             Event::Code(t) => {
+                self.measure(t);
                 let code = format!("#raw({})", string(t));
                 self.push(&code);
             }
@@ -272,19 +318,16 @@ impl<'a> Writer<'a> {
                         _ => "left",
                     })
                     .collect();
-                // As wide as the page: the last column takes what the others leave.
-                let columns = alignments.len().max(1);
-                let open = format!("#table(columns: (auto,) * {} + (1fr,), align: ({},), ", columns - 1, align.join(", "));
+                let open = format!("#table(columns: {COLUMNS}, align: ({},), ", align.join(", "));
                 self.push(&open);
-                self.in_head.push(false);
+                let n = alignments.len().max(1);
+                self.table = Some(TableSizes { longest: vec![0; n], total: vec![0; n], ..Default::default() });
             }
             Tag::TableHead => {
-                if let Some(h) = self.in_head.last_mut() {
-                    *h = true;
-                }
+                self.start_row();
                 self.push("table.header(");
             }
-            Tag::TableRow => {}
+            Tag::TableRow => self.start_row(),
             Tag::TableCell => self.push("["),
             Tag::Emphasis => self.push("#emph["),
             Tag::Strong => self.push("#strong["),
@@ -311,6 +354,14 @@ impl<'a> Writer<'a> {
         }
     }
 
+    fn start_row(&mut self) {
+        if let Some(table) = &mut self.table {
+            table.rows += 1;
+            table.column = 0;
+            table.cell = 0;
+        }
+    }
+
     fn end(&mut self, tag: TagEnd) {
         match tag {
             TagEnd::Paragraph => self.push("\n\n"),
@@ -334,17 +385,28 @@ impl<'a> Writer<'a> {
                 sink.push_str("], ");
             }
             TagEnd::Table => {
-                self.in_head.pop();
                 self.push(")\n\n");
-            }
-            TagEnd::TableHead => {
-                if let Some(h) = self.in_head.last_mut() {
-                    *h = false;
+                if let Some(table) = self.table.take() {
+                    let columns = table.columns();
+                    let sink = self.sink();
+                    if let Some(at) = sink.rfind(COLUMNS) {
+                        sink.replace_range(at..at + COLUMNS.len(), &columns);
+                    }
                 }
-                self.push("), ");
             }
+            TagEnd::TableHead => self.push("), "),
             TagEnd::TableRow => {}
-            TagEnd::TableCell => self.push("], "),
+            TagEnd::TableCell => {
+                if let Some(table) = &mut self.table {
+                    if let (Some(longest), Some(total)) = (table.longest.get_mut(table.column), table.total.get_mut(table.column)) {
+                        *longest = (*longest).max(table.cell);
+                        *total += table.cell;
+                    }
+                    table.column += 1;
+                    table.cell = 0;
+                }
+                self.push("], ");
+            }
             TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough | TagEnd::Superscript | TagEnd::Subscript => self.push("]"),
             TagEnd::Link => {
                 if self.links.pop().unwrap_or(false) {
