@@ -257,6 +257,7 @@ src/                     SvelteKit frontend (static SPA)
   lib/api.ts             typed wrappers over the Tauri commands
   lib/ui.svelte.ts       toasts, dialogs, theme, and the backend's sync/vault/screenshot events
   lib/vaults.svelte.ts   the vault picker's overlay: opened from the sidebar, the rail and Settings
+  lib/commands.svelte.ts the command palette's commands (pages too), their shortcuts, and the listener for them
   lib/updates.svelte.ts  the update notice's state, and installing (waits, then restarts)
   lib/markdownEditor.ts  the markdown editor (CodeMirror 6): looks, live preview of the marks, tables, source mode, keys, [[links]]
   lib/links.ts           [[links]]: which thread, deliverable or feedback a typed target means, and what to offer after `[[`
