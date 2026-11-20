@@ -99,6 +99,10 @@ pub fn restart(config_dir: &Path) -> Result<OnboardingView> {
 
 #[tauri::command]
 pub fn onboarding_status(app: State<App>) -> Result<OnboardingView> {
+    // Before any vault is open there is nothing to judge it by, so nothing is decided yet.
+    if !app.lock().open {
+        return Ok(OnboardingView { active: false, skipped: vec![] });
+    }
     let content = app.read(|conn, _| has_content(conn))?;
     let dir = app.lock().config_dir.clone();
     status(&dir, content)

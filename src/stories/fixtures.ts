@@ -5,6 +5,7 @@
 import type { Anchor, Mark } from '$lib/anchors';
 import type {
 	ActivityEvent,
+	Vaults,
 	Board,
 	DailyNote,
 	Deliverable,
@@ -636,3 +637,21 @@ export const anchor: Anchor = { text: 'corrode far less than resistive ones', pr
 export const marks: Mark[] = [{ id: 'f-3', anchor, tone: 'open' }];
 
 export const noop = () => {};
+
+// ---- the vault picker -------------------------------------------------------------------------------
+
+/** The machine as it opens on the vault picker for the first time: no vault yet, none opened before. */
+export const firstStart: Vaults = { open: false, locked: false, vaults: [], suggestedParent: '/home/student/Documents' };
+
+/** The vault the sample opens, and the other vaults this machine has opened. */
+export const vaults: Vaults = {
+	open: true,
+	locked: false,
+	suggestedParent: '/home/student/Documents',
+	vaults: [
+		{ path: '/home/student/OneDrive/Ledger', name: 'Ledger', exists: true, open: true },
+		{ path: '/home/student/Nextcloud/School 2025', name: 'School 2025', exists: true, open: false },
+		{ path: '/home/student/Documents/Hobby', name: 'Hobby', exists: true, open: false },
+		{ path: '/media/usb/Old vault', name: 'Old vault', exists: false, open: false }
+	]
+};

@@ -740,10 +740,13 @@ fn the_vault_location_is_remembered_in_the_app_config() {
 
     let (path, locked) = settings::resolve_vault(config.path(), Some(docs.path().to_path_buf()));
     if std::env::var_os("LEDGER_VAULT").is_none() {
-        assert_eq!((path, locked), (docs.path().join("Ledger"), false));
+        assert_eq!((path, locked), (None, false), "nothing chosen and nothing in the old default place: the picker asks");
+        std::fs::create_dir(docs.path().join("Ledger")).unwrap();
+        let (path, _) = settings::resolve_vault(config.path(), Some(docs.path().to_path_buf()));
+        assert_eq!(path, Some(docs.path().join("Ledger")), "a vault from before the picker keeps opening");
         let chosen = config.path().join("elsewhere");
         settings::update_config(config.path(), |c| c.vault_path = Some(chosen.display().to_string())).unwrap();
-        assert_eq!(settings::resolve_vault(config.path(), None).0, chosen);
+        assert_eq!(settings::resolve_vault(config.path(), None).0, Some(chosen));
     }
 }
 

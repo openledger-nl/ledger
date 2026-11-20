@@ -62,7 +62,7 @@ export const panels: Panel[] = [
 	{ id: 'theme', group: 'visual', title: 'Theme', keywords: 'colours colors dark light night appearance look accent', component: ThemeSettings },
 	{ id: 'sidebar', group: 'visual', title: 'Sidebar', keywords: 'sidebar hide fold collapse rail icons narrow half screen window resize minimise minimize', component: SidebarFoldSettings },
 	{ id: 'order', group: 'visual', title: 'Order', keywords: 'sort newest oldest first lists posts threads feedback versions', component: OrderSettings },
-	{ id: 'vault', group: 'sync', title: 'Vault', keywords: 'folder location path obsidian markdown reload disk files switch', component: VaultSettings },
+	{ id: 'vault', group: 'sync', title: 'Vault', keywords: 'folder location path obsidian markdown reload disk files switch open another vault picker move cloud onedrive google drive dropbox icloud nextcloud backup', component: VaultSettings },
 	{ id: 'github', group: 'sync', title: 'Sync to GitHub', keywords: 'repository repo branch access token private push pull status sync now', component: GitHubSettings },
 	{ id: 'encryption', group: 'sync', title: 'Encryption', keywords: 'encrypt key recovery aes secret import export generate', component: EncryptionSettings },
 	{ id: 'portflow', group: 'sync', title: 'Portflow', keywords: 'portflow fontys portfolio canvas drieam feedback coach teacher learning outcomes evidence collection semester sign in', component: PortflowSettings },

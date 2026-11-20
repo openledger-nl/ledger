@@ -124,6 +124,12 @@ impl Vault {
         Ok(Vault { root, written: HashMap::new(), disk: BTreeMap::new() })
     }
 
+    /// Stands in for a vault while none is chosen yet (the app is on the vault picker). Nothing is created on disk,
+    /// and nothing is written: `App::mutate` refuses every change until a vault is open.
+    pub fn none(root: PathBuf) -> Vault {
+        Vault { root, written: HashMap::new(), disk: BTreeMap::new() }
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }

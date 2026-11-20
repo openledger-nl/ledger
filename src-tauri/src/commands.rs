@@ -918,16 +918,108 @@ pub fn export_recovery_key(app: State<App>) -> Result<String> {
 /// Moves the app to the vault in `path`. With `copy`, an empty destination first receives the current vault.
 #[tauri::command]
 pub fn set_vault_path(app: AppHandle, path: String, copy: bool) -> Result<SettingsView> {
+    switch_vault(&app, |core| core.set_vault(&PathBuf::from(path.trim()), copy))?;
+    Ok(view(&app.state::<App>()))
+}
+
+/// Switches vaults with `change`, then sets up what belongs to the new one: its sync and its screenshot hotkey.
+fn switch_vault<T>(app: &AppHandle, change: impl FnOnce(&mut crate::state::Core) -> Result<T>) -> Result<T> {
     let state = app.state::<App>();
-    let config = {
+    let (out, config) = {
         let mut core = state.lock();
-        core.set_vault(&PathBuf::from(path.trim()), copy)?;
-        core.sync.clone()
+        let out = change(&mut core)?;
+        (out, core.sync.clone())
     };
     state.syncer.reconfigure(config.as_ref());
-    // The new vault has its own settings, the screenshot hotkey among them.
-    screenshot::register_saved(&app);
-    Ok(view(&state))
+    screenshot::register_saved(app);
+    Ok(out)
+}
+
+// ---- the vault picker -------------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultEntry {
+    pub path: String,
+    /// The folder's name, which is what the picker calls the vault.
+    pub name: String,
+    /// The folder is still there (a vault on a drive that isn't plugged in, or that was deleted, isn't).
+    pub exists: bool,
+    /// It is the vault the app has open.
+    pub open: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultsView {
+    /// A vault is open; before the first one, the app shows the picker.
+    pub open: bool,
+    /// The location is fixed by `LEDGER_VAULT`, so no other vault can be opened.
+    pub locked: bool,
+    /// The open vault, then the others opened on this machine, the most recent first.
+    pub vaults: Vec<VaultEntry>,
+    /// Where a new vault goes unless another folder is picked: the user's documents.
+    pub suggested_parent: Option<String>,
+}
+
+fn vault_entry(path: &Path, open: bool) -> VaultEntry {
+    VaultEntry {
+        path: path.display().to_string(),
+        name: path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().to_string()),
+        exists: path.is_dir(),
+        open,
+    }
+}
+
+fn vaults_view(app: &AppHandle) -> VaultsView {
+    let state = app.state::<App>();
+    let (open, locked, current, config_dir) = {
+        let core = state.lock();
+        (core.open, core.vault_from_env, core.vault.root().to_path_buf(), core.config_dir.clone())
+    };
+    let mut vaults = Vec::new();
+    if open {
+        vaults.push(vault_entry(&current, true));
+    }
+    for path in settings::load_config(&config_dir).recent_vaults {
+        let path = PathBuf::from(path);
+        if !(open && path == current) {
+            vaults.push(vault_entry(&path, false));
+        }
+    }
+    let suggested_parent = app.path().document_dir().ok().map(|d| d.display().to_string());
+    VaultsView { open, locked, vaults, suggested_parent }
+}
+
+#[tauri::command]
+pub fn list_vaults(app: AppHandle) -> VaultsView {
+    vaults_view(&app)
+}
+
+/// Makes a new vault called `name` in the folder `parent`, opens it, and starts the setup guide for it.
+#[tauri::command]
+pub fn create_vault(app: AppHandle, parent: String, name: String) -> Result<VaultsView> {
+    let config_dir = switch_vault(&app, |core| {
+        core.create_vault(&PathBuf::from(parent.trim()), &name)?;
+        Ok(core.config_dir.clone())
+    })?;
+    crate::onboarding::restart(&config_dir)?;
+    Ok(vaults_view(&app))
+}
+
+/// Opens a folder that exists as the vault: one from the list, or any folder picked.
+#[tauri::command]
+pub fn open_vault(app: AppHandle, path: String) -> Result<VaultsView> {
+    switch_vault(&app, |core| core.open_vault(&PathBuf::from(path.trim())))?;
+    Ok(vaults_view(&app))
+}
+
+/// Takes a vault off the list. Its files are left where they are.
+#[tauri::command]
+pub fn forget_vault(app: AppHandle, path: String) -> Result<VaultsView> {
+    let config_dir = app.state::<App>().lock().config_dir.clone();
+    settings::forget_vault(&config_dir, &path)?;
+    Ok(vaults_view(&app))
 }
 
 /// Reads the vault in again from its files.

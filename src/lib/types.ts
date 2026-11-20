@@ -633,6 +633,27 @@ export interface Settings {
 }
 
 /** The guide on the home page for a new client (see onboarding.rs). */
+export interface VaultEntry {
+	path: string;
+	/** The folder's name, which is what the picker calls the vault. */
+	name: string;
+	/** The folder is still there. */
+	exists: boolean;
+	/** It is the vault that is open. */
+	open: boolean;
+}
+
+export interface Vaults {
+	/** A vault is open; before the first one the app shows the vault picker. */
+	open: boolean;
+	/** Fixed by the LEDGER_VAULT environment variable. */
+	locked: boolean;
+	/** The open vault first, then the others opened on this machine, the latest first. */
+	vaults: VaultEntry[];
+	/** Where a new vault goes unless another folder is picked. */
+	suggestedParent: string | null;
+}
+
 export interface OnboardingStatus {
 	/** The guide is on the home page. */
 	active: boolean;

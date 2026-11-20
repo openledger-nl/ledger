@@ -14,17 +14,23 @@
 	import TopBar from '$lib/components/TopBar.svelte';
 	import Toasts from '$lib/components/Toasts.svelte';
 	import UpdateNotice from '$lib/components/UpdateNotice.svelte';
+	import VaultPicker from '$lib/components/VaultPicker.svelte';
 	import { initTheme, startBackendEvents } from '$lib/ui.svelte';
 	import { layout, startLayout } from '$lib/layout.svelte';
 	import { startUpdates } from '$lib/updates.svelte';
 	import { startPortflow } from '$lib/portflow.svelte';
 	import { captureDebug, startLogEvents } from '$lib/log.svelte';
+	import { closeVaultPicker, vaultPicker } from '$lib/vaults.svelte';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
 	// The screenshot overlay is a window of its own and shows no app chrome.
 	const bare = $derived(page.url.pathname.startsWith('/screenshot-overlay'));
+	// No vault yet (the first start): the vault picker is all there is.
+	const noVault = $derived(!bare && data.vaults !== null && !data.vaults.open);
+	/** The open vault's name, on the switch button at the bottom of the sidebar. */
+	const vaultName = $derived(data.vaults?.vaults.find((v) => v.open)?.name ?? '');
 
 	// A debug capture notes each page opened (its path: project and thread names are in it).
 	afterNavigate(({ to }) => {
@@ -51,6 +57,10 @@
 
 {#if bare}
 	{@render children()}
+{:else if noVault && data.vaults}
+	<VaultPicker vaults={data.vaults} />
+	<Dialogs />
+	<Toasts />
 {:else}
 	<!-- The shell: sidebar (or, folded, nothing or an icon rail), then the top bar over the page. How it folds with the window's width is
 	     in layout.svelte.ts and the "shell" part of app.css. -->
@@ -63,7 +73,7 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div class="scrim" class:open={layout.drawerOpen} onclick={() => (layout.drawerOpen = false)}></div>
 
-		<Sidebar projects={data.projects} />
+		<Sidebar projects={data.projects} {vaultName} />
 		<Rail projects={data.projects} />
 		<main>
 			<TopBar />
@@ -76,6 +86,9 @@
 	<FileDrop projects={data.projects} />
 	<UpdateNotice />
 	<ProjectDialogs />
+	{#if vaultPicker.vaults}
+		<VaultPicker vaults={vaultPicker.vaults} modal onclose={closeVaultPicker} />
+	{/if}
 	<Dialogs />
 	<Toasts />
 {/if}

@@ -8,6 +8,7 @@
 	import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Settings from '@lucide/svelte/icons/settings';
+	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
@@ -19,11 +20,13 @@
 	import { layout, toggleSidebar } from '$lib/layout.svelte';
 	import { sidebar } from '$lib/sidebar.svelte';
 	import { portflow, portflowFooter } from '$lib/portflow.svelte';
+	import { openVaultPicker } from '$lib/vaults.svelte';
 	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
 	import EpsilonIcon from '$lib/components/EpsilonIcon.svelte';
 	import Wordmark from '$lib/components/Wordmark.svelte';
 
-	let { projects }: { projects: ProjectSummary[] } = $props();
+	/** `vaultName`: the open vault, on the switch button at the bottom. */
+	let { projects, vaultName = '' }: { projects: ProjectSummary[]; vaultName?: string } = $props();
 
 	const OPEN_KEY = 'ledger-open-project';
 
@@ -243,25 +246,22 @@
 
 	<div class="spacer"></div>
 
+	<!-- The bottom left: how the syncs stand, one line each (the details are in Settings and in the tooltip), and the
+	     button that switches vaults. -->
 	<div class="sync-box">
-		<div class="sync-line">
-			<span class="dot {footer.dot}"></span><span>{footer.title}</span>
-			{#if footer.when}<span class="sync-when">| {footer.when}</span>{/if}
-		</div>
-		<div class="sync-sub" title={footer.where}>{footer.where}</div>
-		{#if footer.encryption}<div class="sync-sub">{footer.encryption}</div>{/if}
-		{#if footer.error}<div class="sync-sub error">{footer.error}</div>{/if}
+		<a class="sync-line" href="/settings/sync" title={[footer.where, footer.encryption, footer.error].filter(Boolean).join(' | ')}>
+			<span class="dot {footer.dot}"></span><span class="sync-title">{footer.title}</span>
+			{#if footer.when}<span class="sync-when">{footer.when}</span>{/if}
+		</a>
 		{#if portflow.enabled}
-			<!-- Portflow and its sign-in through Canvas; a click opens its settings. -->
-			<a class="sync-part" href="/settings/sync#portflow" title="Portflow settings">
-				<div class="sync-line">
-					<span class="dot {pf.dot}"></span><span>{pf.title}</span>
-					{#if pf.when}<span class="sync-when">| {pf.when}</span>{/if}
-				</div>
-				<div class="sync-sub" title={pf.canvas}>{pf.canvas}</div>
-				{#if pf.error}<div class="sync-sub error">{pf.error}</div>{/if}
+			<a class="sync-line" href="/settings/sync#portflow" title={[pf.canvas, pf.error].filter(Boolean).join(' | ')}>
+				<span class="dot {pf.dot}"></span><span class="sync-title">{pf.title}</span>
+				{#if pf.when}<span class="sync-when">{pf.when}</span>{/if}
 			</a>
 		{/if}
+		<button class="vault-switch" onclick={openVaultPicker} title="Switch vault">
+			<span class="vault-switch-name">{vaultName || 'Vault'}</span><ChevronsUpDown size={14} class="vault-switch-chev" />
+		</button>
 	</div>
 
 </aside>

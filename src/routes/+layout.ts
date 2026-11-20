@@ -1,14 +1,19 @@
 // Tauri has no Node.js server to render on, so the app is a static single-page app:
 // https://v2.tauri.app/start/frontend/sveltekit/
 import { api } from '$lib/api';
-import type { OnboardingStatus } from '$lib/types';
+import type { OnboardingStatus, Vaults } from '$lib/types';
 import type { LayoutLoad } from './$types';
 
 export const ssr = false;
 
+const noGuide: OnboardingStatus = { active: false, skipped: [] };
+
 export const load: LayoutLoad = async ({ url }) => {
 	// The screenshot overlay is its own window and needs none of this.
-	if (url.pathname.startsWith('/screenshot-overlay')) return { projects: [], onboarding: { active: false, skipped: [] } as OnboardingStatus };
+	if (url.pathname.startsWith('/screenshot-overlay')) return { projects: [], onboarding: noGuide, vaults: null as Vaults | null };
+	// Before the first vault there is nothing to load: the window is the vault picker.
+	const vaults = await api.listVaults();
+	if (!vaults.open) return { projects: [], onboarding: noGuide, vaults: vaults as Vaults | null };
 	const [projects, onboarding] = await Promise.all([api.listProjects(), api.onboardingStatus()]);
-	return { projects, onboarding };
+	return { projects, onboarding, vaults: vaults as Vaults | null };
 };

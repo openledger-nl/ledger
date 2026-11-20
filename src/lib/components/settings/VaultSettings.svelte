@@ -1,14 +1,20 @@
 <script lang="ts">
-	// Where the vault lives on this machine: the folder, switching to another, and reloading it from disk.
+	// Where the vault lives on this machine: the folder, switching to another vault (the vault picker), moving this one,
+	// and reloading it from disk.
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { goto } from '$app/navigation';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Vault from '@lucide/svelte/icons/vault';
 	import { api } from '$lib/api';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import { loadLayoutSettings } from '$lib/layout.svelte';
+	import { openVaultPicker } from '$lib/vaults.svelte';
 	import type { Settings } from '$lib/types';
 
 	let { settings }: { settings: Settings } = $props();
+
+	/** The vault is called by its folder's name, as in the picker. */
+	const vaultName = $derived(settings.vaultPath.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Vault');
 
 	/** The folder the form starts with, read once; an edit stays local until it is used. */
 	const initialPath = () => settings.vaultPath;
@@ -58,30 +64,45 @@
 	<h2>Vault</h2>
 	<p class="sub" style="margin:0">
 		Everything you write lives in a folder of plain markdown files with YAML frontmatter, much like an Obsidian vault. Edit them in any editor; Ledger
-		picks up your changes when you come back to its window.
+		picks up your changes when you come back to its window. Keep it in a folder that cloud storage syncs (OneDrive, Google Drive, Dropbox, iCloud
+		Drive), so your files are safe.
 	</p>
-	<label class="field">
-		Vault folder
-		<div class="form-row" style="flex-wrap:nowrap">
-			<input class="mono" bind:value={vaultInput} disabled={settings.vaultLocked} spellcheck="false" />
-			<button class="btn" onclick={browse} disabled={settings.vaultLocked}>Browse</button>
+	<div class="vault-now">
+		<div class="vault-now-text">
+			<strong>{vaultName}</strong>
+			<span class="mono">{settings.vaultPath}</span>
 		</div>
-	</label>
+		<button class="btn" onclick={openVaultPicker} disabled={settings.vaultLocked}><Vault size={14} />Switch vault</button>
+	</div>
 	{#if settings.vaultLocked}
 		<div class="notice info">The location is fixed by the <code>LEDGER_VAULT</code> environment variable.</div>
-	{:else if vaultChanged}
-		<label class="check">
-			<input type="checkbox" bind:checked={copy} /> If that folder is empty, copy my current vault into it
-		</label>
-		<div class="row-end">
-			<button class="btn ghost" onclick={() => (vaultInput = settings.vaultPath)}>Cancel</button>
-			<button class="btn primary" onclick={useFolder} disabled={busy}>Use this folder</button>
-		</div>
 	{/if}
 	<div class="form-row">
 		<button class="btn small" onclick={reload}>Reload from disk</button>
 		<button class="btn small" onclick={showGuide} title="Bring back the guide that helps a new client set up">Show the setup guide again</button>
 	</div>
+
+	{#if !settings.vaultLocked}
+		<details class="more">
+			<summary><ChevronRight size={14} class="disclosure" />Move this vault to another folder</summary>
+			<label class="field">
+				New folder
+				<div class="form-row" style="flex-wrap:nowrap">
+					<input class="mono" bind:value={vaultInput} spellcheck="false" />
+					<button class="btn" onclick={browse}>Browse</button>
+				</div>
+			</label>
+			{#if vaultChanged}
+				<label class="check">
+					<input type="checkbox" bind:checked={copy} /> If that folder is empty, copy my current vault into it
+				</label>
+				<div class="row-end">
+					<button class="btn ghost" onclick={() => (vaultInput = settings.vaultPath)}>Cancel</button>
+					<button class="btn primary" onclick={useFolder} disabled={busy}>Use this folder</button>
+				</div>
+			{/if}
+		</details>
+	{/if}
 
 	<details class="more">
 		<summary><ChevronRight size={14} class="disclosure" />What is in the folder</summary>
@@ -103,3 +124,28 @@ templates/&lt;id&gt;.md                               templates for every projec
 .ledger/                                         settings and secrets, never synced</pre>
 	</details>
 </div>
+
+<style>
+	.vault-now {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		flex-wrap: wrap;
+	}
+	.vault-now-text {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		min-width: 0;
+	}
+	.vault-now-text .mono {
+		color: var(--muted);
+		overflow-wrap: anywhere;
+	}
+	.vault-now .btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+</style>

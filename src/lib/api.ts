@@ -3,6 +3,7 @@ import type { Anchor } from './anchors';
 import { capture, captureDebug, logError } from './log.svelte';
 import type {
 	ActivityEvent,
+	Vaults,
 	ProjectMeta,
 	LabelConfirmation,
 	DeliverableMeta,
@@ -282,6 +283,13 @@ export const api = {
 	testSync: (repo: string, branch: string, token: string | null) => call<string>('test_sync', { repo, branch, token }),
 	syncNow: () => call<void>('sync_now'),
 	setVaultPath: (path: string, copy: boolean) => call<Settings>('set_vault_path', { path, copy }),
+	// the vault picker
+	listVaults: () => call<Vaults>('list_vaults'),
+	/** A new vault: a folder called `name` in `parent`, which must not be there yet or be empty. */
+	createVault: (parent: string, name: string) => call<Vaults>('create_vault', { parent, name }),
+	openVault: (path: string) => call<Vaults>('open_vault', { path }),
+	/** Off the list; the folder is left alone. */
+	forgetVault: (path: string) => call<Vaults>('forget_vault', { path }),
 	// the guide for a new client
 	onboardingStatus: () => call<OnboardingStatus>('onboarding_status'),
 	skipOnboardingStep: (step: 'semester' | 'sync') => call<OnboardingStatus>('skip_onboarding_step', { step }),

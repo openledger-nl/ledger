@@ -90,6 +90,8 @@ mod tests_sync;
 mod tests_updates;
 #[cfg(test)]
 mod tests_vault;
+#[cfg(test)]
+mod tests_vaults;
 
 
 use std::sync::{Arc, Mutex};
@@ -350,6 +352,10 @@ pub fn run() {
             portflow::portflow_evidence_choices,
             // ---- end Portflow ----
             commands::set_vault_path,
+            commands::list_vaults,
+            commands::create_vault,
+            commands::open_vault,
+            commands::forget_vault,
             commands::reload_vault,
             commands::set_feedback_from,
             commands::check_vault_changes,

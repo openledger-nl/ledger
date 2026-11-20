@@ -35,7 +35,11 @@ const DEFAULT_GITIGNORE: &str = "\
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppConfig {
+    /// The vault that is open, and that opens at the next start. Unset on a machine that has never chosen one.
     pub vault_path: Option<String>,
+    /// The vaults opened on this machine, the most recent first, for the vault picker (as Obsidian lists them).
+    #[serde(deserialize_with = "lenient", skip_serializing_if = "Vec::is_empty")]
+    pub recent_vaults: Vec<String>,
     /// Read leniently: a value edited into something else by hand falls back to the default instead of making the
     /// whole file unreadable, which would also lose the vault's location.
     #[serde(deserialize_with = "lenient")]
@@ -89,16 +93,39 @@ pub fn update_config(dir: &Path, change: impl FnOnce(&mut AppConfig)) -> Result<
     save_config(dir, &config)
 }
 
-/// Where the vault is: `LEDGER_VAULT` if set (and then not changeable from the UI), else the folder chosen in
-/// Settings, else `Ledger` inside the user's documents.
-pub fn resolve_vault(config_dir: &Path, documents_dir: Option<PathBuf>) -> (PathBuf, bool) {
+/// Where the vault is: `LEDGER_VAULT` if set (and then not changeable from the UI), else the vault opened last.
+/// Before the vault picker, a machine that never chose a folder used `Ledger` inside the user's documents (or `vault`
+/// in the config folder without one); such a vault is still found there, so it keeps opening. `None` means no vault
+/// has been chosen yet: the app starts on the picker and asks for one.
+pub fn resolve_vault(config_dir: &Path, documents_dir: Option<PathBuf>) -> (Option<PathBuf>, bool) {
     if let Some(path) = std::env::var_os("LEDGER_VAULT").filter(|p| !p.is_empty()) {
-        return (PathBuf::from(path), true);
+        return (Some(PathBuf::from(path)), true);
     }
     if let Some(path) = load_config(config_dir).vault_path.filter(|p| !p.trim().is_empty()) {
-        return (PathBuf::from(path), false);
+        return (Some(PathBuf::from(path)), false);
     }
-    (documents_dir.map_or_else(|| config_dir.join("vault"), |d| d.join("Ledger")), false)
+    let legacy = documents_dir.map_or_else(|| config_dir.join("vault"), |d| d.join("Ledger"));
+    (legacy.is_dir().then_some(legacy), false)
+}
+
+/// How many vaults the picker remembers.
+pub const RECENT_VAULTS: usize = 12;
+
+/// Notes that `path` is the vault in use: it opens at the next start, and comes first among the recent ones.
+pub fn remember_vault(config_dir: &Path, path: &Path) -> Result<()> {
+    let path = path.display().to_string();
+    update_config(config_dir, |config| {
+        config.recent_vaults.retain(|p| p != &path);
+        config.recent_vaults.insert(0, path.clone());
+        config.recent_vaults.truncate(RECENT_VAULTS);
+        config.vault_path = Some(path);
+    })
+}
+
+/// Takes a vault off the picker's list. Its folder is left alone. Forgetting the open vault isn't possible: the list
+/// shows it as open and the next start opens it.
+pub fn forget_vault(config_dir: &Path, path: &str) -> Result<()> {
+    update_config(config_dir, |config| config.recent_vaults.retain(|p| p != path))
 }
 
 // ---- the vault's own settings -----------------------------------------------------------------------

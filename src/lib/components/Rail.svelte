@@ -1,17 +1,19 @@
 <script lang="ts">
 	// The sidebar folded to an icon rail, when Settings › Visual › Sidebar asks for one: at full width once the sidebar
 	// is folded, and between 720 and 1199 px (Ledger snapped to half the screen, next to Canvas or Portflow). The main
-	// pages as icons, each project as its initial, and the sync dot; hovering or focusing an item shows its name.
+	// pages as icons, each project as its initial, the sync dot and the vault switch; hovering or focusing an item shows its name.
 	// Wireframes A6 and A7.
 	import House from '@lucide/svelte/icons/house';
 	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
 	import Inbox from '@lucide/svelte/icons/inbox';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Settings from '@lucide/svelte/icons/settings';
+	import Vault from '@lucide/svelte/icons/vault';
 	import { page } from '$app/state';
 	import { newProjectFlow, projectUrl } from '$lib/actions';
 	import { portflow, portflowFooter } from '$lib/portflow.svelte';
 	import { sync, syncFooter } from '$lib/ui.svelte';
+	import { openVaultPicker } from '$lib/vaults.svelte';
 	import type { ProjectSummary } from '$lib/types';
 	import EpsilonIcon from '$lib/components/EpsilonIcon.svelte';
 	import Wordmark from '$lib/components/Wordmark.svelte';
@@ -71,6 +73,7 @@
 			<span class="dot {pf.dot}"></span>
 		</a>
 	{/if}
+	<button class="rail-item rail-vault" data-tip="Switch vault" aria-label="Switch vault" onclick={openVaultPicker}><Vault size={16} /></button>
 </aside>
 
 {#if tip}

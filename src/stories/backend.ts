@@ -123,6 +123,10 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	sync_commits: 0,
 	layout_settings: layout,
 	onboarding_status: fx.onboarding,
+	list_vaults: fx.vaults,
+	create_vault: fx.vaults,
+	open_vault: fx.vaults,
+	forget_vault: fx.vaults,
 	encryption_status: fx.settings.encryption,
 	update_status: updates,
 	log_read: [
