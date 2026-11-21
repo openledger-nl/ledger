@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The settings screen's panel for running prompts with Claude Code. Its settings live in the vault's
-	// .ledger/claude-code.json (never synced), apart from the rest of the settings.
+	// claude-code.json in this machine's settings for the vault (never in the vault), apart from the rest of the settings.
 	import { onMount } from 'svelte';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { claudeCodeApi } from '$lib/api';
@@ -139,8 +139,8 @@
 	</label>
 	<div class="hint">
 		Passes <code>--settings</code> (a file you can read in the confirmation before each run), <code>--setting-sources user</code> and
-		<code>--strict-mcp-config</code>: reads and writes outside the project folder are refused, and so are the vault's <code>.ledger</code> folder and
-		any <code>.env</code> file; the project folder's own Claude settings (hooks, say) are ignored, and no MCP servers are started, so files that arrive
+		<code>--strict-mcp-config</code>: reads and writes outside the project folder are refused, and so are Ledger's own settings for this vault and any
+		<code>.env</code> file; the project folder's own Claude settings (hooks, say) are ignored, and no MCP servers are started, so files that arrive
 		in the vault through sync can't run anything. It needs a recent Claude Code: if a run fails with "unknown option", update Claude Code or turn this
 		off. There is no setting that skips Claude Code's permission checks.
 	</div>

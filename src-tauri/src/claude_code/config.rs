@@ -1,6 +1,7 @@
 //! The settings for running prompts with Claude Code: where the program is, how much it may do, which model.
 //!
-//! They live in `<vault>/.ledger/claude-code.json`, next to the vault's other local settings: the folder is
+//! They live in `claude-code.json` in the vault's folder for this machine (see `settings::local_dir`), next to its
+//! other settings: the folder is
 //! gitignored and ignored by the sync, so none of this leaves the machine. (What a run did is not a setting: it is
 //! kept in the thread, see `records`.) A missing, old or damaged file loads as
 //! the defaults, field by field, so a setting this version doesn't know about never breaks the screen.
@@ -11,7 +12,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
-use crate::settings::LEDGER_DIR;
+use crate::settings;
 
 pub const SETTINGS_FILE: &str = "claude-code.json";
 pub const GUARD_FILE: &str = "claude-guard.json";
@@ -58,7 +59,8 @@ pub struct ClaudeSettings {
     /// A model name or alias for `--model`; empty means whatever the CLI defaults to.
     pub model: String,
     /// Extra guard rails (on by default): the run ignores the project folder's own Claude settings and is told not
-    /// to read or write outside the project folder or touch `.ledger/` and `.env` files. Needs a recent Claude Code.
+    /// to read or write outside the project folder or touch Ledger's own folder for the vault and `.env` files. Needs a
+    /// recent Claude Code.
     pub confine: bool,
     /// Off by default: a prompt that is created starts running at once, without the confirmation that shows what will
     /// be sent. The window does the starting (it is the one that sees a prompt being created); this is only the choice.
@@ -75,12 +77,12 @@ impl Default for ClaudeSettings {
 }
 
 pub fn settings_path(root: &Path) -> PathBuf {
-    root.join(LEDGER_DIR).join(SETTINGS_FILE)
+    settings::local_dir(root).join(SETTINGS_FILE)
 }
 
 /// The settings file handed to each run for the guard rails, rewritten before every run.
 pub fn guard_path(root: &Path) -> PathBuf {
-    root.join(LEDGER_DIR).join(GUARD_FILE)
+    settings::local_dir(root).join(GUARD_FILE)
 }
 
 impl ClaudeSettings {

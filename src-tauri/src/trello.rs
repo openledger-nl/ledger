@@ -6,8 +6,8 @@
 //!
 //! Setting up takes four things, in this order: the API key and token, the person whose cards are synced (picked
 //! from a board's members), a Trello board for each project that should sync, and optionally which list a column
-//! belongs to. A project with no board isn't synced. The key and token are kept in the vault's `.ledger/.env`; the
-//! rest in `.ledger/trello.json` (see `trello_config.rs`). None of it is ever uploaded, and the screen is only
+//! belongs to. A project with no board isn't synced. The key and token are kept with the vault's secrets on this
+//! machine; the rest in `trello.json` (see `trello_config.rs`). None of it is ever in the vault, and the screen is only
 //! ever told whether a key and token exist, plus the last four characters of each.
 //!
 //! A round can't echo itself. It writes into the vault, which the cloud storage then carries to the other machines;
@@ -518,7 +518,7 @@ pub fn view(root: &Path, snapshot: &trello_ledger::Snapshot, status: TrelloStatu
         unlinked,
         status,
         settings_file: config::settings_path(root).display().to_string(),
-        secrets_file: crate::settings::secrets_path(root).display().to_string(),
+        secrets_file: crate::settings::secrets_place(root),
     }
 }
 

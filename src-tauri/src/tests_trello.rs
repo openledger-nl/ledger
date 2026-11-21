@@ -545,7 +545,7 @@ impl Machine {
                 }
             }
         }
-        let base = self.root().join(".ledger/conflicts");
+        let base = crate::settings::local_dir(self.root()).join("conflicts");
         let mut out = vec![];
         walk(&base, &base, &mut out);
         out.sort();
@@ -1659,18 +1659,18 @@ fn the_key_and_token_are_checked_and_kept_in_the_env_file_only() {
     assert!(env.lines().any(|l| l == "TRELLO_API_KEY=KEY1234567890KEY") && env.lines().any(|l| l == "TRELLO_TOKEN=TOKEN1234567890TOKEN"), "{env}");
 
     // A blank field keeps what is saved; other lines of the file are left alone.
-    crate::settings::write_secret(root, "GITHUB_TOKEN", "ghp_other").unwrap();
+    crate::settings::write_secret(root, "OTHER_SECRET", "ghp_other").unwrap();
     trello::save_credentials(root, None, Some("NEWTOKEN1234567890")).unwrap();
     let saved = config::read_credentials(root);
     assert_eq!((saved.api_key.as_str(), saved.token.as_str()), ("KEY1234567890KEY", "NEWTOKEN1234567890"));
-    assert_eq!(crate::settings::read_secret(root, "GITHUB_TOKEN").as_deref(), Some("ghp_other"));
+    assert_eq!(crate::settings::read_secret(root, "OTHER_SECRET").as_deref(), Some("ghp_other"));
 
     // Removing them leaves the person and the project links.
     config::update_settings(root, |s| s.member = Some(ana())).unwrap();
     trello::disconnect(root).unwrap();
     assert!(!config::read_credentials(root).complete());
     assert!(config::read_settings(root).member.is_some());
-    assert_eq!(crate::settings::read_secret(root, "GITHUB_TOKEN").as_deref(), Some("ghp_other"));
+    assert_eq!(crate::settings::read_secret(root, "OTHER_SECRET").as_deref(), Some("ghp_other"));
 }
 
 #[test]
@@ -1807,7 +1807,7 @@ fn the_key_and_token_never_appear_anywhere_but_the_env_file() {
     assert_eq!((view.key_hint.as_str(), view.token_hint.as_str()), ("...cdef", "...cdef"), "only how they end");
     assert!(!error.to_string().contains(KEY) && !error.to_string().contains(TOKEN));
 
-    // Not in the settings, the bookkeeping, the vault or the conflicts: only in .ledger/.env.
+    // Not in the settings, the bookkeeping, the vault or the conflicts: only with the secrets, outside the vault.
     fn walk(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
         for entry in fs::read_dir(dir).unwrap().flatten() {
             if entry.file_type().unwrap().is_dir() {
@@ -1819,6 +1819,7 @@ fn the_key_and_token_never_appear_anywhere_but_the_env_file() {
     }
     let mut files = vec![];
     walk(m.root(), &mut files);
+    walk(&crate::settings::local_dir(m.root()), &mut files);
     let mut holders = vec![];
     for file in files {
         let text = String::from_utf8_lossy(&fs::read(&file).unwrap()).into_owned();
@@ -1826,9 +1827,9 @@ fn the_key_and_token_never_appear_anywhere_but_the_env_file() {
             holders.push(file.file_name().unwrap().to_string_lossy().into_owned());
         }
     }
-    assert_eq!(holders, [".env"]);
+    assert_eq!(holders, ["secrets.env"]);
     assert!(fs::read_to_string(config::settings_path(m.root())).unwrap().contains("\"member\""));
-    assert!(m.root().join(".ledger/trello-sync.json").exists());
+    assert!(crate::settings::local_dir(m.root()).join("trello-sync.json").exists());
 }
 
 // ---- the client: rate limits, retries, credentials ----------------------------------------------------

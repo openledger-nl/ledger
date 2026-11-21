@@ -157,8 +157,8 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 		projects: [],
 		unlinked: [],
 		status: { configured: false, state: 'disabled', pending: false, lastSyncAt: null, lastError: null, summary: null, report: null },
-		settingsFile: '/home/student/Documents/Ledger/.ledger/settings.json',
-		secretsFile: '/home/student/Documents/Ledger/.ledger/.env'
+		settingsFile: '/home/student/.config/nl.openledger.ledger/vaults/3f9a0c1d2e4b5a6978c0d1e2f3a4b5c6/trello.json',
+		secretsFile: 'the system keychain'
 	},
 	pending_screenshot: null,
 	pending_screenshot_image: () => fx.sketchBytes(),

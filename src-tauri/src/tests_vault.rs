@@ -669,14 +669,16 @@ fn frontmatter_reading_is_lenient() {
 // ---- settings and secrets ---------------------------------------------------------------------------
 
 #[test]
-fn settings_live_in_the_ledger_folder_and_secrets_in_its_env_file() {
+fn this_machines_settings_and_secrets_are_kept_outside_the_vault() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     settings::update_settings(root, |s| s.screenshot_hotkey = Some("Alt+F9".into())).unwrap();
     settings::write_secret(root, "TRELLO_TOKEN", "secret-token").unwrap();
 
-    let json = read(root, ".ledger/settings.json");
+    let json = fs::read_to_string(settings::settings_path(root)).unwrap();
     assert!(json.contains("Alt+F9") && !json.contains("secret-token"), "{json}");
+    assert!(!root.join(".ledger").exists(), "nothing of this machine's is kept in the vault");
+    assert!(!settings::settings_path(root).starts_with(root));
     assert_eq!(settings::read_secret(root, "TRELLO_TOKEN").as_deref(), Some("secret-token"));
     assert!(!root.join(".gitignore").exists(), "the vault is no git repository: nothing writes a .gitignore");
 }
@@ -685,14 +687,13 @@ fn settings_live_in_the_ledger_folder_and_secrets_in_its_env_file() {
 fn an_env_file_keeps_lines_that_are_not_the_one_written() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    write(root, ".ledger/.env", "# mine
-OTHER=keep me
-export TRELLO_TOKEN = \"old-token\"
-");
+    let env = settings::secrets_path(root);
+    fs::create_dir_all(env.parent().unwrap()).unwrap();
+    fs::write(&env, "# mine\nOTHER=keep me\nexport TRELLO_TOKEN = \"old-token\"\n").unwrap();
     assert_eq!(settings::read_secret(root, "TRELLO_TOKEN").as_deref(), Some("old-token"));
 
     settings::write_secret(root, "TRELLO_TOKEN", "new-token").unwrap();
-    let text = read(root, ".ledger/.env");
+    let text = fs::read_to_string(&env).unwrap();
     assert!(text.contains("# mine") && text.contains("OTHER=keep me"), "{text}");
     assert_eq!(text.matches("TRELLO_TOKEN").count(), 1, "{text}");
     assert_eq!(settings::read_secret(root, "TRELLO_TOKEN").as_deref(), Some("new-token"));
@@ -888,16 +889,18 @@ fn the_folded_sidebar_is_a_rail_until_the_vault_settings_say_otherwise() {
     let root = dir.path();
     // No settings file, an older one without the layout, and a value this version doesn't know: all a rail.
     assert_eq!(settings::read_settings(root).layout.sidebar_fold, settings::SidebarFold::Rail);
-    write(root, ".ledger/settings.json", r#"{ "screenshotHotkey": "Control+Shift+S" }"#);
+    let file = settings::settings_path(root);
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, r#"{ "screenshotHotkey": "Control+Shift+S" }"#).unwrap();
     assert_eq!(settings::read_settings(root).layout.sidebar_fold, settings::SidebarFold::Rail);
-    write(root, ".ledger/settings.json", r#"{ "screenshotHotkey": "Control+Shift+S", "layout": { "sidebarFold": "sideways" } }"#);
+    fs::write(&file, r#"{ "screenshotHotkey": "Control+Shift+S", "layout": { "sidebarFold": "sideways" } }"#).unwrap();
     let got = settings::read_settings(root);
     assert_eq!(got.layout.sidebar_fold, settings::SidebarFold::Rail);
     assert_eq!(got.screenshot_hotkey.as_deref(), Some("Control+Shift+S"));
 
     // Saving it keeps the other settings and writes the choice where a person can read it.
     settings::update_settings(root, |s| s.layout.sidebar_fold = settings::SidebarFold::Hide).unwrap();
-    assert!(read(root, ".ledger/settings.json").contains(r#""sidebarFold": "hide""#));
+    assert!(fs::read_to_string(&file).unwrap().contains(r#""sidebarFold": "hide""#));
     let got = settings::read_settings(root);
     assert_eq!(got.layout.sidebar_fold, settings::SidebarFold::Hide);
     assert_eq!(got.screenshot_hotkey.as_deref(), Some("Control+Shift+S"));

@@ -401,8 +401,8 @@
 			{/if}
 			<div class="hint">
 				A Ledger window opens Portflow the way Canvas does; you sign in there as usual. Unless you choose Remember me, Ledger never sees or stores your password: once Portflow has opened,
-				it takes only the session Portflow's own page uses (valid for eight hours) and closes the window. The session is kept in this vault's
-				<code>.ledger/.env</code>, like the Trello key: on this machine only, never uploaded. Signing out or switching Portflow off removes it.
+				it takes only the session Portflow's own page uses (valid for eight hours) and closes the window. The session is kept in the system's keychain, like the
+				Trello key: on this machine only, never in the vault. Signing out or switching Portflow off removes it.
 			</div>
 			{#if editingUrl}
 				<div class="form-row">

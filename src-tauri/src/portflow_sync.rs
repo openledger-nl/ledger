@@ -35,7 +35,7 @@ pub trait Ledger: Send + Sync {
     fn read(&self, f: &mut dyn FnMut(&Connection) -> Result<()>) -> Result<()>;
     /// Changes the database and writes the difference to the vault. Returns how many files that touched.
     fn write(&self, f: &mut dyn FnMut(&Connection, &Path) -> Result<()>) -> Result<usize>;
-    /// The vault's folder: its `.ledger/` holds this machine's bookkeeping (see `portflow_config::GuideMemory`).
+    /// The vault's folder: its folder for this machine holds the bookkeeping (see `portflow_config::GuideMemory`).
     fn root(&self) -> PathBuf;
 }
 
@@ -259,7 +259,7 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
 }
 
 /// Keeps a project's reading guide and its collection's description one text: README.md in Ledger, the description in
-/// Portflow. Which side changed since they last agreed is told by what is remembered (`GuideMemory`, in `.ledger/`):
+/// Portflow. Which side changed since they last agreed is told by what is remembered (`GuideMemory`, on this machine):
 ///
 /// - only Portflow's: the description, as markdown, becomes the README (an emptied description doesn't empty it);
 /// - only Ledger's: with the guide write on, the README goes to Portflow (Ledger's text wins); off, it waits in Ledger;
@@ -267,7 +267,7 @@ pub fn run(portflow: &dyn Portflow, ledger: &dyn Ledger, settings: &PortflowSett
 /// - neither, or both say the same: nothing.
 ///
 /// The first time, with nothing remembered, the description comes in; a README that said something else is set aside in
-/// `.ledger/conflicts/` first. An empty guide never empties a description. A refused or failed write is a note, not the
+/// the conflicts folder first. An empty guide never empties a description. A refused or failed write is a note, not the
 /// end of the round.
 #[allow(clippy::too_many_arguments, reason = "the Portflow and Ledger sides, the round and the guide: each its own value, none of them belong together")]
 fn sync_guide(
@@ -313,11 +313,11 @@ fn sync_guide(
         Some(s) => (s.description != now.description, s.readme != now.readme),
         None if readme.trim().is_empty() || readme.trim() == crate::projects::starter_readme(&guide.name).trim() => (true, false),
         // The first round for a guide that says something else: the collection's description is what the portfolio
-        // shows, so it comes in, and the guide that was there is set aside in .ledger/conflicts/ rather than lost.
+        // shows, so it comes in, and the guide that was there is set aside in the conflicts folder rather than lost.
         None if !blank(&description) => {
             set_aside(root, &guide.project, &readme).map_err(ledger_err)?;
             report.notes.push(format!(
-                "The reading guide of {} now is the description of \"{}\" in Portflow; the guide it had is kept in .ledger/conflicts/.",
+                "The reading guide of {} now is the description of \"{}\" in Portflow; the guide it had is kept in Ledger's conflicts folder for this vault.",
                 guide.project, collection.name
             ));
             (true, false)
@@ -389,11 +389,10 @@ fn guide_threads(guide: &store::GuideTarget, description: &str) -> std::collecti
     out
 }
 
-/// Keeps a reading guide that is about to be replaced: `.ledger/conflicts/<time>/portflow/<project>-README.md`, beside
-/// what the other syncs set aside. Never synced.
+/// Keeps a reading guide that is about to be replaced: `conflicts/<time>/portflow/<project>-README.md` in the vault's
+/// folder for this machine (see `settings::local_dir`), beside what the Trello sync sets aside.
 fn set_aside(root: &Path, project: &str, readme: &str) -> crate::error::Result<()> {
-    let file = root
-        .join(crate::settings::LEDGER_DIR)
+    let file = crate::settings::local_dir(root)
         .join("conflicts")
         .join(crate::ids::now().replace(':', "-"))
         .join("portflow")

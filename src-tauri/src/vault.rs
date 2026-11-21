@@ -27,7 +27,7 @@
 //! portflow/outcomes/<id>-<slug>.md, people.md,   learning outcomes, people and sections, mirrored from Portflow
 //! portflow/sections.md
 //! Meetings/<YYYY-MM-DD>.md                       a day's meeting notes, written as Obsidian writes daily notes (see `daily`)
-//! .ledger/                                       settings and secrets (see `settings`); never pushed
+//! ledger.json                                    the marker: that this is a vault, its format and its id (see `marker`)
 //! ```
 //!
 //! Files are the source of truth. [`Vault::load`] reads them into the in-memory database; after every change

@@ -1,7 +1,7 @@
 //! Running a prompt with Claude Code: one click in the app starts the `claude` command-line program,
 //! non-interactively, in the prompt's project folder, and the deliverable it writes lands where the app expects it.
 //!
-//! * `config`: the settings (program path, permission mode, model, guard rails), in `.ledger/claude-code.json`.
+//! * `config`: the settings (program path, permission mode, model, guard rails), in `claude-code.json` for this machine.
 //! * `cli`: finding the program, the command line, the guard rails' settings file.
 //! * `prompt`: what is sent, and checking that the prompt and its project are there.
 //! * `naming`: asking for a short name for a new prompt, from what it asks.

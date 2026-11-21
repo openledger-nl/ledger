@@ -630,7 +630,7 @@ export interface SearchHit {
 /** What a folded sidebar becomes: an icon rail (the default) or nothing. */
 export type SidebarFold = 'rail' | 'hide';
 
-/** The shell's layout, from the vault's `.ledger/settings.json` (never synced: each machine has its own). */
+/** The shell's layout, from this machine's settings for the vault (outside the vault: each machine has its own). */
 export interface LayoutSettings {
 	sidebarFold: SidebarFold;
 }
@@ -928,6 +928,7 @@ export interface TrelloView {
 	unlinked: TrelloUnlinkedItem[];
 	status: TrelloStatus;
 	settingsFile: string;
+	/** Where the key and token are kept: the system keychain, or the file used where there is none. */
 	secretsFile: string;
 }
 

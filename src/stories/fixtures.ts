@@ -619,7 +619,7 @@ export const onboarding: OnboardingStatus = { active: true, skipped: [], purpose
 export const settings: Settings = {
 	vaultPath: '/home/student/Documents/Ledger',
 	vaultLocked: false,
-	settingsFile: '/home/student/Documents/Ledger/.ledger/settings.json',
+	settingsFile: '/home/student/.config/nl.openledger.ledger/vaults/3f9a0c1d2e4b5a6978c0d1e2f3a4b5c6/settings.json',
 	version: '0.8.0',
 	screenshot: {
 		hotkey: 'CommandOrControl+Shift+S',

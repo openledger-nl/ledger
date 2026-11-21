@@ -326,7 +326,7 @@ export const api = {
 	// screenshots
 	saveScreenshotHotkey: (hotkey: string) => call<Settings>('save_screenshot_hotkey', { hotkey }),
 	saveScreenshotTool: (useCommand: boolean, command: string) => call<Settings>('save_screenshot_tool', { useCommand, command }),
-	// the shell's layout, kept in the vault's .ledger/settings.json
+	// the shell's layout, kept in this machine's settings for the vault
 	layoutSettings: () => call<LayoutSettings>('layout_settings'),
 	saveSidebarFold: (fold: SidebarFold) => call<LayoutSettings>('save_sidebar_fold', { fold }),
 	pendingScreenshot: () => call<ScreenshotTaken | null>('pending_screenshot'),

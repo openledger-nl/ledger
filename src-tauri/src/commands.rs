@@ -962,7 +962,7 @@ pub fn layout_settings(app: State<App>) -> settings::LayoutSettings {
     settings::read_settings(&root).layout
 }
 
-/// Saves what a folded sidebar becomes, in `.ledger/settings.json`.
+/// Saves what a folded sidebar becomes, in this machine's settings for the vault.
 #[tauri::command]
 pub fn save_sidebar_fold(app: State<App>, fold: settings::SidebarFold) -> Result<settings::LayoutSettings> {
     let root = app.lock().vault.root().to_path_buf();

@@ -394,7 +394,17 @@ impl Machine {
     }
 
     fn at(dir: TempDir) -> Machine {
-        let config = tempdir().unwrap();
+        Machine::open(dir, tempdir().unwrap())
+    }
+
+    /// The app started again on the same machine: the same vault, and the same config folder with this machine's
+    /// settings and bookkeeping for it.
+    fn restart(self) -> Machine {
+        let Machine { dir, _config: config, .. } = self;
+        Machine::open(dir, config)
+    }
+
+    fn open(dir: TempDir, config: TempDir) -> Machine {
         let core = Arc::new(Mutex::new(Core::open_at(dir.path().to_path_buf(), config.path().to_path_buf(), false).unwrap()));
         let ledger = CoreLedger { core: core.clone(), changed: Arc::new(|| {}), vault: dir.path().to_path_buf() };
         Machine { dir, _config: config, core, ledger }
@@ -452,9 +462,6 @@ impl Machine {
             for entry in fs::read_dir(dir).unwrap().flatten() {
                 let path = entry.path();
                 let rel = path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
-                if rel.starts_with(".ledger") {
-                    continue;
-                }
                 if path.is_dir() {
                     walk(root, &path, out);
                 } else {
@@ -788,13 +795,13 @@ fn the_worker_runs_only_while_switched_on() {
     wait_for(|| emitted.lock().unwrap().contains(&"idle".to_string()));
     assert_eq!(asked.load(Ordering::SeqCst), 1);
 
-    // The session is kept in .ledger/.env, so a restart needs no sign-in.
+    // The session is kept with the vault's secrets on this machine, so a restart needs no sign-in.
     let token = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDI0NDQ4MDB9.sig";
     crate::portflow_auth::save_session(m.root(), &Session { token: token.into(), csrf: Some("c".into()), portfolio: None, expires_at: None }).unwrap();
     let restarted = crate::portflow::PortflowSyncer::new(m.core.clone(), Arc::new(|_| {}), Arc::new(|| {}), Arc::new(|_: &Session, _| Err(PortflowError::Off)), None, Duration::from_secs(3600));
     restarted.reconfigure();
     assert_eq!(restarted.auth.session().map(|s| s.token), Some(token.to_string()));
-    assert!(fs::read_to_string(m.root().join(".ledger/.env")).unwrap().contains("PORTFLOW_SESSION="));
+    assert!(fs::read_to_string(crate::settings::secrets_path(m.root())).unwrap().contains("PORTFLOW_SESSION="));
 
     m.switch(false);
     syncer.reconfigure();
@@ -833,7 +840,7 @@ fn another_vault_starts_portflow_again_from_its_own_switch() {
     assert!(crate::portflow_auth::load_session(m.root(), 0).is_some(), "but the old vault keeps it for later");
     assert!(stale.write(&mut |_, _| Ok(())).is_err(), "and the old round writes nothing into the new vault");
     assert!(stale.read(&mut |_| Ok(())).is_err());
-    assert!(!other.path().join(".ledger/portflow.json").exists());
+    assert!(!crate::settings::local_dir(other.path()).join("portflow.json").exists());
 
     // Back in the old vault, Portflow is on again, signed in with its own session.
     m.core.lock().unwrap().set_vault(m.root(), false).unwrap();
@@ -1275,10 +1282,10 @@ fn what_was_seen_survives_a_restart() {
     portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
     m.edit(|c| projects::save_readme(c, "speed-edit", "Mine.").unwrap());
     portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
-    assert!(m.root().join(".ledger/portflow-guides.json").exists());
+    assert!(crate::settings::local_dir(m.root()).join("portflow-guides.json").exists());
 
-    // A restart: the vault is read again from its files, the memory from .ledger/.
-    let m = Machine::at(m.dir);
+    // A restart: the vault is read again from its files, the memory from this machine's folder for it.
+    let m = m.restart();
     m.switch(true);
     let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
     assert_eq!((report.guides_read, report.guides_written), (0, 0));
@@ -1375,8 +1382,9 @@ fn the_guide_goes_to_the_collection_of_the_current_semester() {
 #[test]
 fn a_machine_that_had_edit_descriptions_on_starts_with_the_guide_write_off() {
     let m = Machine::new();
-    fs::create_dir_all(m.root().join(".ledger")).unwrap();
-    fs::write(m.root().join(".ledger/portflow.json"), r#"{"enabled": true, "access": {"write": true, "writes": ["edit-descriptions", "upload-versions"]}}"#).unwrap();
+    let local = crate::settings::local_dir(m.root());
+    fs::create_dir_all(&local).unwrap();
+    fs::write(local.join("portflow.json"), r#"{"enabled": true, "access": {"write": true, "writes": ["edit-descriptions", "upload-versions"]}}"#).unwrap();
     let settings = m.settings();
     assert!(settings.access.allows("upload-versions"));
     assert!(!settings.access.allows(config::GUIDE_WRITE));
@@ -1386,9 +1394,10 @@ fn a_machine_that_had_edit_descriptions_on_starts_with_the_guide_write_off() {
 #[test]
 fn a_launch_address_on_the_old_canvas_moves_to_the_new_one() {
     let m = Machine::new();
-    fs::create_dir_all(m.root().join(".ledger")).unwrap();
+    let local = crate::settings::local_dir(m.root());
+    fs::create_dir_all(&local).unwrap();
     let saved = |url: &str| {
-        fs::write(m.root().join(".ledger/portflow.json"), serde_json::json!({ "enabled": true, "launchUrl": url }).to_string()).unwrap();
+        fs::write(local.join("portflow.json"), serde_json::json!({ "enabled": true, "launchUrl": url }).to_string()).unwrap();
         m.settings().launch_url
     };
     let old_default = "https://fhict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation";
@@ -1417,8 +1426,8 @@ fn the_first_round_takes_the_description_and_sets_the_old_guide_aside() {
     let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
     assert_eq!(report.guides_read, 1);
     assert!(readme(&m).contains("The real guide."), "{}", readme(&m));
-    assert!(report.notes.iter().any(|n| n.contains(".ledger/conflicts/")), "{:?}", report.notes);
-    let kept = walkdir_files(&m.root().join(".ledger/conflicts"));
+    assert!(report.notes.iter().any(|n| n.contains("conflicts folder")), "{:?}", report.notes);
+    let kept = walkdir_files(&crate::settings::local_dir(m.root()).join("conflicts"));
     assert!(kept.iter().any(|(path, text)| path.ends_with("portflow/speed-edit-README.md") && text.contains("Hi")), "{kept:?}");
     assert!(fake.descriptions.lock().unwrap().is_empty(), "nothing is written on the way in");
 }

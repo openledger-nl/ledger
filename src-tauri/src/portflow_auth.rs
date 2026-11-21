@@ -16,7 +16,7 @@
 //!   navigates to `https://ledger.invalid/portflow#<session>`. That address is never loaded: Ledger stops the
 //!   navigation, reads the fragment, and closes the window.
 //!
-//! The token is kept where the Trello key is: the vault's `.ledger/.env` (`PORTFLOW_SESSION`), on this machine only,
+//! The token is kept where the Trello key is: with the vault's secrets (`PORTFLOW_SESSION`), on this machine only,
 //! gitignored, never synced, and readable by its owner only where the system allows it. So a restart within the eight
 //! hours needs no sign-in. It never goes in the log. Signing out, switching Portflow off, or Portflow refusing the
 //! token clears it. The window keeps its cookies in a folder of its own (in the app's data folder, not the vault), so
@@ -165,12 +165,12 @@ fn percent_decode(text: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-// ---- kept in .ledger/.env -------------------------------------------------------------------------------
+// ---- kept with the secrets -------------------------------------------------------------------------------
 
-const SESSION_SECRET: &str = "PORTFLOW_SESSION";
-const CSRF_SECRET: &str = "PORTFLOW_CSRF";
+pub const SESSION_SECRET: &str = "PORTFLOW_SESSION";
+pub const CSRF_SECRET: &str = "PORTFLOW_CSRF";
 
-/// Saves the session in the vault's `.ledger/.env`, next to the Trello key.
+/// Saves the session with the vault's secrets, next to the Trello key.
 pub fn save_session(root: &Path, session: &Session) -> crate::error::Result<()> {
     settings::write_secret(root, SESSION_SECRET, &session.token)?;
     settings::write_secret(root, CSRF_SECRET, session.csrf.as_deref().unwrap_or_default())

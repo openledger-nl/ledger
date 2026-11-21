@@ -1,11 +1,11 @@
-//! The Trello sync's own files, kept apart from the vault's general settings. Both sit in the vault's `.ledger/`
-//! folder, for this machine only:
+//! The Trello sync's own files, kept apart from the vault's general settings. Both sit in the vault's folder for this
+//! machine (see `settings::local_dir`), never in the vault:
 //!
 //! ```text
-//! .ledger/trello.json        which Trello person to sync for, and which board each project is linked to
-//! .ledger/trello-sync.json   the sync's own bookkeeping: what both sides last agreed on, for every linked card
-//! .ledger/.env               the API key and token (TRELLO_API_KEY, TRELLO_TOKEN), with the other secrets
-//! .ledger/conflicts/         the losing version when both sides changed the same thing (shared with the GitHub sync)
+//! trello.json        which Trello person to sync for, and which board each project is linked to
+//! trello-sync.json   the sync's own bookkeeping: what both sides last agreed on, for every linked card
+//! the secrets        the API key and token (TRELLO_API_KEY, TRELLO_TOKEN), in the system's keychain
+//! conflicts/         the losing version when both sides changed the same thing (shared with Portflow)
 //! ```
 //!
 //! The card id of a linked item is *not* here: it is in the item's own frontmatter (`trelloCard`), so it travels
@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::settings::{self, LEDGER_DIR};
+use crate::settings::{self, local_dir};
 use crate::trello_api::Member;
 use crate::trello_card::{Content, Kind};
 
@@ -48,11 +48,11 @@ pub struct TrelloSettings {
 }
 
 fn settings_file(root: &Path) -> PathBuf {
-    root.join(LEDGER_DIR).join("trello.json")
+    local_dir(root).join("trello.json")
 }
 
 fn state_file(root: &Path) -> PathBuf {
-    root.join(LEDGER_DIR).join("trello-sync.json")
+    local_dir(root).join("trello-sync.json")
 }
 
 pub fn settings_path(root: &Path) -> PathBuf {

@@ -6,7 +6,7 @@
 //   narrow  below 720 px        as half, but never a rail
 //
 // What a folded sidebar becomes is a setting (Settings › Visual › Sidebar): an icon rail, the default, or gone. It is
-// kept in the vault's .ledger/settings.json, which never syncs, so each machine has its own; a copy in the browser's
+// kept in this machine's settings for the vault (outside the vault), so each machine has its own; a copy in the browser's
 // storage only makes the first paint right before the vault has answered. Whether the sidebar is folded right now is
 // a passing state, kept in the browser's storage alone.
 //

@@ -1,9 +1,9 @@
 //! Portflow's settings on this machine: whether the feature is on, what Ledger may do there, and which portfolio it
-//! reads. Kept in the vault's `.ledger/portflow.json`, so each machine decides for itself:
+//! reads. Kept in the vault's folder for this machine (see `settings::local_dir`), so each machine decides for itself:
 //!
 //! ```text
-//! .ledger/portflow.json          on or off, read only or read and write (and which writes), the launch address, the portfolio
-//! .ledger/portflow-guides.json   what Ledger last saw of each reading guide and evidence description, both sides (hashes)
+//! portflow.json          on or off, read only or read and write (and which writes), the launch address, the portfolio
+//! portflow-guides.json   what Ledger last saw of each reading guide and evidence description, both sides (hashes)
 //! ```
 //!
 //! The session token is not here, nor anywhere on disk: it lives eight hours and is kept in memory only
@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::settings::LEDGER_DIR;
+use crate::settings::local_dir;
 
 /// Where Fontys ICT students open Portflow: the Canvas page that launches it.
 pub const DEFAULT_LAUNCH_URL: &str = "https://fontysict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation&toolId=portfolio-23360";
@@ -97,7 +97,7 @@ impl Default for PortflowSettings {
 }
 
 fn settings_file(root: &Path) -> PathBuf {
-    root.join(LEDGER_DIR).join("portflow.json")
+    local_dir(root).join("portflow.json")
 }
 
 /// The settings, or the defaults (off) when there are none or they can't be read.
@@ -157,7 +157,7 @@ pub fn check_launch_url(url: &str) -> Result<String> {
 
 /// A project's reading guide and its collection's description, as they were the last time they agreed: hashes of the
 /// description as Portflow had it (HTML, white space folded) and of the README as it was then. A round compares both
-/// with now to tell which side changed. Bookkeeping for this machine only, so it lives in `.ledger/`, next to the
+/// with now to tell which side changed. Bookkeeping for this machine only, so it lives in the vault's folder for this machine, next to the
 /// settings, and survives a restart; lost or unreadable, the next round starts as on a first one.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GuideMemory {
@@ -176,7 +176,7 @@ pub struct GuideSeen {
 }
 
 fn guides_file(root: &Path) -> PathBuf {
-    root.join(LEDGER_DIR).join("portflow-guides.json")
+    local_dir(root).join("portflow-guides.json")
 }
 
 pub fn read_guides(root: &Path) -> GuideMemory {

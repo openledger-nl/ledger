@@ -45,6 +45,7 @@ impl Core {
 
     pub fn open_at(root: PathBuf, config_dir: PathBuf, vault_from_env: bool) -> Result<Core> {
         let mut vault = Vault::open(root)?;
+        settings::register_local_dir(vault.root(), settings::local_dir_in(&config_dir, vault.id()));
         let conn = vault.load()?;
         Ok(Core { conn, vault, config_dir, open: true, vault_from_env })
     }
@@ -88,6 +89,7 @@ impl Core {
         }
 
         let mut vault = Vault::open(path.to_path_buf())?;
+        settings::register_local_dir(vault.root(), settings::local_dir_in(&self.config_dir, vault.id()));
         let conn = vault.load()?;
         settings::remember_vault(&self.config_dir, path)?;
 
