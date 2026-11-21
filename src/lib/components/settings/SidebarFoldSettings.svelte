@@ -1,6 +1,6 @@
 <script lang="ts">
 	// What the sidebar becomes when it folds: when you hide it (Ctrl \), and on a window narrower than 1200 px (Ledger
-	// snapped to half the screen). Kept in the vault's .ledger/settings.json, which never syncs: each machine has its own.
+	// snapped to half the screen). Kept in this machine's settings for the vault, outside the vault: each machine has its own.
 	import { layout, setFold, type Fold } from '$lib/layout.svelte';
 	import { prettyKeyOf } from '$lib/commands.svelte';
 
@@ -15,7 +15,7 @@
 	<h2>Sidebar</h2>
 	<p class="sub" style="margin:0">
 		What the sidebar becomes when it folds: when you hide it{#if key} ({key}){/if} and when the window is narrower than 1200 px, for example snapped to half the
-		screen. Saved in this vault's <code>.ledger/settings.json</code>, which never syncs, so each machine can choose its own.
+		screen. Saved in this machine's settings for the vault, outside the vault, so each machine can choose its own.
 	</p>
 
 	<div class="field">

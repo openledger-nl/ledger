@@ -364,13 +364,14 @@ fn without_a_settings_file_the_defaults_apply() {
 }
 
 #[test]
-fn settings_persist_in_the_ledger_folder_which_git_ignores() {
+fn settings_persist_for_this_machine_outside_the_vault() {
     let dir = tempdir().unwrap();
     let saved = ClaudeSettings::validated(" \"C:\\Program Files\\Claude\\claude.exe\" ", "plan", " claude-sonnet-4-5 ", false, true, true).unwrap();
     assert_eq!(saved.cli_path, "C:\\Program Files\\Claude\\claude.exe", "pasted quotes are dropped");
     config::save(dir.path(), &saved).unwrap();
 
-    assert_eq!(config::settings_path(dir.path()), dir.path().join(".ledger").join("claude-code.json"));
+    assert_eq!(config::settings_path(dir.path()), crate::settings::local_dir(dir.path()).join("claude-code.json"));
+    assert!(!config::settings_path(dir.path()).starts_with(dir.path()), "never in the vault");
     assert!(config::settings_path(dir.path()).is_file());
     assert_eq!(config::load(dir.path()), saved);
     assert_eq!(config::load(dir.path()).permission_mode, PermissionMode::Plan);
@@ -378,17 +379,13 @@ fn settings_persist_in_the_ledger_folder_which_git_ignores() {
     assert!(fs::read_to_string(config::settings_path(dir.path())).unwrap().contains("\"autoRun\": true"));
     config::save(dir.path(), &ClaudeSettings { auto_run: false, ..saved }).unwrap();
     assert!(!config::load(dir.path()).auto_run);
-
-    // `.ledger/` is what the vault's .gitignore lists, so the file is neither committed nor synced.
-    let ignore = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
-    assert!(ignore.lines().any(|l| l.trim() == ".ledger/"), "{ignore}");
 }
 
 #[test]
 fn an_old_or_damaged_settings_file_loads_field_by_field() {
     let dir = tempdir().unwrap();
     let write = |text: &str| {
-        fs::create_dir_all(dir.path().join(".ledger")).unwrap();
+        fs::create_dir_all(config::settings_path(dir.path()).parent().unwrap()).unwrap();
         fs::write(config::settings_path(dir.path()), text).unwrap();
     };
 
@@ -546,7 +543,7 @@ fn guard_rails_name_the_vaults_secrets_and_confine_reads_and_writes() {
     let guard: serde_json::Value = serde_json::from_str(&cli::guard_settings(root.path())).unwrap();
     let deny: Vec<&str> = guard["permissions"]["deny"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
     assert!(deny.contains(&"Read(**/.env)") && deny.contains(&"Read(**/.env.*)"), "{deny:?}");
-    let ledger = cli::rule_path(&root.path().join(".ledger").display().to_string()).expect("a temp dir has a usable path");
+    let ledger = cli::rule_path(&crate::settings::local_dir(root.path()).display().to_string()).expect("a temp dir has a usable path");
     assert!(deny.contains(&format!("Read({ledger}/**)").as_str()) && deny.contains(&format!("Edit({ledger}/**)").as_str()), "{deny:?}");
     assert_eq!(guard["permissions"]["blockReadsOutsideWorkingDirectories"], true);
     assert_eq!(guard["permissions"]["blockWritesOutsideWorkingDirectories"], true);
@@ -562,7 +559,7 @@ fn a_run_with_guard_rails_writes_the_guard_file_and_points_at_it_without_them_it
     let at = spec.args.iter().position(|a| a == "--settings").expect("--settings is passed");
     let file = PathBuf::from(&spec.args[at + 1]);
     assert_eq!(file, config::guard_path(&f.root()));
-    assert!(file.starts_with(f.root().join(".ledger")), "the guard file sits in the folder that is never synced");
+    assert!(file.starts_with(crate::settings::local_dir(&f.root())) && !file.starts_with(f.root()), "the guard file sits outside the vault");
     assert_eq!(fs::read_to_string(&file).unwrap(), cli::guard_settings(&f.root()));
     assert!(spec.args.windows(2).any(|w| w[0] == "--setting-sources" && w[1] == "user"));
     assert!(spec.args.iter().any(|a| a == "--strict-mcp-config"), "a .mcp.json in the vault can't start a program");
@@ -1315,9 +1312,8 @@ fn the_note_says_how_a_run_ended_and_stays_small() {
 fn the_note_names_no_folder_on_this_machine_and_no_secrets() {
     let token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
     let f = Fixture::with_body(&format!("Deploy with {token} please."));
-    let ledger = f.root().join(".ledger");
-    fs::create_dir_all(&ledger).unwrap();
-    fs::write(ledger.join(".env"), "GITHUB_TOKEN=github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz\nLEDGER_ENCRYPTION_KEY=\"zzzzyyyyxxxxwwww\"\n").unwrap();
+    crate::settings::write_secret(&f.root(), "TRELLO_TOKEN", "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz").unwrap();
+    crate::settings::write_secret(&f.root(), "PORTFLOW_SESSION", "zzzzyyyyxxxxwwww").unwrap();
 
     let folder = f.request().cwd.display().to_string();
     let absolute = format!("{folder}{0}deliverables{0}summary.md", std::path::MAIN_SEPARATOR);
@@ -1344,9 +1340,8 @@ fn the_note_names_no_folder_on_this_machine_and_no_secrets() {
 fn secrets_never_reach_the_screen() {
     let token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
     let f = Fixture::with_body(&format!("Deploy with {token} please."));
-    let ledger = f.root().join(".ledger");
-    fs::create_dir_all(&ledger).unwrap();
-    fs::write(ledger.join(".env"), "# secrets\nGITHUB_TOKEN=github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz\nLEDGER_ENCRYPTION_KEY=\"zzzzyyyyxxxxwwww\"\n").unwrap();
+    crate::settings::write_secret(&f.root(), "TRELLO_TOKEN", "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz").unwrap();
+    crate::settings::write_secret(&f.root(), "PORTFLOW_SESSION", "zzzzyyyyxxxxwwww").unwrap();
 
     let leak = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"the key is zzzzyyyyxxxxwwww and Authorization: Bearer abcdefghijklmnopqrstuvwx"}]}}"#;
     let rig = Rig::with(FakeRunner::scripted(
@@ -1496,10 +1491,11 @@ fn the_redactor_knows_the_vaults_values_and_the_shapes_of_tokens() {
 }
 
 #[test]
-fn the_redactor_reads_the_vaults_env_file() {
+fn the_redactor_knows_the_vaults_secrets() {
     let dir = tempdir().unwrap();
-    fs::create_dir_all(dir.path().join(".ledger")).unwrap();
-    fs::write(dir.path().join(".ledger").join(".env"), "# comment\nGITHUB_TOKEN=abcd1234efgh5678\nexport OTHER='quoted value 99'\nshort=abc\n").unwrap();
+    let env = crate::settings::secrets_path(dir.path());
+    fs::create_dir_all(env.parent().unwrap()).unwrap();
+    fs::write(&env, "# comment\nTRELLO_TOKEN=abcd1234efgh5678\nexport OTHER='quoted value 99'\nshort=abc\n").unwrap();
     let redactor = Redactor::for_vault(dir.path());
     assert_eq!(redactor.apply("a abcd1234efgh5678 b quoted value 99 c abc d"), "a [redacted] b [redacted] c abc d");
     assert_eq!(Redactor::for_vault(&dir.path().join("nowhere")).apply("fine"), "fine");

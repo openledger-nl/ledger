@@ -11,7 +11,7 @@ use crate::frontmatter::{self, MetaExt};
 use crate::models::{Bump, Criterion, Quote, SemesterDraft, StoryDraft, TaskUpdate, TemplateDraft, TemplateReader};
 use crate::posts::AddOptions;
 use crate::provenance::{self, Origin};
-use crate::settings::{self, SyncEnv};
+use crate::settings;
 use crate::vault::{self, Vault};
 use crate::{board, db, deliverables, feedback, posts, projects, prompts, semesters, stories, templates, threads, uploads};
 
@@ -32,6 +32,7 @@ fn names(root: &Path, rel: &str) -> Vec<String> {
 }
 
 fn open(root: &Path) -> (Vault, Connection) {
+    crate::marker::ensure(root);
     let mut vault = Vault::open(root.to_path_buf()).unwrap();
     let conn = vault.load().unwrap();
     (vault, conn)
@@ -199,13 +200,13 @@ fn the_vault_has_the_agreed_folder_structure() {
     let task_name = &names(root, &format!("{project}/tasks"))[0];
     let task = read(root, &format!("{project}/tasks/{task_name}"));
     assert!(task.contains("title: Draw the pricing page") && task.contains("columnId: doing") && task.contains("story: MM01") && task.contains("thread: alpha-the-first") && task.ends_with("In figma.\n"), "{task}");
-    assert_eq!(names(root, &format!("{project}/templates")), ["house-style.md"]);
-    let global = read(root, "templates/interview.md");
+    assert_eq!(names(root, &format!("{project}/templates")), ["prompts"]);
+    assert_eq!(names(root, &format!("{project}/templates/prompts")), ["house-style.md"]);
+    let global = read(root, "shared/templates/prompts/interview.md");
     assert!(global.contains("name: Interview") && global.contains("trigger: after a call") && global.contains("- Who?") && global.ends_with("## Who\n"), "{global}");
 
-    // Settings and the secret are kept apart from the notes, and out of git.
-    let ignore = read(root, ".gitignore");
-    assert!(ignore.lines().any(|l| l == ".ledger/") && ignore.lines().any(|l| l == ".env"), "{ignore}");
+    // The marker says it is a vault, and of which format.
+    assert!(read(root, "ledger.json").contains("\"ledger\": 1"));
 }
 
 #[test]
@@ -236,7 +237,7 @@ fn a_templates_kinds_and_readers_are_kept_in_its_frontmatter() {
     templates::create(&conn, "", &draft).unwrap();
     vault.persist(&conn).unwrap();
 
-    let text = read(root, "templates/brief.md");
+    let text = read(root, "shared/templates/prompts/brief.md");
     assert!(text.contains("kinds:\n- study\n- company\nreaders:\n- who: client\n  needs: reads the summary first\n  keepFrom: the rate\n- me\nreadersShown: true\n"), "{text}");
     let (_, reloaded) = open(root);
     let brief = templates::get(&reloaded, "", "brief").unwrap();
@@ -251,7 +252,7 @@ fn the_shipped_project_plan_is_offered_until_the_vault_has_its_own() {
     let plan = templates::get(&conn, "", templates::BUILTIN_PLAN).unwrap();
     assert!(plan.builtin && !plan.customised_builtin && plan.name == "Project plan" && plan.kinds.is_empty());
     vault.persist(&conn).unwrap();
-    assert!(!root.join("templates/project-plan.md").exists(), "the shipped template is not a file of the vault");
+    assert!(!root.join("shared/templates/prompts/project-plan.md").exists(), "the shipped template is not a file of the vault");
     assert!(templates::delete(&conn, "", templates::BUILTIN_PLAN).is_err(), "and it can't be deleted");
     assert_eq!(templates::create(&conn, "", &TemplateDraft::basic("Project plan", "", &[], "")).unwrap().id, "project-plan-2", "its id stays free");
 
@@ -259,7 +260,7 @@ fn the_shipped_project_plan_is_offered_until_the_vault_has_its_own() {
     let mine = templates::update(&conn, "", "project-plan", &TemplateDraft { body: "# My plan\n".into(), ..templates::draft_of(&plan) }).unwrap();
     assert!(!mine.builtin && mine.customised_builtin);
     vault.persist(&conn).unwrap();
-    assert!(read(root, "templates/project-plan.md").contains("# My plan"));
+    assert!(read(root, "shared/templates/prompts/project-plan.md").contains("# My plan"));
     let (mut again, reloaded) = open(root);
     assert_eq!(templates::get(&reloaded, "", "project-plan").unwrap().body, "# My plan");
 
@@ -267,7 +268,7 @@ fn the_shipped_project_plan_is_offered_until_the_vault_has_its_own() {
     templates::delete(&reloaded, "", "project-plan").unwrap();
     assert!(templates::get(&reloaded, "", "project-plan").unwrap().builtin);
     again.persist(&reloaded).unwrap();
-    assert!(!root.join("templates/project-plan.md").exists());
+    assert!(!root.join("shared/templates/prompts/project-plan.md").exists());
 }
 
 #[test]
@@ -341,39 +342,6 @@ fn deleting_things_deletes_their_files_and_leaves_no_empty_folders() {
 }
 
 #[test]
-fn versions_kept_beside_their_live_file_by_an_older_ledger_are_moved_to_the_versions_folder() {
-    let dir = tempdir().unwrap();
-    let root = dir.path();
-    write(root, "projects/acme/project.md", "---\nname: Acme\n---\n");
-    write(root, "projects/acme/deliverables/plan.md", "# Plan\n\nthird\n");
-    write(root, "projects/acme/deliverables/plan@v0.1.md", "# Plan\n\nfirst\n");
-    write(root, "projects/acme/deliverables/reports/q3@v1.0.md", "# Q3\n");
-    write(root, "projects/acme/deliverables/chart@v0.1.png", "png");
-    // Already moved by another machine, with the same bytes: the old copy goes.
-    write(root, "projects/acme/deliverables/plan@v0.2.md", "# Plan\n\nsecond\n");
-    write(root, "projects/acme/versions/plan@v0.2.md", "# Plan\n\nsecond\n");
-    // In both places but not the same: the one in versions/ counts, the other is left where it is.
-    write(root, "projects/acme/deliverables/plan@v0.3.md", "# Plan\n\nby hand\n");
-    write(root, "projects/acme/versions/plan@v0.3.md", "# Plan\n\nthird\n");
-    let record = "---\nid: 1-abcdefgh\ndeliverable: plan.md\nversion: '0.1'\nby: human\ncreatedAt: 2026-01-01T00:00:00.000Z\n---\n";
-    write(root, "projects/acme/versions/1-abcdefgh.md", record);
-
-    let (_vault, conn) = open(root);
-    assert_eq!(names(root, "projects/acme/deliverables"), ["plan.md", "plan@v0.3.md"]);
-    assert_eq!(names(root, "projects/acme/versions"), ["1-abcdefgh.md", "chart@v0.1.png", "plan@v0.1.md", "plan@v0.2.md", "plan@v0.3.md", "reports"]);
-    assert_eq!(read(root, "projects/acme/versions/reports/q3@v1.0.md"), "# Q3\n");
-    assert_eq!(read(root, "projects/acme/versions/plan@v0.1.md"), "# Plan\n\nfirst\n", "moved as it was");
-
-    assert_eq!(deliverables::versions_of(&conn, "acme", "plan.md").unwrap(), ["0.1", "0.2", "0.3"]);
-    assert!(deliverables::get(&conn, "acme", "plan@v0.3.md").unwrap().body.unwrap().contains("third"));
-    assert_eq!(deliverables::versions_of(&conn, "acme", "reports/q3.md").unwrap(), ["1.0"]);
-    assert_eq!(deliverables::versions_of(&conn, "acme", "chart.png").unwrap(), ["0.1"]);
-    assert_eq!(deliverables::list(&conn, "acme").unwrap().len(), 3, "plan.md, chart.png and reports/q3.md: a version is no deliverable of its own");
-    let known = provenance::resolve(&conn, "acme", "plan.md").unwrap();
-    assert_eq!(known.iter().find(|v| v.version == "0.1").unwrap().author, "human", "the record beside the versions is still read");
-}
-
-#[test]
 fn deleting_a_project_removes_its_folder_with_the_files_the_database_does_not_own() {
     let dir = tempdir().unwrap();
     let root = dir.path();
@@ -391,7 +359,7 @@ fn deleting_a_project_removes_its_folder_with_the_files_the_database_does_not_ow
     vault.remove_project_dir(&p).unwrap();
     assert!(!root.join(format!("projects/{p}")).exists());
     assert!(root.join(format!("projects/{other}/project.md")).exists());
-    assert!(root.join("templates/interview.md").exists(), "vault-wide templates stay");
+    assert!(root.join("shared/templates/prompts/interview.md").exists(), "vault-wide templates stay");
 }
 
 #[test]
@@ -460,7 +428,7 @@ fn a_hand_written_vault_loads_and_is_repaired() {
 
     // Deliverables of every kind, nested ones included; a markdown one keeps its own frontmatter.
     write(root, "projects/ideas/deliverables/x.md", "---\ntitle: X\nauthor: me\n---\n\n# The brief\n");
-    write(root, "projects/ideas/deliverables/x@v1.0.md", "# The brief, v1\n");
+    write(root, "projects/ideas/versions/x@v1.0.md", "# The brief, v1\n");
     write(root, "projects/ideas/deliverables/sub/data.csv", "a,b\n1,2\n");
     write(root, "projects/ideas/deliverables/diagram.png", "not really a png");
 
@@ -472,8 +440,8 @@ fn a_hand_written_vault_loads_and_is_repaired() {
 
     // A project that is nothing but a reading guide, and templates in both scopes.
     write(root, "projects/bare/README.md", "# Bare\n\nJust a guide.");
-    write(root, "templates/memo.md", "---\nname: Memo\nquestions: Who is it for?\n---\n\n# Memo\n");
-    write(root, "projects/ideas/templates/memo.md", "---\nname: Ideas memo\n---\nProject memo.");
+    write(root, "shared/templates/prompts/memo.md", "---\nname: Memo\nquestions: Who is it for?\n---\n\n# Memo\n");
+    write(root, "projects/ideas/templates/prompts/memo.md", "---\nname: Ideas memo\n---\nProject memo.");
 
     let (_, conn) = open(root);
 
@@ -545,9 +513,9 @@ fn a_hand_written_vault_loads_and_is_repaired() {
 fn a_hand_written_semester_loads_with_european_dates_and_gets_its_sprints() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    write(root, "semesters/spring.md", "---\nname: Spring 2027\nstart: 01-02-2027\nend: 31-07-2027\nsprintWeeks: 3\n---\nInternship half.\n");
-    write(root, "semesters/broken.md", "---\nname: Broken\nstart: someday\nend: 2027-07-31\n---\n");
-    write(root, "semesters/odd.md", "---\nname: Odd sprints\nstart: 2027-08-01\nend: 2027-08-31\nsprints:\n  - name: Late\n    start: 2027-09-10\n    end: 2027-09-20\n---\n");
+    write(root, "shared/semesters/spring.md", "---\nname: Spring 2027\nstart: 01-02-2027\nend: 31-07-2027\nsprintWeeks: 3\n---\nInternship half.\n");
+    write(root, "shared/semesters/broken.md", "---\nname: Broken\nstart: someday\nend: 2027-07-31\n---\n");
+    write(root, "shared/semesters/odd.md", "---\nname: Odd sprints\nstart: 2027-08-01\nend: 2027-08-31\nsprints:\n  - name: Late\n    start: 2027-09-10\n    end: 2027-09-20\n---\n");
     let (mut vault, conn) = open(root);
 
     let all = semesters::list(&conn).unwrap();
@@ -559,7 +527,7 @@ fn a_hand_written_semester_loads_with_european_dates_and_gets_its_sprints() {
 
     // Like every hand-written file, it keeps its form until it is changed in the app; a reload agrees.
     assert_eq!(vault.persist(&conn).unwrap(), 0);
-    assert!(read(root, "semesters/spring.md").contains("start: 01-02-2027"));
+    assert!(read(root, "shared/semesters/spring.md").contains("start: 01-02-2027"));
     let (_, again) = open(root);
     assert_eq!(format!("{:?}", semesters::list(&conn).unwrap()), format!("{:?}", semesters::list(&again).unwrap()));
 
@@ -568,7 +536,7 @@ fn a_hand_written_semester_loads_with_european_dates_and_gets_its_sprints() {
     let draft = SemesterDraft { name: spring.name.clone(), start: spring.start.clone(), end: spring.end.clone(), notes: "Internship.".into(), ..Default::default() };
     semesters::update(&conn, "spring", &draft).unwrap();
     vault.persist(&conn).unwrap();
-    let written = read(root, "semesters/spring.md");
+    let written = read(root, "shared/semesters/spring.md");
     assert!(written.contains("start: 2027-02-01") && written.contains("- name: Sprint 1") && written.ends_with("Internship.\n"), "{written}");
 }
 
@@ -669,89 +637,45 @@ fn frontmatter_reading_is_lenient() {
 // ---- settings and secrets ---------------------------------------------------------------------------
 
 #[test]
-fn settings_live_in_the_ledger_folder_and_the_token_in_its_env_file() {
+fn this_machines_settings_and_secrets_are_kept_outside_the_vault() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    assert_eq!(settings::read_env(root), SyncEnv::default());
-    assert!(settings::read_env(root).complete().is_none());
-
     settings::update_settings(root, |s| s.screenshot_hotkey = Some("Alt+F9".into())).unwrap();
-    settings::write_env(root, &SyncEnv { repo: "me/notes".into(), branch: "main".into(), token: "github_pat_abc".into() }).unwrap();
+    settings::write_secret(root, "TRELLO_TOKEN", "secret-token").unwrap();
 
-    // Repository and branch are settings; the token is the secret and nothing else is in its file.
-    let json = read(root, ".ledger/settings.json");
-    assert!(json.contains("\"repo\": \"me/notes\"") && json.contains("\"branch\": \"main\"") && json.contains("Alt+F9"), "{json}");
-    assert!(!json.contains("github_pat_abc"), "the token never goes in settings.json");
-    let secrets = read(root, ".ledger/.env");
-    assert!(secrets.contains("GITHUB_TOKEN=github_pat_abc") && !secrets.contains("me/notes"), "{secrets}");
-
-    let config = settings::read_env(root).complete().unwrap();
-    assert_eq!((config.repo.as_str(), config.branch.as_str(), config.token.as_str()), ("me/notes", "main", "github_pat_abc"));
-    assert_eq!(settings::read_settings(root).screenshot_hotkey.as_deref(), Some("Alt+F9"), "saving sync settings keeps the others");
-
-    // Neither file is ever pushed.
-    assert!(read(root, ".gitignore").lines().any(|l| l == ".ledger/"));
-    let ignore = crate::sync::Ignore::load(root);
-    assert!(ignore.is_ignored(".ledger/settings.json", false) && ignore.is_ignored(".ledger/.env", false));
-
-    // Turning sync off removes the token and leaves the rest.
-    settings::write_env(root, &SyncEnv { repo: "me/notes".into(), branch: "main".into(), token: String::new() }).unwrap();
-    assert!(settings::read_env(root).complete().is_none());
-    assert_eq!(settings::read_env(root).repo, "me/notes");
+    let json = fs::read_to_string(settings::settings_path(root)).unwrap();
+    assert!(json.contains("Alt+F9") && !json.contains("secret-token"), "{json}");
+    assert!(!root.join(".ledger").exists(), "nothing of this machine's is kept in the vault");
+    assert!(!settings::settings_path(root).starts_with(root));
+    assert_eq!(settings::read_secret(root, "TRELLO_TOKEN").as_deref(), Some("secret-token"));
+    assert!(!root.join(".gitignore").exists(), "the vault is no git repository: nothing writes a .gitignore");
 }
 
 #[test]
-fn an_env_file_keeps_lines_that_are_not_the_token() {
+fn an_env_file_keeps_lines_that_are_not_the_one_written() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    write(root, ".ledger/.env", "# mine\nOTHER=keep me\nexport GITHUB_TOKEN = \"old-token\"\n");
-    assert_eq!(settings::read_env(root).token, "old-token");
+    let env = settings::secrets_path(root);
+    fs::create_dir_all(env.parent().unwrap()).unwrap();
+    fs::write(&env, "# mine\nOTHER=keep me\nexport TRELLO_TOKEN = \"old-token\"\n").unwrap();
+    assert_eq!(settings::read_secret(root, "TRELLO_TOKEN").as_deref(), Some("old-token"));
 
-    settings::write_env(root, &SyncEnv { repo: "me/notes".into(), branch: "main".into(), token: "new-token".into() }).unwrap();
-    let text = read(root, ".ledger/.env");
+    settings::write_secret(root, "TRELLO_TOKEN", "new-token").unwrap();
+    let text = fs::read_to_string(&env).unwrap();
     assert!(text.contains("# mine") && text.contains("OTHER=keep me"), "{text}");
-    assert_eq!(text.matches("GITHUB_TOKEN").count(), 1, "{text}");
-    assert_eq!(settings::read_env(root).token, "new-token");
-}
-
-#[test]
-fn an_existing_gitignore_is_extended_not_replaced() {
-    let dir = tempdir().unwrap();
-    fs::write(dir.path().join(".gitignore"), "drafts/\n*.bak").unwrap();
-    settings::ensure_gitignore(dir.path()).unwrap();
-    settings::ensure_gitignore(dir.path()).unwrap();
-    assert_eq!(read(dir.path(), ".gitignore"), "drafts/\n*.bak\n.ledger/\n.env\n");
-}
-
-#[test]
-fn repositories_and_branches_are_normalised() {
-    for good in ["me/notes", " me/notes ", "https://github.com/me/notes", "https://github.com/me/notes.git", "git@github.com:me/notes.git", "github.com/me/notes/"] {
-        assert_eq!(settings::normalize_repo(good).unwrap(), "me/notes", "{good}");
-    }
-    for bad in ["", "notes", "me/", "/notes", "me/notes/extra", "me/no tes", "https://example.com/me/notes/x"] {
-        assert!(settings::normalize_repo(bad).is_err(), "{bad:?}");
-    }
-    assert_eq!(settings::normalize_branch(" refs/heads/ledger ").unwrap(), "ledger");
-    assert_eq!(settings::normalize_branch("feature/notes").unwrap(), "feature/notes");
-    for bad in ["", "a b", "a..b", "/a"] {
-        assert!(settings::normalize_branch(bad).is_err(), "{bad:?}");
-    }
+    assert_eq!(text.matches("TRELLO_TOKEN").count(), 1, "{text}");
+    assert_eq!(settings::read_secret(root, "TRELLO_TOKEN").as_deref(), Some("new-token"));
 }
 
 #[test]
 fn the_vault_location_is_remembered_in_the_app_config() {
     let config = tempdir().unwrap();
-    let docs = tempdir().unwrap();
-
-    let (path, locked) = settings::resolve_vault(config.path(), Some(docs.path().to_path_buf()));
+    let (path, locked) = settings::resolve_vault(config.path());
     if std::env::var_os("LEDGER_VAULT").is_none() {
-        assert_eq!((path, locked), (None, false), "nothing chosen and nothing in the old default place: the picker asks");
-        std::fs::create_dir(docs.path().join("Ledger")).unwrap();
-        let (path, _) = settings::resolve_vault(config.path(), Some(docs.path().to_path_buf()));
-        assert_eq!(path, Some(docs.path().join("Ledger")), "a vault from before the picker keeps opening");
+        assert_eq!((path, locked), (None, false), "nothing chosen: the picker asks");
         let chosen = config.path().join("elsewhere");
         settings::update_config(config.path(), |c| c.vault_path = Some(chosen.display().to_string())).unwrap();
-        assert_eq!(settings::resolve_vault(config.path(), None).0, Some(chosen));
+        assert_eq!(settings::resolve_vault(config.path()).0, Some(chosen));
     }
 }
 
@@ -765,7 +689,6 @@ fn moving_the_vault_copies_it_and_loads_the_new_place() {
     let mut core = crate::state::Core::open_at(old.path().to_path_buf(), config.path().to_path_buf(), false).unwrap();
     projects::create(&core.conn, "Travelling").unwrap();
     core.vault.persist(&core.conn).unwrap();
-    settings::write_env(old.path(), &SyncEnv { repo: "me/notes".into(), branch: "main".into(), token: "secret-token".into() }).unwrap();
 
     assert!(core.set_vault(Path::new("relative/path"), true).is_err());
     assert!(core.set_vault(&old.path().join("inside"), true).is_err());
@@ -774,14 +697,12 @@ fn moving_the_vault_copies_it_and_loads_the_new_place() {
     assert_eq!(core.vault.root(), target);
     assert_eq!(projects::list(&core.conn).unwrap()[0].slug, "travelling");
     assert!(target.join("projects/travelling/project.md").exists());
-    assert_eq!(core.sync.as_ref().unwrap().repo, "me/notes", "the new vault's own .ledger folder decides sync");
     assert!(old.path().join("projects/travelling/project.md").exists(), "the old vault is left where it was");
 
     // Without copying, an empty folder starts a fresh vault.
     let fresh = new.path().join("fresh");
     core.set_vault(&fresh, false).unwrap();
     assert!(projects::list(&core.conn).unwrap().is_empty());
-    assert!(core.sync.is_none());
     assert_eq!(settings::load_config(config.path()).vault_path.unwrap(), fresh.display().to_string());
     assert!(db::query_all(&core.conn, "SELECT slug FROM projects", [], |r| r.get::<_, String>(0)).unwrap().is_empty());
 }
@@ -836,8 +757,9 @@ fn hand_written_version_records_are_read_leniently() {
     let project = "projects/acme";
     write(root, &format!("{project}/project.md"), "---\nname: Acme\n---\n");
     write(root, &format!("{project}/threads/call/thread.md"), "---\ntitle: Call\n---\n");
-    for name in ["plan.md", "plan@v0.1.md", "plan@v0.2.md"] {
-        write(root, &format!("{project}/deliverables/{name}"), &format!("# {name}\n"));
+    write(root, &format!("{project}/deliverables/plan.md"), "# plan.md\n");
+    for name in ["plan@v0.1.md", "plan@v0.2.md"] {
+        write(root, &format!("{project}/versions/{name}"), &format!("# {name}\n"));
     }
     // Upper case and strangers are read as what they mean; an unknown level or author is ignored, not an error.
     write(root, &format!("{project}/versions/a.md"), "---\nid: a\ndeliverable: plan.md\nversion: '0.1'\nby: AI\nmmm: Cyborg\nthread: call\ncreatedAt: 2026-01-01T00:00:00.000Z\nsomething: else\n---\n\nA note.\n");
@@ -858,14 +780,14 @@ fn hand_written_version_records_are_read_leniently() {
 }
 
 #[test]
-fn a_vault_from_before_version_records_loads_as_it_was_and_is_not_rewritten() {
+fn a_version_without_a_record_loads_as_it_was_and_is_not_rewritten() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let project = "projects/acme";
     write(root, &format!("{project}/project.md"), "---\nname: Acme\n---\n");
     write(root, &format!("{project}/threads/call/thread.md"), "---\ntitle: Call\n---\n");
     write(root, &format!("{project}/deliverables/plan.md"), "# Plan\n\ntwo\n");
-    write(root, &format!("{project}/deliverables/plan@v0.1.md"), "# Plan\n\none\n");
+    write(root, &format!("{project}/versions/plan@v0.1.md"), "# Plan\n\none\n");
     write(
         root,
         &format!("{project}/threads/call/posts/n1.md"),
@@ -873,7 +795,7 @@ fn a_vault_from_before_version_records_loads_as_it_was_and_is_not_rewritten() {
     );
 
     let (_vault, conn) = open(root);
-    // The version itself moves to versions/, but no record is written for it.
+    // A version put in the versions folder by hand: what the note proves is shown, and no record is written for it.
     assert_eq!(names(root, &format!("{project}/versions")), ["plan@v0.1.md"], "nothing is written for versions that have no record");
     let known = provenance::resolve(&conn, "acme", "plan.md").unwrap();
     assert_eq!((known[0].author, known[0].thread.as_deref(), known[0].record.is_none()), ("", Some("call"), true));
@@ -882,27 +804,6 @@ fn a_vault_from_before_version_records_loads_as_it_was_and_is_not_rewritten() {
     let (mut again, reloaded) = open(root);
     assert_eq!(again.persist(&reloaded).unwrap(), 0);
     assert!(read(root, &format!("{project}/threads/call/posts/n1.md")).starts_with("---\nid: n1\nversionPublished: true"));
-}
-
-#[test]
-fn a_prompt_an_older_vault_linked_to_versions_reads_as_linked_to_the_deliverable() {
-    let dir = tempdir().unwrap();
-    let root = dir.path();
-    write(root, "projects/ideas/deliverables/plan.md", "# Plan\n");
-    write(root, "projects/ideas/deliverables/plan@v0.1.md", "# Plan\n");
-    write(root, "projects/ideas/deliverables/plan@v0.2.md", "# Plan, again\n");
-    write(root, "projects/ideas/threads/first/prompts/p1.md", "---\ntitle: Plan it\ndeliverables:\n  - plan@v0.1.md\n  - plan@v0.2.md\n  - plan.md\n---\n\nWrite a plan.\n");
-
-    let (mut vault, conn) = open(root);
-    let prompt = prompts::list(&conn, "ideas", "first").unwrap().remove(0);
-    assert_eq!(prompt.deliverables.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(), ["plan.md"], "one link, to the file");
-    assert_eq!(prompt.deliverables[0].versions, ["0.1", "0.2"], "and the file knows its versions");
-
-    // Written again, it says so.
-    prompts::update(&conn, "ideas", "first", &prompt.id, None, Some("Write a better plan.")).unwrap();
-    vault.persist(&conn).unwrap();
-    let text = read(root, "projects/ideas/threads/first/prompts/p1.md");
-    assert!(text.contains("- plan.md") && !text.contains("@v0"), "{text}");
 }
 
 #[test]
@@ -931,35 +832,20 @@ fn the_folded_sidebar_is_a_rail_until_the_vault_settings_say_otherwise() {
     let root = dir.path();
     // No settings file, an older one without the layout, and a value this version doesn't know: all a rail.
     assert_eq!(settings::read_settings(root).layout.sidebar_fold, settings::SidebarFold::Rail);
-    write(root, ".ledger/settings.json", r#"{ "screenshotHotkey": "Control+Shift+S" }"#);
+    let file = settings::settings_path(root);
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, r#"{ "screenshotHotkey": "Control+Shift+S" }"#).unwrap();
     assert_eq!(settings::read_settings(root).layout.sidebar_fold, settings::SidebarFold::Rail);
-    write(root, ".ledger/settings.json", r#"{ "screenshotHotkey": "Control+Shift+S", "layout": { "sidebarFold": "sideways" } }"#);
+    fs::write(&file, r#"{ "screenshotHotkey": "Control+Shift+S", "layout": { "sidebarFold": "sideways" } }"#).unwrap();
     let got = settings::read_settings(root);
     assert_eq!(got.layout.sidebar_fold, settings::SidebarFold::Rail);
     assert_eq!(got.screenshot_hotkey.as_deref(), Some("Control+Shift+S"));
 
     // Saving it keeps the other settings and writes the choice where a person can read it.
     settings::update_settings(root, |s| s.layout.sidebar_fold = settings::SidebarFold::Hide).unwrap();
-    assert!(read(root, ".ledger/settings.json").contains(r#""sidebarFold": "hide""#));
+    assert!(fs::read_to_string(&file).unwrap().contains(r#""sidebarFold": "hide""#));
     let got = settings::read_settings(root);
     assert_eq!(got.layout.sidebar_fold, settings::SidebarFold::Hide);
     assert_eq!(got.screenshot_hotkey.as_deref(), Some("Control+Shift+S"));
 }
 
-#[test]
-fn a_semesters_goals_written_as_gamma_are_read_and_written_back_as_epsilon() {
-    let dir = tempdir().unwrap();
-    let root = dir.path();
-    write(root, "semesters/fall.md", "---\nname: Fall 2026\nstart: 2026-09-01\nend: 2027-01-31\ngamma:\n  layers:\n    U: 2\n---\n");
-    let (mut vault, conn) = open(root);
-    let goals = crate::portflow_epsilon::goals_of(&conn, "fall").unwrap();
-    assert_eq!(goals.layers.get("U"), Some(&2), "the goals under the old key are kept");
-
-    // The next save of the semester writes them under `epsilon:` and drops `gamma:`.
-    let fall = semesters::list(&conn).unwrap().remove(0);
-    let draft = SemesterDraft { name: fall.name, start: fall.start, end: fall.end, notes: "Renamed.".into(), ..Default::default() };
-    semesters::update(&conn, "fall", &draft).unwrap();
-    vault.persist(&conn).unwrap();
-    let written = read(root, "semesters/fall.md");
-    assert!(written.contains("epsilon:") && !written.contains("gamma:"), "{written}");
-}

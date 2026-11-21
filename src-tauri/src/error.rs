@@ -1,7 +1,5 @@
 use std::fmt;
 
-use crate::crypto::CryptoError;
-
 /// What went wrong, in words fit for the UI: commands hand the message to the frontend as a plain string.
 #[derive(Debug)]
 pub enum Error {
@@ -11,18 +9,16 @@ pub enum Error {
     Db(rusqlite::Error),
     /// The vault (the folder of markdown files) could not be read or written.
     Io(String),
-    /// Talking to GitHub, or reconciling with it, went wrong.
+    /// Talking to Trello or Portflow, or reconciling with it, went wrong.
     Sync(String),
-    /// GitHub moved on while a push was being prepared; the sync starts over from the new state.
-    Rejected,
     /// Taking or delivering a screenshot went wrong.
     Screenshot(String),
-    /// A file on GitHub could not be decrypted (or was not encrypted). The sync stops before it changes anything here.
-    Crypto { path: String, cause: CryptoError },
     /// Looking for, downloading or installing an update of Ledger went wrong.
     Update(String),
     /// Making a PDF of a deliverable went wrong.
     Export(String),
+    /// The vault is encrypted, and this machine doesn't have its key yet: it takes the passphrase.
+    Locked(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -61,21 +57,17 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Invalid(message) | Error::NotFound(message) | Error::Sync(message) | Error::Screenshot(message) | Error::Update(message) | Error::Export(message) => {
+            Error::Invalid(message)
+            | Error::NotFound(message)
+            | Error::Sync(message)
+            | Error::Screenshot(message)
+            | Error::Update(message)
+            | Error::Export(message)
+            | Error::Locked(message) => {
                 f.write_str(message)
             }
             Error::Db(e) => write!(f, "Database error: {e}"),
             Error::Io(message) => write!(f, "Vault error: {message}"),
-            Error::Rejected => f.write_str("GitHub changed while syncing"),
-            Error::Crypto { path, cause } => {
-                write!(f, "{path} on GitHub {cause}. Syncing stopped and nothing on this machine was changed.")?;
-                if matches!(cause, CryptoError::NotEncrypted) {
-                    f.write_str(
-                        " A branch that holds unencrypted files can't become an encrypted one, because their history would stay on GitHub. Point sync at a new repository, or at a branch that doesn't exist yet, under Sync to GitHub.",
-                    )?;
-                }
-                Ok(())
-            }
         }
     }
 }

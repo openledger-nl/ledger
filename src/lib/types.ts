@@ -625,61 +625,25 @@ export interface SearchHit {
 	snippet: string;
 }
 
-// ---- settings, sync, screenshots --------------------------------------------------------------------
+// ---- settings, screenshots ----------------------------------------------------------------------------
 
-export interface SyncStatus {
-	configured: boolean;
-	repo: string | null;
-	branch: string | null;
-	state: 'disabled' | 'idle' | 'syncing' | 'error';
-	/** Changes made here that have not been pushed yet. */
-	pending: boolean;
-	/** Whether syncs encrypt what they upload (the setting as it stood when the last sync started). */
-	encrypted: boolean;
-	lastSyncAt: string | null;
-	lastError: string | null;
-	summary: string | null;
-}
-
-/** What GitHub holds of the vault as of the last sync that finished, counted without asking GitHub. */
-export interface SyncOverview {
-	/** The commit both sides last agreed on. */
-	head: string | null;
-	files: number;
-	deliverables: number;
-	attachments: number;
-	/** Everything else: threads, posts, stories, templates, semesters … */
-	notes: number;
-	/** The key the files on GitHub are encrypted with (two hex digits), once they all are. */
-	key: string | null;
-}
-
-export interface SyncSettings {
-	repo: string;
-	branch: string;
-	/** The token itself never reaches the screen. */
-	hasToken: boolean;
-	tokenHint: string;
-	configured: boolean;
-}
-
-export interface EncryptionStatus {
-	/** Whether what is synced is encrypted. */
-	enabled: boolean;
-	/** The key lives in the vault's .ledger/.env; the screen only learns whether it is there. */
-	hasKey: boolean;
-	/** The key's one-byte label as two hex digits, to tell keys apart between machines. */
-	keyId: string | null;
-	/** Why the key can't be read, if it can't (a damaged line in .ledger/.env, an unreadable file). */
-	problem: string | null;
-	/** This vault already synced the configured repository and branch without encryption: that branch can't become an encrypted one. */
-	needsFreshTarget: boolean;
+/** A conflict copy: two machines changed the same file before the cloud carried one change to the other, and both
+ *  were kept, the second beside the first under another name. */
+export interface ConflictView {
+	copy: string;
+	original: string;
+	/** Both are text, so they can be shown side by side. */
+	text: boolean;
+	copyText: string | null;
+	originalText: string | null;
+	copyModified: string | null;
+	originalModified: string | null;
 }
 
 /** What a folded sidebar becomes: an icon rail (the default) or nothing. */
 export type SidebarFold = 'rail' | 'hide';
 
-/** The shell's layout, from the vault's `.ledger/settings.json` (never synced: each machine has its own). */
+/** The shell's layout, from this machine's settings for the vault (outside the vault: each machine has its own). */
 export interface LayoutSettings {
 	sidebarFold: SidebarFold;
 }
@@ -712,13 +676,10 @@ export interface Settings {
 	vaultPath: string;
 	/** Fixed by the LEDGER_VAULT environment variable. */
 	vaultLocked: boolean;
+	/** Where this machine's settings for the vault are kept. */
 	settingsFile: string;
-	secretsFile: string;
 	version: string;
-	sync: SyncSettings;
-	status: SyncStatus;
 	screenshot: ScreenshotSettings;
-	encryption: EncryptionStatus;
 }
 
 /** The guide on the home page for a new client (see onboarding.rs). */
@@ -730,6 +691,25 @@ export interface VaultEntry {
 	exists: boolean;
 	/** It is the vault that is open. */
 	open: boolean;
+	/** Why it can't be opened (a vault from Ledger 0.x, say); null when it can. */
+	refused: string | null;
+	/** Its files are encrypted. */
+	encrypted: boolean;
+	/** Encrypted, and this computer doesn't have its key: opening it takes the passphrase or the recovery key. */
+	needsKey: boolean;
+}
+
+/** A vault just made, with its recovery key when it is encrypted (shown once). */
+export interface CreatedVault {
+	vaults: Vaults;
+	recovery: string | null;
+}
+
+/** Whether the open vault is encrypted, and whether this computer's keychain keeps its key. Never the key. */
+export interface EncryptionView {
+	encrypted: boolean;
+	keyId: string | null;
+	kept: boolean;
 }
 
 export interface Vaults {
@@ -978,6 +958,7 @@ export interface TrelloView {
 	unlinked: TrelloUnlinkedItem[];
 	status: TrelloStatus;
 	settingsFile: string;
+	/** Where the key and token are kept: the system keychain, or the file used where there is none. */
 	secretsFile: string;
 }
 
@@ -1479,7 +1460,7 @@ export interface MeetingSection {
 	title: string;
 	/** Project tags (`thrym-player`), on the heading: the meeting belongs to each of these projects. */
 	projects: string[];
-	/** Person tags (`coach/frank`), on the `With:` line; the same as in feedback. */
+	/** Person tags (`people/frank`), on the `With:` line; the same as in feedback. */
 	people: PersonTag[];
 	/** Your notes, as you wrote them: no template, no required parts. */
 	body: string;
@@ -1531,13 +1512,37 @@ export interface PdfLayoutView {
 	vault: string | null;
 }
 
-export interface ProjectPerson {
-	project: string;
+/** Someone the vault knows (people.rs), in `shared/people/<id>.md`: one person in every project they are part of, and
+ *  shown only in the projects they are attached to. */
+export interface Person {
+	/** Their name as a slug when they were added; it stays when they are renamed. */
+	id: string;
 	name: string;
-	role: FeedbackRole;
+	email: string;
+	organisation: string;
 	/** Their Portflow id, when they are someone in Portflow. */
 	portflowUser: number | null;
-	/** `role/name` (`coach/frank-de-vries`), as meetings and feedback tag them; Ledger fills it in. */
+	notes: string;
+	/** The projects they are part of, with their role in each. */
+	projects: { project: string; projectName: string; role: FeedbackRole }[];
+	/** `people/<id>`, as meetings and feedback tag them. */
+	tag: PersonTag;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type PersonDraft = Pick<Person, 'name' | 'email' | 'organisation' | 'portflowUser' | 'notes'>;
+
+/** Someone of the vault as part of one project, with their role there; listed in the project's project.md. */
+export interface ProjectPerson {
+	project: string;
+	/** Their id in the vault. */
+	person: string;
+	role: FeedbackRole;
+	/** Their name and Portflow id, from the vault. */
+	name: string;
+	portflowUser: number | null;
+	/** `people/<id>` (`people/frank-de-vries`), as meetings and feedback tag them. */
 	tag: PersonTag;
 }
 

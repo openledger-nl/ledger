@@ -5,7 +5,7 @@
 	const { Story } = defineMeta({
 		title: 'UI/Switch',
 		component: Switch,
-		args: { checked: true, label: 'Encrypt what goes to GitHub', disabled: false, onchange: () => {} }
+		args: { checked: true, label: 'Check for updates automatically', disabled: false, onchange: () => {} }
 	});
 </script>
 

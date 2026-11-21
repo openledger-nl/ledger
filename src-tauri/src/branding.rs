@@ -157,7 +157,7 @@ pub fn save(conn: &Connection, project: &str, branding: &Branding) -> Result<Bra
 /// when `source` is `None`.
 pub fn set_logo(conn: &Connection, root: &Path, project: &str, side: Side, source: Option<&Path>) -> Result<Branding> {
     let mut branding = get(conn, project)?;
-    let dir = uploads::project_dir(root, project);
+    let vault = crate::store::at(root);
     let old = match side {
         Side::Own => branding.own_logo.take(),
         Side::Client => branding.client_logo.take(),
@@ -169,14 +169,11 @@ pub fn set_logo(conn: &Connection, root: &Path, project: &str, side: Side, sourc
                 return Err(Error::invalid("A logo is a PNG, JPEG, SVG or WebP picture"));
             }
             let rel = format!("branding/{}.{ext}", side.word());
-            let to = dir.join(&rel);
-            if let Some(parent) = to.parent() {
-                fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;
-            }
-            // Picking the logo that is already there copies nothing (a copy onto itself would empty it).
-            let same = matches!((fs::canonicalize(source), fs::canonicalize(&to)), (Ok(a), Ok(b)) if a == b);
+            let in_vault = uploads::project_rel(project, &rel);
+            // Picking the logo that is already there copies nothing.
+            let same = matches!((fs::canonicalize(source), fs::canonicalize(vault.path(&in_vault))), (Ok(a), Ok(b)) if a == b);
             if !same {
-                fs::copy(source, &to).map_err(|e| Error::io(source, e))?;
+                vault.import_file(source, &in_vault).map_err(|e| Error::io(source, e))?;
             }
             Some(rel)
         }
@@ -187,7 +184,7 @@ pub fn set_logo(conn: &Connection, root: &Path, project: &str, side: Side, sourc
         && Some(&old) != new.as_ref()
         && old.starts_with("branding/")
     {
-        let _ = fs::remove_file(dir.join(&old));
+        let _ = vault.remove(&uploads::project_rel(project, &old));
     }
     match side {
         Side::Own => branding.own_logo = new,

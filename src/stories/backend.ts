@@ -3,7 +3,7 @@
 // the opener, the dialog) to `answer` below through Tauri's own mock (`mockIPC`), so components that load their own data
 // show the sample vault from fixtures.ts. A command that isn't listed answers null, and says so in the console.
 
-import type { LayoutSettings, PortflowStatus, PortflowView, SyncStatus, UpdateView } from '$lib/types';
+import type { LayoutSettings, PortflowStatus, PortflowView, UpdateView } from '$lib/types';
 import * as fx from './fixtures';
 
 const portflowStatus: PortflowStatus = {
@@ -46,7 +46,6 @@ const updates: UpdateView = {
 	configFile: '/home/student/.config/nl.openledger.ledger/config.json'
 };
 
-const syncStatus: SyncStatus = fx.settings.status;
 const layout: LayoutSettings = { sidebarFold: 'rail' };
 
 /** What each command answers: a value, or a function of the call's arguments. */
@@ -57,8 +56,13 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	get_project_meta: fx.projectMeta,
 	list_project_meta: [fx.projectMeta],
 	list_project_people: fx.people,
+	list_people: fx.vaultPeople,
+	get_person: (a: Record<string, unknown>) => fx.vaultPeople.find((p) => p.id === a.id) ?? fx.vaultPeople[0],
+	create_person: fx.vaultPeople[4],
+	update_person: (a: Record<string, unknown>) => fx.vaultPeople.find((p) => p.id === a.id) ?? fx.vaultPeople[0],
+	delete_person: null,
 	get_project_branding: fx.branding,
-	pdf_layout: { used: 'vault', project: null, vault: 'pdf/layout.typ' },
+	pdf_layout: { used: 'vault', project: null, vault: 'shared/templates/pdf/layout.typ' },
 	get_thread: fx.threadView,
 	list_semesters: [fx.semester],
 	list_activity: fx.activity,
@@ -122,22 +126,22 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	preview_dropped_image: () => fx.sketchBytes(),
 	check_vault_changes: false,
 
-	// settings, sync and the app
+	// settings and the app
 	get_settings: fx.settings,
-	sync_status: syncStatus,
-	sync_overview: { head: 'a1b2c3d', files: 120, deliverables: 4, attachments: 6, notes: 40, key: null },
-	sync_commits: 0,
 	layout_settings: layout,
 	onboarding_status: fx.onboarding,
 	set_onboarding_purpose: (a: Record<string, unknown>) => ({ ...fx.onboarding, purpose: a.purpose }),
 	list_vaults: fx.vaults,
-	create_vault: fx.vaults,
+	list_conflicts: fx.conflicts,
+	vault_encryption: { encrypted: false, keyId: null, kept: false },
+	unlock_vault: fx.vaults,
+	resolve_conflict: [],
+	create_vault: { vaults: fx.vaults, recovery: null },
 	open_vault: fx.vaults,
 	forget_vault: fx.vaults,
-	encryption_status: fx.settings.encryption,
 	update_status: updates,
 	log_read: [
-		{ at: '2026-11-16T09:12:00.000Z', level: 'info', source: 'sync', message: 'Synced with GitHub: up to date' },
+		{ at: '2026-11-16T09:12:00.000Z', level: 'info', source: 'vault', message: 'Reloaded changes made outside Ledger' },
 		{ at: '2026-11-16T09:10:00.000Z', level: 'info', source: 'portflow', message: 'Took 2 evidence items from Portflow' }
 	],
 	log_write: null,
@@ -162,8 +166,8 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 		projects: [],
 		unlinked: [],
 		status: { configured: false, state: 'disabled', pending: false, lastSyncAt: null, lastError: null, summary: null, report: null },
-		settingsFile: '/home/student/Documents/Ledger/.ledger/settings.json',
-		secretsFile: '/home/student/Documents/Ledger/.ledger/.env'
+		settingsFile: '/home/student/.config/nl.openledger.ledger/vaults/3f9a0c1d2e4b5a6978c0d1e2f3a4b5c6/trello.json',
+		secretsFile: 'the system keychain'
 	},
 	pending_screenshot: null,
 	pending_screenshot_image: () => fx.sketchBytes(),

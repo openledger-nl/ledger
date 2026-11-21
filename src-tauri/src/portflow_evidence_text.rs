@@ -16,7 +16,7 @@
 //! so it is told from the text itself rather than kept twice.
 //!
 //! It is kept in step with the item's description in Portflow the way a reading guide is with its collection's
-//! (`portflow_sync::sync_guide`): what both sides last agreed on is remembered as hashes in `.ledger/portflow-guides.json`
+//! (`portflow_sync::sync_guide`): what both sides last agreed on is remembered as hashes in `portflow-guides.json`
 //! (`GuideMemory::evidence`). A change made only in Portflow comes in (in the shape when it has it); one made only in
 //! Ledger goes to Portflow with the "Evidence description → evidence item" write on, and waits in Ledger with it off;
 //! when both changed, Ledger's text is kept (and sent with the write on, a note in the report with it off). The first
@@ -189,7 +189,7 @@ pub struct Outcome {
 
 /// Keeps one evidence item's description in step (the rules are in this module's docs). `write_on`: the "Evidence
 /// description → evidence item" write is on. Only what Ledger should store is returned; what is remembered is updated
-/// in `memory` and written to `.ledger/` here.
+/// in `memory` and written to the vault's folder for this machine here.
 pub fn sync(portflow: &dyn Portflow, p: i64, item: &Item, write_on: bool, memory: &mut GuideMemory, root: &Path) -> PResult<Outcome> {
     let key = format!("{}/{}", item.project, item.portflow);
     let now = GuideSeen { description: html_hash(item.portflow_html), readme: text_hash(item.ledger) };

@@ -3,26 +3,22 @@
 //! Argument names are snake_case here and camelCase from the frontend.
 
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use zeroize::Zeroizing;
 
 use crate::error::{Error, Result};
-use crate::github::GithubRemote;
 use crate::history;
-use crate::keystore::{self, EncryptionStatus, KeyStore};
 use crate::models::*;
 use crate::branding::{self, Branding, Side};
 use crate::deliverable_facts::{self, DeliverableMeta};
 use crate::project_facts::{self, ProjectMeta, ProjectPerson};
 use crate::posts::AddOptions;
 use crate::screenshot::{self, Region, ScreenshotSettings};
-use crate::settings::{self, SyncConfig, SyncEnv};
+use crate::settings;
 use crate::state::App;
-use crate::syncer::SyncStatus;
 use crate::{activity, board, semesters, deliverables, feedback, links, markdown, posts, projects, prompts, provenance, search, stories, templates, threads, uploads};
 
 #[tauri::command]
@@ -167,6 +163,33 @@ pub fn list_project_meta(app: State<App>) -> Result<Vec<ProjectMeta>> {
     app.read(|c, _| project_facts::list(c))
 }
 
+/// Everyone the vault knows, with the projects each is part of.
+#[tauri::command]
+pub fn list_people(app: State<App>) -> Result<Vec<crate::people::Person>> {
+    app.read(|c, _| crate::people::list(c))
+}
+
+#[tauri::command]
+pub fn get_person(app: State<App>, id: String) -> Result<crate::people::Person> {
+    app.read(|c, _| crate::people::get(c, &id))
+}
+
+#[tauri::command]
+pub fn create_person(app: State<App>, draft: crate::people::PersonDraft) -> Result<crate::people::Person> {
+    app.mutate(|c, _| crate::people::create(c, &draft))
+}
+
+#[tauri::command]
+pub fn update_person(app: State<App>, id: String, draft: crate::people::PersonDraft) -> Result<crate::people::Person> {
+    app.mutate(|c, _| crate::people::update(c, &id, &draft))
+}
+
+/// Takes someone out of the vault and out of every project they were part of.
+#[tauri::command]
+pub fn delete_person(app: State<App>, id: String) -> Result<()> {
+    app.mutate(|c, _| crate::people::delete(c, &id))
+}
+
 /// The people of a project (its coach, teammates, client…), or of every project without one.
 #[tauri::command]
 pub fn list_project_people(app: State<App>, slug: Option<String>) -> Result<Vec<ProjectPerson>> {
@@ -219,7 +242,6 @@ pub fn delete_project(app: State<App>, slug: String) -> Result<()> {
         core.vault.persist(&core.conn)?;
         core.vault.remove_project_dir(&slug)?;
     }
-    app.syncer.dirty();
     Ok(())
 }
 
@@ -475,12 +497,17 @@ pub fn delete_upload(app: State<App>, project: String, thread: String, id: Strin
 
 /// A path inside a project's folder, from a path given relative to it; anything that could leave the folder is refused.
 fn project_path(root: &Path, project: &str, rel: &str) -> Result<PathBuf> {
+    Ok(root.join(project_rel(project, rel)?))
+}
+
+/// The same, as a path in the vault (see `store`).
+fn project_rel(project: &str, rel: &str) -> Result<String> {
     safe_segment(project)?;
     let rel_path = Path::new(rel);
     if rel.is_empty() || rel_path.components().any(|c| !matches!(c, Component::Normal(_))) {
         return Err(Error::invalid("That path isn't inside the project"));
     }
-    Ok(uploads::project_dir(root, project).join(rel_path))
+    Ok(uploads::project_rel(project, &rel.replace('\\', "/")))
 }
 
 fn safe_segment(segment: &str) -> Result<()> {
@@ -493,16 +520,16 @@ fn safe_segment(segment: &str) -> Result<()> {
 /// The bytes of a file in a project's folder (an attachment, a deliverable), for the screen to show.
 #[tauri::command]
 pub fn read_project_file(app: State<App>, project: String, path: String) -> Result<tauri::ipc::Response> {
-    let file = app.read(|_, root| project_path(root, &project, &path))?;
-    let bytes = std::fs::read(&file).map_err(|e| Error::io(&file, e))?;
+    let (store, rel) = app.read(|_, root| Ok((crate::store::at(root), project_rel(&project, &path)?)))?;
+    let bytes = store.read(&rel).map_err(|e| Error::io(&store.path(&rel), e))?;
     Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// A picture in a project's folder, as the window can show it (a JPEG XL one as PNG, see `images`).
 #[tauri::command]
 pub fn read_project_image(app: State<App>, project: String, path: String) -> Result<tauri::ipc::Response> {
-    let file = app.read(|_, root| project_path(root, &project, &path))?;
-    Ok(tauri::ipc::Response::new(crate::images::displayable_file(&file)?))
+    let (store, rel) = app.read(|_, root| Ok((crate::store::at(root), project_rel(&project, &path)?)))?;
+    Ok(tauri::ipc::Response::new(crate::images::displayable_in(&store, &rel)?))
 }
 
 /// The preview of a picture being dropped onto the window, from wherever it is on this machine: pictures only.
@@ -515,16 +542,26 @@ pub fn preview_dropped_image(path: String) -> Result<tauri::ipc::Response> {
 #[tauri::command]
 pub fn open_project_file(app: AppHandle, project: String, path: String, reveal: bool) -> Result<()> {
     let state = app.state::<App>();
-    let file = state.read(|_, root| project_path(root, &project, &path))?;
-    if !file.exists() {
+    let (store, rel) = state.read(|_, root| Ok((crate::store::at(root), project_rel(&project, &path)?)))?;
+    if !store.exists(&rel) {
         return Err(Error::not_found("That file isn't there any more"));
     }
+    open_or_reveal(&app, &store, &rel, reveal, None)
+}
+
+/// Opens the vault's file at `rel` with the system's program for it, or shows it in its folder. In an encrypted vault
+/// that is a plain copy outside the synced folder (see `store::Store::materialize`). `no_program` is what to say when
+/// the system has no program for it.
+fn open_or_reveal(app: &AppHandle, store: &crate::store::Store, rel: &str, reveal: bool, no_program: Option<&str>) -> Result<()> {
+    let file = store.materialize(rel).map_err(|e| Error::io(&store.path(rel), e))?;
     let opener = app.opener();
     if reveal {
-        opener.reveal_item_in_dir(&file).map_err(Error::screenshot)
-    } else {
-        opener.open_path(file.display().to_string(), None::<&str>).map_err(Error::screenshot)
+        return opener.reveal_item_in_dir(&file).map_err(Error::screenshot);
     }
+    opener.open_path(file.display().to_string(), None::<&str>).map_err(|e| match no_program {
+        Some(message) => Error::invalid(message),
+        None => Error::screenshot(e),
+    })
 }
 
 // ---- deliverables -----------------------------------------------------------------------------------
@@ -592,10 +629,9 @@ pub async fn export_deliverable_pdf(app: AppHandle, project: String, path: Strin
     let rel = tauri::async_runtime::spawn_blocking(move || crate::pdf::make(prepared))
         .await
         .map_err(|e| Error::export(format!("Making the PDF stopped unexpectedly: {e}")))??;
-    // The PDF is a file in the vault, so the sync takes it along.
-    state.syncer.dirty();
     if open {
-        let file = project_path(&root, &project, &rel)?;
+        let store = crate::store::at(&root);
+        let file = store.materialize(&project_rel(&project, &rel)?).map_err(|e| Error::io(&project_path(&root, &project, &rel).unwrap_or_default(), e))?;
         app.opener().open_path(file.display().to_string(), None::<&str>).map_err(Error::screenshot)?;
     }
     Ok(rel)
@@ -617,7 +653,6 @@ pub fn customise_pdf_layout(app: State<App>, project: String, scope: crate::pdf:
         projects::require(c, &project)?;
         crate::pdf::customise_layout(root, &project, scope)
     })?;
-    app.syncer.dirty();
     Ok(view)
 }
 
@@ -628,23 +663,15 @@ pub fn reset_pdf_layout(app: State<App>, project: String, scope: crate::pdf::Lay
         projects::require(c, &project)?;
         crate::pdf::reset_layout(root, &project, scope)
     })?;
-    app.syncer.dirty();
     Ok(view)
 }
 
 /// Opens a layout of one's own in the program the system uses for it, or shows it in its folder.
 #[tauri::command]
 pub fn open_pdf_layout(app: AppHandle, project: String, scope: crate::pdf::LayoutScope, reveal: bool) -> Result<()> {
-    let file = app.state::<App>().read(|_, root| crate::pdf::layout_file(root, &project, scope))?;
-    let Some((file, _)) = file else { return Err(Error::not_found("There is no layout of your own there yet")) };
-    let opener = app.opener();
-    if reveal {
-        opener.reveal_item_in_dir(&file).map_err(Error::screenshot)
-    } else {
-        opener.open_path(file.display().to_string(), None::<&str>).map_err(|_| {
-            Error::invalid("No program is set to open .typ files. Show it in its folder and open it with a text editor")
-        })
-    }
+    let (store, file) = app.state::<App>().read(|_, root| Ok((crate::store::at(root), crate::pdf::layout_file(root, &project, scope)?)))?;
+    let Some(file) = file else { return Err(Error::not_found("There is no layout of your own there yet")) };
+    open_or_reveal(&app, &store, &file, reveal, Some("No program is set to open .typ files. Show it in its folder and open it with a text editor"))
 }
 
 /// How the versions of a deliverable came to be, by thread. `path` is the live file or any of its versions.
@@ -794,18 +821,7 @@ pub fn delete_column(app: State<App>, project: String, id: String) -> Result<Vec
     app.mutate(|c, _| board::delete_column(c, &project, &id))
 }
 
-// ---- the vault and GitHub sync ----------------------------------------------------------------------
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SyncSettings {
-    pub repo: String,
-    pub branch: String,
-    /// The token itself never leaves the backend; the screen only learns that there is one.
-    pub has_token: bool,
-    pub token_hint: String,
-    pub configured: bool,
-}
+// ---- the vault and its settings ----------------------------------------------------------------------
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -813,217 +829,29 @@ pub struct SettingsView {
     pub vault_path: String,
     /// The location is fixed by the `LEDGER_VAULT` environment variable.
     pub vault_locked: bool,
-    /// Where the vault's settings and its secret are kept (both inside the vault, both gitignored).
+    /// Where this machine's settings for the vault are kept.
     pub settings_file: String,
-    pub secrets_file: String,
     pub version: String,
-    pub sync: SyncSettings,
-    pub status: SyncStatus,
     pub screenshot: ScreenshotSettings,
-    /// Whether sync encrypts, and whether this machine has the key. Never the key.
-    pub encryption: EncryptionStatus,
 }
 
 fn view(app: &App) -> SettingsView {
-    let (root, locked, env, keys) = {
+    let (root, locked) = {
         let core = app.lock();
-        let root = core.vault.root().to_path_buf();
-        let env = settings::read_env(&root);
-        (root, core.vault_from_env, env, core.keys.clone())
-    };
-    let token_hint = if env.token.chars().count() >= 8 {
-        format!("...{}", env.token.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<String>())
-    } else {
-        String::new()
+        (core.vault.root().to_path_buf(), core.vault_from_env)
     };
     SettingsView {
         vault_path: root.display().to_string(),
         vault_locked: locked,
         settings_file: settings::settings_path(&root).display().to_string(),
-        secrets_file: settings::secrets_path(&root).display().to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        sync: SyncSettings {
-            configured: env.complete().is_some(),
-            has_token: !env.token.is_empty(),
-            token_hint,
-            repo: env.repo.clone(),
-            branch: env.branch.clone(),
-        },
-        status: app.syncer.status(),
         screenshot: app.screenshots.settings(&root),
-        encryption: keystore::status(&root, &*keys),
     }
 }
 
 #[tauri::command]
 pub fn get_settings(app: State<App>) -> SettingsView {
     view(&app)
-}
-
-#[tauri::command]
-pub fn sync_status(app: State<App>) -> SyncStatus {
-    app.syncer.status()
-}
-
-/// What GitHub holds of the vault as of the last sync that finished; nothing while sync is off or hasn't run yet.
-#[tauri::command]
-pub fn sync_overview(app: State<App>) -> Option<crate::sync::Overview> {
-    let (root, config) = {
-        let core = app.lock();
-        (core.vault.root().to_path_buf(), core.sync.clone())
-    };
-    let config = config?;
-    crate::sync::overview(&root, &config.repo, &config.branch)
-}
-
-/// How many commits the synced branch holds, as far as the last agreed commit, asked of GitHub. Nothing while sync is
-/// off or hasn't run yet; an error when GitHub can't be reached, which the sync card leaves out.
-#[tauri::command]
-pub async fn sync_commits(app: State<'_, App>) -> Result<Option<u64>> {
-    let (root, config) = {
-        let core = app.lock();
-        (core.vault.root().to_path_buf(), core.sync.clone())
-    };
-    let Some(config) = config else { return Ok(None) };
-    let Some(head) = crate::sync::overview(&root, &config.repo, &config.branch).and_then(|o| o.head) else { return Ok(None) };
-    let count = tauri::async_runtime::spawn_blocking(move || GithubRemote::new(&config)?.commit_count(&head))
-        .await
-        .map_err(|e| Error::sync(format!("Counting the commits stopped unexpectedly: {e}")))??;
-    Ok(Some(count))
-}
-
-/// Saves the repository and branch to the vault's settings and the token to its `.env`, and starts syncing. A
-/// blank token keeps the one already saved.
-#[tauri::command]
-pub fn save_sync_settings(app: State<App>, repo: String, branch: String, token: Option<String>) -> Result<SettingsView> {
-    let repo = settings::normalize_repo(&repo)?;
-    let branch = settings::normalize_branch(&branch)?;
-
-    let config = {
-        let mut core = app.lock();
-        let root = core.vault.root().to_path_buf();
-        let token = token
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty())
-            .unwrap_or_else(|| settings::read_env(&root).token);
-        if token.is_empty() {
-            return Err(Error::invalid("Enter an access token"));
-        }
-        settings::write_env(&root, &SyncEnv { repo, branch, token })?;
-        core.sync = settings::read_env(&root).complete();
-        core.sync.clone()
-    };
-    app.syncer.reconfigure(config.as_ref());
-    Ok(view(&app))
-}
-
-/// Turns sync off. The repository and branch stay in the settings; the token is removed.
-#[tauri::command]
-pub fn disconnect_sync(app: State<App>) -> Result<SettingsView> {
-    {
-        let mut core = app.lock();
-        let root = core.vault.root().to_path_buf();
-        let env = settings::read_env(&root);
-        settings::write_env(&root, &SyncEnv { token: String::new(), ..env })?;
-        core.sync = None;
-    }
-    app.syncer.reconfigure(None);
-    Ok(view(&app))
-}
-
-/// Tries the connection with the values on screen (a blank token means the saved one) without saving anything.
-#[tauri::command]
-pub async fn test_sync(app: State<'_, App>, repo: String, branch: String, token: Option<String>) -> Result<String> {
-    let repo = settings::normalize_repo(&repo)?;
-    let branch = settings::normalize_branch(&branch)?;
-    let token = {
-        let core = app.lock();
-        token
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty())
-            .unwrap_or_else(|| settings::read_env(core.vault.root()).token)
-    };
-    if token.is_empty() {
-        return Err(Error::invalid("Enter an access token"));
-    }
-
-    let config = SyncConfig { repo: repo.clone(), branch: branch.clone(), token };
-    let check = tauri::async_runtime::spawn_blocking(move || GithubRemote::new(&config)?.check())
-        .await
-        .map_err(|e| Error::sync(format!("The connection test stopped unexpectedly: {e}")))??;
-    if !check.private {
-        return Err(Error::sync(format!("{repo} is a public repository. Ledger only syncs to private repositories.")));
-    }
-    if !check.can_push {
-        return Err(Error::sync("The token can read this repository but not write to it. It needs write access to its contents."));
-    }
-    Ok(if check.branch_exists {
-        format!("Connected to {repo}. The branch {branch} exists.")
-    } else {
-        format!("Connected to {repo}. The branch {branch} doesn't exist yet and will be created on the first sync (the default branch is {}).", check.default_branch)
-    })
-}
-
-#[tauri::command]
-pub fn sync_now(app: State<App>) -> Result<()> {
-    if app.lock().sync.is_none() {
-        return Err(Error::invalid("GitHub sync isn't set up yet"));
-    }
-    app.syncer.now();
-    Ok(())
-}
-
-// ---- encrypting what goes to GitHub -----------------------------------------------------------------
-
-/// Where the vault is and what holds its key, taken out of the core so the key store is asked without the vault
-/// lock held.
-fn key_context(app: &App) -> (PathBuf, Arc<dyn KeyStore>) {
-    let core = app.lock();
-    (core.vault.root().to_path_buf(), core.keys.clone())
-}
-
-#[tauri::command]
-pub fn encryption_status(app: State<App>) -> EncryptionStatus {
-    let (root, keys) = key_context(&app);
-    keystore::status(&root, &*keys)
-}
-
-/// Turns encryption of what is synced on or off, and syncs so that it takes effect. It can't be turned on until
-/// there is a key.
-#[tauri::command]
-pub fn set_encryption_enabled(app: State<App>, enabled: bool) -> Result<SettingsView> {
-    let (root, keys) = key_context(&app);
-    keystore::set_enabled(&root, &*keys, enabled)?;
-    if app.lock().sync.is_some() {
-        app.syncer.now();
-    }
-    Ok(view(&app))
-}
-
-/// Makes a new random key and keeps it in the vault's `.ledger/.env`. With a key already on this machine that
-/// takes `replace`.
-#[tauri::command]
-pub fn generate_encryption_key(app: State<App>, replace: bool) -> Result<SettingsView> {
-    let (root, keys) = key_context(&app);
-    keystore::generate(&root, &*keys, replace)?;
-    Ok(view(&app))
-}
-
-/// Keeps a key made on another machine: its recovery string, or the bare key as hex or base64.
-#[tauri::command]
-pub fn import_encryption_key(app: State<App>, key: String, replace: bool) -> Result<SettingsView> {
-    let key = Zeroizing::new(key);
-    let (root, keys) = key_context(&app);
-    keystore::import(&root, &*keys, &key, replace)?;
-    Ok(view(&app))
-}
-
-/// The recovery string for the key: the one command that hands the key out, and only when asked for.
-#[tauri::command]
-pub fn export_recovery_key(app: State<App>) -> Result<String> {
-    let (root, keys) = key_context(&app);
-    let recovery = keystore::export(&root, &*keys)?;
-    Ok(String::clone(&recovery))
 }
 
 /// Moves the app to the vault in `path`. With `copy`, an empty destination first receives the current vault.
@@ -1033,16 +861,21 @@ pub fn set_vault_path(app: AppHandle, path: String, copy: bool) -> Result<Settin
     Ok(view(&app.state::<App>()))
 }
 
-/// Switches vaults with `change`, then sets up what belongs to the new one: its sync, its Portflow and its screenshot
-/// hotkey.
+/// Switches vaults with `change`, then sets up what belongs to the new one: watching its folder, its Portflow and its
+/// screenshot hotkey.
 fn switch_vault<T>(app: &AppHandle, change: impl FnOnce(&mut crate::state::Core) -> Result<T>) -> Result<T> {
     let state = app.state::<App>();
-    let (out, config) = {
+    let (out, root) = {
         let mut core = state.lock();
         let out = change(&mut core)?;
-        (out, core.sync.clone())
+        (out, core.open.then(|| core.vault.root().to_path_buf()))
     };
-    state.syncer.reconfigure(config.as_ref());
+    if let Some(watcher) = app.try_state::<crate::watcher::VaultWatcher>() {
+        match root {
+            Some(root) => watcher.watch(&root),
+            None => watcher.stop(),
+        }
+    }
     if let Some(portflow) = app.try_state::<crate::portflow::PortflowSyncer>() {
         portflow.vault_switched();
     }
@@ -1062,6 +895,12 @@ pub struct VaultEntry {
     pub exists: bool,
     /// It is the vault the app has open.
     pub open: bool,
+    /// Why it can't be opened (a vault from Ledger 0.x, say); `None` when it can.
+    pub refused: Option<String>,
+    /// Its files are encrypted.
+    pub encrypted: bool,
+    /// Encrypted, and this machine doesn't have its key: opening it takes the passphrase or the recovery key.
+    pub needs_key: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1078,11 +917,19 @@ pub struct VaultsView {
 }
 
 fn vault_entry(path: &Path, open: bool) -> VaultEntry {
+    let found = crate::marker::inspect(path);
+    let (encrypted, needs_key) = match &found {
+        crate::marker::Found::Vault(m) if m.encryption.is_some() => (true, crate::vault_crypto::known(&m.id).is_none()),
+        _ => (false, false),
+    };
     VaultEntry {
         path: path.display().to_string(),
         name: path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().to_string()),
         exists: path.is_dir(),
         open,
+        refused: if open || !path.is_dir() { None } else { crate::marker::refusal(path, &found).map(|e| e.to_string()) },
+        encrypted,
+        needs_key: needs_key && !open,
     }
 }
 
@@ -1111,15 +958,118 @@ pub fn list_vaults(app: AppHandle) -> VaultsView {
     vaults_view(&app)
 }
 
-/// Makes a new vault called `name` in the folder `parent`, opens it, and starts the setup guide for it.
+/// A vault just made: the vaults, and its recovery key when it is encrypted, to be shown once.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedVault {
+    pub vaults: VaultsView,
+    pub recovery: Option<String>,
+}
+
+/// Makes a new vault called `name` in the folder `parent`, opens it, and starts the setup guide for it. With a
+/// passphrase it is encrypted.
 #[tauri::command]
-pub fn create_vault(app: AppHandle, parent: String, name: String) -> Result<VaultsView> {
-    let config_dir = switch_vault(&app, |core| {
-        core.create_vault(&PathBuf::from(parent.trim()), &name)?;
-        Ok(core.config_dir.clone())
+pub fn create_vault(app: AppHandle, parent: String, name: String, passphrase: Option<String>) -> Result<CreatedVault> {
+    let passphrase = passphrase.map(Zeroizing::new);
+    let (config_dir, recovery) = switch_vault(&app, |core| {
+        let (_, recovery) = core.create_vault(&PathBuf::from(parent.trim()), &name, passphrase.as_deref().map(String::as_str))?;
+        Ok((core.config_dir.clone(), recovery))
     })?;
     crate::onboarding::restart(&config_dir)?;
+    Ok(CreatedVault { vaults: vaults_view(&app), recovery: recovery.map(|r| String::clone(&r)) })
+}
+
+/// Opens an encrypted vault with its passphrase or its recovery key. With `keep`, this machine keeps its key in the
+/// system's keychain, so the next start opens it without asking.
+#[tauri::command]
+pub fn unlock_vault(app: AppHandle, path: String, secret: String, keep: bool) -> Result<VaultsView> {
+    let secret = Zeroizing::new(secret);
+    let path = PathBuf::from(path.trim());
+    let crate::marker::Found::Vault(marker) = crate::marker::inspect(&path) else {
+        return Err(Error::invalid(format!("{} isn't a vault", path.display())));
+    };
+    let Some(header) = &marker.encryption else { return Err(Error::invalid("That vault isn't encrypted")) };
+    let key = crate::vault_crypto::unlock(header, &marker.id, &secret)?;
+    crate::vault_crypto::remember(&marker.id, key, keep);
+    switch_vault(&app, |core| core.open_vault(&path))?;
     Ok(vaults_view(&app))
+}
+
+// ---- the open vault's encryption ------------------------------------------------------------------
+
+/// Whether the open vault is encrypted, and what this machine keeps of its key. Never the key.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptionView {
+    pub encrypted: bool,
+    /// The key's one-byte label, to tell keys apart.
+    pub key_id: Option<String>,
+    /// The system's keychain keeps the key, so a start doesn't ask for the passphrase.
+    pub kept: bool,
+}
+
+fn open_marker(app: &App) -> Result<(PathBuf, crate::marker::Marker)> {
+    let root = app.lock().vault.root().to_path_buf();
+    match crate::marker::inspect(&root) {
+        crate::marker::Found::Vault(marker) => Ok((root, marker)),
+        _ => Err(Error::invalid("No vault is open")),
+    }
+}
+
+fn encryption_view(app: &App) -> EncryptionView {
+    match open_marker(app) {
+        Ok((_, marker)) => EncryptionView {
+            encrypted: marker.encryption.is_some(),
+            key_id: marker.encryption.as_ref().map(|h| h.key_id.clone()),
+            kept: marker.encryption.is_some() && crate::vault_crypto::kept(&marker.id),
+        },
+        Err(_) => EncryptionView { encrypted: false, key_id: None, kept: false },
+    }
+}
+
+#[tauri::command]
+pub fn vault_encryption(app: State<App>) -> EncryptionView {
+    encryption_view(&app)
+}
+
+/// Seals the vault's key under a new passphrase; the current one (or the recovery key) says it may.
+#[tauri::command]
+pub fn change_passphrase(app: State<App>, current: String, passphrase: String) -> Result<EncryptionView> {
+    let (current, passphrase) = (Zeroizing::new(current), Zeroizing::new(passphrase));
+    let (root, mut marker) = open_marker(&app)?;
+    let Some(header) = marker.encryption.clone() else { return Err(Error::invalid("This vault isn't encrypted")) };
+    let key = crate::vault_crypto::unlock(&header, &marker.id, &current)?;
+    marker.encryption = Some(crate::vault_crypto::rewrap(&header, &marker.id, &key, &passphrase)?);
+    crate::marker::write(&root, &marker)?;
+    Ok(encryption_view(&app))
+}
+
+/// The recovery key of the open vault, for its passphrase: the key itself, as text. Only ever handed out on request.
+#[tauri::command]
+pub fn recovery_key(app: State<App>, passphrase: String) -> Result<String> {
+    let passphrase = Zeroizing::new(passphrase);
+    let (_, marker) = open_marker(&app)?;
+    let Some(header) = &marker.encryption else { return Err(Error::invalid("This vault isn't encrypted")) };
+    let key = crate::vault_crypto::unlock(header, &marker.id, &passphrase)?;
+    Ok(String::clone(&key.to_recovery()))
+}
+
+/// Takes the key out of this machine's keychain: the next start asks for the passphrase.
+#[tauri::command]
+pub fn forget_vault_key(app: State<App>) -> Result<EncryptionView> {
+    let (_, marker) = open_marker(&app)?;
+    crate::vault_crypto::forget(&marker.id);
+    Ok(encryption_view(&app))
+}
+
+/// Makes an encrypted copy of the open vault in a new folder `name` in `parent`, and opens it. The vault of plain
+/// files is left as it is: delete it yourself once the copy is synced (its files stay in the cloud's version history
+/// and recycle bin for a while).
+#[tauri::command]
+pub fn encrypted_copy(app: AppHandle, parent: String, name: String, passphrase: String) -> Result<CreatedVault> {
+    let passphrase = Zeroizing::new(passphrase);
+    let recovery = switch_vault(&app, |core| core.encrypted_copy(&PathBuf::from(parent.trim()), &name, &passphrase))?.1;
+    Ok(CreatedVault { vaults: vaults_view(&app), recovery: Some(String::clone(&recovery)) })
 }
 
 /// Opens a folder that exists as the vault: one from the list, or any folder picked.
@@ -1140,21 +1090,103 @@ pub fn forget_vault(app: AppHandle, path: String) -> Result<VaultsView> {
 /// Reads the vault in again from its files.
 #[tauri::command]
 pub fn reload_vault(app: State<App>) -> Result<()> {
-    app.lock().reload()?;
-    app.syncer.dirty();
-    Ok(())
+    app.lock().reload()
+}
+
+/// Reads the vault in again when its files changed behind the app's back (the cloud brought in another machine's
+/// changes, or another program wrote), and tells the window. What the folder watcher calls once a burst is over.
+pub fn vault_changed_outside(app: &AppHandle) {
+    let state = app.state::<App>();
+    let reloaded = {
+        let mut core = state.lock();
+        core.open && core.vault.changed_on_disk() && core.reload().is_ok()
+    };
+    if reloaded {
+        let _ = app.emit("vault-changed", ());
+        crate::trello::notify_vault_changed();
+    }
+}
+
+// ---- conflict copies ----------------------------------------------------------------------------------
+
+/// A conflict copy, with what the two versions say when they are text.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictView {
+    pub copy: String,
+    pub original: String,
+    /// Both are text, shown here; otherwise they are opened with their program.
+    pub text: bool,
+    pub copy_text: Option<String>,
+    pub original_text: Option<String>,
+    pub copy_modified: Option<String>,
+    pub original_modified: Option<String>,
+}
+
+fn conflict_views(app: &App) -> Vec<ConflictView> {
+    let core = app.lock();
+    let store = core.vault.store().clone();
+    let modified = |rel: &str| store.fingerprint(rel).map(|(_, nanos)| crate::ids::format_millis((nanos / 1_000_000) as i64));
+    let text = |rel: &str| store.read(rel).ok().and_then(|bytes| String::from_utf8(bytes).ok());
+    core.vault
+        .conflicts()
+        .iter()
+        .map(|c| {
+            let (copy_text, original_text) = (text(&c.copy), text(&c.original));
+            ConflictView {
+                text: copy_text.is_some() && original_text.is_some(),
+                copy_text,
+                original_text,
+                copy_modified: modified(&c.copy),
+                original_modified: modified(&c.original),
+                copy: c.copy.clone(),
+                original: c.original.clone(),
+            }
+        })
+        .collect()
+}
+
+/// The conflict copies in the vault: where two machines changed the same file, the cloud storage (or Ledger) kept both.
+#[tauri::command]
+pub fn list_conflicts(app: State<App>) -> Vec<ConflictView> {
+    conflict_views(&app)
+}
+
+/// Settles a conflict: `keep` is "copy" (the copy replaces the original) or "original" (the copy goes). Either way
+/// one file is left, and the vault is read in again.
+#[tauri::command]
+pub fn resolve_conflict(app: State<App>, copy: String, keep: String) -> Result<Vec<ConflictView>> {
+    {
+        let mut core = app.lock();
+        let Some(conflict) = core.vault.conflicts().iter().find(|c| c.copy == copy).cloned() else {
+            return Err(Error::not_found("That conflict is settled already"));
+        };
+        let store = core.vault.store().clone();
+        let failed = |rel: &str, e: std::io::Error| Error::io(&store.path(rel), e);
+        match keep.as_str() {
+            "copy" => {
+                let bytes = store.read(&conflict.copy).map_err(|e| failed(&conflict.copy, e))?;
+                store.write(&conflict.original, &bytes).map_err(|e| failed(&conflict.original, e))?;
+                store.remove(&conflict.copy).map_err(|e| failed(&conflict.copy, e))?;
+            }
+            "original" => store.remove(&conflict.copy).map_err(|e| failed(&conflict.copy, e))?,
+            _ => return Err(Error::invalid("Keep the copy or the original")),
+        }
+        core.reload()?;
+    }
+    Ok(conflict_views(&app))
 }
 
 /// Reloads if the files were changed behind the app's back (in Obsidian, say). Whether anything was reloaded.
 #[tauri::command]
 pub fn check_vault_changes(app: State<App>) -> Result<bool> {
     let mut core = app.lock();
+    // In an encrypted vault, what a program changed in the plain copies is taken in first.
+    let _ = core.vault.store().take_back();
     if !core.vault.changed_on_disk() {
         return Ok(false);
     }
     core.reload()?;
-    // What was edited elsewhere is part of the vault now, and goes to GitHub like anything else.
-    app.syncer.dirty();
     Ok(true)
 }
 
@@ -1178,7 +1210,7 @@ pub fn layout_settings(app: State<App>) -> settings::LayoutSettings {
     settings::read_settings(&root).layout
 }
 
-/// Saves what a folded sidebar becomes, in `.ledger/settings.json`.
+/// Saves what a folded sidebar becomes, in this machine's settings for the vault.
 #[tauri::command]
 pub fn save_sidebar_fold(app: State<App>, fold: settings::SidebarFold) -> Result<settings::LayoutSettings> {
     let root = app.lock().vault.root().to_path_buf();

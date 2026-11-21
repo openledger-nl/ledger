@@ -295,8 +295,8 @@
 					openUrl(e.currentTarget.href).catch(() => {});
 				}}>Trello's Power-Ups admin</a
 			>: create a Power-Up (any name), open its API key page and copy the key, then choose "Generate a Token" there and allow read and write access. Ledger
-			sends them in an <code>Authorization</code> header, never in a web address, and keeps them in this vault's <code>.ledger/.env</code>: on this machine
-			only, never uploaded, and never shown here again beyond their last four characters.
+			sends them in an <code>Authorization</code> header, never in a web address, and keeps them in the system's keychain: on this machine only, never in
+			the vault, and never shown here again beyond their last four characters.
 		</div>
 
 		{#if result}
@@ -489,7 +489,7 @@
 			<div class="hint">
 				Nothing is ever deleted on Trello, and deleting or archiving on one side never deletes on the other: an item whose card is gone stays here and stops
 				syncing, and a card whose item you delete stays on Trello. When both sides change the same text, the newer edit wins and the other is kept in the
-				vault's <code>.ledger/conflicts</code> folder. Ledger looks at Trello every few minutes and shortly after you make changes. Trello allows about 100
+				conflicts folder of this machine's settings for the vault. Ledger looks at Trello every few minutes and shortly after you make changes. Trello allows about 100
 				requests per 10 seconds per token; Ledger stays well under that and waits when Trello asks it to.
 			</div>
 			<div class="hint">

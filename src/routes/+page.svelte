@@ -8,7 +8,6 @@
 	import ProjectLatest from '$lib/components/ProjectLatest.svelte';
 	import Onboarding from '$lib/components/Onboarding.svelte';
 	import PortflowFeedbackWidget from '$lib/components/PortflowFeedbackWidget.svelte';
-	import SyncWidget from '$lib/components/SyncWidget.svelte';
 	import { ago, newest, numericDay, plural, stamp, todayKey, weekday } from '$lib/format';
 	import { dashboard, isPinned, togglePin } from '$lib/dashboard.svelte';
 	import { daysLeft, daysLeftText, endDay } from '$lib/v1';
@@ -115,11 +114,11 @@
 	<div class="empty-state">
 		<h1>Welcome to Ledger</h1>
 		<p>
-			Everything lives in a folder of markdown files - a vault - that you can open in any editor and sync to a private GitHub
-			repository. Start with a project: it holds your threads, deliverables, user stories and board.
+			Everything lives in a folder - a vault - that your cloud storage keeps in sync and backs up. Start with a project: it holds
+			your threads, deliverables, user stories and board.
 		</p>
 		<button class="btn primary" onclick={newProjectFlow}>Create your first project</button>
-		<p class="hint">Choose where the vault lives, and connect GitHub, in Settings.</p>
+		<p class="hint">Choose where the vault lives in Settings.</p>
 	</div>
 {:else}
 	{#if data.projects.length > 0}
@@ -136,8 +135,8 @@
 		</div>
 	{/if}
 
-	<!-- The guide keeps its place when the first project arrives (it is not drawn twice), or a vault pulled in from GitHub would
-	     restart it instead of closing it. -->
+	<!-- The guide keeps its place when the first project arrives (it is not drawn twice), or a vault synced in by the cloud
+	     would restart it instead of closing it. -->
 	<div class="page">
 		<div class="page-inner">
 			{#if data.onboarding.active}{@render guide()}{/if}
@@ -161,7 +160,6 @@
 						</div>
 					</section>
 				{/if}
-				<SyncWidget />
 			{/if}
 			<PortflowFeedbackWidget version={data} />
 		</div>

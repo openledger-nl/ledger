@@ -31,26 +31,9 @@ fn with_nothing_going_on_it_installs_at_once() {
 
 #[test]
 fn a_running_sync_is_always_waited_for() {
-    let github = Activity { github_syncing: true, ..idle() };
-    let Readiness::Wait { waiting_for } = readiness(&github, RunsChoice::Ask) else { panic!("should wait") };
-    assert_eq!(waiting_for, ["the GitHub sync to finish"]);
-
     let trello = Activity { trello_syncing: true, ..idle() };
     let Readiness::Wait { waiting_for } = readiness(&trello, RunsChoice::Stop) else { panic!("should wait") };
     assert_eq!(waiting_for, ["the Trello sync to finish"]);
-
-    let both = Activity { github_syncing: true, trello_syncing: true, ..idle() };
-    let Readiness::Wait { waiting_for } = readiness(&both, RunsChoice::Wait) else { panic!("should wait") };
-    assert_eq!(waiting_for.len(), 2);
-}
-
-#[test]
-fn changes_not_yet_pushed_dont_hold_it_up_but_are_mentioned() {
-    // They are in the vault's files already, and the sync Ledger starts with pushes them.
-    let pending = Activity { github_pending: true, ..idle() };
-    let Readiness::Ready { notes } = readiness(&pending, RunsChoice::Ask) else { panic!("should be ready") };
-    assert_eq!(notes.len(), 1);
-    assert!(notes[0].contains("aren't on GitHub yet"), "{notes:?}");
 }
 
 #[test]
@@ -58,7 +41,7 @@ fn claude_code_runs_are_the_persons_call() {
     let runs = Activity { runs: vec!["Call summary".into(), "Plan".into()], ..idle() };
     // Nobody has said yet: ask, naming the prompts, even while a sync also runs.
     assert_eq!(readiness(&runs, RunsChoice::Ask), Readiness::Ask { runs: vec!["Call summary".into(), "Plan".into()] });
-    let syncing_too = Activity { github_syncing: true, ..runs.clone() };
+    let syncing_too = Activity { trello_syncing: true, ..runs.clone() };
     assert!(matches!(readiness(&syncing_too, RunsChoice::Ask), Readiness::Ask { .. }));
 
     // Wait for them, or for them to stop: either way it waits until they are over.

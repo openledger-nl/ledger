@@ -1,9 +1,9 @@
 //! Portflow's files in the vault, read into the database and written back out (called from `vault.rs`).
 //!
 //! ```text
-//! portflow/outcomes/<id>-<slug>.md          a learning outcome and its sub-goals, mirrored from Portflow
-//! portflow/people.md                        the people the portfolio is shared with, mirrored from Portflow
-//! portflow/sections.md                      the portfolio's sections (its semesters), mirrored from Portflow
+//! shared/portflow/outcomes/<id>-<slug>.md   a learning outcome and its sub-goals, mirrored from Portflow
+//! shared/portflow/people.md                 the people the portfolio is shared with, mirrored from Portflow
+//! shared/portflow/sections.md               the portfolio's sections (its semesters), mirrored from Portflow
 //! projects/<p>/portflow/<semester>.md       a linked collection: name, subtitle, outcomes (its description is the
 //!                                           project's README.md, the reading guide: kept once, see `portflow_sync`)
 //! projects/<p>/evidence/<slug>.md           an evidence item: its files, thread, outcomes, and Portflow's versions
@@ -30,11 +30,11 @@ use crate::vault::Source;
 pub const MIRROR_NOTE: &str = "Mirrored from Portflow: edits here are overwritten by the next sync.";
 
 pub fn outcome_file(id: i64, name: &str) -> String {
-    format!("portflow/outcomes/{id}-{}.md", ids::slugify_as(name, "outcome"))
+    format!("shared/portflow/outcomes/{id}-{}.md", ids::slugify_as(name, "outcome"))
 }
 
-pub const PEOPLE_FILE: &str = "portflow/people.md";
-pub const SECTIONS_FILE: &str = "portflow/sections.md";
+pub const PEOPLE_FILE: &str = "shared/portflow/people.md";
+pub const SECTIONS_FILE: &str = "shared/portflow/sections.md";
 
 pub fn collection_file(project: &str, semester: &str) -> String {
     format!("projects/{project}/portflow/{semester}.md")
@@ -390,8 +390,8 @@ pub(crate) fn import(conn: &Connection, source: &Source, projects: &[String]) ->
 }
 
 fn import_outcomes(conn: &Connection, source: &Source) -> Result<()> {
-    for stem in source.stems("portflow/outcomes") {
-        let rel = format!("portflow/outcomes/{stem}.md");
+    for stem in source.stems("shared/portflow/outcomes") {
+        let rel = format!("shared/portflow/outcomes/{stem}.md");
         let Some((meta, explanation)) = source.parsed(&rel) else { continue };
         let Some(id) = int(&meta, "id").or_else(|| stem.split('-').next().and_then(|n| n.parse().ok())) else { continue };
         let name = meta.text("name").unwrap_or_else(|| stem.clone());
@@ -461,8 +461,7 @@ fn import_sections(conn: &Connection, source: &Source) -> Result<()> {
 fn import_collections(conn: &Connection, source: &Source, project: &str) -> Result<()> {
     for semester in source.stems(&format!("projects/{project}/portflow")) {
         let rel = collection_file(project, &semester);
-        // A file from before the description became the reading guide still has it as its body: it is not read, and the
-        // next write leaves it out.
+        // Its body is not read: the collection's description is the project's reading guide.
         let Some((meta, _)) = source.parsed(&rel) else { continue };
         let Some(collection) = int(&meta, "collection") else { continue };
         conn.execute(

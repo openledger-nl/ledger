@@ -11,7 +11,7 @@
 //! - **Read and write**: also the kinds of write the person switched on, one by one.
 //!
 //! The session token goes in an `Authorization: Bearer …` header and nowhere else: never in a URL, a body, an error
-//! message or a log (it is kept on disk only in the vault's `.ledger/.env`, see `portflow_auth.rs`). Portflow's files
+//! message or a log (it is kept only with the vault's secrets on this machine, see `portflow_auth.rs`). Portflow's files
 //! are downloaded (a read): `…/evidence-version-files/{f}/preview-url` gives a signed address at S3, which is fetched
 //! by a separate client that never has the session (see [`plain_fetch`]), so the token can't leave for another host. `LEDGER_PORTFLOW_API` points the client at another API base, for testing.
 

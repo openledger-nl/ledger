@@ -1,6 +1,6 @@
 //! Portflow: the settings screen's commands, the screens' reads, and the background worker.
 //!
-//! **Off by default, and off means off.** While Portflow is switched off (`.ledger/portflow.json`, per machine):
+//! **Off by default, and off means off.** While Portflow is switched off (`portflow.json`, per machine):
 //! the worker isn't running, no window is opened, no request leaves (the gate in `portflow_api.rs` refuses them all),
 //! the saved session is cleared, every command below except reading and changing the switch answers "Portflow is
 //! switched off", and the vault
@@ -169,7 +169,7 @@ impl PortflowSyncer {
 
     /// Another vault was opened. Portflow is switched on or off per vault, and so is its Canvas session: what the
     /// syncer knew belongs to the vault that was open before, so it starts again on the one open now. The old vault's
-    /// saved session stays in its own `.ledger/.env`, for when it is opened again.
+    /// saved session stays with its own secrets, for when it is opened again.
     pub fn vault_switched(&self) {
         self.auth.forget();
         update(&self.status, &self.emit, |s| *s = PortflowStatus { state: "off".into(), ..PortflowStatus::default() });
@@ -331,7 +331,6 @@ pub fn start_app(handle: &AppHandle, core: Arc<Mutex<Core>>) {
             let _ = emitter.emit("portflow-status", status);
         }),
         Arc::new(move || {
-            notifier.state::<App>().syncer.dirty();
             let _ = notifier.emit("vault-changed", ());
         }),
         connect_to_portflow(),

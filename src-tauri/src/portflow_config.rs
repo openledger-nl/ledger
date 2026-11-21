@@ -1,10 +1,9 @@
 //! Portflow's settings on this machine: whether the feature is on, what Ledger may do there, and which portfolio it
-//! reads. Kept in the vault's `.ledger/portflow.json`, which the vault's `.gitignore` lists and the GitHub sync never
-//! looks at, so each machine decides for itself and nothing here is uploaded:
+//! reads. Kept in the vault's folder for this machine (see `settings::local_dir`), so each machine decides for itself:
 //!
 //! ```text
-//! .ledger/portflow.json          on or off, read only or read and write (and which writes), the launch address, the portfolio
-//! .ledger/portflow-guides.json   what Ledger last saw of each reading guide and evidence description, both sides (hashes)
+//! portflow.json          on or off, read only or read and write (and which writes), the launch address, the portfolio
+//! portflow-guides.json   what Ledger last saw of each reading guide and evidence description, both sides (hashes)
 //! ```
 //!
 //! The session token is not here, nor anywhere on disk: it lives eight hours and is kept in memory only
@@ -18,14 +17,10 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::settings::{self, LEDGER_DIR};
+use crate::settings::local_dir;
 
 /// Where Fontys ICT students open Portflow: the Canvas page that launches it.
 pub const DEFAULT_LAUNCH_URL: &str = "https://fontysict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation&toolId=portfolio-23360";
-
-/// Fontys ICT's Canvas before it moved to `fontysict.instructure.com`, and the page that launched Portflow there.
-const OLD_CANVAS_HOST: &str = "fhict.instructure.com";
-const OLD_DEFAULT_LAUNCH_URL: &str = "https://fhict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation";
 
 /// The write that puts a project's reading guide (its README.md) in the description of the collection it is linked to
 /// for the current semester. Replaces "edit-descriptions": the guide is how a description is edited in Ledger, so a
@@ -98,33 +93,19 @@ impl Default for PortflowSettings {
 }
 
 fn settings_file(root: &Path) -> PathBuf {
-    root.join(LEDGER_DIR).join("portflow.json")
+    local_dir(root).join("portflow.json")
 }
 
 /// The settings, or the defaults (off) when there are none or they can't be read.
 pub fn read_settings(root: &Path) -> PortflowSettings {
     let mut settings: PortflowSettings =
         fs::read_to_string(settings_file(root)).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default();
-    settings.launch_url = moved_launch_url(&settings.launch_url);
+    if settings.launch_url.trim().is_empty() {
+        settings.launch_url = DEFAULT_LAUNCH_URL.to_string();
+    }
     // A write kind this version doesn't know is dropped rather than allowed.
     settings.access.writes.retain(|kind| WRITE_KINDS.iter().any(|(k, _)| k == kind));
     settings
-}
-
-/// The launch address to use for a saved one. Blank, or the old default (saved with every change of the settings), is
-/// the default; any other page on the old Canvas moves to the new one, at the same path.
-fn moved_launch_url(saved: &str) -> String {
-    let saved = saved.trim();
-    if saved.is_empty() || saved == OLD_DEFAULT_LAUNCH_URL {
-        return DEFAULT_LAUNCH_URL.to_string();
-    }
-    match tauri::Url::parse(saved) {
-        Ok(mut url) if url.host_str() == Some(OLD_CANVAS_HOST) => match url.set_host(Some("fontysict.instructure.com")) {
-            Ok(()) => url.to_string(),
-            Err(_) => saved.to_string(),
-        },
-        _ => saved.to_string(),
-    }
 }
 
 /// Whether the feature is on in the vault at `root`. Everything Portflow does asks this first.
@@ -141,7 +122,6 @@ pub fn update_settings(root: &Path, change: impl FnOnce(&mut PortflowSettings)) 
         fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
     }
     fs::write(&file, serde_json::to_string_pretty(&settings).unwrap_or_default()).map_err(|e| Error::io(&file, e))?;
-    settings::ensure_gitignore(root)?;
     Ok(settings)
 }
 
@@ -159,7 +139,7 @@ pub fn check_launch_url(url: &str) -> Result<String> {
 
 /// A project's reading guide and its collection's description, as they were the last time they agreed: hashes of the
 /// description as Portflow had it (HTML, white space folded) and of the README as it was then. A round compares both
-/// with now to tell which side changed. Bookkeeping for this machine only, so it lives in `.ledger/`, next to the
+/// with now to tell which side changed. Bookkeeping for this machine only, so it lives in the vault's folder for this machine, next to the
 /// settings, and survives a restart; lost or unreadable, the next round starts as on a first one.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GuideMemory {
@@ -178,7 +158,7 @@ pub struct GuideSeen {
 }
 
 fn guides_file(root: &Path) -> PathBuf {
-    root.join(LEDGER_DIR).join("portflow-guides.json")
+    local_dir(root).join("portflow-guides.json")
 }
 
 pub fn read_guides(root: &Path) -> GuideMemory {
@@ -190,6 +170,5 @@ pub fn write_guides(root: &Path, memory: &GuideMemory) -> Result<()> {
     if let Some(dir) = file.parent() {
         fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
     }
-    fs::write(&file, serde_json::to_string_pretty(memory).unwrap_or_default()).map_err(|e| Error::io(&file, e))?;
-    settings::ensure_gitignore(root)
+    fs::write(&file, serde_json::to_string_pretty(memory).unwrap_or_default()).map_err(|e| Error::io(&file, e))
 }

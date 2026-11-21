@@ -1,7 +1,7 @@
 //! Templates shape deliverables: a name, a "use when…" hint, guiding questions to answer first, the skeleton of the
 //! deliverable itself, the kinds of project it is for and who its deliverables are written for (its readers). A
-//! vault-wide template (`templates/<id>.md`, scope "") is available in every project of its kinds; a project's own
-//! (`projects/<p>/templates/<id>.md`) is available there, and replaces a vault-wide one with the same id.
+//! vault-wide template (`shared/templates/prompts/<id>.md`, scope "") is available in every project of its kinds; a project's own
+//! (`projects/<p>/templates/prompts/<id>.md`) is available there, and replaces a vault-wide one with the same id.
 //!
 //! The app ships one template of its own, a basic project plan (`BUILTIN_PLAN`). It is not a file: it is put in the
 //! database when the vault is read, unless the vault has a template of the same id. Changing it writes it to the

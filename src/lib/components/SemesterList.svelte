@@ -3,7 +3,6 @@
 	import Flag from '@lucide/svelte/icons/flag';
 	import Plus from '@lucide/svelte/icons/plus';
 	import TreePalm from '@lucide/svelte/icons/tree-palm';
-	import { page } from '$app/state';
 	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import SemesterModal from '$lib/components/SemesterModal.svelte';
 	import SprintTimeline from '$lib/components/SprintTimeline.svelte';
@@ -14,9 +13,9 @@
 	import type { PortflowSection, Semester, SemesterDraft } from '$lib/types';
 
 	// The semesters the dashboard's contribution graph follows: a list, and a + that adds one from a preset or from scratch.
-	// They are loaded by the settings layout, so they stay current when one is saved.
+	// The page (/semesters) loads them, so they stay current when one is saved.
 
-	const semesters = $derived(page.data.semesters as Semester[]);
+	let { semesters }: { semesters: Semester[] } = $props();
 
 	// Which Portflow section (a semester in the portfolio) each semester is: only while Portflow is on.
 	let sections = $state<PortflowSection[]>([]);
@@ -116,7 +115,7 @@
 	<div class="header-top">
 		<div>
 			<h2>Semesters</h2>
-			<div class="sub">Half years, cut into sprints of three weeks of work. The contribution graph on the dashboard follows them.</div>
+			<div class="sub">Half years, cut into sprints of three weeks of work, shared by every project. The contribution graph on the dashboard follows them.</div>
 		</div>
 		{#if semesters.length}{@render addMenu()}{/if}
 	</div>

@@ -8,10 +8,12 @@
 	import Cloud from '@lucide/svelte/icons/cloud';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
+	import Lock from '@lucide/svelte/icons/lock';
 	import X from '@lucide/svelte/icons/x';
 	import { api } from '$lib/api';
 	import { attempt } from '$lib/ui.svelte';
 	import type { VaultEntry, Vaults } from '$lib/types';
+	import RecoveryKey from './RecoveryKey.svelte';
 	import Wordmark from './Wordmark.svelte';
 
 	/** `modal`: switching vaults, over the app, with a way back. */
@@ -21,8 +23,38 @@
 	const start = () => initial;
 	const firstStart = () => !start().open && start().vaults.length === 0;
 	let vaults = $state(start());
-	let view = $state<'choose' | 'create'>(firstStart() ? 'create' : 'choose');
+	let view = $state<'choose' | 'create' | 'unlock' | 'recovery'>(firstStart() ? 'create' : 'choose');
 	let busy = $state(false);
+
+	// ---- an encrypted vault: its passphrase when it is made, and to open one this computer has no key for
+
+	let encrypt = $state(false);
+	let passphrase = $state('');
+	let repeat = $state('');
+	const MIN_PASSPHRASE = 10;
+	const passphraseOk = $derived(!encrypt || (passphrase.length >= MIN_PASSPHRASE && passphrase === repeat));
+	/** The recovery key of the vault just made, shown once before the window opens on it. */
+	let recovery = $state('');
+
+	/** The encrypted vault to open, and what is typed to open it. */
+	let locked = $state<{ path: string; name: string } | null>(null);
+	let secret = $state('');
+	let keep = $state(true);
+
+	function askKey(path: string, name = path.split(/[\\/]/).pop() ?? path) {
+		locked = { path, name };
+		secret = '';
+		view = 'unlock';
+	}
+
+	async function unlock() {
+		if (!locked || !secret) return;
+		busy = true;
+		const done = await attempt(() => api.unlockVault(locked?.path ?? '', secret, keep));
+		secret = '';
+		if (done) return opened();
+		busy = false;
+	}
 
 	// ---- a new vault
 
@@ -37,8 +69,16 @@
 	}
 
 	async function create() {
+		if (!passphraseOk) return;
 		busy = true;
-		const done = await attempt(() => api.createVault(parent.trim(), name.trim()));
+		const done = await attempt(() => api.createVault(parent.trim(), name.trim(), encrypt ? passphrase : null));
+		passphrase = repeat = '';
+		if (done?.recovery) {
+			recovery = done.recovery;
+			view = 'recovery';
+			busy = false;
+			return;
+		}
 		if (done) return opened();
 		busy = false;
 	}
@@ -52,9 +92,16 @@
 
 	async function openPath(path: string) {
 		busy = true;
-		const done = await attempt(() => api.openVault(path));
-		if (done) return opened();
-		busy = false;
+		try {
+			await api.openVault(path);
+			return opened();
+		} catch (e) {
+			busy = false;
+			const message = e instanceof Error ? e.message : String(e);
+			// An encrypted vault this computer has no key for: it takes the passphrase.
+			if (message.includes('enter its passphrase')) return askKey(path);
+			await attempt(() => Promise.reject(e));
+		}
 	}
 
 	async function forget(vault: VaultEntry) {
@@ -77,16 +124,18 @@
 				<h3>Your vaults</h3>
 				<ul>
 					{#each vaults.vaults as vault (vault.path)}
-						<li class:current={vault.open} class:gone={!vault.exists}>
+						<li class:current={vault.open} class:gone={!vault.exists || !!vault.refused}>
 							<button
 								class="vp-vault"
-								disabled={busy || vault.open || !vault.exists || vaults.locked}
-								onclick={() => openPath(vault.path)}
-								title={vault.exists ? vault.path : `${vault.path} isn't there any more`}
+								disabled={busy || vault.open || !vault.exists || !!vault.refused || vaults.locked}
+								onclick={() => (vault.needsKey ? askKey(vault.path, vault.name) : openPath(vault.path))}
+								title={vault.refused ?? (vault.exists ? vault.path : `${vault.path} isn't there any more`)}
 							>
-								<span class="vp-name">{vault.name}{#if vault.open}<span class="vp-tag">open</span>{/if}</span>
+								<span class="vp-name"
+									>{vault.name}{#if vault.encrypted}<span class="vp-lock" title="Encrypted"><Lock size={11} /></span>{/if}{#if vault.open}<span class="vp-tag">open</span>{/if}</span
+								>
 								<span class="vp-path mono">{vault.path}</span>
-								{#if !vault.exists}<span class="vp-where">Folder not found</span>{/if}
+								{#if !vault.exists}<span class="vp-where">Folder not found</span>{:else if vault.refused}<span class="vp-where">Can't be opened by this Ledger</span>{/if}
 							</button>
 							{#if !vault.open}
 								<button class="vp-forget" aria-label="Remove {vault.name} from the list" title="Remove from the list (the folder is left alone)" onclick={() => forget(vault)}>
@@ -105,7 +154,34 @@
 			{/if}
 			<div class="vp-brand"><Wordmark on="page" height={34} /></div>
 
-			{#if vaults.locked}
+			{#if view === 'recovery'}
+				<h2>Your vault is encrypted</h2>
+				<p class="vp-lead">Everything in it is kept encrypted on disk and in the cloud. Open it on another computer with your passphrase.</p>
+				<RecoveryKey value={recovery} ondone={opened} done="I have kept it: open the vault" />
+			{:else if view === 'unlock' && locked}
+				{#if !firstStart()}
+					<button class="link vp-back" onclick={() => ((view = 'choose'), (locked = null))}><ArrowLeft size={13} />Back</button>
+				{/if}
+				<h2><Lock size={18} /> Open {locked.name}</h2>
+				<p class="vp-lead">This vault is encrypted. Enter its passphrase, or its recovery key when the passphrase is lost.</p>
+				<form
+					class="vp-form"
+					onsubmit={(e) => {
+						e.preventDefault();
+						unlock();
+					}}
+				>
+					<label class="field">
+						Passphrase or recovery key
+						<!-- svelte-ignore a11y_autofocus -->
+						<input type="password" bind:value={secret} autocomplete="current-password" autofocus />
+					</label>
+					<label class="check"><input type="checkbox" bind:checked={keep} /> Remember on this computer (in its keychain), so Ledger doesn't ask again</label>
+					<div class="row-end">
+						<button type="submit" class="btn primary" disabled={busy || !secret}><Lock size={14} />Open vault</button>
+					</div>
+				</form>
+			{:else if vaults.locked}
 				<div class="notice info">The vault is fixed by the <code>LEDGER_VAULT</code> environment variable, so no other can be opened.</div>
 			{:else if view === 'choose'}
 				<p class="vp-lead">A vault is a folder of plain markdown files, like an Obsidian vault. Everything you write in Ledger lives in it.</p>
@@ -157,13 +233,31 @@
 					{/if}
 					<div class="vp-cloud">
 						<Cloud size={14} />
-						<span>Put your vault in a folder that cloud storage keeps in sync, such as OneDrive, Google Drive, Dropbox or iCloud Drive, so your files are safe if something happens to this computer.</span>
+						<span>Put your vault in a folder that cloud storage keeps in sync, such as OneDrive, SharePoint or Nextcloud: it carries the vault to your other computers, keeps earlier versions of every file and can put the folder back as it was on a day.</span>
 					</div>
+					<label class="check"><input type="checkbox" bind:checked={encrypt} /> Encrypt this vault</label>
+					{#if encrypt}
+						<div class="hint">
+							Every file is kept encrypted on disk and in the cloud, its name too; only Ledger, with your passphrase, can read it. Other programs (Obsidian, an
+							editor) can't. Choose this now: a vault can't be encrypted later, only copied into an encrypted one.
+						</div>
+						<div class="form-row">
+							<label class="field grow">
+								Passphrase
+								<input type="password" bind:value={passphrase} autocomplete="new-password" placeholder="At least {MIN_PASSPHRASE} characters" />
+							</label>
+							<label class="field grow">
+								Again
+								<input type="password" bind:value={repeat} autocomplete="new-password" />
+							</label>
+						</div>
+						{#if passphrase && repeat && passphrase !== repeat}<div class="hint error-text">The two passphrases differ.</div>{/if}
+					{/if}
 					<div class="row-end">
 						{#if firstStart()}
 							<button type="button" class="btn ghost" disabled={busy} onclick={openFolder}><FolderOpen size={14} />Open an existing vault</button>
 						{/if}
-						<button type="submit" class="btn primary" disabled={busy || !target}><FolderPlus size={14} />Create vault</button>
+						<button type="submit" class="btn primary" disabled={busy || !target || !passphraseOk}><FolderPlus size={14} />Create vault</button>
 					</div>
 				</form>
 			{/if}
@@ -254,6 +348,10 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
+	}
+	.vp-lock {
+		display: inline-flex;
+		color: var(--muted);
 	}
 	.vp-tag {
 		font-size: 10px;
@@ -362,7 +460,7 @@
 		flex-direction: column;
 		gap: 12px;
 	}
-	.vp-form input {
+	.vp-form input:not([type='checkbox']) {
 		flex: 1;
 		min-width: 0;
 	}

@@ -13,18 +13,19 @@
 //!
 //! A project without a kind and a goal has no facts yet: the screens then ask for them.
 //!
-//! Its people are listed there too, whether or not it has facts, each with their role:
+//! Who is part of it is listed there too, whether or not it has facts: people of the vault (see `people`), by their id,
+//! each with the role they have in this project:
 //!
 //! ```text
 //! people:
-//! - name: Frank de Vries
+//! - person: frank-de-vries
 //!   role: coach
-//! - name: Sanne
+//! - person: sanne
 //!   role: teammate
-//!   portflowUser: 4711        when they are someone in Portflow
 //! ```
 //!
-//! A person goes by a tag, `role/name` (`coach/frank-de-vries`): how meetings and feedback name them.
+//! A person goes by the tag `people/<id>` (`people/frank-de-vries`) in every project: how meetings and feedback name
+//! them.
 
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
@@ -171,58 +172,57 @@ pub fn import(conn: &Connection, slug: &str, meta: &Mapping) -> Result<()> {
 
 // ---- its people -------------------------------------------------------------------------------------
 
+/// Someone of the vault as part of one project.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ProjectPerson {
     /// The project they are part of.
     pub project: String,
-    pub name: String,
-    /// coach, expert, teammate, client, colleague or other.
+    /// Their id in the vault (see `people`).
+    pub person: String,
+    /// coach, expert, teammate, client, colleague or other: their role in this project.
     pub role: String,
-    /// Their Portflow id, when they are someone in Portflow.
+    /// Their name, from the vault (filled in by Ledger).
+    pub name: String,
+    /// Their Portflow id, when they are someone in Portflow (filled in by Ledger).
     pub portflow_user: Option<i64>,
-    /// `role/name`, as meetings and feedback tag them (filled in by Ledger).
+    /// `people/<id>`, as meetings and feedback tag them (filled in by Ledger).
     pub tag: String,
 }
 
-/// The tag a person goes by: `coach/frank-de-vries`.
-pub fn person_tag(role: &str, name: &str) -> String {
-    format!("{role}/{}", ids::slugify_as(name, "someone"))
-}
-
 fn person_row(r: &rusqlite::Row) -> rusqlite::Result<ProjectPerson> {
-    let role: String = r.get(2)?;
-    let name: String = r.get(1)?;
-    Ok(ProjectPerson { project: r.get(0)?, tag: person_tag(&role, &name), name, role, portflow_user: r.get(3)? })
+    let person: String = r.get(1)?;
+    Ok(ProjectPerson { project: r.get(0)?, tag: crate::people::tag(&person), person, role: r.get(2)?, name: r.get(3)?, portflow_user: r.get(4)? })
 }
 
 /// The people of one project, or of every project with `None`, in the order they are listed.
 pub fn people(conn: &Connection, project: Option<&str>) -> Result<Vec<ProjectPerson>> {
-    let sql = "SELECT project_slug, name, role, portflow_user FROM project_people";
+    let sql = "SELECT pp.project_slug, pp.person_id, pp.role, p.name, p.portflow_user FROM project_people pp JOIN people p ON p.id = pp.person_id";
     match project {
         Some(slug) => {
             projects::require(conn, slug)?;
-            query_all(conn, &format!("{sql} WHERE project_slug = ?1 ORDER BY position"), [slug], person_row)
+            query_all(conn, &format!("{sql} WHERE pp.project_slug = ?1 ORDER BY pp.position"), [slug], person_row)
         }
-        None => query_all(conn, &format!("{sql} ORDER BY project_slug, position"), [], person_row),
+        None => query_all(conn, &format!("{sql} ORDER BY pp.project_slug, pp.position"), [], person_row),
     }
 }
 
-/// Replaces the project's people: a name and one of the roles each; the same person in the same role is listed once.
+/// Replaces who is part of the project: people of the vault by their id, each with one of the roles. Someone listed
+/// twice is part of it once, with the role they were listed with first.
 pub fn save_people(conn: &Connection, slug: &str, people: &[ProjectPerson]) -> Result<Vec<ProjectPerson>> {
     projects::require(conn, slug)?;
-    let mut cleaned: Vec<(String, String, Option<i64>)> = vec![];
+    let mut cleaned: Vec<(String, String)> = vec![];
     for p in people {
-        let name = p.name.trim();
-        if name.is_empty() {
-            return Err(Error::invalid("Give everyone a name"));
+        let id = p.person.trim();
+        if !crate::people::exists(conn, id)? {
+            return Err(Error::invalid(format!("There is no one called {id} in this vault: add them under People first")));
         }
         let role = p.role.trim().to_lowercase();
         if !ROLES.contains(&role.as_str()) {
             return Err(Error::invalid("A person is a coach, expert, teammate, client, colleague or other"));
         }
-        if !cleaned.iter().any(|(n, r, _)| person_tag(r, n) == person_tag(&role, name)) {
-            cleaned.push((name.to_string(), role, p.portflow_user));
+        if !cleaned.iter().any(|(other, _)| other == id) {
+            cleaned.push((id.to_string(), role));
         }
     }
     store_people(conn, slug, &cleaned)?;
@@ -230,12 +230,12 @@ pub fn save_people(conn: &Connection, slug: &str, people: &[ProjectPerson]) -> R
     self::people(conn, Some(slug))
 }
 
-fn store_people(conn: &Connection, slug: &str, people: &[(String, String, Option<i64>)]) -> Result<()> {
+fn store_people(conn: &Connection, slug: &str, people: &[(String, String)]) -> Result<()> {
     conn.execute("DELETE FROM project_people WHERE project_slug = ?1", [slug])?;
-    for (position, (name, role, user)) in people.iter().enumerate() {
+    for (position, (person, role)) in people.iter().enumerate() {
         conn.execute(
-            "INSERT INTO project_people (project_slug, position, name, role, portflow_user) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![slug, position as i64, name, role, user],
+            "INSERT INTO project_people (project_slug, position, person_id, role) VALUES (?1, ?2, ?3, ?4)",
+            params![slug, position as i64, person, role],
         )?;
     }
     Ok(())
@@ -250,11 +250,8 @@ pub fn export_people(conn: &Connection, slug: &str, meta: &mut Mapping) -> Resul
         .into_iter()
         .map(|p| {
             let mut item = Mapping::new();
-            frontmatter::set(&mut item, "name", p.name);
+            frontmatter::set(&mut item, "person", p.person);
             frontmatter::set(&mut item, "role", p.role);
-            if let Some(user) = p.portflow_user {
-                frontmatter::set(&mut item, "portflowUser", user);
-            }
             serde_yaml_ng::Value::Mapping(item)
         })
         .collect();
@@ -262,17 +259,17 @@ pub fn export_people(conn: &Connection, slug: &str, meta: &mut Mapping) -> Resul
     Ok(())
 }
 
-/// Reads the people leniently: a role that isn't one of the six reads as "other", someone without a name is skipped,
-/// and the same person in the same role is kept once.
+/// Reads who is part of the project leniently: a role that isn't one of the six reads as "other", and someone who
+/// isn't in the vault (any more) or is listed twice is left out.
 pub fn import_people(conn: &Connection, slug: &str, meta: &Mapping) -> Result<()> {
-    let mut list: Vec<(String, String, Option<i64>)> = vec![];
+    let mut list: Vec<(String, String)> = vec![];
     for item in meta.maps("people") {
-        let Some(name) = item.text("name").map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) else { continue };
-        let role = item.text("role").map(|r| r.trim().to_lowercase()).filter(|r| ROLES.contains(&r.as_str())).unwrap_or_else(|| "other".into());
-        let user = item.text("portflowUser").and_then(|u| u.parse().ok());
-        if !list.iter().any(|(n, r, _)| person_tag(r, n) == person_tag(&role, &name)) {
-            list.push((name, role, user));
+        let Some(id) = item.text("person").map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) else { continue };
+        if !crate::people::exists(conn, &id)? || list.iter().any(|(other, _)| *other == id) {
+            continue;
         }
+        let role = item.text("role").map(|r| r.trim().to_lowercase()).filter(|r| ROLES.contains(&r.as_str())).unwrap_or_else(|| "other".into());
+        list.push((id, role));
     }
     store_people(conn, slug, &list)
 }

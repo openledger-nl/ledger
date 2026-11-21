@@ -94,7 +94,7 @@ export async function renameProjectFlow(slug: string, current: string) {
 export async function deleteProjectFlow(slug: string, name: string) {
 	const ok = await confirmDialog({
 		title: `Delete "${name}"?`,
-		message: 'Its threads, deliverables, stories, tasks and uploaded files are removed from the vault (and from GitHub at the next sync).',
+		message: 'Its threads, deliverables, stories, tasks and uploaded files are removed from the vault. Your cloud storage keeps them in its recycle bin for a while.',
 		confirmLabel: 'Delete project',
 		danger: true
 	});

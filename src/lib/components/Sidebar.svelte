@@ -1,4 +1,5 @@
 <script lang="ts">
+	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import FileText from '@lucide/svelte/icons/file-text';
@@ -9,6 +10,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Settings from '@lucide/svelte/icons/settings';
 	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
+	import Users from '@lucide/svelte/icons/users';
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
@@ -16,7 +18,6 @@
 	import { deliverableTarget, deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
-	import { sync, syncFooter } from '$lib/ui.svelte';
 	import { layout, toggleSidebar } from '$lib/layout.svelte';
 	import { portflow, portflowFooter } from '$lib/portflow.svelte';
 	import { openVaultPicker } from '$lib/vaults.svelte';
@@ -24,8 +25,8 @@
 	import EpsilonIcon from '$lib/components/EpsilonIcon.svelte';
 	import Wordmark from '$lib/components/Wordmark.svelte';
 
-	/** `vaultName`: the open vault, on the switch button at the bottom. */
-	let { projects, vaultName = '' }: { projects: ProjectSummary[]; vaultName?: string } = $props();
+	/** `vaultName`: the open vault, on the switch button at the bottom; `conflicts`: how many conflict copies wait. */
+	let { projects, vaultName = '', conflicts = 0 }: { projects: ProjectSummary[]; vaultName?: string; conflicts?: number } = $props();
 
 	const OPEN_KEY = 'ledger-open-project';
 	const sidebarKey = $derived(prettyKeyOf('sidebar.toggle'));
@@ -105,10 +106,6 @@
 		return () => clearInterval(timer);
 	});
 
-	const footer = $derived.by(() => {
-		void tick;
-		return syncFooter(sync.status);
-	});
 	const pf = $derived.by(() => {
 		void tick;
 		return portflowFooter(portflow.status);
@@ -199,15 +196,24 @@
 		{/each}
 	</nav>
 
+	<!-- What every project shares, kept in the vault's shared/ folder: one page each, not the semesters or people one by
+	     one. -->
+	<div class="section-head"><span>Shared</span></div>
+	<nav class="space-list" aria-label="Shared">
+		<a class="nav-item" class:active={on('/semesters')} href="/semesters"><span class="nav-ico"><CalendarRange size={16} /></span>Semesters</a>
+		<a class="nav-item" class:active={on('/people')} href="/people"><span class="nav-ico"><Users size={16} /></span>People</a>
+	</nav>
+
 	<div class="spacer"></div>
 
-	<!-- The bottom left: how the syncs stand, one line each (the details are in Settings and in the tooltip), and the
-	     button that switches vaults. -->
+	<!-- The bottom left: how the Portflow sync stands (the details are in Settings and in the tooltip), and the button
+	     that switches vaults. -->
 	<div class="sync-box">
-		<a class="sync-line" href="/settings/sync" title={[footer.where, footer.encryption, footer.error].filter(Boolean).join(' | ')}>
-			<span class="dot {footer.dot}"></span><span class="sync-title">{footer.title}</span>
-			{#if footer.when}<span class="sync-when">{footer.when}</span>{/if}
-		</a>
+		{#if conflicts}
+			<a class="sync-line" href="/conflicts" title="Two machines changed the same files: choose which version to keep">
+				<span class="dot bad"></span><span class="sync-title">{conflicts === 1 ? '1 conflict to settle' : `${conflicts} conflicts to settle`}</span>
+			</a>
+		{/if}
 		{#if portflow.enabled}
 			<a class="sync-line" href="/settings/sync#portflow" title={[pf.canvas, pf.error].filter(Boolean).join(' | ')}>
 				<span class="dot {pf.dot}"></span><span class="sync-title">{pf.title}</span>

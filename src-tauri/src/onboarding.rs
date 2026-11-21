@@ -64,7 +64,7 @@ fn view(config: &OnboardingConfig) -> OnboardingView {
 }
 
 /// Whether the vault holds anything of its own yet: a project or a semester. A vault that does has been set up already,
-/// by hand, by an older version, or on another machine.
+/// by hand or on another machine.
 pub fn has_content(conn: &Connection) -> Result<bool> {
     let found = query_opt(conn, "SELECT 1 WHERE EXISTS (SELECT 1 FROM projects) OR EXISTS (SELECT 1 FROM semesters)", [], |r| r.get::<_, i64>(0))?;
     Ok(found.is_some())

@@ -15,6 +15,11 @@ import type {
 	EvidenceParts as DescriptionParts,
 	PostKind,
 	EpistemicLabel,
+	ConflictView,
+	CreatedVault,
+	EncryptionView,
+	Person,
+	PersonDraft,
 	ProjectPerson,
 	Semester,
 	SemesterDraft,
@@ -26,7 +31,6 @@ import type {
 	Column,
 	Deliverable,
 	DeliverableSummary,
-	EncryptionStatus,
 	Feedback,
 	LinkTarget,
 	FeedbackFrom,
@@ -52,8 +56,6 @@ import type {
 	Story,
 	StoryDraft,
 	StoryUpdate,
-	SyncOverview,
-	SyncStatus,
 	Task,
 	TaskUpdate,
 	Template,
@@ -140,6 +142,13 @@ export const api = {
 	nextDeliverableNumber: (project: string) => call<number>('next_deliverable_number', { project }),
 	/** The people of one project (coach, teammates, client…), or of every project with null. */
 	listProjectPeople: (slug: string | null = null) => call<ProjectPerson[]>('list_project_people', { slug }),
+	/** Everyone the vault knows, with the projects each is part of. */
+	listPeople: () => call<Person[]>('list_people'),
+	getPerson: (id: string) => call<Person>('get_person', { id }),
+	createPerson: (draft: PersonDraft) => call<Person>('create_person', { draft }),
+	updatePerson: (id: string, draft: PersonDraft) => call<Person>('update_person', { id, draft }),
+	/** Takes them out of the vault and out of every project they were part of. */
+	deletePerson: (id: string) => call<void>('delete_person', { id }),
 	/** How the project's exported PDFs look and who they name. */
 	getProjectBranding: (slug: string) => call<Branding>('get_project_branding', { slug }),
 	/** Sets the names and the colour (the logos are set with `setProjectLogo`). */
@@ -156,9 +165,9 @@ export const api = {
 	resetPdfLayout: (project: string, scope: PdfLayoutScope) => call<PdfLayoutView>('reset_pdf_layout', { project, scope }),
 	/** Opens a layout of one's own in its program, or shows it in its folder. */
 	openPdfLayout: (project: string, scope: PdfLayoutScope, reveal: boolean) => call<null>('open_pdf_layout', { project, scope, reveal }),
-	/** Replaces the project's people. */
-	saveProjectPeople: (slug: string, people: Omit<ProjectPerson, 'project' | 'tag'>[]) =>
-		call<ProjectPerson[]>('save_project_people', { slug, people: people.map((p) => ({ ...p, project: slug, tag: '' })) }),
+	/** Replaces who is part of the project: people of the vault, by their id, each with their role in it. */
+	saveProjectPeople: (slug: string, people: Pick<ProjectPerson, 'person' | 'role'>[]) =>
+		call<ProjectPerson[]>('save_project_people', { slug, people: people.map((p) => ({ person: p.person, role: p.role, project: slug })) }),
 
 	// threads
 	createThread: (project: string, title: string) => call<ThreadSummary>('create_thread', { project, title }),
@@ -307,24 +316,24 @@ export const api = {
 	renameColumn: (project: string, id: string, name: string) => call<Column[]>('rename_column', { project, id, name }),
 	deleteColumn: (project: string, id: string) => call<Column[]>('delete_column', { project, id }),
 
-	// the vault and GitHub sync
+	// the vault
 	getSettings: () => call<Settings>('get_settings'),
-	syncStatus: () => call<SyncStatus>('sync_status'),
-	/** Null while sync is off or hasn't run yet. */
-	syncOverview: () => call<SyncOverview | null>('sync_overview'),
-	/** How many commits the synced branch holds, asked of GitHub: null while sync is off, an error while it can't be reached. */
-	syncCommits: () => call<number | null>('sync_commits', undefined, false),
-	/** A blank token keeps the saved one. */
-	saveSyncSettings: (repo: string, branch: string, token: string | null) =>
-		call<Settings>('save_sync_settings', { repo, branch, token }),
-	disconnectSync: () => call<Settings>('disconnect_sync'),
-	testSync: (repo: string, branch: string, token: string | null) => call<string>('test_sync', { repo, branch, token }),
-	syncNow: () => call<void>('sync_now'),
 	setVaultPath: (path: string, copy: boolean) => call<Settings>('set_vault_path', { path, copy }),
 	// the vault picker
 	listVaults: () => call<Vaults>('list_vaults'),
-	/** A new vault: a folder called `name` in `parent`, which must not be there yet or be empty. */
-	createVault: (parent: string, name: string) => call<Vaults>('create_vault', { parent, name }),
+	/** A new vault: a folder called `name` in `parent`, which must not be there yet or be empty. With a passphrase it is encrypted. */
+	createVault: (parent: string, name: string, passphrase: string | null = null) => call<CreatedVault>('create_vault', { parent, name, passphrase }),
+	/** Opens an encrypted vault with its passphrase or recovery key; `keep` keeps its key in this computer's keychain. */
+	unlockVault: (path: string, secret: string, keep: boolean) => call<Vaults>('unlock_vault', { path, secret, keep }),
+	// the open vault's encryption
+	vaultEncryption: () => call<EncryptionView>('vault_encryption'),
+	changePassphrase: (current: string, passphrase: string) => call<EncryptionView>('change_passphrase', { current, passphrase }),
+	/** The recovery key, for the passphrase: the one call that hands out the key. */
+	recoveryKey: (passphrase: string) => call<string>('recovery_key', { passphrase }),
+	/** Takes the key out of this computer's keychain: the next start asks for the passphrase. */
+	forgetVaultKey: () => call<EncryptionView>('forget_vault_key'),
+	/** An encrypted copy of the open vault in a new folder, opened at once; the vault of plain files stays as it is. */
+	encryptedCopy: (parent: string, name: string, passphrase: string) => call<CreatedVault>('encrypted_copy', { parent, name, passphrase }),
 	openVault: (path: string) => call<Vaults>('open_vault', { path }),
 	/** Off the list; the folder is left alone. */
 	forgetVault: (path: string) => call<Vaults>('forget_vault', { path }),
@@ -335,23 +344,16 @@ export const api = {
 	finishOnboarding: () => call<OnboardingStatus>('finish_onboarding'),
 	restartOnboarding: () => call<OnboardingStatus>('restart_onboarding'),
 	reloadVault: () => call<void>('reload_vault'),
+	/** The conflict copies in the vault: two machines changed the same file, and both versions were kept. */
+	listConflicts: () => call<ConflictView[]>('list_conflicts'),
+	/** Keeps one of the two: the copy (it replaces the original) or the original (the copy goes). */
+	resolveConflict: (copy: string, keep: 'copy' | 'original') => call<ConflictView[]>('resolve_conflict', { copy, keep }),
 	checkVaultChanges: () => call<boolean>('check_vault_changes'),
-
-	// encrypting what is synced (the key sits in the vault's .ledger/.env, which is never synced)
-	encryptionStatus: () => call<EncryptionStatus>('encryption_status'),
-	/** Turning it on needs a key. It also starts a sync, which re-uploads every file encrypted. */
-	setEncryptionEnabled: (enabled: boolean) => call<Settings>('set_encryption_enabled', { enabled }),
-	/** With a key already on this machine, `replace` must be true. */
-	generateEncryptionKey: (replace: boolean) => call<Settings>('generate_encryption_key', { replace }),
-	/** A recovery string, or the bare key as hex or base64. With a key already on this machine, `replace` must be true. */
-	importEncryptionKey: (key: string, replace: boolean) => call<Settings>('import_encryption_key', { key, replace }),
-	/** The one call that returns the key (as its recovery string). Only on an explicit request. */
-	exportRecoveryKey: () => call<string>('export_recovery_key'),
 
 	// screenshots
 	saveScreenshotHotkey: (hotkey: string) => call<Settings>('save_screenshot_hotkey', { hotkey }),
 	saveScreenshotTool: (useCommand: boolean, command: string) => call<Settings>('save_screenshot_tool', { useCommand, command }),
-	// the shell's layout, kept in the vault's .ledger/settings.json
+	// the shell's layout, kept in this machine's settings for the vault
 	layoutSettings: () => call<LayoutSettings>('layout_settings'),
 	saveSidebarFold: (fold: SidebarFold) => call<LayoutSettings>('save_sidebar_fold', { fold }),
 	pendingScreenshot: () => call<ScreenshotTaken | null>('pending_screenshot'),

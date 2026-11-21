@@ -9,12 +9,12 @@
 //!   ends with Ledger's footer) is never imported: it reaches other machines through the item's `trelloCard`, so a
 //!   machine that polls Trello before the item arrives doesn't make a second item, and a deleted item stays deleted.
 //! * **Changes.** For every linked pair the title, the description and (for a task) the list are compared with what
-//!   both sides agreed on when they were last in step (the bookkeeping in `.ledger/trello-sync.json`). A field
+//!   both sides agreed on when they were last in step (the bookkeeping in `trello-sync.json`, on this machine). A field
 //!   that only one side changed goes to the other; fields are merged one by one, so a title edited on one side
 //!   and a card moved on the other don't collide.
 //! * **Conflicts.** When both sides changed the same field, the newer edit wins (the item's `updatedAt` against the
 //!   card's latest activity; a tie goes to this machine), and the losing version is kept in
-//!   `.ledger/conflicts/<time>/trello/`. Nothing is dropped silently.
+//!   `conflicts/<time>/trello/` in the vault's folder for this machine. Nothing is dropped silently.
 //! * **Deletes never propagate.** A card that is archived, deleted, moved to another board or no longer the
 //!   person's leaves its item in place, marked as no longer linked (`trelloUnlinked`, with the reason), and it
 //!   stops syncing. An item deleted here leaves its card where it is, and the card is not imported again. Nothing
@@ -206,7 +206,7 @@ struct Run<'a> {
     member: Member,
     state: SyncState,
     report: Report,
-    /// The folder name, under `.ledger/conflicts/`, for what this round sets aside.
+    /// The folder name, under the conflicts folder for this machine, for what this round sets aside.
     stamp: String,
     /// Every card id some item in the vault is linked to, in any project.
     claimed: HashSet<String>,
@@ -799,7 +799,7 @@ impl Run<'_> {
                 self.keep(Side::Trello, &data.slug, local.kind, &local.id, &card.id, &card.name, &card.desc)?;
             }
             self.report.notes.push(format!(
-                "{}: {label} changed on both sides. The newer edit ({}) was kept; the other is saved under .ledger/conflicts/{}.",
+                "{}: {label} changed on both sides. The newer edit ({}) was kept; the other is saved in Ledger's conflicts folder for this vault, under {}.",
                 data.name,
                 if merged.ledger_lost { "from Trello" } else { "from Ledger" },
                 self.stamp
@@ -926,9 +926,7 @@ impl Run<'_> {
         frontmatter::set(&mut meta, "item", id);
         frontmatter::set(&mut meta, "card", card);
         frontmatter::set(&mut meta, "title", title);
-        let file = self
-            .root
-            .join(crate::settings::LEDGER_DIR)
+        let file = crate::settings::local_dir(self.root)
             .join("conflicts")
             .join(&self.stamp)
             .join("trello")

@@ -1,14 +1,12 @@
 //! Keeping secrets out of what a run shows and keeps. The run's output and the note kept about it are built from
 //! what a model printed and what a prompt said, and neither can be trusted not to contain a token: so everything is passed
-//! through here first. It removes the values in the vault's own `.ledger/.env` (the GitHub token, the encryption
-//! key), anything shaped like a well-known access token, `Bearer` tokens, and the value of `NAME=value` where the
+//! through here first. It removes the secrets kept for the vault on this machine (the Trello key and token, the
+//! Portflow session), anything shaped like a well-known access token, `Bearer` tokens, and the value of `NAME=value` where the
 //! name says it is a secret. It is a net, not a guarantee: the real protection is that the run is never given the
 //! vault's secrets to read (see `cli::guard_settings`).
 
-use std::fs;
 use std::path::Path;
 
-use crate::settings::secrets_path;
 
 pub const MASK: &str = "[redacted]";
 
@@ -47,10 +45,9 @@ impl Redactor {
         Redactor { secrets }
     }
 
-    /// Knows every value in the vault's `.ledger/.env`.
+    /// Knows every secret kept for the vault on this machine (see `settings::secret_values`).
     pub fn for_vault(root: &Path) -> Redactor {
-        let text = fs::read_to_string(secrets_path(root)).unwrap_or_default();
-        Redactor::new(text.lines().filter_map(env_value))
+        Redactor::new(crate::settings::secret_values(root))
     }
 
     pub fn apply(&self, text: &str) -> String {
@@ -60,18 +57,6 @@ impl Redactor {
         }
         scrub_assignments(&scrub_tokens(&out))
     }
-}
-
-/// The value of a `NAME=value` line of an env file.
-fn env_value(line: &str) -> Option<String> {
-    let line = line.trim();
-    if line.is_empty() || line.starts_with('#') {
-        return None;
-    }
-    let (_, value) = line.strip_prefix("export ").unwrap_or(line).split_once('=')?;
-    let value = value.trim();
-    let value = ['"', '\''].iter().find_map(|q| value.strip_prefix(*q).and_then(|v| v.strip_suffix(*q))).unwrap_or(value);
-    Some(value.to_string())
 }
 
 fn is_token_char(b: u8) -> bool {

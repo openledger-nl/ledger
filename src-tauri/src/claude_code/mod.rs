@@ -1,7 +1,7 @@
 //! Running a prompt with Claude Code: one click in the app starts the `claude` command-line program,
 //! non-interactively, in the prompt's project folder, and the deliverable it writes lands where the app expects it.
 //!
-//! * `config`: the settings (program path, permission mode, model, guard rails), in `.ledger/claude-code.json`.
+//! * `config`: the settings (program path, permission mode, model, guard rails), in `claude-code.json` for this machine.
 //! * `cli`: finding the program, the command line, the guard rails' settings file.
 //! * `prompt`: what is sent, and checking that the prompt and its project are there.
 //! * `naming`: asking for a short name for a new prompt, from what it asks.
@@ -60,11 +60,14 @@ impl Host for TauriHost {
         let state = self.app.state::<App>();
         let outcome = {
             let mut core = state.lock();
+            // In an encrypted vault the run wrote into a plain copy of the project: that is taken in first.
+            if let Err(e) = core.vault.store().take_back() {
+                crate::applog::error("claude", format!("What the run wrote couldn't all be taken into the vault: {e}"));
+            }
             finish::refresh_vault(&mut core, request, changes, link)
         };
         if outcome.reloaded || !outcome.linked.is_empty() || !outcome.kept.is_empty() {
-            // What the run wrote is part of the vault now, and goes to GitHub like anything else; the window refreshes.
-            state.syncer.dirty();
+            // What the run wrote is part of the vault now: the window refreshes.
             let _ = self.app.emit("vault-changed", ());
         }
         outcome
@@ -76,8 +79,7 @@ impl Host for TauriHost {
             let mut core = state.lock();
             finish::keep_record(&mut core, record).map_err(|e| e.to_string())?;
         }
-        // The note is part of the vault now: it goes to GitHub like anything else, and the window refreshes.
-        state.syncer.dirty();
+        // The note is part of the vault now: the window refreshes.
         let _ = self.app.emit("vault-changed", ());
         Ok(())
     }

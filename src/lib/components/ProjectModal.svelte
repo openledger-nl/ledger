@@ -8,7 +8,8 @@
 	import { currentSemester, dayLabel, nearestSemester, today, workDays } from '$lib/semesters';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
 	import { daysLeft, daysLeftText, endDay, PROJECT_KINDS, ROLES } from '$lib/v1';
-	import type { FeedbackRole, MmmLevel, ProjectKind, ProjectMeta, ProjectPerson, Semester } from '$lib/types';
+	import type { FeedbackRole, MmmLevel, Person, ProjectKind, ProjectMeta, Semester } from '$lib/types';
+	import { personNamed, withPerson, type Attached } from '$lib/people';
 	import X from '@lucide/svelte/icons/x';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import Dropdown from './Dropdown.svelte';
@@ -39,19 +40,34 @@
 	let client = $state(m?.client ?? '');
 	let busy = $state(false);
 
-	// Its people: the coach, the teammates, the client. Kept with the project whether or not it has a goal yet.
-	type Person = Omit<ProjectPerson, 'project' | 'tag'>;
-	let people = $state<Person[]>([]);
+	// Its people: the coach, the teammates, the client, from the people of the vault (someone new is added to it on
+	// saving). Kept with the project whether or not it has a goal yet.
+	type Listed = { person: string | null; name: string; role: FeedbackRole };
+	let people = $state<Listed[]>([]);
+	let everyone = $state<Person[]>([]);
+	api.listPeople().then((list) => (everyone = list), () => {});
 	// svelte-ignore state_referenced_locally
-	if (project) api.listProjectPeople(project.slug).then((list) => (people = list.map(({ name, role, portflowUser }) => ({ name, role, portflowUser }))), () => {});
+	if (project) api.listProjectPeople(project.slug).then((list) => (people = list.map(({ person, name, role }) => ({ person, name, role }))), () => {});
 	let newName = $state('');
 	let newRole = $state<FeedbackRole>('teammate');
 	const roleOptions = ROLES.map((r) => ({ value: r.role, label: r.name }));
+	const peopleListId = `project-people-${Math.random().toString(36).slice(2)}`;
 	function addPerson() {
 		const name = newName.trim();
 		if (!name) return;
-		people = [...people, { name, role: newRole, portflowUser: null }];
+		const known = everyone.find((p) => p.name.trim().toLowerCase() === name.toLowerCase());
+		people = [...people.filter((p) => !known || p.person !== known.id), { person: known?.id ?? null, name: known?.name ?? name, role: newRole }];
 		newName = '';
+	}
+
+	/** The list as it is saved: someone new is added to the vault first. */
+	async function attached(): Promise<Attached[]> {
+		let list: Attached[] = [];
+		for (const p of people) {
+			const id = p.person ?? (await personNamed(everyone, p.name)).id;
+			list = withPerson(list, id, p.role);
+		}
+		return list;
 	}
 
 	let semesters = $state<Semester[]>([]);
@@ -91,7 +107,7 @@
 		if (slug) {
 			const s = slug;
 			await attempt(() => api.saveProjectMeta({ ...meta, slug: s, tag: s }));
-			await attempt(() => api.saveProjectPeople(s, people));
+			await attempt(async () => api.saveProjectPeople(s, await attached()));
 		}
 		busy = false;
 		if (!slug) return;
@@ -190,14 +206,21 @@
 		<div class="form-row pm-add-person">
 			<input
 				bind:value={newName}
+				list={everyone.length ? peopleListId : undefined}
 				placeholder="Name, e.g. Frank de Vries"
 				aria-label="Name of someone in the project"
+				autocomplete="off"
 				onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addPerson())}
 			/>
+			{#if everyone.length}
+				<datalist id={peopleListId}>
+					{#each everyone.filter((p) => !people.some((q) => q.person === p.id)) as p (p.id)}<option value={p.name}>In the vault</option>{/each}
+				</datalist>
+			{/if}
 			<Dropdown bind:value={() => newRole, (v) => (newRole = v as FeedbackRole)} options={roleOptions} label="Their role" />
 			<button class="btn small" onclick={addPerson} disabled={!newName.trim()}><UserPlus size={14} />Add</button>
 		</div>
-		<span class="hint">Your coach, teammates and client: offered when you note feedback or who was in a meeting, where "Whole team" adds every teammate at once.</span>
+		<span class="hint">Your coach, teammates and client, from the people of your vault (someone new is added to it): offered when you note feedback or who was in a meeting, where "Whole team" adds every teammate at once.</span>
 	</div>
 
 	{#snippet footer()}

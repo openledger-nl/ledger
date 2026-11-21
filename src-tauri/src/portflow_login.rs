@@ -8,9 +8,9 @@
 //! - It can't be a hash: the login page needs the password as typed, so Ledger must be able to read it back. It is
 //!   kept in the system's own keychain (the Secret Service on Linux, so GNOME Keyring or KWallet; the Keychain on macOS;
 //!   the Credential Manager on Windows), which encrypts it with a key that logging in to the computer unlocks. It is
-//!   never written to the vault, its `.ledger/`, the settings or the log. With no keychain to keep it in, it isn't
+//!   never written to the vault, its folder for this machine, the settings or the log. With no keychain to keep it in, it isn't
 //!   saved at all: there is no plain-file fallback.
-//! - The settings (`.ledger/portflow.json`, this machine only) hold only the username, so the keychain is asked only
+//! - The settings (`portflow.json`, this machine only) hold only the username, so the keychain is asked only
 //!   when there is something in it.
 //! - It is typed only into the Fontys login page: Ledger checks that the page the window loaded is
 //!   `https://login.fontysict.nl`, and the script checks the page's address again before it touches anything.
@@ -209,7 +209,7 @@ mod tests {
 
         save(root, &store, " i123456@fontysict.nl ", "secret").unwrap();
         assert_eq!(config::read_settings(root).saved_login.as_deref(), Some("i123456@fontysict.nl"));
-        let on_disk = std::fs::read_to_string(root.join(".ledger/portflow.json")).unwrap();
+        let on_disk = std::fs::read_to_string(crate::settings::local_dir(root).join("portflow.json")).unwrap();
         assert!(!on_disk.contains("secret"), "the password is not in the settings: {on_disk}");
         let login = saved(root, &store).expect("a login");
         assert_eq!((login.username.as_str(), login.password.as_str()), ("i123456@fontysict.nl", "secret"));

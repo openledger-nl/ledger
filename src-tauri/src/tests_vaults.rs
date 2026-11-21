@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use tempfile::tempdir;
 
-use crate::projects;
+use crate::{marker, projects};
 use crate::settings;
 use crate::state::{self, Core};
 
@@ -18,10 +18,16 @@ fn without_a_vault_nothing_is_written_until_one_is_made() {
     assert!(!core.vault.root().exists(), "the stand-in vault is never created on disk");
     core.reload().unwrap();
 
-    let path = core.create_vault(place.path(), "  School  ").unwrap();
+    let (path, recovery) = core.create_vault(place.path(), "  School  ", None).unwrap();
+    assert!(recovery.is_none(), "a vault of plain files has no key");
     assert_eq!(path, place.path().join("School"));
     assert!(core.open);
-    assert!(path.join(".gitignore").exists());
+    assert!(path.join("ledger.json").exists(), "a new vault gets its marker");
+    // What belongs to this machine is kept by the vault's id in the config folder, never in the vault.
+    assert_eq!(settings::local_dir(&path), config.path().join("vaults").join(core.vault.id()));
+    settings::update_settings(&path, |s| s.screenshot_hotkey = Some("Alt+F9".into())).unwrap();
+    assert!(config.path().join("vaults").join(core.vault.id()).join("settings.json").exists());
+    assert_eq!(fs::read_dir(&path).unwrap().count(), 1, "only the marker is in the new vault");
     let saved = settings::load_config(config.path());
     assert_eq!(saved.vault_path.as_deref(), Some(&*path.display().to_string()));
     assert_eq!(saved.recent_vaults, vec![path.display().to_string()]);
@@ -37,10 +43,10 @@ fn a_new_vault_never_takes_over_a_folder_with_something_in_it() {
     fs::create_dir(place.path().join("Empty")).unwrap();
 
     let mut core = Core::without_vault(config.path().to_path_buf()).unwrap();
-    assert!(core.create_vault(place.path(), "Notes").is_err());
+    assert!(core.create_vault(place.path(), "Notes", None).is_err());
     assert!(!core.open);
-    assert!(core.create_vault(Path::new("relative"), "Notes").is_err());
-    core.create_vault(place.path(), "Empty").unwrap();
+    assert!(core.create_vault(Path::new("relative"), "Notes", None).is_err());
+    core.create_vault(place.path(), "Empty", None).unwrap();
     assert_eq!(fs::read_to_string(place.path().join("Notes/todo.md")).unwrap(), "mine");
 }
 
@@ -99,4 +105,82 @@ fn an_older_config_without_recent_vaults_still_reads() {
     let read = settings::load_config(config.path());
     assert_eq!(read.vault_path.as_deref(), Some("/kept"));
     assert!(read.recent_vaults.is_empty());
+}
+
+#[test]
+fn a_vault_from_ledger_0x_is_refused_and_left_as_it_is() {
+    let config = tempdir().unwrap();
+    let old = tempdir().unwrap();
+    fs::create_dir_all(old.path().join("projects/thesis")).unwrap();
+    fs::write(old.path().join("projects/thesis/project.md"), "---
+name: Thesis
+---
+").unwrap();
+    fs::create_dir_all(old.path().join(".ledger")).unwrap();
+    fs::write(old.path().join(".ledger/settings.json"), "{}").unwrap();
+    let before: Vec<_> = walk(old.path());
+
+    let mut core = Core::without_vault(config.path().to_path_buf()).unwrap();
+    let refused = core.open_vault(old.path()).unwrap_err().to_string();
+    assert!(refused.contains("Ledger 0.x"), "{refused}");
+    assert!(!core.open);
+    assert!(!old.path().join(marker::FILE).exists(), "nothing is written into a 0.x vault");
+    assert_eq!(walk(old.path()), before);
+
+    // Opened last time, by an older Ledger: the app starts on the picker instead, and the list says why.
+    settings::remember_vault(config.path(), old.path()).unwrap();
+    let core = Core::open(config.path().to_path_buf()).unwrap();
+    assert!(!core.open);
+    assert_eq!(walk(old.path()), before);
+}
+
+#[test]
+fn a_vault_from_a_newer_ledger_or_with_a_damaged_marker_is_refused() {
+    let newer = tempdir().unwrap();
+    fs::write(newer.path().join(marker::FILE), r#"{"ledger": 99, "id": "abc"}"#).unwrap();
+    assert!(crate::vault::Vault::open(newer.path().to_path_buf()).err().unwrap().to_string().contains("newer Ledger"));
+
+    let damaged = tempdir().unwrap();
+    fs::write(damaged.path().join(marker::FILE), "{ not json").unwrap();
+    assert!(crate::vault::Vault::open(damaged.path().to_path_buf()).is_err());
+    assert_eq!(fs::read_to_string(damaged.path().join(marker::FILE)).unwrap(), "{ not json", "a damaged marker is left for the person to see");
+}
+
+#[test]
+fn a_folder_of_other_notes_becomes_a_vault_and_keeps_its_notes() {
+    let config = tempdir().unwrap();
+    let notes = tempdir().unwrap();
+    fs::write(notes.path().join("ideas.md"), "mine").unwrap();
+    let mut core = Core::without_vault(config.path().to_path_buf()).unwrap();
+    core.open_vault(notes.path()).unwrap();
+    assert!(core.open);
+    let marker::Found::Vault(found) = marker::inspect(notes.path()) else { panic!("the folder is a vault now") };
+    assert_eq!(found.ledger, marker::FORMAT);
+    assert_eq!(found.id.len(), 32);
+    assert_eq!(core.vault.id(), found.id);
+    assert_eq!(fs::read_to_string(notes.path().join("ideas.md")).unwrap(), "mine");
+
+    // Opened again, it is the same vault.
+    core.reload().unwrap();
+    let again = crate::vault::Vault::open(notes.path().to_path_buf()).unwrap();
+    assert_eq!(again.id(), found.id);
+}
+
+/// Every file under `root`, with its contents.
+fn walk(root: &Path) -> Vec<(String, Vec<u8>)> {
+    fn go(dir: &Path, rel: &str, out: &mut Vec<(String, Vec<u8>)>) {
+        let mut entries: Vec<_> = fs::read_dir(dir).unwrap().map(|e| e.unwrap()).collect();
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let name = format!("{rel}/{}", entry.file_name().to_string_lossy());
+            if entry.file_type().unwrap().is_dir() {
+                go(&entry.path(), &name, out);
+            } else {
+                out.push((name, fs::read(entry.path()).unwrap()));
+            }
+        }
+    }
+    let mut out = vec![];
+    go(root, "", &mut out);
+    out
 }

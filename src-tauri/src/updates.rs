@@ -12,11 +12,11 @@
 //!   for this machine, kept in the app's `config.json`; see `settings.rs`), and never while a sync runs. A development
 //!   build hears of a change within a second or two, from the runner's state file. A check that fails (offline, or no release with installers yet) says nothing, except when asked
 //!   for under Settings.
-//! * **Installing** restarts Ledger, so it waits until that cuts nothing off: a GitHub or Trello sync round finishes,
+//! * **Installing** restarts Ledger, so it waits until that cuts nothing off: a Trello sync round finishes,
 //!   and Claude Code runs end, or are stopped if the person says so ([`readiness`]). The last look is taken on the
 //!   main thread with the vault locked, and the restart happens right there, so nothing can start or be written in
-//!   between. Every change is in the vault's files by then (`App::mutate` writes through), and what isn't on GitHub
-//!   yet is pushed by the sync Ledger starts with. A release's signature is checked before anything is installed: an
+//!   between. Every change is in the vault's files by then (`App::mutate` writes through), and the cloud storage the
+//!   vault is in takes it from there. A release's signature is checked before anything is installed: an
 //!   update that doesn't match the key is refused, and the notice says why.
 
 use std::path::PathBuf;
@@ -71,11 +71,6 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 /// What is going on that a restart would cut off.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Activity {
-    /// A GitHub sync round is running.
-    pub github_syncing: bool,
-    /// Changes made here are not on GitHub yet. Not a reason to wait: they are in the vault's files, and the sync
-    /// Ledger starts with pushes them.
-    pub github_pending: bool,
     /// A Trello sync round is running.
     pub trello_syncing: bool,
     /// The prompts Claude Code is still running, by title. Restarting would stop them.
@@ -113,9 +108,6 @@ pub fn readiness(activity: &Activity, choice: RunsChoice) -> Readiness {
         return Readiness::Ask { runs: activity.runs.clone() };
     }
     let mut waiting_for = Vec::new();
-    if activity.github_syncing {
-        waiting_for.push("the GitHub sync to finish".to_string());
-    }
     if activity.trello_syncing {
         waiting_for.push("the Trello sync to finish".to_string());
     }
@@ -129,11 +121,7 @@ pub fn readiness(activity: &Activity, choice: RunsChoice) -> Readiness {
     if !waiting_for.is_empty() {
         return Readiness::Wait { waiting_for };
     }
-    let mut notes = Vec::new();
-    if activity.github_pending {
-        notes.push("Your latest changes aren't on GitHub yet. They are saved in the vault, and Ledger pushes them when it starts again.".to_string());
-    }
-    Readiness::Ready { notes }
+    Readiness::Ready { notes: Vec::new() }
 }
 
 fn quoted(titles: &[String]) -> String {
@@ -371,7 +359,7 @@ fn scheduler(app: AppHandle, config_dir: PathBuf) {
         let automatic = settings::load_config(&config_dir).updates.automatic;
         let activity = activity(&app);
         due = SystemTime::now()
-            + match when_due(automatic, activity.github_syncing || activity.trello_syncing) {
+            + match when_due(automatic, activity.trello_syncing) {
                 Due::Skip => EVERY,
                 Due::AfterSync => SYNC_WAIT,
                 Due::Check => {
@@ -405,9 +393,8 @@ fn dev_scheduler(app: AppHandle, config_dir: PathBuf) {
 
 /// What a restart would cut off right now. Takes the locks of the sync workers and the runs, never the vault's.
 fn activity(app: &AppHandle) -> Activity {
-    let github = app.state::<App>().syncer.status();
     let trello_syncing = app.try_state::<TrelloSyncer>().is_some_and(|t| t.status().state == "syncing");
-    Activity { github_syncing: github.state == "syncing", github_pending: github.pending, trello_syncing, runs: claude_code::running(app) }
+    Activity { trello_syncing, runs: claude_code::running(app) }
 }
 
 #[derive(Debug, Clone, Serialize)]

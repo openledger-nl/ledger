@@ -193,7 +193,7 @@
 		<div class="notice info">
 			{modeNotes[shown.permissionMode]}
 			{shown.guard
-				? 'The extra guard rails are on: it is told not to read or write outside this folder, nor to touch the vault\'s .ledger folder or any .env file, and neither the folder\'s own Claude settings nor any MCP servers are used.'
+				? 'The extra guard rails are on: it is told not to read or write outside this folder, nor to touch Ledger\'s own settings for this vault or any .env file, and neither the folder\'s own Claude settings nor any MCP servers are used.'
 				: 'The extra guard rails are off.'}
 		</div>
 		<div class="notice info">

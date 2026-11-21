@@ -1,12 +1,11 @@
 // App-wide UI state: toasts, modal dialogs and the theme (the shell's own state is in layout.svelte.ts). Kept as module-level
 // runes so any component can raise a toast or ask a question without prop drilling.
 
-import { listen } from '@tauri-apps/api/event';
+import { listeners } from './listeners';
 import { invalidateAll } from '$app/navigation';
 import { api } from './api';
-import type { ScreenshotTaken, SyncStatus } from './types';
+import type { ScreenshotTaken } from './types';
 import { captureDebug } from './log.svelte';
-import { ago } from './format';
 
 // ---- toasts -----------------------------------------------------------------------------------------
 
@@ -116,57 +115,24 @@ export function setTheme(id: string) {
 
 // ---- the backend's news ----------------------------------------------------------------------------
 
-/** Where the sync worker has got to; kept current by events from the backend. */
-export const sync = $state<{ status: SyncStatus | null }>({ status: null });
-
-/** What the sidebar's footer (and the rail's dot) says about the vault and GitHub: how it stands, where the files go
- *  (owner/repo@branch) and whether they go up sealed; a problem adds its message. */
-export function syncFooter(s: SyncStatus | null) {
-	if (!s || !s.configured) return { dot: 'off', title: 'Local vault', when: '', where: 'Not synced to GitHub', encryption: '', error: '' };
-	const base = { when: '', where: `${s.repo ?? ''}@${s.branch ?? ''}`, encryption: s.encrypted ? 'Encrypted' : 'Not encrypted', error: '' };
-	if (s.state === 'syncing') return { ...base, dot: 'warn pulse', title: 'Syncing...' };
-	if (s.state === 'error') return { ...base, dot: 'bad', title: 'Sync problem', error: s.lastError ?? 'See Settings' };
-	if (s.pending) return { ...base, dot: 'warn', title: 'Changes waiting to sync' };
-	return { ...base, dot: 'ok', title: 'Synced with GitHub', when: s.lastSyncAt ? ago(s.lastSyncAt) : '' };
-}
-
 /** A screenshot has been taken and waits for a thread to be attached to (the backend holds the picture). */
 export const screenshot = $state<{ pending: ScreenshotTaken | null }>({ pending: null });
 
 /**
- * Listens for what the backend announces — sync progress, files changed by a pull — and checks the vault for
- * edits made elsewhere (in Obsidian, say) whenever the window regains focus. Returns the cleanup.
+ * Listens for what the backend announces (files changed by a run or a sync with Trello or Portflow), and checks the
+ * vault for edits made elsewhere (in Obsidian, or by another machine through the cloud) whenever the window regains
+ * focus. Returns the cleanup.
  */
 export function startBackendEvents(): () => void {
-	const cleanups: Array<() => void> = [];
-	let alive = true;
-	const keep = (unlisten: () => void) => (alive ? cleanups.push(unlisten) : unlisten());
-
-	api.syncStatus()
-		.then((status) => {
-			sync.status = status;
-		})
-		.catch(() => {});
-	listen<SyncStatus>('sync-status', (event) => {
-		sync.status = event.payload;
-	})
-		.then(keep)
-		.catch(() => {});
-	listen('vault-changed', () => {
+	const events = listeners();
+	events.on('vault-changed', () => {
 		void refresh();
-	})
-		.then(keep)
-		.catch(() => {});
-
+	});
 	// A screenshot was taken: the main window asks where it belongs. A failure is said out loud.
-	listen<ScreenshotTaken>('screenshot-ready', (event) => {
+	events.on<ScreenshotTaken>('screenshot-ready', (event) => {
 		screenshot.pending = event.payload;
-	})
-		.then(keep)
-		.catch(() => {});
-	listen<string>('screenshot-error', (event) => toast(event.payload, true))
-		.then(keep)
-		.catch(() => {});
+	});
+	events.on<string>('screenshot-error', (event) => toast(event.payload, true));
 	// Ledger may have been launched with a picture (Flameshot's "Open with") before anything was listening.
 	api.pendingScreenshot()
 		.then((taken) => {
@@ -190,9 +156,8 @@ export function startBackendEvents(): () => void {
 	window.addEventListener('focus', onFocus);
 
 	return () => {
-		alive = false;
 		window.removeEventListener('focus', onFocus);
-		cleanups.forEach((fn) => fn());
+		events.stop();
 	};
 }
 

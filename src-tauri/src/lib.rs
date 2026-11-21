@@ -4,6 +4,7 @@ mod board;
 mod branding;
 mod claude_code;
 mod commands;
+mod conflicts;
 mod crypto;
 mod dates;
 mod db;
@@ -11,19 +12,18 @@ mod daily;
 mod deliverable_facts;
 mod deliverables;
 mod devupdates;
-mod encrypted_remote;
 mod error;
 mod feedback;
 mod frontmatter;
-mod github;
 mod history;
 mod ids;
 mod images;
-mod keystore;
+mod marker;
 mod links;
 mod markdown;
 mod models;
 mod onboarding;
+mod people;
 mod pdf;
 mod posts;
 mod project_facts;
@@ -36,13 +36,14 @@ mod semesters;
 mod settings;
 mod state;
 mod stories;
-mod sync;
-mod syncer;
+mod store;
 mod templates;
 mod threads;
 mod updates;
 mod uploads;
 mod vault;
+mod vault_crypto;
+mod watcher;
 
 // ---- Trello sync (feat/trello-sync) ----
 mod trello;
@@ -74,6 +75,10 @@ mod tests_applog;
 #[cfg(test)]
 mod tests_claude_code;
 #[cfg(test)]
+mod tests_cloud;
+#[cfg(test)]
+mod tests_encrypted;
+#[cfg(test)]
 mod tests_trello;
 #[cfg(test)]
 mod tests_crypto;
@@ -92,8 +97,6 @@ mod tests_history;
 #[cfg(test)]
 mod tests_screenshot;
 #[cfg(test)]
-mod tests_sync;
-#[cfg(test)]
 mod tests_updates;
 #[cfg(test)]
 mod tests_vault;
@@ -104,8 +107,6 @@ mod tests_vaults;
 use std::sync::{Arc, Mutex};
 
 use tauri::{Emitter, Manager};
-
-use crate::syncer::Event;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Keeps the main window on Ledger itself: a navigation away from the app (a file dropped where nothing caught it, a link
@@ -168,26 +169,20 @@ pub fn run() {
                 }),
             );
             applog::info("app", format!("Ledger {} started on {} {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH));
-            let core = state::Core::open(config_dir.clone(), app.path().document_dir().ok())?;
-            let sync = core.sync.clone();
+            let core = state::Core::open(config_dir.clone())?;
+            let watched = core.open.then(|| core.vault.root().to_path_buf());
             let core = Arc::new(Mutex::new(core));
             let trello_core = core.clone(); // for the Trello sync (feat/trello-sync), started below
             let portflow_core = core.clone(); // for Portflow (feat/portflow-integration), started below
 
-            let handle = app.handle().clone();
-            let syncer = syncer::spawn(
-                core.clone(),
-                Arc::new(move |event| {
-                    let _ = match event {
-                        Event::Status(status) => handle.emit("sync-status", status),
-                        Event::VaultChanged => handle.emit("vault-changed", ()),
-                    };
-                }),
-            );
-            // If .env is filled in, this also starts with a sync.
-            syncer.reconfigure(sync.as_ref());
-
-            app.manage(state::App::new(core, syncer, screenshot::Screenshots::new()));
+            app.manage(state::App::new(core, screenshot::Screenshots::new()));
+            // What the cloud storage brings in is read in once the folder is quiet again.
+            let watch_handle = app.handle().clone();
+            let watcher = watcher::VaultWatcher::start(Arc::new(move || commands::vault_changed_outside(&watch_handle)));
+            if let Some(root) = watched {
+                watcher.watch(&root);
+            }
+            app.manage(watcher);
             trello::start_app(app.handle(), trello_core); // feat/trello-sync: its own worker, needs the App state above
             portflow::start_app(app.handle(), portflow_core); // feat/portflow-integration: runs only while switched on
             // Looks for new releases now and then (release builds only); it asks the syncs above whether they are busy.
@@ -217,6 +212,11 @@ pub fn run() {
             commands::list_project_meta,
             commands::save_project_meta,
             commands::list_project_people,
+            commands::list_people,
+            commands::get_person,
+            commands::create_person,
+            commands::update_person,
+            commands::delete_person,
             commands::set_post_meta,
             commands::get_deliverable_meta,
             commands::list_deliverable_meta,
@@ -309,18 +309,6 @@ pub fn run() {
             commands::rename_column,
             commands::delete_column,
             commands::get_settings,
-            commands::sync_status,
-            commands::sync_overview,
-            commands::sync_commits,
-            commands::save_sync_settings,
-            commands::disconnect_sync,
-            commands::test_sync,
-            commands::sync_now,
-            commands::encryption_status,
-            commands::set_encryption_enabled,
-            commands::generate_encryption_key,
-            commands::import_encryption_key,
-            commands::export_recovery_key,
             applog::about_info,
             applog::log_write,
             applog::log_read,
@@ -381,6 +369,14 @@ pub fn run() {
             commands::reload_vault,
             commands::set_feedback_from,
             commands::check_vault_changes,
+            commands::list_conflicts,
+            commands::unlock_vault,
+            commands::vault_encryption,
+            commands::change_passphrase,
+            commands::recovery_key,
+            commands::forget_vault_key,
+            commands::encrypted_copy,
+            commands::resolve_conflict,
             commands::save_screenshot_hotkey,
             commands::save_screenshot_tool,
             commands::layout_settings,

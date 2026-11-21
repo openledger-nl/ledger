@@ -63,9 +63,9 @@
 <div class="panel">
 	<h2>Vault</h2>
 	<p class="sub" style="margin:0">
-		Everything you write lives in a folder of plain markdown files with YAML frontmatter, much like an Obsidian vault. Edit them in any editor; Ledger
-		picks up your changes when you come back to its window. Keep it in a folder that cloud storage syncs (OneDrive, Google Drive, Dropbox, iCloud
-		Drive), so your files are safe.
+		Everything you write lives in a folder of plain markdown files with YAML frontmatter, much like an Obsidian vault. Keep it in a folder that your
+		cloud storage keeps in sync (OneDrive, SharePoint, Nextcloud): it carries the vault to your other computers, keeps earlier versions of every file
+		and can put the whole folder back as it was on a day. What the cloud brings in from another computer is read in as soon as it arrives.
 	</p>
 	<div class="vault-now">
 		<div class="vault-now-text">
@@ -119,9 +119,19 @@ projects/&lt;project&gt;/deliverables/                  what prompts produce, th
 projects/&lt;project&gt;/versions/                      their published versions (name@v1.0.md)
 projects/&lt;project&gt;/versions/&lt;id&gt;.md              how a published version came to be
 projects/&lt;project&gt;/attachments/                   uploaded files and screenshots
-projects/&lt;project&gt;/templates/&lt;id&gt;.md            templates for this project
-templates/&lt;id&gt;.md                               templates for every project
-.ledger/                                         settings and secrets, never synced</pre>
+projects/&lt;project&gt;/templates/prompts/&lt;id&gt;.md    templates for this project
+projects/&lt;project&gt;/templates/pdf/layout.typ     this project's own PDF layout
+meetings/&lt;YYYY&gt;/&lt;MM&gt;/&lt;date&gt;.md                a day's meeting notes
+shared/templates/prompts/&lt;id&gt;.md               templates for every project
+shared/templates/pdf/layout.typ                the vault's own PDF layout
+shared/semesters/&lt;id&gt;.md                       semesters and their sprints
+shared/people/&lt;id&gt;.md                          the people of the vault
+shared/portflow/                                what Portflow mirrors
+ledger.json                                    says that this folder is a vault</pre>
+		<p class="sub">
+			This machine's settings for the vault and its secrets are kept outside it, in Ledger's own folder and the system's keychain, so the cloud never
+			sees them.
+		</p>
 	</details>
 </div>
 

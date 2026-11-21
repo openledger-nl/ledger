@@ -55,14 +55,26 @@ CREATE TABLE deliverable_descriptions (
     PRIMARY KEY (project_slug, path)
 );
 
--- The people of a project (see project_facts.rs): its coach, teammates, client…, in the order they are listed.
-CREATE TABLE project_people (
-    project_slug  TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
-    position      INTEGER NOT NULL,
+-- The people the vault knows (see people.rs), shared by every project: shared/people/<id>.md.
+CREATE TABLE people (
+    id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
-    role          TEXT NOT NULL,
+    email         TEXT NOT NULL DEFAULT '',
+    organisation  TEXT NOT NULL DEFAULT '',
     portflow_user INTEGER,
-    PRIMARY KEY (project_slug, position)
+    notes         TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+
+-- Who is part of a project (see project_facts.rs), with the role they have in it, in the order they are listed.
+CREATE TABLE project_people (
+    project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    position     INTEGER NOT NULL,
+    person_id    TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    role         TEXT NOT NULL,
+    PRIMARY KEY (project_slug, position),
+    UNIQUE (project_slug, person_id)
 );
 
 -- How a project's exported PDFs look and who they name (see branding.rs): one row, or none for the defaults.

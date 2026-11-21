@@ -12,7 +12,6 @@ use serde_json::json;
 
 use super::config::ClaudeSettings;
 use crate::error::{Error, Result};
-use crate::settings::LEDGER_DIR;
 
 // ---- finding the program ----------------------------------------------------------------------------
 
@@ -222,13 +221,13 @@ pub fn rule_path(path: &str) -> Option<String> {
     None
 }
 
-/// The settings file passed with `--settings` when the guard rails are on: the vault's `.ledger/` folder and every
-/// `.env` are off limits to the file tools, and reads and writes outside the project folder are refused (this also
+/// The settings file passed with `--settings` when the guard rails are on: Ledger's own folder for the vault (its
+/// settings and bookkeeping on this machine) and every `.env` are off limits to the file tools, and reads and writes outside the project folder are refused (this also
 /// makes the always-allowed read-only shell commands such as `cat` ask first, which a non-interactive run can't
 /// answer, so they fail). It is rewritten before every run and shown in the confirmation, so nothing is hidden.
 pub fn guard_settings(vault_root: &Path) -> String {
     let mut deny = Vec::new();
-    if let Some(ledger) = rule_path(&vault_root.join(LEDGER_DIR).display().to_string()) {
+    if let Some(ledger) = rule_path(&crate::settings::local_dir(vault_root).display().to_string()) {
         deny.push(format!("Read({ledger}/**)"));
         deny.push(format!("Edit({ledger}/**)"));
     }

@@ -3,7 +3,7 @@
 // of the changes in its checkout, and says so with `update-available`; installing downloads a release once, waits until
 // a restart cuts nothing off, and ends in the restart (see src-tauri/src/updates.rs and devupdates.rs).
 
-import { listen } from '@tauri-apps/api/event';
+import { listeners } from './listeners';
 import { updatesApi } from './api';
 import type { Announced, RunsChoice, UpdateProgress } from './types';
 
@@ -94,18 +94,11 @@ export function later() {
 
 /** Listens for what the backend finds, and asks what it already found before the window was listening. */
 export function startUpdates(): () => void {
-	const cleanups: Array<() => void> = [];
-	let alive = true;
-	const keep = (unlisten: () => void) => (alive ? cleanups.push(unlisten) : unlisten());
-
-	listen<Announced>('update-available', (event) => showUpdate(event.payload))
-		.then(keep)
-		.catch(() => {});
-	listen<UpdateProgress>('update-progress', (event) => {
+	const events = listeners();
+	events.on<Announced>('update-available', (event) => showUpdate(event.payload));
+	events.on<UpdateProgress>('update-progress', (event) => {
 		updates.progress = event.payload;
-	})
-		.then(keep)
-		.catch(() => {});
+	});
 	updatesApi
 		.status()
 		.then((view) => {
@@ -113,10 +106,7 @@ export function startUpdates(): () => void {
 		})
 		.catch(() => {});
 
-	return () => {
-		alive = false;
-		cleanups.forEach((fn) => fn());
-	};
+	return events.stop;
 }
 
 // ---- installing ---------------------------------------------------------------------------------------
