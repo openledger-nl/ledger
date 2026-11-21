@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The guide on the home page for a new client: bring in a vault that exists, or set one up step by step (what Ledger is
-	// for, a semester when that is school, sync to GitHub, a first thread, a first deliverable). What a step needs is read
+	// for, a semester when that is school, a first thread, a first deliverable). What a step needs is read
 	// from the vault, so it ticks itself off when it is done, wherever it was done, and the guide ends with the first
 	// deliverable (onboarding.rs keeps the rest).
 	import Dropdown from '$lib/components/Dropdown.svelte';
@@ -8,8 +8,6 @@
 	import Briefcase from '@lucide/svelte/icons/briefcase';
 	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import Check from '@lucide/svelte/icons/check';
-	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import CloudUpload from '@lucide/svelte/icons/cloud-upload';
 	import Compass from '@lucide/svelte/icons/compass';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import FolderInput from '@lucide/svelte/icons/folder-input';
@@ -26,8 +24,6 @@
 	import type { OnboardingStatus, ProjectSummary, Purpose, Semester, SemesterDraft, Settings } from '$lib/types';
 	import OnboardingImport from './OnboardingImport.svelte';
 	import SemesterModal from './SemesterModal.svelte';
-	import EncryptionSettings from './settings/EncryptionSettings.svelte';
-	import GitHubSettings from './settings/GitHubSettings.svelte';
 
 	let {
 		projects,
@@ -45,7 +41,7 @@
 		onboarding: OnboardingStatus;
 	} = $props();
 
-	type StepId = 'purpose' | 'semester' | 'sync' | 'thread' | 'deliverable';
+	type StepId = 'purpose' | 'semester' | 'thread' | 'deliverable';
 	interface Step {
 		id: StepId;
 		title: string;
@@ -107,14 +103,6 @@
 				]
 			: []),
 		{
-			id: 'sync',
-			title: 'Sync with GitHub',
-			icon: CloudUpload,
-			done: !!settings?.sync.configured,
-			skipped: onboarding.skipped.includes('sync'),
-			summary: settings?.sync.configured ? `${settings.sync.repo} | ${settings.sync.branch}` : ''
-		},
-		{
 			id: 'thread',
 			title: 'Start your first thread',
 			icon: MessageSquareText,
@@ -136,7 +124,7 @@
 	const open = $derived(revisiting ?? current?.id ?? null);
 	const finishedCount = $derived(steps.filter(passed).length);
 	const welcome = $derived(!started && !importing && finishedCount === 0 && projects.length === 0);
-	const stepCount = $derived(steps.length === 5 ? 'Five' : 'Four');
+	const stepCount = $derived(steps.length === 4 ? 'Four' : 'Three');
 
 	async function choosePurpose(answer: Purpose) {
 		busy = true;
@@ -147,7 +135,7 @@
 		busy = false;
 	}
 
-	async function skip(step: 'semester' | 'sync') {
+	async function skip(step: 'semester') {
 		revisiting = null;
 		if (await attempt(() => api.skipOnboardingStep(step))) await refresh();
 	}
@@ -224,7 +212,7 @@
 			<button class="onb-choice primary" onclick={() => (started = true)}>
 				<span class="onb-choice-icon"><Rocket size={20} /></span>
 				<strong>Set up a new vault</strong>
-				<span class="onb-choice-sub">A few short steps: what it is for, sync to GitHub, a first thread and a first deliverable.</span>
+				<span class="onb-choice-sub">A few short steps: what it is for, a first thread and a first deliverable.</span>
 			</button>
 		</div>
 	</section>
@@ -290,25 +278,6 @@
 										<button class="btn primary" onclick={() => (editor = { preset: nj26Draft() })}>Use the NJ26 preset</button>
 										<button class="btn" onclick={() => (editor = {})}>Create my own</button>
 										<button class="btn ghost" onclick={() => skip('semester')}>Skip for now</button>
-									</div>
-								{:else if step.id === 'sync'}
-									<p>
-										Keep the vault in a <strong>private</strong> GitHub repository, so it survives this computer and follows you to others.
-									</p>
-									{#if settings}
-										<details class="more">
-											<summary><ChevronRight size={14} class="disclosure" />Encrypt it first</summary>
-											<p class="hint">
-												Encryption has to be on before the first sync: a repository that already holds your files in plain text is never
-												converted. Names of files and folders are hidden as well.
-											</p>
-											<EncryptionSettings {settings} />
-										</details>
-										<GitHubSettings {settings} bare />
-									{/if}
-									<div class="onb-actions">
-										<button class="btn ghost" onclick={() => skip('sync')}>Skip for now</button>
-										<span class="hint">You can set it up later under Settings.</span>
 									</div>
 								{:else if step.id === 'thread'}
 									<p>

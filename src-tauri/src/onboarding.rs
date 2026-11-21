@@ -1,5 +1,5 @@
 //! The guide a new client gets on the home page: bring in a vault that exists, or set one up step by step (what Ledger
-//! is for, a semester when it is for school, sync to GitHub, a first thread, a first deliverable).
+//! is for, a semester when it is for school, a first thread, a first deliverable).
 //!
 //! Whether the guide shows is a fact about this machine's copy of Ledger, not about a vault, so it is kept in
 //! `config.json` with the vault's location (see `settings`). What each step needs is read from the vault by the page,
@@ -19,7 +19,7 @@ use crate::settings;
 use crate::state::App;
 
 /// The steps that can be left for later: the vault works without them.
-pub const SKIPPABLE: [&str; 2] = ["semester", "sync"];
+pub const SKIPPABLE: [&str; 1] = ["semester"];
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

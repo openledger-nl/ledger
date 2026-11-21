@@ -57,7 +57,7 @@ fn the_answer_is_given_once_and_setting_up_the_vault_does_not_change_it() {
 fn the_guide_can_be_asked_for_again_from_the_start() {
     let dir = tempdir().unwrap();
     onboarding::status(dir.path(), true).unwrap();
-    onboarding::skip(dir.path(), "sync").unwrap();
+    onboarding::skip(dir.path(), "semester").unwrap();
     let again = onboarding::restart(dir.path()).unwrap();
     assert!(again.active);
     assert!(again.skipped.is_empty(), "what was put off is asked about again");
@@ -68,13 +68,13 @@ fn the_guide_can_be_asked_for_again_from_the_start() {
 fn only_the_steps_that_can_wait_can_be_skipped_and_each_is_kept_once() {
     let dir = tempdir().unwrap();
     onboarding::status(dir.path(), false).unwrap();
-    assert_eq!(onboarding::skip(dir.path(), "sync").unwrap().skipped, ["sync"]);
-    assert_eq!(onboarding::skip(dir.path(), "sync").unwrap().skipped, ["sync"]);
-    assert_eq!(onboarding::skip(dir.path(), "semester").unwrap().skipped, ["sync", "semester"]);
-    for core in ["thread", "deliverable", "nope", ""] {
+    assert_eq!(onboarding::skip(dir.path(), "semester").unwrap().skipped, ["semester"]);
+    assert_eq!(onboarding::skip(dir.path(), "semester").unwrap().skipped, ["semester"]);
+    // Sync with GitHub was a step once; it is not one any more.
+    for core in ["thread", "deliverable", "sync", "nope", ""] {
         assert!(onboarding::skip(dir.path(), core).is_err(), "{core:?} is not a step that can wait");
     }
-    assert_eq!(settings::load_config(dir.path()).onboarding.skipped, ["sync", "semester"]);
+    assert_eq!(settings::load_config(dir.path()).onboarding.skipped, ["semester"]);
 }
 
 #[test]
@@ -82,11 +82,11 @@ fn the_guide_shares_the_config_file_without_costing_the_vault_its_place() {
     let dir = tempdir().unwrap();
     settings::update_config(dir.path(), |c| c.vault_path = Some("/somewhere/else".into())).unwrap();
     onboarding::status(dir.path(), false).unwrap();
-    onboarding::skip(dir.path(), "sync").unwrap();
+    onboarding::skip(dir.path(), "semester").unwrap();
     onboarding::finish(dir.path()).unwrap();
     let config = settings::load_config(dir.path());
     assert_eq!(config.vault_path.as_deref(), Some("/somewhere/else"));
-    assert_eq!(config.onboarding, OnboardingConfig { stage: Stage::Done, skipped: vec!["sync".into()], purpose: None });
+    assert_eq!(config.onboarding, OnboardingConfig { stage: Stage::Done, skipped: vec!["semester".into()], purpose: None });
 
     // And changing the vault's location leaves the guide as it was.
     settings::update_config(dir.path(), |c| c.vault_path = Some("/elsewhere/still".into())).unwrap();

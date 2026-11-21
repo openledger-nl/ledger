@@ -749,7 +749,7 @@ export type Purpose = 'work' | 'hobby' | 'school';
 export interface OnboardingStatus {
 	/** The guide is on the home page. */
 	active: boolean;
-	/** The steps that were put off: only "semester" and "sync" can be. */
+	/** The steps that were put off: only "semester" can be. */
 	skipped: string[];
 	/** Not asked yet: the guide asks first. */
 	purpose: Purpose | null;
