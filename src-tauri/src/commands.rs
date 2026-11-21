@@ -546,14 +546,22 @@ pub fn open_project_file(app: AppHandle, project: String, path: String, reveal: 
     if !store.exists(&rel) {
         return Err(Error::not_found("That file isn't there any more"));
     }
-    // In an encrypted vault the program opens a plain copy outside the synced folder (see `store::Store::materialize`).
-    let file = store.materialize(&rel).map_err(|e| Error::io(&store.path(&rel), e))?;
+    open_or_reveal(&app, &store, &rel, reveal, None)
+}
+
+/// Opens the vault's file at `rel` with the system's program for it, or shows it in its folder. In an encrypted vault
+/// that is a plain copy outside the synced folder (see `store::Store::materialize`). `no_program` is what to say when
+/// the system has no program for it.
+fn open_or_reveal(app: &AppHandle, store: &crate::store::Store, rel: &str, reveal: bool, no_program: Option<&str>) -> Result<()> {
+    let file = store.materialize(rel).map_err(|e| Error::io(&store.path(rel), e))?;
     let opener = app.opener();
     if reveal {
-        opener.reveal_item_in_dir(&file).map_err(Error::screenshot)
-    } else {
-        opener.open_path(file.display().to_string(), None::<&str>).map_err(Error::screenshot)
+        return opener.reveal_item_in_dir(&file).map_err(Error::screenshot);
     }
+    opener.open_path(file.display().to_string(), None::<&str>).map_err(|e| match no_program {
+        Some(message) => Error::invalid(message),
+        None => Error::screenshot(e),
+    })
 }
 
 // ---- deliverables -----------------------------------------------------------------------------------
@@ -663,15 +671,7 @@ pub fn reset_pdf_layout(app: State<App>, project: String, scope: crate::pdf::Lay
 pub fn open_pdf_layout(app: AppHandle, project: String, scope: crate::pdf::LayoutScope, reveal: bool) -> Result<()> {
     let (store, file) = app.state::<App>().read(|_, root| Ok((crate::store::at(root), crate::pdf::layout_file(root, &project, scope)?)))?;
     let Some(file) = file else { return Err(Error::not_found("There is no layout of your own there yet")) };
-    let file = store.materialize(&file).map_err(|e| Error::io(&store.path(&file), e))?;
-    let opener = app.opener();
-    if reveal {
-        opener.reveal_item_in_dir(&file).map_err(Error::screenshot)
-    } else {
-        opener.open_path(file.display().to_string(), None::<&str>).map_err(|_| {
-            Error::invalid("No program is set to open .typ files. Show it in its folder and open it with a text editor")
-        })
-    }
+    open_or_reveal(&app, &store, &file, reveal, Some("No program is set to open .typ files. Show it in its folder and open it with a text editor"))
 }
 
 /// How the versions of a deliverable came to be, by thread. `path` is the live file or any of its versions.

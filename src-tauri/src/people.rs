@@ -23,10 +23,12 @@ use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::Mapping;
 
-use crate::db::{query_all, query_opt};
-use crate::error::{Error, Result};
-use crate::frontmatter::{self, MetaExt};
-use crate::ids;
+use crate::{
+    db::{query_all, query_opt},
+    error::{Error, Result},
+    frontmatter::{self, MetaExt},
+    ids,
+};
 
 pub const FOLDER: &str = "shared/people";
 

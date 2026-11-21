@@ -25,10 +25,12 @@ use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::{Mapping, Value};
 
-use crate::db::{query_all, query_opt};
-use crate::error::{Error, Result};
-use crate::frontmatter::{self, MetaExt};
-use crate::ids;
+use crate::{
+    db::{query_all, query_opt},
+    error::{Error, Result},
+    frontmatter::{self, MetaExt},
+    ids,
+};
 
 /// The folder of the meeting notes, at the vault's root, in lower case like the vault's other folders.
 pub const FOLDER: &str = "meetings";

@@ -25,38 +25,28 @@ static DECODED: Mutex<VecDeque<(Key, Arc<Vec<u8>>)>> = Mutex::new(VecDeque::new(
 /// The picture at `rel` in the vault, as the window can show it, decoded once for as long as the file stays as it is.
 pub fn displayable_in(store: &crate::store::Store, rel: &str) -> Result<Vec<u8>> {
     let file = store.path(rel);
-    let read = || store.read(rel).map_err(|e| Error::io(&file, e));
     let name = rel.rsplit('/').next().unwrap_or_default();
-    if !is_jxl(name) {
-        return read();
-    }
-    let (size, nanos) = store.fingerprint(rel).ok_or_else(|| Error::not_found(format!("{} isn't there", file.display())))?;
-    let key: Key = (file.clone(), size, Some(UNIX_EPOCH + std::time::Duration::from_nanos(nanos.min(u64::MAX as u128) as u64)));
-    if let Some((_, png)) = DECODED.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(k, _)| *k == key) {
-        return Ok(png.as_ref().clone());
-    }
-    let png = Arc::new(displayable(name, read()?)?);
-    let mut cache = DECODED.lock().unwrap_or_else(|e| e.into_inner());
-    cache.retain(|(k, _)| k.0 != key.0);
-    cache.push_back((key, png.clone()));
-    while cache.len() > 1 && cache.iter().map(|(_, b)| b.len()).sum::<usize>() > CACHE_BYTES {
-        cache.pop_front();
-    }
-    Ok(png.as_ref().clone())
+    let changed = store.fingerprint(rel).map(|(_, nanos)| UNIX_EPOCH + std::time::Duration::from_nanos(nanos.min(u64::MAX as u128) as u64));
+    let size = store.fingerprint(rel).map_or(0, |(size, _)| size);
+    cached(name, (file.clone(), size, changed), || store.read(rel).map_err(|e| Error::io(&file, e)))
 }
 
 /// The picture in `file` as the window can show it, decoded once for as long as the file stays as it is.
 pub fn displayable_file(file: &Path) -> Result<Vec<u8>> {
     let name = file.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    if !is_jxl(name) {
-        return std::fs::read(file).map_err(|e| Error::io(file, e));
-    }
     let meta = std::fs::metadata(file).map_err(|e| Error::io(file, e))?;
-    let key: Key = (file.to_path_buf(), meta.len(), meta.modified().ok());
+    cached(name, (file.to_path_buf(), meta.len(), meta.modified().ok()), || std::fs::read(file).map_err(|e| Error::io(file, e)))
+}
+
+/// A JPEG XL picture decoded once for as long as its file stays as it is (`key`); any other picture as it is.
+fn cached(name: &str, key: Key, read: impl FnOnce() -> Result<Vec<u8>>) -> Result<Vec<u8>> {
+    if !is_jxl(name) {
+        return read();
+    }
     if let Some((_, png)) = DECODED.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(k, _)| *k == key) {
         return Ok(png.as_ref().clone());
     }
-    let png = Arc::new(displayable(name, std::fs::read(file).map_err(|e| Error::io(file, e))?)?);
+    let png = Arc::new(displayable(name, read()?)?);
     let mut cache = DECODED.lock().unwrap_or_else(|e| e.into_inner());
     cache.retain(|(k, _)| k.0 != key.0);
     cache.push_back((key, png.clone()));
