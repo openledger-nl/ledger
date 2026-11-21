@@ -15,6 +15,8 @@ import type {
 	EvidenceParts as DescriptionParts,
 	PostKind,
 	EpistemicLabel,
+	Person,
+	PersonDraft,
 	ProjectPerson,
 	Semester,
 	SemesterDraft,
@@ -137,6 +139,13 @@ export const api = {
 	nextDeliverableNumber: (project: string) => call<number>('next_deliverable_number', { project }),
 	/** The people of one project (coach, teammates, client…), or of every project with null. */
 	listProjectPeople: (slug: string | null = null) => call<ProjectPerson[]>('list_project_people', { slug }),
+	/** Everyone the vault knows, with the projects each is part of. */
+	listPeople: () => call<Person[]>('list_people'),
+	getPerson: (id: string) => call<Person>('get_person', { id }),
+	createPerson: (draft: PersonDraft) => call<Person>('create_person', { draft }),
+	updatePerson: (id: string, draft: PersonDraft) => call<Person>('update_person', { id, draft }),
+	/** Takes them out of the vault and out of every project they were part of. */
+	deletePerson: (id: string) => call<void>('delete_person', { id }),
 	/** How the project's exported PDFs look and who they name. */
 	getProjectBranding: (slug: string) => call<Branding>('get_project_branding', { slug }),
 	/** Sets the names and the colour (the logos are set with `setProjectLogo`). */
@@ -153,9 +162,9 @@ export const api = {
 	resetPdfLayout: (project: string, scope: PdfLayoutScope) => call<PdfLayoutView>('reset_pdf_layout', { project, scope }),
 	/** Opens a layout of one's own in its program, or shows it in its folder. */
 	openPdfLayout: (project: string, scope: PdfLayoutScope, reveal: boolean) => call<null>('open_pdf_layout', { project, scope, reveal }),
-	/** Replaces the project's people. */
-	saveProjectPeople: (slug: string, people: Omit<ProjectPerson, 'project' | 'tag'>[]) =>
-		call<ProjectPerson[]>('save_project_people', { slug, people: people.map((p) => ({ ...p, project: slug, tag: '' })) }),
+	/** Replaces who is part of the project: people of the vault, by their id, each with their role in it. */
+	saveProjectPeople: (slug: string, people: Pick<ProjectPerson, 'person' | 'role'>[]) =>
+		call<ProjectPerson[]>('save_project_people', { slug, people: people.map((p) => ({ person: p.person, role: p.role, project: slug })) }),
 
 	// threads
 	createThread: (project: string, title: string) => call<ThreadSummary>('create_thread', { project, title }),

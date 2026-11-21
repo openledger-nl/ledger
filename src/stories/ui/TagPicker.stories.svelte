@@ -7,7 +7,7 @@
 </script>
 
 <script lang="ts">
-	let people = $state(['coach/frank']);
+	let people = $state(['people/frank-de-vries']);
 	let projects = $state<string[]>([fx.PROJECT]);
 </script>
 
@@ -17,7 +17,7 @@
 		options={fx.peopleOptions}
 		label="With"
 		placeholder="Who was there"
-		quick={[{ label: 'Whole team', tags: ['teammate/sam', 'client/ries'], title: 'Adds Sam Bakker, Ries van Dam' }]}
+		quick={[{ label: 'Whole team', tags: ['people/sam-bakker', 'people/ries-van-dam'], title: 'Adds Sam Bakker, Ries van Dam' }]}
 	/>
 </Story>
 

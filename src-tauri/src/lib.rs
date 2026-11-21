@@ -22,6 +22,7 @@ mod links;
 mod markdown;
 mod models;
 mod onboarding;
+mod people;
 mod pdf;
 mod posts;
 mod project_facts;
@@ -195,6 +196,11 @@ pub fn run() {
             commands::list_project_meta,
             commands::save_project_meta,
             commands::list_project_people,
+            commands::list_people,
+            commands::get_person,
+            commands::create_person,
+            commands::update_person,
+            commands::delete_person,
             commands::set_post_meta,
             commands::get_deliverable_meta,
             commands::list_deliverable_meta,

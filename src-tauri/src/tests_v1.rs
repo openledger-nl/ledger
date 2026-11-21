@@ -113,45 +113,92 @@ fn hand_written_facts_are_read_leniently() {
 
 // ---- its people ---------------------------------------------------------------------------------------
 
-fn person(name: &str, role: &str) -> ProjectPerson {
-    ProjectPerson { name: name.into(), role: role.into(), ..Default::default() }
+fn vault_person(conn: &Connection, name: &str) -> String {
+    crate::people::create(conn, &crate::people::PersonDraft { name: name.into(), ..Default::default() }).unwrap().id
+}
+
+fn attached(person: &str, role: &str) -> ProjectPerson {
+    ProjectPerson { person: person.into(), role: role.into(), ..Default::default() }
 }
 
 #[test]
-fn a_projects_people_are_kept_in_its_project_file_with_or_without_facts() {
+fn people_are_the_vaults_and_kept_in_shared_people() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let (mut vault, conn) = open(root);
-    let slug = projects::create(&conn, "Thrym Player").unwrap().slug;
-    let saved = project_facts::save_people(
+    let frank = crate::people::create(
         &conn,
-        &slug,
-        &[person(" Frank de Vries ", "coach"), person("Sanne", "teammate"), person("Sanne", "Teammate"), ProjectPerson { portflow_user: Some(4711), ..person("Ries", "client") }],
+        &crate::people::PersonDraft { name: " Frank de Vries ".into(), email: "f@example.nl".into(), portflow_user: Some(4711), notes: "Coach since 2025.".into(), ..Default::default() },
     )
     .unwrap();
-    assert_eq!(saved.iter().map(|p| p.tag.as_str()).collect::<Vec<_>>(), ["coach/frank-de-vries", "teammate/sanne", "client/ries"], "trimmed, once each");
-    assert_eq!(project_facts::get(&conn, &slug).unwrap(), None, "people without facts");
+    assert_eq!((frank.id.as_str(), frank.name.as_str(), frank.tag.as_str()), ("frank-de-vries", "Frank de Vries", "people/frank-de-vries"));
+    let other = vault_person(&conn, "Frank de Vries");
+    assert_eq!(other, "frank-de-vries-2", "a name that is taken gets a number");
     vault.persist(&conn).unwrap();
 
-    let text = read(root, &format!("projects/{slug}/project.md"));
-    assert!(text.contains("people:\n- name: Frank de Vries\n  role: coach\n"), "{text}");
-    assert!(text.contains("portflowUser: 4711"), "{text}");
+    let text = read(root, "shared/people/frank-de-vries.md");
+    assert!(text.contains("name: Frank de Vries") && text.contains("email: f@example.nl") && text.contains("portflowUser: 4711"), "{text}");
+    assert!(text.ends_with("Coach since 2025.\n"), "{text}");
+
+    // Renamed, the id (and so the tag and the file) stays.
+    crate::people::update(&conn, "frank-de-vries", &crate::people::PersonDraft { name: "Frank Vries".into(), ..Default::default() }).unwrap();
+    vault.persist(&conn).unwrap();
+    assert!(read(root, "shared/people/frank-de-vries.md").contains("name: Frank Vries"));
 
     let (_vault, again) = open(root);
-    assert_eq!(project_facts::people(&again, Some(&slug)).unwrap(), saved);
-    assert_eq!(project_facts::people(&again, None).unwrap().len(), 3);
+    let people = crate::people::list(&again).unwrap();
+    assert_eq!(people.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["frank-de-vries-2", "frank-de-vries"]);
+    assert!(crate::people::create(&again, &crate::people::PersonDraft::default()).is_err(), "a person needs a name");
 }
 
 #[test]
-fn people_without_a_name_or_role_are_refused_and_read_leniently() {
+fn a_person_shows_only_in_the_projects_they_are_attached_to_with_a_role_in_each() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    write(root, "projects/synth/project.md", "---\nname: Synth\npeople:\n- name: Bo\n  role: wizard\n- role: coach\n- name: Ana\n  role: EXPERT\n---\n");
+    let (mut vault, conn) = open(root);
+    let thrym = projects::create(&conn, "Thrym Player").unwrap().slug;
+    let bakery = projects::create(&conn, "Bakery").unwrap().slug;
+    let quiet = projects::create(&conn, "Quiet").unwrap().slug;
+    let frank = vault_person(&conn, "Frank de Vries");
+    let sanne = vault_person(&conn, "Sanne");
+
+    let saved = project_facts::save_people(&conn, &thrym, &[attached(&frank, "coach"), attached(&sanne, "teammate"), attached(&sanne, "Client")]).unwrap();
+    assert_eq!(saved.iter().map(|p| (p.tag.as_str(), p.role.as_str(), p.name.as_str())).collect::<Vec<_>>(), [("people/frank-de-vries", "coach", "Frank de Vries"), ("people/sanne", "teammate", "Sanne")], "once each");
+    project_facts::save_people(&conn, &bakery, &[attached(&frank, "expert")]).unwrap();
+    assert_eq!(project_facts::get(&conn, &thrym).unwrap(), None, "people without facts");
+    assert!(project_facts::people(&conn, Some(&quiet)).unwrap().is_empty(), "nobody is in a project they weren't attached to");
+    vault.persist(&conn).unwrap();
+
+    let text = read(root, &format!("projects/{thrym}/project.md"));
+    assert!(text.contains("people:\n- person: frank-de-vries\n  role: coach\n- person: sanne\n  role: teammate\n"), "{text}");
+    assert!(!text.contains("Frank de Vries"), "the name is the person's, kept in their own file: {text}");
+
+    let (mut vault, again) = open(root);
+    assert_eq!(project_facts::people(&again, Some(&thrym)).unwrap(), saved);
+    let frank_now = crate::people::get(&again, &frank).unwrap();
+    assert_eq!(frank_now.projects.iter().map(|a| (a.project.as_str(), a.role.as_str())).collect::<Vec<_>>(), [("bakery", "expert"), ("thrym-player", "coach")]);
+
+    // Taken out of the vault, they leave every project.
+    crate::people::delete(&again, &frank).unwrap();
+    vault.persist(&again).unwrap();
+    assert!(!root.join("shared/people/frank-de-vries.md").exists());
+    assert!(!read(root, &format!("projects/{bakery}/project.md")).contains("frank"));
+    assert_eq!(project_facts::people(&again, None).unwrap().len(), 1);
+}
+
+#[test]
+fn people_who_arent_in_the_vault_or_have_no_role_are_refused_and_read_leniently() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "shared/people/bo.md", "---\nname: Bo\n---\n");
+    write(root, "shared/people/ana.md", "Just notes, no frontmatter.\n");
+    write(root, "projects/synth/project.md", "---\nname: Synth\npeople:\n- person: bo\n  role: wizard\n- person: ghost\n  role: coach\n- role: coach\n- person: ana\n  role: EXPERT\n- person: bo\n  role: coach\n---\n");
     let (_vault, conn) = open(root);
     let people = project_facts::people(&conn, Some("synth")).unwrap();
-    assert_eq!(people.iter().map(|p| p.tag.as_str()).collect::<Vec<_>>(), ["other/bo", "expert/ana"]);
-    assert!(project_facts::save_people(&conn, "synth", &[person("", "coach")]).is_err());
-    assert!(project_facts::save_people(&conn, "synth", &[person("Bo", "wizard")]).is_err());
+    assert_eq!(people.iter().map(|p| (p.tag.as_str(), p.role.as_str())).collect::<Vec<_>>(), [("people/bo", "other"), ("people/ana", "expert")]);
+    assert_eq!(crate::people::get(&conn, "ana").unwrap().name, "ana", "a person without a name is called after the file");
+    assert!(project_facts::save_people(&conn, "synth", &[attached("ghost", "coach")]).is_err(), "only people of the vault");
+    assert!(project_facts::save_people(&conn, "synth", &[attached("bo", "wizard")]).is_err());
 }
 
 // ---- a post's kind and labels ---------------------------------------------------------------------------

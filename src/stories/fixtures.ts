@@ -22,6 +22,7 @@ import type {
 	Post,
 	PostMeta,
 	ProjectMeta,
+	Person,
 	ProjectPerson,
 	ProjectPortflow,
 	ProjectSummary,
@@ -122,13 +123,41 @@ export const projectMeta: ProjectMeta = {
 // ---- people ------------------------------------------------------------------------------------------------
 
 export const people: ProjectPerson[] = [
-	{ project: PROJECT, name: 'Frank de Vries', role: 'coach', portflowUser: 101, tag: 'coach/frank' },
-	{ project: PROJECT, name: 'Sanne Jansen', role: 'expert', portflowUser: 102, tag: 'expert/sanne' },
-	{ project: PROJECT, name: 'Sam Bakker', role: 'teammate', portflowUser: null, tag: 'teammate/sam' },
-	{ project: PROJECT, name: 'Ries van Dam', role: 'client', portflowUser: null, tag: 'client/ries' }
+	{ project: PROJECT, person: 'frank-de-vries', name: 'Frank de Vries', role: 'coach', portflowUser: 101, tag: 'people/frank-de-vries' },
+	{ project: PROJECT, person: 'sanne-jansen', name: 'Sanne Jansen', role: 'expert', portflowUser: 102, tag: 'people/sanne-jansen' },
+	{ project: PROJECT, person: 'sam-bakker', name: 'Sam Bakker', role: 'teammate', portflowUser: null, tag: 'people/sam-bakker' },
+	{ project: PROJECT, person: 'ries-van-dam', name: 'Ries van Dam', role: 'client', portflowUser: null, tag: 'people/ries-van-dam' }
 ];
 
 export const projectOptions = projects.map((p) => ({ value: p.slug, label: p.name }));
+/** Everyone the sample vault knows: the project's people, and someone who is in no project yet. */
+export const vaultPeople: Person[] = [
+	...people.map((p) => ({
+		id: p.person,
+		name: p.name,
+		email: '',
+		organisation: p.role === 'client' ? 'Kwekerij Van Dam' : p.role === 'teammate' ? '' : 'Fontys ICT',
+		portflowUser: p.portflowUser,
+		notes: '',
+		projects: [{ project: PROJECT, projectName: 'Smart Greenhouse', role: p.role }],
+		tag: p.tag,
+		createdAt: at(1, '09:00'),
+		updatedAt: at(1, '09:00')
+	})),
+	{
+		id: 'lotte-smit',
+		name: 'Lotte Smit',
+		email: 'lotte@example.nl',
+		organisation: 'Fontys ICT',
+		portflowUser: null,
+		notes: 'Assessor for the end of the semester.',
+		projects: [],
+		tag: 'people/lotte-smit',
+		createdAt: at(2, '10:00'),
+		updatedAt: at(2, '10:00')
+	}
+];
+
 export const peopleOptions = people.map((p) => ({ value: p.tag, label: p.name, hint: p.tag }));
 
 /** The branding of the sample project's PDFs: both sides named, your logo chosen, the client's not yet. */
@@ -598,10 +627,10 @@ export const dailyNote: DailyNote = {
 			time: '10:00',
 			title: 'Coach meeting',
 			projects: [PROJECT],
-			people: ['coach/frank'],
-			body: 'Discussed the sensor research. [@Frank de Vries](person:coach/frank) wants the price per sensor in it.'
+			people: ['people/frank-de-vries'],
+			body: 'Discussed the sensor research. [@Frank de Vries](person:people/frank-de-vries) wants the price per sensor in it.'
 		},
-		{ time: '14:30', title: 'Client call', projects: [PROJECT], people: ['client/ries', 'teammate/sam'], body: 'Ries is happy with the dashboard.' }
+		{ time: '14:30', title: 'Client call', projects: [PROJECT], people: ['people/ries-van-dam', 'people/sam-bakker'], body: 'Ries is happy with the dashboard.' }
 	],
 	updatedAt: at(16)
 };

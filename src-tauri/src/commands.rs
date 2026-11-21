@@ -162,6 +162,33 @@ pub fn list_project_meta(app: State<App>) -> Result<Vec<ProjectMeta>> {
     app.read(|c, _| project_facts::list(c))
 }
 
+/// Everyone the vault knows, with the projects each is part of.
+#[tauri::command]
+pub fn list_people(app: State<App>) -> Result<Vec<crate::people::Person>> {
+    app.read(|c, _| crate::people::list(c))
+}
+
+#[tauri::command]
+pub fn get_person(app: State<App>, id: String) -> Result<crate::people::Person> {
+    app.read(|c, _| crate::people::get(c, &id))
+}
+
+#[tauri::command]
+pub fn create_person(app: State<App>, draft: crate::people::PersonDraft) -> Result<crate::people::Person> {
+    app.mutate(|c, _| crate::people::create(c, &draft))
+}
+
+#[tauri::command]
+pub fn update_person(app: State<App>, id: String, draft: crate::people::PersonDraft) -> Result<crate::people::Person> {
+    app.mutate(|c, _| crate::people::update(c, &id, &draft))
+}
+
+/// Takes someone out of the vault and out of every project they were part of.
+#[tauri::command]
+pub fn delete_person(app: State<App>, id: String) -> Result<()> {
+    app.mutate(|c, _| crate::people::delete(c, &id))
+}
+
 /// The people of a project (its coach, teammates, client…), or of every project without one.
 #[tauri::command]
 pub fn list_project_people(app: State<App>, slug: Option<String>) -> Result<Vec<ProjectPerson>> {

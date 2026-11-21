@@ -220,8 +220,8 @@ fn a_templates_readers_are_noted_in_its_deliverable_and_told_in_its_prompt() {
     let people = TemplateDraft { readers: vec![TemplateReader { who: "people".into(), ..Default::default() }], ..TemplateDraft::basic("Memo", "", &[], "") };
     let memo = templates::create(&c, "", &people).unwrap();
     assert_eq!(templates::skeleton(&c, &p, &memo).unwrap(), "%% Readers: The project's people (none are listed yet) %%");
-    let frank = ProjectPerson { name: "Frank".into(), role: "coach".into(), ..Default::default() };
-    project_facts::save_people(&c, &p, &[frank]).unwrap();
+    let frank = crate::people::create(&c, &crate::people::PersonDraft { name: "Frank".into(), ..Default::default() }).unwrap();
+    project_facts::save_people(&c, &p, &[ProjectPerson { person: frank.id, role: "coach".into(), ..Default::default() }]).unwrap();
     assert!(templates::skeleton(&c, &p, &memo).unwrap().starts_with("%% Readers: Frank (coach: judges the work"));
 
     // A new deliverable for a prompt from the template starts with the note.

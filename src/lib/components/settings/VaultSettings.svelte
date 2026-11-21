@@ -125,6 +125,7 @@ meetings/&lt;YYYY&gt;/&lt;MM&gt;/&lt;date&gt;.md                a day's meeting 
 shared/templates/prompts/&lt;id&gt;.md               templates for every project
 shared/templates/pdf/layout.typ                the vault's own PDF layout
 shared/semesters/&lt;id&gt;.md                       semesters and their sprints
+shared/people/&lt;id&gt;.md                          the people of the vault
 shared/portflow/                                what Portflow mirrors
 ledger.json                                    says that this folder is a vault</pre>
 		<p class="sub">

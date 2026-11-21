@@ -1430,7 +1430,7 @@ export interface MeetingSection {
 	title: string;
 	/** Project tags (`thrym-player`), on the heading: the meeting belongs to each of these projects. */
 	projects: string[];
-	/** Person tags (`coach/frank`), on the `With:` line; the same as in feedback. */
+	/** Person tags (`people/frank`), on the `With:` line; the same as in feedback. */
 	people: PersonTag[];
 	/** Your notes, as you wrote them: no template, no required parts. */
 	body: string;
@@ -1482,13 +1482,37 @@ export interface PdfLayoutView {
 	vault: string | null;
 }
 
-export interface ProjectPerson {
-	project: string;
+/** Someone the vault knows (people.rs), in `shared/people/<id>.md`: one person in every project they are part of, and
+ *  shown only in the projects they are attached to. */
+export interface Person {
+	/** Their name as a slug when they were added; it stays when they are renamed. */
+	id: string;
 	name: string;
-	role: FeedbackRole;
+	email: string;
+	organisation: string;
 	/** Their Portflow id, when they are someone in Portflow. */
 	portflowUser: number | null;
-	/** `role/name` (`coach/frank-de-vries`), as meetings and feedback tag them; Ledger fills it in. */
+	notes: string;
+	/** The projects they are part of, with their role in each. */
+	projects: { project: string; projectName: string; role: FeedbackRole }[];
+	/** `people/<id>`, as meetings and feedback tag them. */
+	tag: PersonTag;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type PersonDraft = Pick<Person, 'name' | 'email' | 'organisation' | 'portflowUser' | 'notes'>;
+
+/** Someone of the vault as part of one project, with their role there; listed in the project's project.md. */
+export interface ProjectPerson {
+	project: string;
+	/** Their id in the vault. */
+	person: string;
+	role: FeedbackRole;
+	/** Their name and Portflow id, from the vault. */
+	name: string;
+	portflowUser: number | null;
+	/** `people/<id>` (`people/frank-de-vries`), as meetings and feedback tag them. */
 	tag: PersonTag;
 }
 

@@ -68,14 +68,20 @@ export const slugify = (name: string) =>
 		.filter(Boolean)
 		.join('-');
 
-/** The tag someone goes by, as the backend forms it: `coach/frank-de-vries` (role, then the name as a slug). */
-export const personTag = (role: string, name: string): PersonTag => `${role || 'other'}/${slugify(name) || 'someone'}`;
+/** The tag someone goes by, as the backend forms it: `people/frank-de-vries` (their name as a slug, which is the id a
+ *  person of the vault gets). */
+export const personTag = (name: string): PersonTag => `people/${slugify(name) || 'someone'}`;
 
 /** The person tag of whoever gave a piece of feedback; null for your own notes and feedback that names nobody. */
-export const feedbackTag = (f: { from: string | null; fromRole: string | null }) => (f.from ? personTag(f.fromRole ?? 'other', f.from) : null);
+export const feedbackTag = (f: { from: string | null }) => (f.from ? personTag(f.from) : null);
 
-/** `client/police/ries` → `client · police`: the role and where they are from. */
-export const personRole = (tag: PersonTag) => tag.split('/').slice(0, -1).join(' | ');
+/** What a person tag says besides the name: `client/police/ries` reads `client | police`; `people/ries` nothing. */
+export const personRole = (tag: PersonTag) =>
+	tag
+		.split('/')
+		.slice(0, -1)
+		.filter((part, i) => !(i === 0 && part === 'people'))
+		.join(' | ');
 
 /** A tag as typed: lowercase, no `#`, words joined by dashes, levels by slashes. */
 export const cleanTag = (text: string) =>
