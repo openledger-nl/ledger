@@ -1,5 +1,6 @@
 use super::markdown::{escape, string, to_typst};
 use super::*;
+use std::fs;
 
 fn convert(source: &str) -> markdown::Converted {
     to_typst(source, &mut |src| (src == "chart.png").then(|| "/pictures/0.png".to_string()))

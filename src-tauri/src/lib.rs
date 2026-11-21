@@ -4,6 +4,7 @@ mod board;
 mod branding;
 mod claude_code;
 mod commands;
+mod conflicts;
 mod crypto;
 mod dates;
 mod db;
@@ -35,11 +36,13 @@ mod semesters;
 mod settings;
 mod state;
 mod stories;
+mod store;
 mod templates;
 mod threads;
 mod updates;
 mod uploads;
 mod vault;
+mod watcher;
 
 // ---- Trello sync (feat/trello-sync) ----
 mod trello;
@@ -70,6 +73,8 @@ mod tests;
 mod tests_applog;
 #[cfg(test)]
 mod tests_claude_code;
+#[cfg(test)]
+mod tests_cloud;
 #[cfg(test)]
 mod tests_trello;
 #[cfg(test)]
@@ -162,11 +167,19 @@ pub fn run() {
             );
             applog::info("app", format!("Ledger {} started on {} {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH));
             let core = state::Core::open(config_dir.clone())?;
+            let watched = core.open.then(|| core.vault.root().to_path_buf());
             let core = Arc::new(Mutex::new(core));
             let trello_core = core.clone(); // for the Trello sync (feat/trello-sync), started below
             let portflow_core = core.clone(); // for Portflow (feat/portflow-integration), started below
 
             app.manage(state::App::new(core, screenshot::Screenshots::new()));
+            // What the cloud storage brings in is read in once the folder is quiet again.
+            let watch_handle = app.handle().clone();
+            let watcher = watcher::VaultWatcher::start(Arc::new(move || commands::vault_changed_outside(&watch_handle)));
+            if let Some(root) = watched {
+                watcher.watch(&root);
+            }
+            app.manage(watcher);
             trello::start_app(app.handle(), trello_core); // feat/trello-sync: its own worker, needs the App state above
             portflow::start_app(app.handle(), portflow_core); // feat/portflow-integration: runs only while switched on
             // Looks for new releases now and then (release builds only); it asks the syncs above whether they are busy.
@@ -353,6 +366,8 @@ pub fn run() {
             commands::reload_vault,
             commands::set_feedback_from,
             commands::check_vault_changes,
+            commands::list_conflicts,
+            commands::resolve_conflict,
             commands::save_screenshot_hotkey,
             commands::save_screenshot_tool,
             commands::layout_settings,

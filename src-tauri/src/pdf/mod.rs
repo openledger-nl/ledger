@@ -20,8 +20,7 @@
 mod markdown;
 mod world;
 
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -29,6 +28,7 @@ use serde::Serialize;
 use crate::db::query_opt;
 use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
+use crate::store::Store;
 use crate::{branding, dates, deliverable_facts, deliverables, images, project_facts, provenance, uploads};
 
 /// The accent a project gets when it has none of its own: the orange of the report template the layout follows.
@@ -85,8 +85,9 @@ pub struct Prepared {
     main: String,
     files: Vec<(String, Vec<u8>)>,
     layout: world::Layout,
-    /// Where it goes, on disk and relative to the project's folder.
-    out: PathBuf,
+    /// The vault it goes in, where in it, and where relative to the project's folder.
+    store: Store,
+    out: String,
     rel: String,
 }
 
@@ -107,19 +108,19 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
     };
 
     // Pictures are looked for beside the live file, as on the page (vaultImages.ts), and never outside the project.
-    let project_dir = uploads::project_dir(root, project);
+    let store = crate::store::at(root);
     let dir = format!("deliverables/{}", base.rsplit_once('/').map_or("", |(d, _)| d));
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
     let mut picture = |src: &str| -> Option<String> {
         let rel = resolve_src(&dir, src)?;
-        let file = project_dir.join(&rel);
+        let in_vault = uploads::project_rel(project, &rel);
         let ext = rel.rsplit_once('.')?.1.to_ascii_lowercase();
         let ext = match ext.as_str() {
             "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" => ext,
             "jxl" => "png".to_string(),
             _ => return None,
         };
-        let bytes = images::displayable_file(&file).ok()?;
+        let bytes = images::displayable_in(&store, &in_vault).ok()?;
         let name = format!("/pictures/{}.{ext}", files.len());
         files.push((name.clone(), bytes));
         Some(name)
@@ -129,7 +130,7 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
     let mut logo = |rel: &Option<String>, side: &str| -> Option<String> {
         let rel = rel.as_deref()?;
         let ext = rel.rsplit_once('.')?.1.to_ascii_lowercase();
-        let bytes = fs::read(project_dir.join(rel)).ok()?;
+        let bytes = store.read(&uploads::project_rel(project, rel)).ok()?;
         let name = format!("/logos/{side}.{ext}");
         files.push((name.clone(), bytes));
         Some(name)
@@ -222,16 +223,13 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
     };
     let rel = format!("exports/{file_name}");
     let layout = layout_for(root, project)?;
-    Ok(Prepared { main, files, layout, out: project_dir.join("exports").join(&file_name), rel })
+    Ok(Prepared { main, files, layout, out: uploads::project_rel(project, &rel), store, rel })
 }
 
 /// Sets the PDF and writes it. Returns where it is, relative to the project's folder.
 pub fn make(prepared: Prepared) -> Result<String> {
     let pdf = world::compile(&prepared.main, &prepared.layout, prepared.files)?;
-    if let Some(dir) = prepared.out.parent() {
-        fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
-    }
-    fs::write(&prepared.out, pdf).map_err(|e| Error::io(&prepared.out, e))?;
+    prepared.store.write(&prepared.out, &pdf).map_err(|e| Error::io(&prepared.store.path(&prepared.out), e))?;
     Ok(prepared.rel)
 }
 
@@ -261,27 +259,24 @@ pub struct LayoutView {
     pub vault: Option<String>,
 }
 
-/// The `templates/pdf/` folder of a scope, on disk and as the vault names it.
-fn layout_dir(root: &Path, project: &str, scope: LayoutScope) -> Result<(PathBuf, String)> {
+/// The `templates/pdf/` folder of a scope, as the vault names it.
+fn layout_dir(project: &str, scope: LayoutScope) -> Result<String> {
     match scope {
-        LayoutScope::Project => {
-            Ok((uploads::project_dir(root, project).join("templates").join("pdf"), format!("projects/{project}/templates/pdf")))
-        }
-        LayoutScope::Vault => Ok((root.join("shared").join("templates").join("pdf"), "shared/templates/pdf".to_string())),
+        LayoutScope::Project => Ok(format!("projects/{project}/templates/pdf")),
+        LayoutScope::Vault => Ok("shared/templates/pdf".to_string()),
         LayoutScope::Ledger => Err(Error::invalid("Ledger's own layout is not a file in the vault")),
     }
 }
 
-/// The layout file of a scope on disk, and its vault-relative name, when there is one.
-pub fn layout_file(root: &Path, project: &str, scope: LayoutScope) -> Result<Option<(PathBuf, String)>> {
-    let (dir, name) = layout_dir(root, project, scope)?;
-    let file = dir.join(LAYOUT_FILE);
-    Ok(file.is_file().then(|| (file, format!("{name}/{LAYOUT_FILE}"))))
+/// The layout file of a scope, by its path in the vault, when there is one.
+pub fn layout_file(root: &Path, project: &str, scope: LayoutScope) -> Result<Option<String>> {
+    let file = format!("{}/{LAYOUT_FILE}", layout_dir(project, scope)?);
+    Ok(crate::store::at(root).exists(&file).then_some(file))
 }
 
 pub fn layout_view(root: &Path, project: &str) -> Result<LayoutView> {
-    let project_layout = layout_file(root, project, LayoutScope::Project)?.map(|(_, n)| n);
-    let vault_layout = layout_file(root, project, LayoutScope::Vault)?.map(|(_, n)| n);
+    let project_layout = layout_file(root, project, LayoutScope::Project)?;
+    let vault_layout = layout_file(root, project, LayoutScope::Vault)?;
     let used = if project_layout.is_some() {
         LayoutScope::Project
     } else if vault_layout.is_some() {
@@ -295,65 +290,54 @@ pub fn layout_view(root: &Path, project: &str) -> Result<LayoutView> {
 /// Starts a layout of one's own: a copy of the one used now (a project's starts from the vault's when there is one),
 /// written only when the scope has none yet.
 pub fn customise_layout(root: &Path, project: &str, scope: LayoutScope) -> Result<LayoutView> {
-    let (dir, _) = layout_dir(root, project, scope)?;
-    let file = dir.join(LAYOUT_FILE);
-    if !file.exists() {
+    let store = crate::store::at(root);
+    let file = format!("{}/{LAYOUT_FILE}", layout_dir(project, scope)?);
+    if !store.exists(&file) {
         let start = match (scope, layout_file(root, project, LayoutScope::Vault)?) {
-            (LayoutScope::Project, Some((vault, _))) => fs::read_to_string(&vault).map_err(|e| Error::io(&vault, e))?,
+            (LayoutScope::Project, Some(vault)) => store.read_string(&vault).map_err(|e| Error::io(&store.path(&vault), e))?,
             _ => world::LAYOUT.to_string(),
         };
-        fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
-        fs::write(&file, start).map_err(|e| Error::io(&file, e))?;
+        store.write(&file, start.as_bytes()).map_err(|e| Error::io(&store.path(&file), e))?;
     }
     layout_view(root, project)
 }
 
 /// Goes back to the layout under it: deletes the scope's `layout.typ` (the other files of its folder stay).
 pub fn reset_layout(root: &Path, project: &str, scope: LayoutScope) -> Result<LayoutView> {
-    if let Some((file, _)) = layout_file(root, project, scope)? {
-        fs::remove_file(&file).map_err(|e| Error::io(&file, e))?;
+    if let Some(file) = layout_file(root, project, scope)? {
+        let store = crate::store::at(root);
+        store.remove(&file).map_err(|e| Error::io(&store.path(&file), e))?;
     }
     layout_view(root, project)
 }
 
 /// The layout a project's PDFs are set in, with the files of its folder.
 fn layout_for(root: &Path, project: &str) -> Result<world::Layout> {
+    let store = crate::store::at(root);
     for scope in [LayoutScope::Project, LayoutScope::Vault] {
-        let Some((file, name)) = layout_file(root, project, scope)? else { continue };
-        let source = fs::read_to_string(&file).map_err(|e| Error::io(&file, e))?;
-        let dir = file.parent().unwrap_or(root);
-        let mut files = Vec::new();
-        let mut budget = LAYOUT_FOLDER_BYTES;
-        collect_folder(dir, "", &mut files, &mut budget)?;
+        let Some(name) = layout_file(root, project, scope)? else { continue };
+        let source = store.read_string(&name).map_err(|e| Error::io(&store.path(&name), e))?;
+        let mut files = collect_folder(&store, &layout_dir(project, scope)?)?;
         files.retain(|(rel, _)| rel != LAYOUT_FILE);
         return Ok(world::Layout { source, name, files });
     }
     Ok(world::Layout::builtin())
 }
 
-/// Every file under `dir` (hidden ones left out), with its path relative to it, while the budget lasts.
-fn collect_folder(dir: &Path, rel: &str, out: &mut Vec<(String, Vec<u8>)>, budget: &mut u64) -> Result<()> {
-    let entries = fs::read_dir(dir).map_err(|e| Error::io(dir, e))?;
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.') {
-            continue;
+/// Every file under the folder `dir` of the vault (hidden ones left out), with its path relative to it, as long as
+/// they aren't too large together.
+fn collect_folder(store: &Store, dir: &str) -> Result<Vec<(String, Vec<u8>)>> {
+    let mut out = Vec::new();
+    let mut budget = LAYOUT_FOLDER_BYTES;
+    for (rel, (size, _)) in store.list_under(dir) {
+        if size > budget {
+            return Err(Error::export(format!("The files beside the layout are too large together (more than {} MB)", LAYOUT_FOLDER_BYTES / 1024 / 1024)));
         }
-        let path = entry.path();
-        let child = if rel.is_empty() { name } else { format!("{rel}/{name}") };
-        let Ok(kind) = entry.file_type() else { continue };
-        if kind.is_dir() {
-            collect_folder(&path, &child, out, budget)?;
-        } else if kind.is_file() {
-            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            if size > *budget {
-                return Err(Error::export(format!("The files beside the layout are too large together (more than {} MB)", LAYOUT_FOLDER_BYTES / 1024 / 1024)));
-            }
-            *budget -= size;
-            out.push((child, fs::read(&path).map_err(|e| Error::io(&path, e))?));
-        }
+        budget -= size;
+        let bytes = store.read(&rel).map_err(|e| Error::io(&store.path(&rel), e))?;
+        out.push((rel[dir.len() + 1..].to_string(), bytes));
     }
-    Ok(())
+    Ok(out)
 }
 
 /// The project path a picture's address points at from `dir`, or `None` for a web address or one that leaves the

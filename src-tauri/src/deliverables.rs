@@ -7,7 +7,6 @@
 //! ("reports/plan@v1.2.md") even though its file is under `versions/` ([`file_of`]).
 
 use std::collections::{BTreeMap, HashMap};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, params};
@@ -17,7 +16,7 @@ use crate::error::{Error, Result};
 use crate::models::{Bump, Delivered, DeliverableSummary, DeliverableView, PublishChoices};
 use crate::posts::{self, AddOptions};
 use crate::provenance::{self, Origin};
-use crate::{feedback, frontmatter, ids, markdown, projects, prompts, uploads};
+use crate::{feedback, frontmatter, ids, markdown, projects, prompts, store, uploads};
 
 // ---- paths and versions -----------------------------------------------------------------------------
 
@@ -104,8 +103,13 @@ pub fn versions_dir(root: &Path, project: &str) -> PathBuf {
 
 /// The file on disk for a deliverable path: a live file under `deliverables/`, a published version under `versions/`.
 pub fn file_of(root: &Path, project: &str, path: &str) -> PathBuf {
-    let dir = if split_version(path).1.is_some() { versions_dir(root, project) } else { deliverables_dir(root, project) };
-    dir.join(path)
+    root.join(rel_of(project, path))
+}
+
+/// The deliverable's file by its path in the vault (see `store`).
+pub fn rel_of(project: &str, path: &str) -> String {
+    let folder = if split_version(path).1.is_some() { "versions" } else { "deliverables" };
+    format!("projects/{project}/{folder}/{path}")
 }
 
 // ---- reading ----------------------------------------------------------------------------------------
@@ -387,43 +391,6 @@ fn evidence_of(conn: &Connection, project: &str, base: &str) -> Result<(Option<S
 
 // ---- writing ----------------------------------------------------------------------------------------
 
-/// Moves one published version (`from`, a snapshot path) to another deliverable as `to`, with what points at it: its
-/// record, the feedback on it, the notes about it and the Portflow version it is. Refused when `to` is taken.
-pub fn move_version(conn: &Connection, root: &Path, project: &str, from: &str, to: &str) -> Result<()> {
-    let ((from_base, Some(from_version)), (to_base, Some(to_version))) = (split_version(from), split_version(to)) else {
-        return Err(Error::invalid("Only a published version can be moved"));
-    };
-    if exists(conn, project, to)? {
-        return Err(Error::invalid(format!("There is already a version {to}")));
-    }
-    let binary: Option<bool> = query_opt(conn, "SELECT body IS NULL FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, from], |r| r.get(0))?;
-    let Some(binary) = binary else { return Err(Error::not_found("Version not found")) };
-    if binary {
-        let (a, b) = (file_of(root, project, from), file_of(root, project, to));
-        if a.exists() {
-            if let Some(dir) = b.parent() {
-                fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
-            }
-            fs::rename(&a, &b).map_err(|e| Error::io(&b, e))?;
-            if let Some(dir) = a.parent().filter(|d| *d != versions_dir(root, project)) {
-                let _ = fs::remove_dir(dir);
-            }
-        }
-    }
-    conn.execute("UPDATE deliverables SET path = ?3 WHERE project_slug = ?1 AND path = ?2", params![project, from, to])?;
-    conn.execute(
-        "UPDATE version_records SET deliverable_path = ?4, version = ?5 WHERE project_slug = ?1 AND deliverable_path = ?2 AND version = ?3",
-        params![project, from_base, from_version, to_base, to_version],
-    )?;
-    conn.execute(
-        "UPDATE posts SET deliverable_path = ?4, deliverable_version = ?5 WHERE project_slug = ?1 AND deliverable_path = ?2 AND deliverable_version = ?3",
-        params![project, from_base, from_version, to_base, to_version],
-    )?;
-    conn.execute("UPDATE feedback SET deliverable_path = ?3 WHERE project_slug = ?1 AND deliverable_path = ?2", params![project, from, to])?;
-    conn.execute("UPDATE evidence_version_files SET path = ?3 WHERE project_slug = ?1 AND path = ?2", params![project, from, to])?;
-    Ok(())
-}
-
 /// Renames a deliverable: its live file and every published version (on disk too, for a file that isn't markdown), and
 /// everything that points at it — its facts, prompts, runs, posts, feedback, version records and Portflow evidence.
 /// Refused when `to` is already a deliverable.
@@ -449,16 +416,11 @@ pub fn rename_base(conn: &Connection, root: &Path, project: &str, from: &str, to
     }
     for (old, new, binary) in &moves {
         if *binary {
-            let (a, b) = (file_of(root, project, old), file_of(root, project, new));
-            if a.exists() {
-                if let Some(dir) = b.parent() {
-                    fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
-                }
-                fs::rename(&a, &b).map_err(|e| Error::io(&b, e))?;
-                // A folder left empty by the move goes too.
-                if let Some(dir) = a.parent().filter(|d| *d != deliverables_dir(root, project) && *d != versions_dir(root, project)) {
-                    let _ = fs::remove_dir(dir);
-                }
+            // A folder left empty by the move goes too (the store prunes it).
+            let store = store::at(root);
+            let (a, b) = (rel_of(project, old), rel_of(project, new));
+            if store.exists(&a) {
+                store.rename(&a, &b).map_err(|e| Error::io(&root.join(&b), e))?;
             }
         }
         conn.execute("UPDATE deliverables SET path = ?3 WHERE project_slug = ?1 AND path = ?2", params![project, old, new])?;
@@ -630,19 +592,15 @@ fn freeze(
             provenance::sha256_hex(text.as_bytes())
         }
         None => {
-            let to = file_of(root, project, &snapshot);
-            if let Some(dir) = to.parent() {
-                fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
-            }
-            match held {
-                Some(bytes) => fs::write(&to, bytes).map_err(|e| Error::io(&to, e))?,
-                None => {
-                    let from = file_of(root, project, base);
-                    fs::copy(&from, &to).map_err(|e| Error::io(&to, e))?;
-                }
-            }
-            upsert(&tx, project, &snapshot, held.map_or(live.size, |bytes| bytes.len() as i64), &at, None)?;
-            provenance::sha256_hex(&fs::read(&to).map_err(|e| Error::io(&to, e))?)
+            let store = store::at(root);
+            let to = rel_of(project, &snapshot);
+            let bytes = match held {
+                Some(bytes) => bytes.to_vec(),
+                None => store.read(&rel_of(project, base)).map_err(|e| Error::io(&file_of(root, project, base), e))?,
+            };
+            store.write(&to, &bytes).map_err(|e| Error::io(&root.join(&to), e))?;
+            upsert(&tx, project, &snapshot, bytes.len() as i64, &at, None)?;
+            provenance::sha256_hex(&bytes)
         }
     };
     if let Some(thread) = &origin.thread {
@@ -681,12 +639,7 @@ pub fn delete(conn: &Connection, root: &Path, project: &str, path: &str) -> Resu
     )?;
     tx.commit()?;
     if view.body.is_none() {
-        let file = file_of(root, project, path);
-        if let Err(e) = fs::remove_file(&file)
-            && e.kind() != std::io::ErrorKind::NotFound
-        {
-            return Err(Error::io(&file, e));
-        }
+        store::at(root).remove(&rel_of(project, path)).map_err(|e| Error::io(&file_of(root, project, path), e))?;
     }
     Ok(())
 }

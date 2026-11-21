@@ -5,7 +5,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::error::{Error, Result};
@@ -496,12 +496,17 @@ pub fn delete_upload(app: State<App>, project: String, thread: String, id: Strin
 
 /// A path inside a project's folder, from a path given relative to it; anything that could leave the folder is refused.
 fn project_path(root: &Path, project: &str, rel: &str) -> Result<PathBuf> {
+    Ok(root.join(project_rel(project, rel)?))
+}
+
+/// The same, as a path in the vault (see `store`).
+fn project_rel(project: &str, rel: &str) -> Result<String> {
     safe_segment(project)?;
     let rel_path = Path::new(rel);
     if rel.is_empty() || rel_path.components().any(|c| !matches!(c, Component::Normal(_))) {
         return Err(Error::invalid("That path isn't inside the project"));
     }
-    Ok(uploads::project_dir(root, project).join(rel_path))
+    Ok(uploads::project_rel(project, &rel.replace('\\', "/")))
 }
 
 fn safe_segment(segment: &str) -> Result<()> {
@@ -514,16 +519,16 @@ fn safe_segment(segment: &str) -> Result<()> {
 /// The bytes of a file in a project's folder (an attachment, a deliverable), for the screen to show.
 #[tauri::command]
 pub fn read_project_file(app: State<App>, project: String, path: String) -> Result<tauri::ipc::Response> {
-    let file = app.read(|_, root| project_path(root, &project, &path))?;
-    let bytes = std::fs::read(&file).map_err(|e| Error::io(&file, e))?;
+    let (store, rel) = app.read(|_, root| Ok((crate::store::at(root), project_rel(&project, &path)?)))?;
+    let bytes = store.read(&rel).map_err(|e| Error::io(&store.path(&rel), e))?;
     Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// A picture in a project's folder, as the window can show it (a JPEG XL one as PNG, see `images`).
 #[tauri::command]
 pub fn read_project_image(app: State<App>, project: String, path: String) -> Result<tauri::ipc::Response> {
-    let file = app.read(|_, root| project_path(root, &project, &path))?;
-    Ok(tauri::ipc::Response::new(crate::images::displayable_file(&file)?))
+    let (store, rel) = app.read(|_, root| Ok((crate::store::at(root), project_rel(&project, &path)?)))?;
+    Ok(tauri::ipc::Response::new(crate::images::displayable_in(&store, &rel)?))
 }
 
 /// The preview of a picture being dropped onto the window, from wherever it is on this machine: pictures only.
@@ -536,10 +541,12 @@ pub fn preview_dropped_image(path: String) -> Result<tauri::ipc::Response> {
 #[tauri::command]
 pub fn open_project_file(app: AppHandle, project: String, path: String, reveal: bool) -> Result<()> {
     let state = app.state::<App>();
-    let file = state.read(|_, root| project_path(root, &project, &path))?;
-    if !file.exists() {
+    let (store, rel) = state.read(|_, root| Ok((crate::store::at(root), project_rel(&project, &path)?)))?;
+    if !store.exists(&rel) {
         return Err(Error::not_found("That file isn't there any more"));
     }
+    // In an encrypted vault the program opens a plain copy outside the synced folder (see `store::Store::materialize`).
+    let file = store.materialize(&rel).map_err(|e| Error::io(&store.path(&rel), e))?;
     let opener = app.opener();
     if reveal {
         opener.reveal_item_in_dir(&file).map_err(Error::screenshot)
@@ -614,7 +621,8 @@ pub async fn export_deliverable_pdf(app: AppHandle, project: String, path: Strin
         .await
         .map_err(|e| Error::export(format!("Making the PDF stopped unexpectedly: {e}")))??;
     if open {
-        let file = project_path(&root, &project, &rel)?;
+        let store = crate::store::at(&root);
+        let file = store.materialize(&project_rel(&project, &rel)?).map_err(|e| Error::io(&project_path(&root, &project, &rel).unwrap_or_default(), e))?;
         app.opener().open_path(file.display().to_string(), None::<&str>).map_err(Error::screenshot)?;
     }
     Ok(rel)
@@ -652,8 +660,9 @@ pub fn reset_pdf_layout(app: State<App>, project: String, scope: crate::pdf::Lay
 /// Opens a layout of one's own in the program the system uses for it, or shows it in its folder.
 #[tauri::command]
 pub fn open_pdf_layout(app: AppHandle, project: String, scope: crate::pdf::LayoutScope, reveal: bool) -> Result<()> {
-    let file = app.state::<App>().read(|_, root| crate::pdf::layout_file(root, &project, scope))?;
-    let Some((file, _)) = file else { return Err(Error::not_found("There is no layout of your own there yet")) };
+    let (store, file) = app.state::<App>().read(|_, root| Ok((crate::store::at(root), crate::pdf::layout_file(root, &project, scope)?)))?;
+    let Some(file) = file else { return Err(Error::not_found("There is no layout of your own there yet")) };
+    let file = store.materialize(&file).map_err(|e| Error::io(&store.path(&file), e))?;
     let opener = app.opener();
     if reveal {
         opener.reveal_item_in_dir(&file).map_err(Error::screenshot)
@@ -851,10 +860,21 @@ pub fn set_vault_path(app: AppHandle, path: String, copy: bool) -> Result<Settin
     Ok(view(&app.state::<App>()))
 }
 
-/// Switches vaults with `change`, then sets up what belongs to the new one: its Portflow and its screenshot hotkey.
+/// Switches vaults with `change`, then sets up what belongs to the new one: watching its folder, its Portflow and its
+/// screenshot hotkey.
 fn switch_vault<T>(app: &AppHandle, change: impl FnOnce(&mut crate::state::Core) -> Result<T>) -> Result<T> {
     let state = app.state::<App>();
-    let out = change(&mut state.lock())?;
+    let (out, root) = {
+        let mut core = state.lock();
+        let out = change(&mut core)?;
+        (out, core.open.then(|| core.vault.root().to_path_buf()))
+    };
+    if let Some(watcher) = app.try_state::<crate::watcher::VaultWatcher>() {
+        match root {
+            Some(root) => watcher.watch(&root),
+            None => watcher.stop(),
+        }
+    }
     if let Some(portflow) = app.try_state::<crate::portflow::PortflowSyncer>() {
         portflow.vault_switched();
     }
@@ -956,6 +976,90 @@ pub fn forget_vault(app: AppHandle, path: String) -> Result<VaultsView> {
 #[tauri::command]
 pub fn reload_vault(app: State<App>) -> Result<()> {
     app.lock().reload()
+}
+
+/// Reads the vault in again when its files changed behind the app's back (the cloud brought in another machine's
+/// changes, or another program wrote), and tells the window. What the folder watcher calls once a burst is over.
+pub fn vault_changed_outside(app: &AppHandle) {
+    let state = app.state::<App>();
+    let reloaded = {
+        let mut core = state.lock();
+        core.open && core.vault.changed_on_disk() && core.reload().is_ok()
+    };
+    if reloaded {
+        let _ = app.emit("vault-changed", ());
+        crate::trello::notify_vault_changed();
+    }
+}
+
+// ---- conflict copies ----------------------------------------------------------------------------------
+
+/// A conflict copy, with what the two versions say when they are text.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictView {
+    pub copy: String,
+    pub original: String,
+    /// Both are text, shown here; otherwise they are opened with their program.
+    pub text: bool,
+    pub copy_text: Option<String>,
+    pub original_text: Option<String>,
+    pub copy_modified: Option<String>,
+    pub original_modified: Option<String>,
+}
+
+fn conflict_views(app: &App) -> Vec<ConflictView> {
+    let core = app.lock();
+    let store = core.vault.store().clone();
+    let modified = |rel: &str| store.fingerprint(rel).map(|(_, nanos)| crate::ids::format_millis((nanos / 1_000_000) as i64));
+    let text = |rel: &str| store.read(rel).ok().and_then(|bytes| String::from_utf8(bytes).ok());
+    core.vault
+        .conflicts()
+        .iter()
+        .map(|c| {
+            let (copy_text, original_text) = (text(&c.copy), text(&c.original));
+            ConflictView {
+                text: copy_text.is_some() && original_text.is_some(),
+                copy_text,
+                original_text,
+                copy_modified: modified(&c.copy),
+                original_modified: modified(&c.original),
+                copy: c.copy.clone(),
+                original: c.original.clone(),
+            }
+        })
+        .collect()
+}
+
+/// The conflict copies in the vault: where two machines changed the same file, the cloud storage (or Ledger) kept both.
+#[tauri::command]
+pub fn list_conflicts(app: State<App>) -> Vec<ConflictView> {
+    conflict_views(&app)
+}
+
+/// Settles a conflict: `keep` is "copy" (the copy replaces the original) or "original" (the copy goes). Either way
+/// one file is left, and the vault is read in again.
+#[tauri::command]
+pub fn resolve_conflict(app: State<App>, copy: String, keep: String) -> Result<Vec<ConflictView>> {
+    {
+        let mut core = app.lock();
+        let Some(conflict) = core.vault.conflicts().iter().find(|c| c.copy == copy).cloned() else {
+            return Err(Error::not_found("That conflict is settled already"));
+        };
+        let store = core.vault.store().clone();
+        let failed = |rel: &str, e: std::io::Error| Error::io(&store.path(rel), e);
+        match keep.as_str() {
+            "copy" => {
+                let bytes = store.read(&conflict.copy).map_err(|e| failed(&conflict.copy, e))?;
+                store.write(&conflict.original, &bytes).map_err(|e| failed(&conflict.original, e))?;
+                store.remove(&conflict.copy).map_err(|e| failed(&conflict.copy, e))?;
+            }
+            "original" => store.remove(&conflict.copy).map_err(|e| failed(&conflict.copy, e))?,
+            _ => return Err(Error::invalid("Keep the copy or the original")),
+        }
+        core.reload()?;
+    }
+    Ok(conflict_views(&app))
 }
 
 /// Reloads if the files were changed behind the app's back (in Obsidian, say). Whether anything was reloaded.

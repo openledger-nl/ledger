@@ -59,6 +59,8 @@ typst = "0.15.1"
 typst-pdf = "0.15.1"
 typst-layout = "0.15.1"
 similar = { version = "2", features = ["inline"] }
+# Watching the vault's folder for what the cloud storage brings in from other machines (`watcher.rs`).
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
 # The Fontys password for signing in to Portflow by itself (`portflow_login.rs`), in the system's keychain: the Secret
 # Service on Linux, the Keychain on macOS, the Credential Manager on Windows.
 keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }

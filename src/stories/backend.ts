@@ -132,6 +132,8 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	onboarding_status: fx.onboarding,
 	set_onboarding_purpose: (a: Record<string, unknown>) => ({ ...fx.onboarding, purpose: a.purpose }),
 	list_vaults: fx.vaults,
+	list_conflicts: fx.conflicts,
+	resolve_conflict: [],
 	create_vault: fx.vaults,
 	open_vault: fx.vaults,
 	forget_vault: fx.vaults,

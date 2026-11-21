@@ -22,6 +22,7 @@ import type {
 	Post,
 	PostMeta,
 	ProjectMeta,
+	ConflictView,
 	Person,
 	ProjectPerson,
 	ProjectPortflow,
@@ -667,6 +668,21 @@ export const anchor: Anchor = { text: 'corrode far less than resistive ones', pr
 export const marks: Mark[] = [{ id: 'f-3', anchor, tone: 'open' }];
 
 export const noop = () => {};
+
+// ---- conflict copies ------------------------------------------------------------------------------------
+
+/** A post both machines changed: OneDrive kept the laptop's beside it. */
+export const conflicts: ConflictView[] = [
+	{
+		copy: `projects/${PROJECT}/threads/${THREAD}/posts/n-2-LAPTOP.md`,
+		original: `projects/${PROJECT}/threads/${THREAD}/posts/n-2.md`,
+		text: true,
+		originalText: '---\nid: n-2\n---\n\nCapacitive sensors corrode far less than resistive ones.\n',
+		copyText: '---\nid: n-2\n---\n\nCapacitive sensors corrode far less than resistive ones. Ask the supplier for a price per sensor.\n',
+		originalModified: at(16, '09:10'),
+		copyModified: at(16, '09:12')
+	}
+];
 
 // ---- the vault picker -------------------------------------------------------------------------------
 

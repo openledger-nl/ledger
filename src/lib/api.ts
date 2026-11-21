@@ -15,6 +15,7 @@ import type {
 	EvidenceParts as DescriptionParts,
 	PostKind,
 	EpistemicLabel,
+	ConflictView,
 	Person,
 	PersonDraft,
 	ProjectPerson,
@@ -330,6 +331,10 @@ export const api = {
 	finishOnboarding: () => call<OnboardingStatus>('finish_onboarding'),
 	restartOnboarding: () => call<OnboardingStatus>('restart_onboarding'),
 	reloadVault: () => call<void>('reload_vault'),
+	/** The conflict copies in the vault: two machines changed the same file, and both versions were kept. */
+	listConflicts: () => call<ConflictView[]>('list_conflicts'),
+	/** Keeps one of the two: the copy (it replaces the original) or the original (the copy goes). */
+	resolveConflict: (copy: string, keep: 'copy' | 'original') => call<ConflictView[]>('resolve_conflict', { copy, keep }),
 	checkVaultChanges: () => call<boolean>('check_vault_changes'),
 
 	// screenshots

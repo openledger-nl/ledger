@@ -183,6 +183,11 @@ impl App {
             }
             let out = f(&core.conn, core.vault.root())?;
             core.vault.persist(&core.conn)?;
+            // A file changed on disk under the change (another machine's edit, brought in by the cloud): what was
+            // written instead is a conflict copy, and the vault is read again so memory has the other edit.
+            if core.vault.take_stale() {
+                core.reload()?;
+            }
             out
         };
         // Always, not only when `persist` wrote something: some changes are made to files directly (a published

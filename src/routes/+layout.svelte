@@ -77,7 +77,7 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div class="scrim" class:open={layout.drawerOpen} onclick={() => (layout.drawerOpen = false)}></div>
 
-		<Sidebar projects={data.projects} {vaultName} />
+		<Sidebar projects={data.projects} {vaultName} conflicts={data.conflicts} />
 		<Rail projects={data.projects} />
 		<main>
 			<TopBar />

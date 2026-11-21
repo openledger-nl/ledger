@@ -43,10 +43,8 @@
 //! the database knows deliverables by name and size, and the app copies or removes those files directly.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
 
 use rusqlite::{Connection, params};
 use serde_yaml_ng::{Mapping, Value};
@@ -55,6 +53,8 @@ use crate::db::{self, query_all};
 use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
 use crate::models::{SemesterDraft, Sprint, Vacation};
+use crate::conflicts::Conflict;
+use crate::store::{self, Fingerprint, Store};
 use crate::{board, deliverables, ids, marker, posts, projects, provenance, semesters, templates};
 
 // ---- layout -----------------------------------------------------------------------------------------
@@ -119,17 +119,21 @@ fn deliverable_file(project: &str, path: &str) -> String {
 
 // ---- the vault on disk ------------------------------------------------------------------------------
 
-/// A file's size and modification time: enough to notice that something else touched it.
-type Fingerprint = (u64, u128);
-
 pub struct Vault {
     root: PathBuf,
+    /// Where its files are read and written (see `store`).
+    store: Store,
     /// The vault's id, from its marker (see `marker`); empty while no vault is open.
     id: String,
     /// The hash of the canonical text of every file this vault owns, as last written (or read).
     written: HashMap<String, u64>,
     /// What the managed folders looked like when we last wrote or read them.
     disk: BTreeMap<String, Fingerprint>,
+    /// The conflict copies found when it was last read (see `conflicts`).
+    conflicts: Vec<Conflict>,
+    /// A file it was about to write or delete had changed on disk: what is in memory is behind, and the vault has to
+    /// be read again (see [`Vault::persist`]).
+    stale: bool,
 }
 
 impl Vault {
@@ -144,17 +148,27 @@ impl Vault {
             marker::Found::Vault(marker) => marker,
             _ => marker::create(&root)?,
         };
-        Ok(Vault { root, id: marker.id, written: HashMap::new(), disk: BTreeMap::new() })
+        let store = Store::plain(root.clone());
+        store::register(&store);
+        Ok(Vault::with(root, store, marker.id))
+    }
+
+    fn with(root: PathBuf, store: Store, id: String) -> Vault {
+        Vault { root, store, id, written: HashMap::new(), disk: BTreeMap::new(), conflicts: vec![], stale: false }
     }
 
     /// Stands in for a vault while none is chosen yet (the app is on the vault picker). Nothing is created on disk,
     /// and nothing is written: `App::mutate` refuses every change until a vault is open.
     pub fn none(root: PathBuf) -> Vault {
-        Vault { root, id: String::new(), written: HashMap::new(), disk: BTreeMap::new() }
+        Vault::with(root.clone(), Store::plain(root), String::new())
     }
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    pub fn store(&self) -> &Store {
+        &self.store
     }
 
     /// The vault's id, from its marker: the same on every machine that syncs it.
@@ -162,13 +176,31 @@ impl Vault {
         &self.id
     }
 
+    /// The conflict copies in the vault as it was last read.
+    pub fn conflicts(&self) -> &[Conflict] {
+        &self.conflicts
+    }
+
+    /// Whether the last [`Vault::persist`] found a file changed on disk under it, so the vault must be read again.
+    /// Asking clears it.
+    pub fn take_stale(&mut self) -> bool {
+        std::mem::take(&mut self.stale)
+    }
+
     /// Reads every file into a fresh in-memory database. Anything the files leave out or get wrong is repaired
     /// on the way in (a missing README is started, a link to a thread that does not exist is dropped) and
     /// written back out by the persist at the end.
     pub fn load(&mut self) -> Result<Connection> {
         let conn = db::open_in_memory()?;
-        let listing = managed_listing(&self.root);
-        import(&conn, &self.root, &listing)?;
+        let everything = managed_listing(&self.store);
+        // Conflict copies are listed, not read in: the vault holds each thing once.
+        self.conflicts = everything
+            .keys()
+            .filter_map(|rel| crate::conflicts::original_of(rel, |p| everything.contains_key(p)).map(|original| Conflict { copy: rel.clone(), original }))
+            .collect();
+        let copies: HashSet<&str> = self.conflicts.iter().map(|c| c.copy.as_str()).collect();
+        let listing: BTreeMap<String, Fingerprint> = everything.iter().filter(|(rel, _)| !copies.contains(rel.as_str())).map(|(k, v)| (k.clone(), *v)).collect();
+        import(&conn, &self.root, &self.store, &listing)?;
 
         // A file that is already on disk is taken to match its canonical rendering, so that opening a vault
         // someone formatted by hand does not rewrite all of it.
@@ -178,14 +210,21 @@ impl Vault {
                 self.written.insert(path, hash(&content));
             }
         }
-        self.disk = listing;
+        self.disk = everything;
+        self.stale = false;
 
         self.persist(&conn)?;
         Ok(conn)
     }
 
-    /// Writes whatever differs between the database and the files, and deletes files whose thing is gone.
-    /// Returns how many files were touched.
+    /// Writes whatever differs between the database and the files, and deletes files whose thing is gone. Only the
+    /// files that changed are written: a file whose text is what was last written or read is left alone, so the
+    /// cloud storage the vault is in uploads only what changed.
+    ///
+    /// It looks before it writes. A file that changed on disk since it was last read or written (another machine's
+    /// change, brought in by the cloud, or an edit in another program) is not replaced: what Ledger had is kept beside
+    /// it as a conflict copy, and [`Vault::take_stale`] says the vault must be read again. A file that changed is not
+    /// deleted either. Returns how many files were touched.
     pub fn persist(&mut self, conn: &Connection) -> Result<usize> {
         let canonical = export(conn)?;
         let mut touched = 0;
@@ -195,10 +234,16 @@ impl Vault {
             if self.written.get(path) == Some(&digest) {
                 continue;
             }
-            let file = self.root.join(path);
-            write_atomic(&file, content).map_err(|e| Error::io(&file, e))?;
+            if self.changed_under_us(path) {
+                let copy = crate::conflicts::ledger_copy(path, &conflict_stamp());
+                self.store.write(&copy, content.as_bytes()).map_err(|e| Error::io(&self.root.join(&copy), e))?;
+                self.stale = true;
+                touched += 1;
+                continue;
+            }
+            self.store.write(path, content.as_bytes()).map_err(|e| Error::io(&self.root.join(path), e))?;
             self.written.insert(path.clone(), digest);
-            if let Some(fp) = fingerprint(&file) {
+            if let Some(fp) = self.store.fingerprint(path) {
                 self.disk.insert(path.clone(), fp);
             }
             touched += 1;
@@ -206,48 +251,54 @@ impl Vault {
 
         let gone: Vec<String> = self.written.keys().filter(|p| !canonical.contains_key(*p)).cloned().collect();
         for path in gone {
-            let file = self.root.join(&path);
-            match fs::remove_file(&file) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(Error::io(&file, e)),
+            if self.changed_under_us(&path) {
+                self.stale = true;
+                continue;
             }
+            self.store.remove(&path).map_err(|e| Error::io(&self.root.join(&path), e))?;
             self.written.remove(&path);
             self.disk.remove(&path);
-            prune_empty_dirs(&self.root, &file);
             touched += 1;
         }
         Ok(touched)
     }
 
+    /// Whether the file at `path` is not as this vault last saw it: changed, or there when it wasn't.
+    fn changed_under_us(&self, path: &str) -> bool {
+        match (self.disk.get(path), self.store.fingerprint(path)) {
+            (Some(seen), Some(now)) => *seen != now,
+            (None, Some(_)) => true,
+            _ => false,
+        }
+    }
+
     /// Whether files were added, removed or edited by something other than this vault since it last looked.
     pub fn changed_on_disk(&self) -> bool {
-        managed_listing(&self.root) != self.disk
+        managed_listing(&self.store) != self.disk
     }
 
     /// Forgets a project folder's leftovers after the project was deleted: attachments and non-markdown
     /// deliverables are not the database's to remove, so deleting a project removes its folder here.
     pub fn remove_project_dir(&mut self, project: &str) -> Result<()> {
-        let dir = self.root.join("projects").join(project);
-        if dir.is_dir() {
-            fs::remove_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
-        }
+        let rel = format!("projects/{project}");
+        self.store.remove_dir(&rel).map_err(|e| Error::io(&self.root.join(&rel), e))?;
         self.disk.retain(|p, _| !p.starts_with(&format!("projects/{project}/")));
         self.written.retain(|p, _| !p.starts_with(&format!("projects/{project}/")));
         Ok(())
     }
 }
 
+/// When a conflict copy was made, as its name says it: `2026-11-20 101500`.
+fn conflict_stamp() -> String {
+    let now = ids::now();
+    let (day, time) = now.split_once('T').unwrap_or((&now, ""));
+    format!("{day} {}", time.chars().filter(char::is_ascii_digit).take(6).collect::<String>())
+}
+
 fn hash(text: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
     text.hash(&mut hasher);
     hasher.finish()
-}
-
-fn fingerprint(file: &Path) -> Option<Fingerprint> {
-    let meta = fs::metadata(file).ok()?;
-    let nanos = meta.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_nanos();
-    Some((meta.len(), nanos))
 }
 
 /// A file's modification time as an ISO timestamp, for files that don't say when they were created.
@@ -267,56 +318,9 @@ fn managed(rel: &str) -> bool {
 
 /// Every managed file, with its fingerprint. Dotfiles (including the temporary files writes go through) are not
 /// part of the vault, and neither is a project's `attachments/` folder.
-fn managed_listing(root: &Path) -> BTreeMap<String, Fingerprint> {
-    fn walk(root: &Path, rel: &str, out: &mut BTreeMap<String, Fingerprint>) {
-        let Ok(entries) = fs::read_dir(root.join(rel)) else { return };
-        for entry in entries.flatten() {
-            let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
-            if name.starts_with('.') {
-                continue;
-            }
-            let child = format!("{rel}/{name}");
-            let Ok(kind) = entry.file_type() else { continue };
-            if kind.is_dir() {
-                let is_attachments = name == "attachments" && child.matches('/').count() == 2 && child.starts_with("projects/");
-                if !is_attachments {
-                    walk(root, &child, out);
-                }
-            } else if managed(&child)
-                && let Some(fp) = fingerprint(&entry.path())
-            {
-                out.insert(child, fp);
-            }
-        }
-    }
-
-    let mut out = BTreeMap::new();
-    for dir in ["projects", SHARED, crate::daily::FOLDER] {
-        walk(root, dir, &mut out);
-    }
-    out
-}
-
-/// Replaces the file in one step, so a crash mid-write never leaves half a note behind.
-fn write_atomic(file: &Path, content: &str) -> std::io::Result<()> {
-    if let Some(parent) = file.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-    let temp = file.with_file_name(format!(".{name}.tmp"));
-    fs::write(&temp, content)?;
-    fs::rename(&temp, file)
-}
-
-/// After a delete, removes the folders it left empty, stopping at `root` (the vault's, or a folder in it).
-fn prune_empty_dirs(root: &Path, file: &Path) {
-    let mut dir = file.parent();
-    while let Some(current) = dir {
-        if current == root || !current.starts_with(root) || fs::remove_dir(current).is_err() {
-            break;
-        }
-        dir = current.parent();
-    }
+fn managed_listing(store: &Store) -> BTreeMap<String, Fingerprint> {
+    let attachments = |rel: &str| rel.starts_with("projects/") && rel.matches('/').count() == 2 && rel.ends_with("/attachments");
+    store.list(&["projects", SHARED, crate::daily::FOLDER], attachments).into_iter().filter(|(rel, _)| managed(rel)).collect()
 }
 
 // ---- export: database → files -----------------------------------------------------------------------
@@ -709,14 +713,14 @@ fn export_version_records(conn: &Connection, files: &mut BTreeMap<String, String
 // ---- import: files → database -----------------------------------------------------------------------
 
 pub(crate) struct Source<'a> {
-    root: &'a Path,
+    store: &'a Store,
     listing: &'a BTreeMap<String, Fingerprint>,
 }
 
 impl Source<'_> {
     /// A file's text; a file that is unreadable is treated as absent, one that is not UTF-8 is read lossily.
     pub(crate) fn read(&self, rel: &str) -> Option<String> {
-        fs::read(self.root.join(rel)).ok().map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        self.store.read(rel).ok().map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
     }
 
     pub(crate) fn stamp(&self, rel: &str) -> String {
@@ -759,8 +763,8 @@ impl Source<'_> {
     }
 }
 
-fn import(conn: &Connection, root: &Path, listing: &BTreeMap<String, Fingerprint>) -> Result<()> {
-    let source = Source { root, listing };
+fn import(conn: &Connection, root: &Path, store: &Store, listing: &BTreeMap<String, Fingerprint>) -> Result<()> {
+    let source = Source { store, listing };
     let tx = conn.unchecked_transaction()?;
 
     import_templates(&tx, &source, "")?;

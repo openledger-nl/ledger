@@ -967,11 +967,8 @@ pub fn store_download(
         match &text {
             Some(text) => upsert(conn, project, path, text.len() as i64, &at, Some(text)),
             None => {
-                let to = file_of(root, project, path);
-                if let Some(dir) = to.parent() {
-                    std::fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
-                }
-                std::fs::write(&to, bytes).map_err(|e| Error::io(&to, e))?;
+                let to = crate::deliverables::rel_of(project, path);
+                crate::store::at(root).write(&to, bytes).map_err(|e| Error::io(&file_of(root, project, path), e))?;
                 upsert(conn, project, path, bytes.len() as i64, &at, None)
             }
         }
@@ -1012,8 +1009,8 @@ pub fn store_download(
         Some(match body {
             Some(body) => crate::provenance::sha256_hex(body.as_bytes()),
             None => {
-                let from = file_of(root, project, base);
-                crate::provenance::sha256_hex(&std::fs::read(&from).map_err(|e| Error::io(&from, e))?)
+                let from = crate::deliverables::rel_of(project, base);
+                crate::provenance::sha256_hex(&crate::store::at(root).read(&from).map_err(|e| Error::io(&file_of(root, project, base), e))?)
             }
         })
     } else {

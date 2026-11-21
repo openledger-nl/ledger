@@ -627,6 +627,19 @@ export interface SearchHit {
 
 // ---- settings, screenshots ----------------------------------------------------------------------------
 
+/** A conflict copy: two machines changed the same file before the cloud carried one change to the other, and both
+ *  were kept, the second beside the first under another name. */
+export interface ConflictView {
+	copy: string;
+	original: string;
+	/** Both are text, so they can be shown side by side. */
+	text: boolean;
+	copyText: string | null;
+	originalText: string | null;
+	copyModified: string | null;
+	originalModified: string | null;
+}
+
 /** What a folded sidebar becomes: an icon rail (the default) or nothing. */
 export type SidebarFold = 'rail' | 'hide';
 

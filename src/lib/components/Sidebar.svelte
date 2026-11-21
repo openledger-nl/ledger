@@ -25,8 +25,8 @@
 	import EpsilonIcon from '$lib/components/EpsilonIcon.svelte';
 	import Wordmark from '$lib/components/Wordmark.svelte';
 
-	/** `vaultName`: the open vault, on the switch button at the bottom. */
-	let { projects, vaultName = '' }: { projects: ProjectSummary[]; vaultName?: string } = $props();
+	/** `vaultName`: the open vault, on the switch button at the bottom; `conflicts`: how many conflict copies wait. */
+	let { projects, vaultName = '', conflicts = 0 }: { projects: ProjectSummary[]; vaultName?: string; conflicts?: number } = $props();
 
 	const OPEN_KEY = 'ledger-open-project';
 	const sidebarKey = $derived(prettyKeyOf('sidebar.toggle'));
@@ -209,6 +209,11 @@
 	<!-- The bottom left: how the Portflow sync stands (the details are in Settings and in the tooltip), and the button
 	     that switches vaults. -->
 	<div class="sync-box">
+		{#if conflicts}
+			<a class="sync-line" href="/conflicts" title="Two machines changed the same files: choose which version to keep">
+				<span class="dot bad"></span><span class="sync-title">{conflicts === 1 ? '1 conflict to settle' : `${conflicts} conflicts to settle`}</span>
+			</a>
+		{/if}
 		{#if portflow.enabled}
 			<a class="sync-line" href="/settings/sync#portflow" title={[pf.canvas, pf.error].filter(Boolean).join(' | ')}>
 				<span class="dot {pf.dot}"></span><span class="sync-title">{pf.title}</span>
