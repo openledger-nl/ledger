@@ -460,7 +460,7 @@
 		flex-direction: column;
 		gap: 12px;
 	}
-	.vp-form input {
+	.vp-form input:not([type='checkbox']) {
 		flex: 1;
 		min-width: 0;
 	}
