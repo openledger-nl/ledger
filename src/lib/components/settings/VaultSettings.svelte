@@ -65,7 +65,7 @@
 	<p class="sub" style="margin:0">
 		Everything you write lives in a folder of plain markdown files with YAML frontmatter, much like an Obsidian vault. Keep it in a folder that your
 		cloud storage keeps in sync (OneDrive, SharePoint, Nextcloud): it carries the vault to your other computers, keeps earlier versions of every file
-		and can put the whole folder back as it was on a day. Ledger picks up changes made elsewhere when you come back to its window.
+		and can put the whole folder back as it was on a day. What the cloud brings in from another computer is read in as soon as it arrives.
 	</p>
 	<div class="vault-now">
 		<div class="vault-now-text">
