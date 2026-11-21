@@ -331,7 +331,6 @@ pub fn start_app(handle: &AppHandle, core: Arc<Mutex<Core>>) {
             let _ = emitter.emit("portflow-status", status);
         }),
         Arc::new(move || {
-            notifier.state::<App>().syncer.dirty();
             let _ = notifier.emit("vault-changed", ());
         }),
         connect_to_portflow(),

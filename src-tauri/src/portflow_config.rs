@@ -1,6 +1,5 @@
 //! Portflow's settings on this machine: whether the feature is on, what Ledger may do there, and which portfolio it
-//! reads. Kept in the vault's `.ledger/portflow.json`, which the vault's `.gitignore` lists and the GitHub sync never
-//! looks at, so each machine decides for itself and nothing here is uploaded:
+//! reads. Kept in the vault's `.ledger/portflow.json`, so each machine decides for itself:
 //!
 //! ```text
 //! .ledger/portflow.json          on or off, read only or read and write (and which writes), the launch address, the portfolio
@@ -18,7 +17,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::settings::{self, LEDGER_DIR};
+use crate::settings::LEDGER_DIR;
 
 /// Where Fontys ICT students open Portflow: the Canvas page that launches it.
 pub const DEFAULT_LAUNCH_URL: &str = "https://fontysict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation&toolId=portfolio-23360";
@@ -141,7 +140,6 @@ pub fn update_settings(root: &Path, change: impl FnOnce(&mut PortflowSettings)) 
         fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
     }
     fs::write(&file, serde_json::to_string_pretty(&settings).unwrap_or_default()).map_err(|e| Error::io(&file, e))?;
-    settings::ensure_gitignore(root)?;
     Ok(settings)
 }
 
@@ -190,6 +188,5 @@ pub fn write_guides(root: &Path, memory: &GuideMemory) -> Result<()> {
     if let Some(dir) = file.parent() {
         fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
     }
-    fs::write(&file, serde_json::to_string_pretty(memory).unwrap_or_default()).map_err(|e| Error::io(&file, e))?;
-    settings::ensure_gitignore(root)
+    fs::write(&file, serde_json::to_string_pretty(memory).unwrap_or_default()).map_err(|e| Error::io(&file, e))
 }

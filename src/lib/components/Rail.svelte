@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The sidebar folded to an icon rail, when Settings › Visual › Sidebar asks for one: at full width once the sidebar
 	// is folded, and between 720 and 1199 px (Ledger snapped to half the screen, next to Canvas or Portflow). The main
-	// pages as icons, each project as its initial, the sync dot and the vault switch; hovering or focusing an item shows its name.
+	// pages as icons, each project as its initial, Portflow's dot and the vault switch; hovering or focusing an item shows its name.
 	// Wireframes A6 and A7.
 	import House from '@lucide/svelte/icons/house';
 	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
@@ -12,7 +12,6 @@
 	import { page } from '$app/state';
 	import { newProjectFlow, projectUrl } from '$lib/actions';
 	import { portflow, portflowFooter } from '$lib/portflow.svelte';
-	import { sync, syncFooter } from '$lib/ui.svelte';
 	import { openVaultPicker } from '$lib/vaults.svelte';
 	import type { ProjectSummary } from '$lib/types';
 	import EpsilonIcon from '$lib/components/EpsilonIcon.svelte';
@@ -22,7 +21,6 @@
 
 	const path = $derived(page.url.pathname);
 	const on = (prefix: string) => path === prefix || path.startsWith(prefix + '/');
-	const footer = $derived(syncFooter(sync.status));
 	const pf = $derived(portflowFooter(portflow.status));
 
 	/** The letter a project goes by on the rail: the first letter or digit of its name. */
@@ -65,11 +63,8 @@
 		<button class="rail-item" data-tip="New project" aria-label="New project" onclick={newProjectFlow}><Plus size={16} /></button>
 	</nav>
 
-	<a class="rail-sync" href="/settings/sync" data-tip={[footer.title, footer.when].filter(Boolean).join(' | ')} aria-label={footer.title}>
-		<span class="dot {footer.dot}"></span>
-	</a>
 	{#if portflow.enabled}
-		<a class="rail-sync rail-sync-2" href="/settings/sync#portflow" data-tip={[pf.title, pf.when, pf.canvas].filter(Boolean).join(' | ')} aria-label={pf.title}>
+		<a class="rail-sync" href="/settings/sync#portflow" data-tip={[pf.title, pf.when, pf.canvas].filter(Boolean).join(' | ')} aria-label={pf.title}>
 			<span class="dot {pf.dot}"></span>
 		</a>
 	{/if}

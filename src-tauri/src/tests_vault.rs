@@ -11,7 +11,7 @@ use crate::frontmatter::{self, MetaExt};
 use crate::models::{Bump, Criterion, Quote, SemesterDraft, StoryDraft, TaskUpdate, TemplateDraft, TemplateReader};
 use crate::posts::AddOptions;
 use crate::provenance::{self, Origin};
-use crate::settings::{self, SyncEnv};
+use crate::settings;
 use crate::vault::{self, Vault};
 use crate::{board, db, deliverables, feedback, posts, projects, prompts, semesters, stories, templates, threads, uploads};
 
@@ -669,73 +669,33 @@ fn frontmatter_reading_is_lenient() {
 // ---- settings and secrets ---------------------------------------------------------------------------
 
 #[test]
-fn settings_live_in_the_ledger_folder_and_the_token_in_its_env_file() {
+fn settings_live_in_the_ledger_folder_and_secrets_in_its_env_file() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    assert_eq!(settings::read_env(root), SyncEnv::default());
-    assert!(settings::read_env(root).complete().is_none());
-
     settings::update_settings(root, |s| s.screenshot_hotkey = Some("Alt+F9".into())).unwrap();
-    settings::write_env(root, &SyncEnv { repo: "me/notes".into(), branch: "main".into(), token: "github_pat_abc".into() }).unwrap();
+    settings::write_secret(root, "TRELLO_TOKEN", "secret-token").unwrap();
 
-    // Repository and branch are settings; the token is the secret and nothing else is in its file.
     let json = read(root, ".ledger/settings.json");
-    assert!(json.contains("\"repo\": \"me/notes\"") && json.contains("\"branch\": \"main\"") && json.contains("Alt+F9"), "{json}");
-    assert!(!json.contains("github_pat_abc"), "the token never goes in settings.json");
-    let secrets = read(root, ".ledger/.env");
-    assert!(secrets.contains("GITHUB_TOKEN=github_pat_abc") && !secrets.contains("me/notes"), "{secrets}");
-
-    let config = settings::read_env(root).complete().unwrap();
-    assert_eq!((config.repo.as_str(), config.branch.as_str(), config.token.as_str()), ("me/notes", "main", "github_pat_abc"));
-    assert_eq!(settings::read_settings(root).screenshot_hotkey.as_deref(), Some("Alt+F9"), "saving sync settings keeps the others");
-
-    // Neither file is ever pushed.
-    assert!(read(root, ".gitignore").lines().any(|l| l == ".ledger/"));
-    let ignore = crate::sync::Ignore::load(root);
-    assert!(ignore.is_ignored(".ledger/settings.json", false) && ignore.is_ignored(".ledger/.env", false));
-
-    // Turning sync off removes the token and leaves the rest.
-    settings::write_env(root, &SyncEnv { repo: "me/notes".into(), branch: "main".into(), token: String::new() }).unwrap();
-    assert!(settings::read_env(root).complete().is_none());
-    assert_eq!(settings::read_env(root).repo, "me/notes");
+    assert!(json.contains("Alt+F9") && !json.contains("secret-token"), "{json}");
+    assert_eq!(settings::read_secret(root, "TRELLO_TOKEN").as_deref(), Some("secret-token"));
+    assert!(!root.join(".gitignore").exists(), "the vault is no git repository: nothing writes a .gitignore");
 }
 
 #[test]
-fn an_env_file_keeps_lines_that_are_not_the_token() {
+fn an_env_file_keeps_lines_that_are_not_the_one_written() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    write(root, ".ledger/.env", "# mine\nOTHER=keep me\nexport GITHUB_TOKEN = \"old-token\"\n");
-    assert_eq!(settings::read_env(root).token, "old-token");
+    write(root, ".ledger/.env", "# mine
+OTHER=keep me
+export TRELLO_TOKEN = \"old-token\"
+");
+    assert_eq!(settings::read_secret(root, "TRELLO_TOKEN").as_deref(), Some("old-token"));
 
-    settings::write_env(root, &SyncEnv { repo: "me/notes".into(), branch: "main".into(), token: "new-token".into() }).unwrap();
+    settings::write_secret(root, "TRELLO_TOKEN", "new-token").unwrap();
     let text = read(root, ".ledger/.env");
     assert!(text.contains("# mine") && text.contains("OTHER=keep me"), "{text}");
-    assert_eq!(text.matches("GITHUB_TOKEN").count(), 1, "{text}");
-    assert_eq!(settings::read_env(root).token, "new-token");
-}
-
-#[test]
-fn an_existing_gitignore_is_extended_not_replaced() {
-    let dir = tempdir().unwrap();
-    fs::write(dir.path().join(".gitignore"), "drafts/\n*.bak").unwrap();
-    settings::ensure_gitignore(dir.path()).unwrap();
-    settings::ensure_gitignore(dir.path()).unwrap();
-    assert_eq!(read(dir.path(), ".gitignore"), "drafts/\n*.bak\n.ledger/\n.env\n");
-}
-
-#[test]
-fn repositories_and_branches_are_normalised() {
-    for good in ["me/notes", " me/notes ", "https://github.com/me/notes", "https://github.com/me/notes.git", "git@github.com:me/notes.git", "github.com/me/notes/"] {
-        assert_eq!(settings::normalize_repo(good).unwrap(), "me/notes", "{good}");
-    }
-    for bad in ["", "notes", "me/", "/notes", "me/notes/extra", "me/no tes", "https://example.com/me/notes/x"] {
-        assert!(settings::normalize_repo(bad).is_err(), "{bad:?}");
-    }
-    assert_eq!(settings::normalize_branch(" refs/heads/ledger ").unwrap(), "ledger");
-    assert_eq!(settings::normalize_branch("feature/notes").unwrap(), "feature/notes");
-    for bad in ["", "a b", "a..b", "/a"] {
-        assert!(settings::normalize_branch(bad).is_err(), "{bad:?}");
-    }
+    assert_eq!(text.matches("TRELLO_TOKEN").count(), 1, "{text}");
+    assert_eq!(settings::read_secret(root, "TRELLO_TOKEN").as_deref(), Some("new-token"));
 }
 
 #[test]
@@ -765,7 +725,6 @@ fn moving_the_vault_copies_it_and_loads_the_new_place() {
     let mut core = crate::state::Core::open_at(old.path().to_path_buf(), config.path().to_path_buf(), false).unwrap();
     projects::create(&core.conn, "Travelling").unwrap();
     core.vault.persist(&core.conn).unwrap();
-    settings::write_env(old.path(), &SyncEnv { repo: "me/notes".into(), branch: "main".into(), token: "secret-token".into() }).unwrap();
 
     assert!(core.set_vault(Path::new("relative/path"), true).is_err());
     assert!(core.set_vault(&old.path().join("inside"), true).is_err());
@@ -774,14 +733,12 @@ fn moving_the_vault_copies_it_and_loads_the_new_place() {
     assert_eq!(core.vault.root(), target);
     assert_eq!(projects::list(&core.conn).unwrap()[0].slug, "travelling");
     assert!(target.join("projects/travelling/project.md").exists());
-    assert_eq!(core.sync.as_ref().unwrap().repo, "me/notes", "the new vault's own .ledger folder decides sync");
     assert!(old.path().join("projects/travelling/project.md").exists(), "the old vault is left where it was");
 
     // Without copying, an empty folder starts a fresh vault.
     let fresh = new.path().join("fresh");
     core.set_vault(&fresh, false).unwrap();
     assert!(projects::list(&core.conn).unwrap().is_empty());
-    assert!(core.sync.is_none());
     assert_eq!(settings::load_config(config.path()).vault_path.unwrap(), fresh.display().to_string());
     assert!(db::query_all(&core.conn, "SELECT slug FROM projects", [], |r| r.get::<_, String>(0)).unwrap().is_empty());
 }

@@ -3,26 +3,21 @@
 //! Argument names are snake_case here and camelCase from the frontend.
 
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
-use zeroize::Zeroizing;
 
 use crate::error::{Error, Result};
-use crate::github::GithubRemote;
 use crate::history;
-use crate::keystore::{self, EncryptionStatus, KeyStore};
 use crate::models::*;
 use crate::branding::{self, Branding, Side};
 use crate::deliverable_facts::{self, DeliverableMeta};
 use crate::project_facts::{self, ProjectMeta, ProjectPerson};
 use crate::posts::AddOptions;
 use crate::screenshot::{self, Region, ScreenshotSettings};
-use crate::settings::{self, SyncConfig, SyncEnv};
+use crate::settings;
 use crate::state::App;
-use crate::syncer::SyncStatus;
 use crate::{activity, board, semesters, deliverables, feedback, links, markdown, posts, projects, prompts, provenance, search, stories, templates, threads, uploads};
 
 #[tauri::command]
@@ -219,7 +214,6 @@ pub fn delete_project(app: State<App>, slug: String) -> Result<()> {
         core.vault.persist(&core.conn)?;
         core.vault.remove_project_dir(&slug)?;
     }
-    app.syncer.dirty();
     Ok(())
 }
 
@@ -592,8 +586,6 @@ pub async fn export_deliverable_pdf(app: AppHandle, project: String, path: Strin
     let rel = tauri::async_runtime::spawn_blocking(move || crate::pdf::make(prepared))
         .await
         .map_err(|e| Error::export(format!("Making the PDF stopped unexpectedly: {e}")))??;
-    // The PDF is a file in the vault, so the sync takes it along.
-    state.syncer.dirty();
     if open {
         let file = project_path(&root, &project, &rel)?;
         app.opener().open_path(file.display().to_string(), None::<&str>).map_err(Error::screenshot)?;
@@ -617,7 +609,6 @@ pub fn customise_pdf_layout(app: State<App>, project: String, scope: crate::pdf:
         projects::require(c, &project)?;
         crate::pdf::customise_layout(root, &project, scope)
     })?;
-    app.syncer.dirty();
     Ok(view)
 }
 
@@ -628,7 +619,6 @@ pub fn reset_pdf_layout(app: State<App>, project: String, scope: crate::pdf::Lay
         projects::require(c, &project)?;
         crate::pdf::reset_layout(root, &project, scope)
     })?;
-    app.syncer.dirty();
     Ok(view)
 }
 
@@ -794,18 +784,7 @@ pub fn delete_column(app: State<App>, project: String, id: String) -> Result<Vec
     app.mutate(|c, _| board::delete_column(c, &project, &id))
 }
 
-// ---- the vault and GitHub sync ----------------------------------------------------------------------
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SyncSettings {
-    pub repo: String,
-    pub branch: String,
-    /// The token itself never leaves the backend; the screen only learns that there is one.
-    pub has_token: bool,
-    pub token_hint: String,
-    pub configured: bool,
-}
+// ---- the vault and its settings ----------------------------------------------------------------------
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -813,217 +792,29 @@ pub struct SettingsView {
     pub vault_path: String,
     /// The location is fixed by the `LEDGER_VAULT` environment variable.
     pub vault_locked: bool,
-    /// Where the vault's settings and its secret are kept (both inside the vault, both gitignored).
+    /// Where this machine's settings for the vault are kept.
     pub settings_file: String,
-    pub secrets_file: String,
     pub version: String,
-    pub sync: SyncSettings,
-    pub status: SyncStatus,
     pub screenshot: ScreenshotSettings,
-    /// Whether sync encrypts, and whether this machine has the key. Never the key.
-    pub encryption: EncryptionStatus,
 }
 
 fn view(app: &App) -> SettingsView {
-    let (root, locked, env, keys) = {
+    let (root, locked) = {
         let core = app.lock();
-        let root = core.vault.root().to_path_buf();
-        let env = settings::read_env(&root);
-        (root, core.vault_from_env, env, core.keys.clone())
-    };
-    let token_hint = if env.token.chars().count() >= 8 {
-        format!("...{}", env.token.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<String>())
-    } else {
-        String::new()
+        (core.vault.root().to_path_buf(), core.vault_from_env)
     };
     SettingsView {
         vault_path: root.display().to_string(),
         vault_locked: locked,
         settings_file: settings::settings_path(&root).display().to_string(),
-        secrets_file: settings::secrets_path(&root).display().to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        sync: SyncSettings {
-            configured: env.complete().is_some(),
-            has_token: !env.token.is_empty(),
-            token_hint,
-            repo: env.repo.clone(),
-            branch: env.branch.clone(),
-        },
-        status: app.syncer.status(),
         screenshot: app.screenshots.settings(&root),
-        encryption: keystore::status(&root, &*keys),
     }
 }
 
 #[tauri::command]
 pub fn get_settings(app: State<App>) -> SettingsView {
     view(&app)
-}
-
-#[tauri::command]
-pub fn sync_status(app: State<App>) -> SyncStatus {
-    app.syncer.status()
-}
-
-/// What GitHub holds of the vault as of the last sync that finished; nothing while sync is off or hasn't run yet.
-#[tauri::command]
-pub fn sync_overview(app: State<App>) -> Option<crate::sync::Overview> {
-    let (root, config) = {
-        let core = app.lock();
-        (core.vault.root().to_path_buf(), core.sync.clone())
-    };
-    let config = config?;
-    crate::sync::overview(&root, &config.repo, &config.branch)
-}
-
-/// How many commits the synced branch holds, as far as the last agreed commit, asked of GitHub. Nothing while sync is
-/// off or hasn't run yet; an error when GitHub can't be reached, which the sync card leaves out.
-#[tauri::command]
-pub async fn sync_commits(app: State<'_, App>) -> Result<Option<u64>> {
-    let (root, config) = {
-        let core = app.lock();
-        (core.vault.root().to_path_buf(), core.sync.clone())
-    };
-    let Some(config) = config else { return Ok(None) };
-    let Some(head) = crate::sync::overview(&root, &config.repo, &config.branch).and_then(|o| o.head) else { return Ok(None) };
-    let count = tauri::async_runtime::spawn_blocking(move || GithubRemote::new(&config)?.commit_count(&head))
-        .await
-        .map_err(|e| Error::sync(format!("Counting the commits stopped unexpectedly: {e}")))??;
-    Ok(Some(count))
-}
-
-/// Saves the repository and branch to the vault's settings and the token to its `.env`, and starts syncing. A
-/// blank token keeps the one already saved.
-#[tauri::command]
-pub fn save_sync_settings(app: State<App>, repo: String, branch: String, token: Option<String>) -> Result<SettingsView> {
-    let repo = settings::normalize_repo(&repo)?;
-    let branch = settings::normalize_branch(&branch)?;
-
-    let config = {
-        let mut core = app.lock();
-        let root = core.vault.root().to_path_buf();
-        let token = token
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty())
-            .unwrap_or_else(|| settings::read_env(&root).token);
-        if token.is_empty() {
-            return Err(Error::invalid("Enter an access token"));
-        }
-        settings::write_env(&root, &SyncEnv { repo, branch, token })?;
-        core.sync = settings::read_env(&root).complete();
-        core.sync.clone()
-    };
-    app.syncer.reconfigure(config.as_ref());
-    Ok(view(&app))
-}
-
-/// Turns sync off. The repository and branch stay in the settings; the token is removed.
-#[tauri::command]
-pub fn disconnect_sync(app: State<App>) -> Result<SettingsView> {
-    {
-        let mut core = app.lock();
-        let root = core.vault.root().to_path_buf();
-        let env = settings::read_env(&root);
-        settings::write_env(&root, &SyncEnv { token: String::new(), ..env })?;
-        core.sync = None;
-    }
-    app.syncer.reconfigure(None);
-    Ok(view(&app))
-}
-
-/// Tries the connection with the values on screen (a blank token means the saved one) without saving anything.
-#[tauri::command]
-pub async fn test_sync(app: State<'_, App>, repo: String, branch: String, token: Option<String>) -> Result<String> {
-    let repo = settings::normalize_repo(&repo)?;
-    let branch = settings::normalize_branch(&branch)?;
-    let token = {
-        let core = app.lock();
-        token
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty())
-            .unwrap_or_else(|| settings::read_env(core.vault.root()).token)
-    };
-    if token.is_empty() {
-        return Err(Error::invalid("Enter an access token"));
-    }
-
-    let config = SyncConfig { repo: repo.clone(), branch: branch.clone(), token };
-    let check = tauri::async_runtime::spawn_blocking(move || GithubRemote::new(&config)?.check())
-        .await
-        .map_err(|e| Error::sync(format!("The connection test stopped unexpectedly: {e}")))??;
-    if !check.private {
-        return Err(Error::sync(format!("{repo} is a public repository. Ledger only syncs to private repositories.")));
-    }
-    if !check.can_push {
-        return Err(Error::sync("The token can read this repository but not write to it. It needs write access to its contents."));
-    }
-    Ok(if check.branch_exists {
-        format!("Connected to {repo}. The branch {branch} exists.")
-    } else {
-        format!("Connected to {repo}. The branch {branch} doesn't exist yet and will be created on the first sync (the default branch is {}).", check.default_branch)
-    })
-}
-
-#[tauri::command]
-pub fn sync_now(app: State<App>) -> Result<()> {
-    if app.lock().sync.is_none() {
-        return Err(Error::invalid("GitHub sync isn't set up yet"));
-    }
-    app.syncer.now();
-    Ok(())
-}
-
-// ---- encrypting what goes to GitHub -----------------------------------------------------------------
-
-/// Where the vault is and what holds its key, taken out of the core so the key store is asked without the vault
-/// lock held.
-fn key_context(app: &App) -> (PathBuf, Arc<dyn KeyStore>) {
-    let core = app.lock();
-    (core.vault.root().to_path_buf(), core.keys.clone())
-}
-
-#[tauri::command]
-pub fn encryption_status(app: State<App>) -> EncryptionStatus {
-    let (root, keys) = key_context(&app);
-    keystore::status(&root, &*keys)
-}
-
-/// Turns encryption of what is synced on or off, and syncs so that it takes effect. It can't be turned on until
-/// there is a key.
-#[tauri::command]
-pub fn set_encryption_enabled(app: State<App>, enabled: bool) -> Result<SettingsView> {
-    let (root, keys) = key_context(&app);
-    keystore::set_enabled(&root, &*keys, enabled)?;
-    if app.lock().sync.is_some() {
-        app.syncer.now();
-    }
-    Ok(view(&app))
-}
-
-/// Makes a new random key and keeps it in the vault's `.ledger/.env`. With a key already on this machine that
-/// takes `replace`.
-#[tauri::command]
-pub fn generate_encryption_key(app: State<App>, replace: bool) -> Result<SettingsView> {
-    let (root, keys) = key_context(&app);
-    keystore::generate(&root, &*keys, replace)?;
-    Ok(view(&app))
-}
-
-/// Keeps a key made on another machine: its recovery string, or the bare key as hex or base64.
-#[tauri::command]
-pub fn import_encryption_key(app: State<App>, key: String, replace: bool) -> Result<SettingsView> {
-    let key = Zeroizing::new(key);
-    let (root, keys) = key_context(&app);
-    keystore::import(&root, &*keys, &key, replace)?;
-    Ok(view(&app))
-}
-
-/// The recovery string for the key: the one command that hands the key out, and only when asked for.
-#[tauri::command]
-pub fn export_recovery_key(app: State<App>) -> Result<String> {
-    let (root, keys) = key_context(&app);
-    let recovery = keystore::export(&root, &*keys)?;
-    Ok(String::clone(&recovery))
 }
 
 /// Moves the app to the vault in `path`. With `copy`, an empty destination first receives the current vault.
@@ -1033,16 +824,10 @@ pub fn set_vault_path(app: AppHandle, path: String, copy: bool) -> Result<Settin
     Ok(view(&app.state::<App>()))
 }
 
-/// Switches vaults with `change`, then sets up what belongs to the new one: its sync, its Portflow and its screenshot
-/// hotkey.
+/// Switches vaults with `change`, then sets up what belongs to the new one: its Portflow and its screenshot hotkey.
 fn switch_vault<T>(app: &AppHandle, change: impl FnOnce(&mut crate::state::Core) -> Result<T>) -> Result<T> {
     let state = app.state::<App>();
-    let (out, config) = {
-        let mut core = state.lock();
-        let out = change(&mut core)?;
-        (out, core.sync.clone())
-    };
-    state.syncer.reconfigure(config.as_ref());
+    let out = change(&mut state.lock())?;
     if let Some(portflow) = app.try_state::<crate::portflow::PortflowSyncer>() {
         portflow.vault_switched();
     }
@@ -1143,9 +928,7 @@ pub fn forget_vault(app: AppHandle, path: String) -> Result<VaultsView> {
 /// Reads the vault in again from its files.
 #[tauri::command]
 pub fn reload_vault(app: State<App>) -> Result<()> {
-    app.lock().reload()?;
-    app.syncer.dirty();
-    Ok(())
+    app.lock().reload()
 }
 
 /// Reloads if the files were changed behind the app's back (in Obsidian, say). Whether anything was reloaded.
@@ -1156,8 +939,6 @@ pub fn check_vault_changes(app: State<App>) -> Result<bool> {
         return Ok(false);
     }
     core.reload()?;
-    // What was edited elsewhere is part of the vault now, and goes to GitHub like anything else.
-    app.syncer.dirty();
     Ok(true)
 }
 

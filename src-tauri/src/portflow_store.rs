@@ -3,7 +3,7 @@
 //! feedback. The sync (`portflow_sync.rs`) fetches; this applies what it fetched, and answers the screens.
 //!
 //! Applying is idempotent: what is stored is a function of what Portflow said, so a round that finds nothing new
-//! changes no row and writes no file (and so gives the GitHub sync nothing to push).
+//! changes no row and writes no file (and so gives the cloud storage nothing to upload).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 

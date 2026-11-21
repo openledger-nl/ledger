@@ -1,5 +1,5 @@
 //! The Trello sync's own files, kept apart from the vault's general settings. Both sit in the vault's `.ledger/`
-//! folder, which the vault's `.gitignore` lists and the GitHub sync never looks at, so neither is ever uploaded:
+//! folder, for this machine only:
 //!
 //! ```text
 //! .ledger/trello.json        which Trello person to sync for, and which board each project is linked to
@@ -75,7 +75,6 @@ pub fn update_settings(root: &Path, change: impl FnOnce(&mut TrelloSettings)) ->
     let mut settings = read_settings(root);
     change(&mut settings);
     write_file(&settings_file(root), serde_json::to_string_pretty(&settings).unwrap_or_default())?;
-    settings::ensure_gitignore(root)?;
     Ok(settings)
 }
 
@@ -147,8 +146,7 @@ pub fn read_state(root: &Path) -> SyncState {
 }
 
 pub fn write_state(root: &Path, state: &SyncState) -> Result<()> {
-    write_file(&state_file(root), serde_json::to_string(state).unwrap_or_default())?;
-    settings::ensure_gitignore(root)
+    write_file(&state_file(root), serde_json::to_string(state).unwrap_or_default())
 }
 
 pub fn update_state(root: &Path, change: impl FnOnce(&mut SyncState)) -> Result<()> {

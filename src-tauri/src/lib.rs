@@ -11,15 +11,12 @@ mod daily;
 mod deliverable_facts;
 mod deliverables;
 mod devupdates;
-mod encrypted_remote;
 mod error;
 mod feedback;
 mod frontmatter;
-mod github;
 mod history;
 mod ids;
 mod images;
-mod keystore;
 mod marker;
 mod links;
 mod markdown;
@@ -37,8 +34,6 @@ mod semesters;
 mod settings;
 mod state;
 mod stories;
-mod sync;
-mod syncer;
 mod templates;
 mod threads;
 mod updates;
@@ -93,8 +88,6 @@ mod tests_history;
 #[cfg(test)]
 mod tests_screenshot;
 #[cfg(test)]
-mod tests_sync;
-#[cfg(test)]
 mod tests_updates;
 #[cfg(test)]
 mod tests_vault;
@@ -105,8 +98,6 @@ mod tests_vaults;
 use std::sync::{Arc, Mutex};
 
 use tauri::{Emitter, Manager};
-
-use crate::syncer::Event;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Keeps the main window on Ledger itself: a navigation away from the app (a file dropped where nothing caught it, a link
@@ -170,25 +161,11 @@ pub fn run() {
             );
             applog::info("app", format!("Ledger {} started on {} {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH));
             let core = state::Core::open(config_dir.clone(), app.path().document_dir().ok())?;
-            let sync = core.sync.clone();
             let core = Arc::new(Mutex::new(core));
             let trello_core = core.clone(); // for the Trello sync (feat/trello-sync), started below
             let portflow_core = core.clone(); // for Portflow (feat/portflow-integration), started below
 
-            let handle = app.handle().clone();
-            let syncer = syncer::spawn(
-                core.clone(),
-                Arc::new(move |event| {
-                    let _ = match event {
-                        Event::Status(status) => handle.emit("sync-status", status),
-                        Event::VaultChanged => handle.emit("vault-changed", ()),
-                    };
-                }),
-            );
-            // If .env is filled in, this also starts with a sync.
-            syncer.reconfigure(sync.as_ref());
-
-            app.manage(state::App::new(core, syncer, screenshot::Screenshots::new()));
+            app.manage(state::App::new(core, screenshot::Screenshots::new()));
             trello::start_app(app.handle(), trello_core); // feat/trello-sync: its own worker, needs the App state above
             portflow::start_app(app.handle(), portflow_core); // feat/portflow-integration: runs only while switched on
             // Looks for new releases now and then (release builds only); it asks the syncs above whether they are busy.
@@ -310,18 +287,6 @@ pub fn run() {
             commands::rename_column,
             commands::delete_column,
             commands::get_settings,
-            commands::sync_status,
-            commands::sync_overview,
-            commands::sync_commits,
-            commands::save_sync_settings,
-            commands::disconnect_sync,
-            commands::test_sync,
-            commands::sync_now,
-            commands::encryption_status,
-            commands::set_encryption_enabled,
-            commands::generate_encryption_key,
-            commands::import_encryption_key,
-            commands::export_recovery_key,
             applog::about_info,
             applog::log_write,
             applog::log_read,

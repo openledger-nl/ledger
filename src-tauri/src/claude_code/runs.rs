@@ -26,7 +26,7 @@ use super::render::{self, ResultInfo, Step};
 use super::runner::{self, Exit, Process, Runner, SpawnSpec};
 use super::versions::{Baseline, Change};
 use crate::error::{Error, Result};
-use crate::{deliverables, ids, settings};
+use crate::{deliverables, ids};
 
 /// How many runs may be going at once.
 pub const MAX_CONCURRENT: usize = 3;
@@ -326,7 +326,6 @@ impl Runs {
             return Err(restarting());
         }
         let program = cli::resolve(&ctx.settings.cli_path, search)?;
-        let _ = settings::ensure_gitignore(&ctx.root);
         let guard = if ctx.settings.confine { Some(write_guard(&ctx)?) } else { None };
         let spec = SpawnSpec {
             env: child_env(&program),

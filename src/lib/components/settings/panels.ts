@@ -14,8 +14,6 @@ import AboutSettings from './AboutSettings.svelte';
 import CaptureSettings from './CaptureSettings.svelte';
 import ClaudeCodeSettings from './ClaudeCodeSettings.svelte';
 import DashboardSettings from './DashboardSettings.svelte';
-import EncryptionSettings from './EncryptionSettings.svelte';
-import GitHubSettings from './GitHubSettings.svelte';
 import LogSettings from './LogSettings.svelte';
 import OrderSettings from './OrderSettings.svelte';
 import PortflowSettings from './PortflowSettings.svelte';
@@ -62,8 +60,6 @@ export const panels: Panel[] = [
 	{ id: 'sidebar', group: 'visual', title: 'Sidebar', keywords: 'sidebar hide fold collapse rail icons narrow half screen window resize minimise minimize', component: SidebarFoldSettings },
 	{ id: 'order', group: 'visual', title: 'Order', keywords: 'sort newest oldest first lists posts threads feedback versions', component: OrderSettings },
 	{ id: 'vault', group: 'sync', title: 'Vault', keywords: 'folder location path obsidian markdown reload disk files switch open another vault picker move cloud onedrive google drive dropbox icloud nextcloud backup', component: VaultSettings },
-	{ id: 'github', group: 'sync', title: 'Sync to GitHub', keywords: 'repository repo branch access token private push pull status sync now', component: GitHubSettings },
-	{ id: 'encryption', group: 'sync', title: 'Encryption', keywords: 'encrypt key recovery aes secret import export generate', component: EncryptionSettings },
 	{ id: 'portflow', group: 'sync', title: 'Portflow', keywords: 'portflow fontys portfolio canvas drieam feedback coach teacher learning outcomes evidence collection semester sign in', component: PortflowSettings },
 	{ id: 'trello', group: 'sync', title: 'Sync with Trello', keywords: 'trello cards board tasks stories api key token person', component: TrelloSettings },
 	{ id: 'shortcuts', group: 'tools', title: 'Keyboard shortcuts', keywords: 'keyboard shortcut shortcuts hotkey hotkeys keys bindings command palette ctrl p commands', component: ShortcutSettings },

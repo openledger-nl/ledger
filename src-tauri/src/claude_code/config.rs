@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
-use crate::settings::{self, LEDGER_DIR};
+use crate::settings::LEDGER_DIR;
 
 pub const SETTINGS_FILE: &str = "claude-code.json";
 pub const GUARD_FILE: &str = "claude-guard.json";
@@ -169,6 +169,5 @@ pub fn save(root: &Path, settings: &ClaudeSettings) -> Result<()> {
         fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
     }
     let text = serde_json::to_string_pretty(&settings.to_json()).unwrap_or_default();
-    fs::write(&file, text).map_err(|e| Error::io(&file, e))?;
-    settings::ensure_gitignore(root)
+    fs::write(&file, text).map_err(|e| Error::io(&file, e))
 }

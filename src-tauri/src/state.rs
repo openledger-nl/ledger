@@ -1,4 +1,4 @@
-//! The running app: the in-memory database, the vault it is mirrored to, and the sync worker.
+//! The running app: the in-memory database and the vault it is mirrored to.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,26 +7,20 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use rusqlite::Connection;
 
 use crate::error::{Error, Result};
-use crate::keystore::{EnvFileKeyStore, KeyStore};
 use crate::screenshot::Screenshots;
-use crate::settings::{self, SyncConfig};
-use crate::syncer::Syncer;
+use crate::settings;
 use crate::vault::Vault;
 
 pub struct Core {
     /// The working copy every read is answered from.
     pub conn: Connection,
     pub vault: Vault,
-    /// From the vault's `.env`; `None` when any of repo, branch or token is missing.
-    pub sync: Option<SyncConfig>,
     pub config_dir: PathBuf,
     /// A vault is open. Not before the first one is chosen: then the app shows the vault picker, `vault` points at a
     /// folder that doesn't exist and every change is refused.
     pub open: bool,
     /// The vault location came from `LEDGER_VAULT`, so Settings can't change it.
     pub vault_from_env: bool,
-    /// Where the sync encryption key is kept: the vault's `.ledger/.env`, unless a test puts another here.
-    pub keys: Arc<dyn KeyStore>,
 }
 
 impl Core {
@@ -52,15 +46,14 @@ impl Core {
     pub fn open_at(root: PathBuf, config_dir: PathBuf, vault_from_env: bool) -> Result<Core> {
         let mut vault = Vault::open(root)?;
         let conn = vault.load()?;
-        let sync = settings::read_env(vault.root()).complete();
-        Ok(Core { conn, vault, sync, config_dir, open: true, vault_from_env, keys: Arc::new(EnvFileKeyStore) })
+        Ok(Core { conn, vault, config_dir, open: true, vault_from_env })
     }
 
     /// The app before its first vault: an empty database, and nothing on disk until one is created or opened.
     pub fn without_vault(config_dir: PathBuf) -> Result<Core> {
         let vault = Vault::none(config_dir.join("no-vault"));
         let conn = crate::db::open_in_memory()?;
-        Ok(Core { conn, vault, sync: None, config_dir, open: false, vault_from_env: false, keys: Arc::new(EnvFileKeyStore) })
+        Ok(Core { conn, vault, config_dir, open: false, vault_from_env: false })
     }
 
     /// Reads everything in again from the files.
@@ -69,7 +62,6 @@ impl Core {
             return Ok(());
         }
         self.conn = self.vault.load()?;
-        self.sync = settings::read_env(self.vault.root()).complete();
         Ok(())
     }
 
@@ -99,7 +91,6 @@ impl Core {
         let conn = vault.load()?;
         settings::remember_vault(&self.config_dir, path)?;
 
-        self.sync = settings::read_env(vault.root()).complete();
         self.vault = vault;
         self.conn = conn;
         self.open = true;
@@ -154,9 +145,6 @@ fn copy_dir(from: &Path, to: &Path) -> Result<()> {
         let target = to.join(entry.file_name());
         let kind = entry.file_type().map_err(|e| Error::io(&entry.path(), e))?;
         if kind.is_dir() {
-            if entry.file_name() == ".git" {
-                continue;
-            }
             fs::create_dir_all(&target).map_err(|e| Error::io(&target, e))?;
             copy_dir(&entry.path(), &target)?;
         } else if kind.is_file() {
@@ -169,13 +157,12 @@ fn copy_dir(from: &Path, to: &Path) -> Result<()> {
 /// What the Tauri commands hold on to.
 pub struct App {
     core: Arc<Mutex<Core>>,
-    pub syncer: Syncer,
     pub screenshots: Screenshots,
 }
 
 impl App {
-    pub fn new(core: Arc<Mutex<Core>>, syncer: Syncer, screenshots: Screenshots) -> App {
-        App { core, syncer, screenshots }
+    pub fn new(core: Arc<Mutex<Core>>, screenshots: Screenshots) -> App {
+        App { core, screenshots }
     }
 
     pub fn lock(&self) -> MutexGuard<'_, Core> {
@@ -188,7 +175,7 @@ impl App {
         f(&core.conn, core.vault.root())
     }
 
-    /// Changes memory, writes the difference through to the vault's files, and lets the sync worker know.
+    /// Changes memory, writes the difference through to the vault's files, and lets the Trello sync know.
     pub fn mutate<T>(&self, f: impl FnOnce(&Connection, &Path) -> Result<T>) -> Result<T> {
         let out = {
             let mut guard = self.lock();
@@ -201,9 +188,8 @@ impl App {
             out
         };
         // Always, not only when `persist` wrote something: some changes are made to files directly (a published
-        // image, an upload), which the write-through doesn't count.
-        self.syncer.dirty();
-        // The Trello sync (if it is set up) looks at what changed after a pause, like the GitHub sync does.
+        // image, an upload), which the write-through doesn't count. The Trello sync (if it is set up) looks at what
+        // changed after a pause.
         crate::trello::notify_vault_changed();
         Ok(out)
     }

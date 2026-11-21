@@ -16,7 +16,6 @@
 	import { deliverableTarget, deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
-	import { sync, syncFooter } from '$lib/ui.svelte';
 	import { layout, toggleSidebar } from '$lib/layout.svelte';
 	import { portflow, portflowFooter } from '$lib/portflow.svelte';
 	import { openVaultPicker } from '$lib/vaults.svelte';
@@ -105,10 +104,6 @@
 		return () => clearInterval(timer);
 	});
 
-	const footer = $derived.by(() => {
-		void tick;
-		return syncFooter(sync.status);
-	});
 	const pf = $derived.by(() => {
 		void tick;
 		return portflowFooter(portflow.status);
@@ -201,13 +196,9 @@
 
 	<div class="spacer"></div>
 
-	<!-- The bottom left: how the syncs stand, one line each (the details are in Settings and in the tooltip), and the
-	     button that switches vaults. -->
+	<!-- The bottom left: how the Portflow sync stands (the details are in Settings and in the tooltip), and the button
+	     that switches vaults. -->
 	<div class="sync-box">
-		<a class="sync-line" href="/settings/sync" title={[footer.where, footer.encryption, footer.error].filter(Boolean).join(' | ')}>
-			<span class="dot {footer.dot}"></span><span class="sync-title">{footer.title}</span>
-			{#if footer.when}<span class="sync-when">{footer.when}</span>{/if}
-		</a>
 		{#if portflow.enabled}
 			<a class="sync-line" href="/settings/sync#portflow" title={[pf.canvas, pf.error].filter(Boolean).join(' | ')}>
 				<span class="dot {pf.dot}"></span><span class="sync-title">{pf.title}</span>

@@ -26,7 +26,6 @@ import type {
 	Column,
 	Deliverable,
 	DeliverableSummary,
-	EncryptionStatus,
 	Feedback,
 	LinkTarget,
 	FeedbackFrom,
@@ -52,8 +51,6 @@ import type {
 	Story,
 	StoryDraft,
 	StoryUpdate,
-	SyncOverview,
-	SyncStatus,
 	Task,
 	TaskUpdate,
 	Template,
@@ -307,19 +304,8 @@ export const api = {
 	renameColumn: (project: string, id: string, name: string) => call<Column[]>('rename_column', { project, id, name }),
 	deleteColumn: (project: string, id: string) => call<Column[]>('delete_column', { project, id }),
 
-	// the vault and GitHub sync
+	// the vault
 	getSettings: () => call<Settings>('get_settings'),
-	syncStatus: () => call<SyncStatus>('sync_status'),
-	/** Null while sync is off or hasn't run yet. */
-	syncOverview: () => call<SyncOverview | null>('sync_overview'),
-	/** How many commits the synced branch holds, asked of GitHub: null while sync is off, an error while it can't be reached. */
-	syncCommits: () => call<number | null>('sync_commits', undefined, false),
-	/** A blank token keeps the saved one. */
-	saveSyncSettings: (repo: string, branch: string, token: string | null) =>
-		call<Settings>('save_sync_settings', { repo, branch, token }),
-	disconnectSync: () => call<Settings>('disconnect_sync'),
-	testSync: (repo: string, branch: string, token: string | null) => call<string>('test_sync', { repo, branch, token }),
-	syncNow: () => call<void>('sync_now'),
 	setVaultPath: (path: string, copy: boolean) => call<Settings>('set_vault_path', { path, copy }),
 	// the vault picker
 	listVaults: () => call<Vaults>('list_vaults'),
@@ -336,17 +322,6 @@ export const api = {
 	restartOnboarding: () => call<OnboardingStatus>('restart_onboarding'),
 	reloadVault: () => call<void>('reload_vault'),
 	checkVaultChanges: () => call<boolean>('check_vault_changes'),
-
-	// encrypting what is synced (the key sits in the vault's .ledger/.env, which is never synced)
-	encryptionStatus: () => call<EncryptionStatus>('encryption_status'),
-	/** Turning it on needs a key. It also starts a sync, which re-uploads every file encrypted. */
-	setEncryptionEnabled: (enabled: boolean) => call<Settings>('set_encryption_enabled', { enabled }),
-	/** With a key already on this machine, `replace` must be true. */
-	generateEncryptionKey: (replace: boolean) => call<Settings>('generate_encryption_key', { replace }),
-	/** A recovery string, or the bare key as hex or base64. With a key already on this machine, `replace` must be true. */
-	importEncryptionKey: (key: string, replace: boolean) => call<Settings>('import_encryption_key', { key, replace }),
-	/** The one call that returns the key (as its recovery string). Only on an explicit request. */
-	exportRecoveryKey: () => call<string>('export_recovery_key'),
 
 	// screenshots
 	saveScreenshotHotkey: (hotkey: string) => call<Settings>('save_screenshot_hotkey', { hotkey }),

@@ -39,7 +39,7 @@ pub trait Ledger: Send + Sync {
     fn root(&self) -> PathBuf;
 }
 
-/// The running app's vault. `changed` tells the GitHub sync there is something to push.
+/// The running app's vault. `changed` tells the window that the vault changed.
 /// `vault` is the vault the round started in: when the app switches to another one halfway, the rest of the round is
 /// refused, so what was read from the one vault's Portflow never lands in the other.
 pub struct CoreLedger {

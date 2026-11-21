@@ -1,19 +1,14 @@
 //! Sealing, opening and keeping keys. Keys go into memory, or into the `.env` of a temporary vault.
 
-use std::fs;
 use std::io::Write;
-use std::path::Path;
 
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use flate2::Compression;
 use flate2::write::DeflateEncoder;
-use tempfile::tempdir;
 
 use crate::crypto::{self, CryptoError, Key, KeyError};
-use crate::keystore::{self, EnvFileKeyStore, KeyStore, MemoryKeyStore};
-use crate::settings;
-use crate::sync::MAX_FILE_BYTES;
+use crate::crypto::MAX_FILE_BYTES;
 
 fn key(byte: u8) -> Key {
     Key::from_bytes([byte; 32])
@@ -149,28 +144,6 @@ fn a_decompression_bomb_is_stopped_and_so_is_an_oversized_file() {
     assert_eq!(crypto::encrypt(&key(9), "huge.bin", &too_big), Err(CryptoError::TooLarge));
 }
 
-#[test]
-fn the_stored_form_is_text_and_only_text_that_starts_like_it_counts_as_sealed() {
-    let sealed = crypto::encrypt(&key(10), "a.md", b"hello").unwrap();
-    let stored = crypto::armor(&sealed);
-    assert!(std::str::from_utf8(&stored).is_ok(), "stored as text, so GitHub takes it inside the tree request");
-    assert!(crypto::is_encrypted(&stored));
-    assert_eq!(crypto::unarmor(&stored).unwrap(), sealed);
-    assert_eq!(crypto::unarmor(&[stored.clone(), b"\n".to_vec()].concat()).unwrap(), sealed, "a trailing newline is tolerated");
-
-    for k in 1..=40 {
-        assert!(crypto::is_encrypted(&crypto::armor(&crypto::encrypt(&key(k), "x", b"y").unwrap())), "whatever the key");
-    }
-    for plain in [&b""[..], b"# a note", b"iUx", b"----\ntitle: x\n---\n", &[0x89, b'L', b'D', b'G'], &[0u8, 1, 2]] {
-        assert!(!crypto::is_encrypted(plain));
-        assert_eq!(crypto::unarmor(plain), Err(CryptoError::NotEncrypted));
-    }
-    let mut damaged = stored.clone();
-    damaged.truncate(damaged.len() - 3);
-    damaged.extend_from_slice(b"!!!");
-    assert_eq!(crypto::unarmor(&damaged), Err(CryptoError::Corrupt));
-}
-
 // ---- keys as text -----------------------------------------------------------------------------------
 
 #[test]
@@ -225,207 +198,4 @@ fn a_key_never_shows_in_debug_output() {
     let shown = format!("{key:?} {:?}", Some(&key));
     assert!(!shown.contains(&hex) && !shown.contains(&recovery[13..]) && !shown.contains("92, 92, 92"), "{shown}");
     assert!(shown.contains("Key(id"), "{shown}");
-}
-
-// ---- where the key lives ----------------------------------------------------------------------------
-
-fn read(root: &Path, rel: &str) -> String {
-    fs::read_to_string(root.join(rel)).unwrap_or_default()
-}
-
-/// Every file under `root`, with its path.
-fn all_files(root: &Path) -> Vec<(String, Vec<u8>)> {
-    fn walk(dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
-        for entry in fs::read_dir(dir).unwrap().flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                walk(&path, out);
-            } else {
-                out.push((path.display().to_string(), fs::read(&path).unwrap()));
-            }
-        }
-    }
-    let mut out = vec![];
-    walk(root, &mut out);
-    out
-}
-
-#[test]
-fn the_key_is_one_line_of_the_env_file_and_the_other_lines_are_left_alone() {
-    let dir = tempdir().unwrap();
-    let root = dir.path();
-    let keys = EnvFileKeyStore;
-    assert!(keys.load(root).unwrap().is_none(), "no file, no key");
-
-    // A token and a line of someone's own are already there.
-    fs::create_dir_all(root.join(".ledger")).unwrap();
-    fs::write(root.join(".ledger/.env"), "# mine\nOTHER=keep me\nGITHUB_TOKEN=tok\n").unwrap();
-    assert!(keys.load(root).unwrap().is_none(), "a token is not a key");
-
-    keys.save(root, &key(7)).unwrap();
-    assert_eq!(keys.load(root).unwrap().unwrap().to_recovery().to_string(), key(7).to_recovery().to_string());
-    let text = read(root, ".ledger/.env");
-    assert!(text.contains("# mine") && text.contains("OTHER=keep me") && text.contains("GITHUB_TOKEN=tok"), "{text}");
-
-    // Saving again replaces the one line; saving the token, or turning sync off, leaves the key.
-    keys.save(root, &key(8)).unwrap();
-    assert_eq!(read(root, ".ledger/.env").matches("LEDGER_ENCRYPTION_KEY").count(), 1);
-    settings::write_env(root, &settings::SyncEnv { repo: "me/notes".into(), branch: "main".into(), token: "new".into() }).unwrap();
-    settings::write_env(root, &settings::SyncEnv { repo: "me/notes".into(), branch: "main".into(), token: String::new() }).unwrap();
-    assert_eq!(keys.load(root).unwrap().unwrap().id(), key(8).id());
-    assert_eq!(settings::read_env(root).token, "");
-    assert!(read(root, ".ledger/.env").contains("OTHER=keep me"));
-}
-
-#[test]
-fn a_damaged_key_line_is_reported_not_used() {
-    let dir = tempdir().unwrap();
-    let root = dir.path();
-    let mut recovery = key(9).to_recovery().to_string();
-    let last = recovery.pop().unwrap();
-    recovery.push(if last == 'A' { 'B' } else { 'A' });
-    fs::create_dir_all(root.join(".ledger")).unwrap();
-    fs::write(root.join(".ledger/.env"), format!("LEDGER_ENCRYPTION_KEY={recovery}\n")).unwrap();
-
-    let error = EnvFileKeyStore.load(root).unwrap_err().to_string();
-    assert!(error.contains("damaged") && error.contains("recovery key"), "{error}");
-    let status = keystore::status(root, &EnvFileKeyStore);
-    assert!(!status.has_key && status.problem.is_some(), "{status:?}");
-    // A damaged key is as good as none: it can be replaced without asking for more.
-    keystore::generate(root, &EnvFileKeyStore, false).unwrap();
-    assert!(keystore::status(root, &EnvFileKeyStore).has_key);
-}
-
-#[cfg(unix)]
-#[test]
-fn the_env_file_is_for_its_owner_alone() {
-    use std::os::unix::fs::PermissionsExt;
-    let dir = tempdir().unwrap();
-    EnvFileKeyStore.save(dir.path(), &key(1)).unwrap();
-    let mode = fs::metadata(dir.path().join(".ledger/.env")).unwrap().permissions().mode();
-    assert_eq!(mode & 0o777, 0o600, "{mode:o}");
-}
-
-#[test]
-fn a_key_is_made_kept_exported_and_written_nowhere_but_the_env_file() {
-    let dir = tempdir().unwrap();
-    let (root, keys) = (dir.path(), EnvFileKeyStore);
-
-    let before = keystore::status(root, &keys);
-    assert!((before.enabled, before.has_key, before.key_id.clone()) == (false, false, None), "{before:?}");
-    assert!(keystore::export(root, &keys).is_err(), "nothing to export yet");
-
-    keystore::generate(root, &keys, false).unwrap();
-    let status = keystore::status(root, &keys);
-    assert!(status.has_key && !status.enabled && status.problem.is_none());
-    let recovery = keystore::export(root, &keys).unwrap();
-    let key = Key::parse(&recovery).unwrap();
-    assert_eq!(status.key_id.as_deref(), Some(key.id_hex().as_str()));
-
-    // The key is in `.ledger/.env`, which is gitignored and never synced, and in no other file: not settings.json,
-    // not anything that could be uploaded.
-    let hex: String = key.as_bytes().iter().map(|b| format!("{b:02x}")).collect();
-    let forms = [recovery.to_string(), recovery[13..].to_string(), hex, STANDARD.encode(key.as_bytes()), URL_SAFE_NO_PAD.encode(key.as_bytes())];
-    settings::write_env(root, &settings::SyncEnv { repo: "me/notes".into(), branch: "main".into(), token: "t".into() }).unwrap();
-    keystore::set_enabled(root, &keys, true).unwrap();
-    for (path, bytes) in all_files(root) {
-        let text = String::from_utf8_lossy(&bytes);
-        if path.replace('\\', "/").ends_with("/.ledger/.env") {
-            assert!(text.contains(forms[0].as_str()), "the key is kept in {path}");
-        } else {
-            for form in &forms {
-                assert!(!text.contains(form.as_str()), "the key is in {path}");
-            }
-        }
-    }
-    let settings_json = read(root, ".ledger/settings.json");
-    assert!(settings_json.contains("\"enabled\": true"), "settings.json says whether, and nothing more: {settings_json}");
-    assert!(crate::sync::Ignore::load(root).is_ignored(".ledger/.env", false), "and the sync never picks it up");
-
-    // What the screen gets to see doesn't contain it either.
-    let json = serde_json::to_string(&keystore::status(root, &keys)).unwrap();
-    assert!(!forms.iter().any(|f| json.contains(f.as_str())), "{json}");
-}
-
-#[test]
-fn replacing_a_key_has_to_be_asked_for() {
-    let dir = tempdir().unwrap();
-    let (root, keys) = (dir.path(), MemoryKeyStore::default());
-    keystore::generate(root, &keys, false).unwrap();
-    let first = keystore::export(root, &keys).unwrap().to_string();
-
-    assert!(keystore::generate(root, &keys, false).is_err());
-    assert!(keystore::import(root, &keys, &key(3).to_recovery(), false).is_err());
-    assert_eq!(keystore::export(root, &keys).unwrap().to_string(), first, "refused, so unchanged");
-
-    keystore::import(root, &keys, &key(3).to_recovery(), true).unwrap();
-    assert_eq!(keystore::export(root, &keys).unwrap().to_string(), key(3).to_recovery().to_string());
-    assert_eq!(keystore::status(root, &keys).key_id, Some(key(3).id_hex()));
-
-    keystore::generate(root, &keys, true).unwrap();
-    assert_ne!(keystore::export(root, &keys).unwrap().to_string(), key(3).to_recovery().to_string(), "a new key replaced it");
-}
-
-#[test]
-fn a_key_moves_to_another_machine_as_its_recovery_string() {
-    let (here, there) = (tempdir().unwrap(), tempdir().unwrap());
-    let (mine, theirs) = (MemoryKeyStore::default(), MemoryKeyStore::default());
-    keystore::generate(here.path(), &mine, false).unwrap();
-
-    assert!(keystore::import(there.path(), &theirs, "nonsense", false).is_err());
-    assert!(!keystore::status(there.path(), &theirs).has_key, "a refused import leaves nothing behind");
-
-    keystore::import(there.path(), &theirs, &keystore::export(here.path(), &mine).unwrap(), false).unwrap();
-    assert_eq!(keystore::status(there.path(), &theirs).key_id, keystore::status(here.path(), &mine).key_id);
-}
-
-#[test]
-fn encryption_cannot_be_turned_on_without_a_key_and_a_sync_without_one_stops() {
-    let dir = tempdir().unwrap();
-    let (root, keys) = (dir.path(), MemoryKeyStore::default());
-
-    assert!(keystore::set_enabled(root, &keys, true).is_err());
-    assert!(!keystore::status(root, &keys).enabled);
-    assert!(keystore::key_for_sync(root, &keys).unwrap().is_none(), "off: sync as before");
-
-    keystore::generate(root, &keys, false).unwrap();
-    keystore::set_enabled(root, &keys, true).unwrap();
-    assert!(keystore::key_for_sync(root, &keys).unwrap().is_some());
-
-    // A machine whose `.env` has lost the key, or a vault opened where the key was never imported.
-    let elsewhere = MemoryKeyStore::default();
-    let error = keystore::key_for_sync(root, &elsewhere).unwrap_err().to_string();
-    assert!(error.contains("no key") && error.contains("Import"), "{error}");
-
-    keystore::set_enabled(root, &keys, false).unwrap();
-    assert!(keystore::key_for_sync(root, &elsewhere).unwrap().is_none(), "turning it off is always possible");
-}
-
-#[test]
-fn the_screen_is_told_when_a_branch_cannot_become_an_encrypted_one() {
-    let dir = tempdir().unwrap();
-    let (root, keys) = (dir.path(), MemoryKeyStore::default());
-    let target = |branch: &str| settings::write_env(root, &settings::SyncEnv { repo: "me/notes".into(), branch: branch.into(), token: "t".into() }).unwrap();
-    let state = |extra: &str| {
-        fs::create_dir_all(root.join(".ledger")).unwrap();
-        let sha = "0".repeat(40);
-        fs::write(root.join(".ledger/sync-state.json"), format!(r#"{{"repo":"me/notes","branch":"main","head":"c0","files":{{"a.md":"{sha}"}}{extra}}}"#)).unwrap();
-    };
-
-    target("main");
-    assert!(!keystore::status(root, &keys).needs_fresh_target, "nothing synced yet");
-
-    // This vault has synced main without encryption: main can't become an encrypted branch...
-    state("");
-    assert!(keystore::status(root, &keys).needs_fresh_target);
-    // ...but another branch, or another repository, is a fresh start.
-    target("sealed");
-    assert!(!keystore::status(root, &keys).needs_fresh_target);
-    settings::write_env(root, &settings::SyncEnv { repo: "me/elsewhere".into(), branch: "main".into(), token: "t".into() }).unwrap();
-    assert!(!keystore::status(root, &keys).needs_fresh_target);
-
-    // A branch that was encrypted from the start is fine as it is.
-    target("main");
-    state(r#","encrypted":7"#);
-    assert!(!keystore::status(root, &keys).needs_fresh_target);
 }

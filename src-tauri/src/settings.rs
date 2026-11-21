@@ -3,13 +3,12 @@
 //! The vault's location is the one thing that can't live in the vault, so it is kept in a small `config.json` in
 //! the app's config folder, with the vaults opened before (for the vault picker) and the other choices that belong to
 //! this machine's copy of Ledger rather than to a vault: whether it looks for updates by itself. Everything else belongs to the vault and sits in
-//! `<vault>/.ledger/`, which the vault's `.gitignore` lists, so none of it is ever pushed to GitHub:
+//! `<vault>/.ledger/`:
 //!
 //! ```text
-//! .ledger/settings.json     the repository, the branch, the screenshot hotkey and tool, whether sync encrypts
-//! .ledger/.env              the GitHub access token and the vault's encryption key (the secrets, kept in a file)
-//! .ledger/sync-state.json   the sync's own bookkeeping
-//! .ledger/conflicts/        versions set aside when a sync resolved a conflict
+//! .ledger/settings.json     the screenshot hotkey and tool, the folded sidebar
+//! .ledger/.env              the secrets (the Trello key and token, the Portflow session)
+//! .ledger/conflicts/        versions set aside when a sync with Trello or Portflow resolved a conflict
 //! ```
 
 use std::fs;
@@ -21,15 +20,6 @@ use crate::error::{Error, Result};
 use crate::onboarding::OnboardingConfig;
 
 pub const LEDGER_DIR: &str = ".ledger";
-const KEY_TOKEN: &str = "GITHUB_TOKEN";
-
-const DEFAULT_GITIGNORE: &str = "\
-# Local-only: settings, the access token and sync bookkeeping never leave this machine.
-.ledger/
-.env
-.obsidian/
-";
-
 // ---- the app's own config ---------------------------------------------------------------------------
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -131,27 +121,10 @@ pub fn forget_vault(config_dir: &Path, path: &str) -> Result<()> {
 // ---- the vault's own settings -----------------------------------------------------------------------
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct GithubSettings {
-    pub repo: String,
-    pub branch: String,
-}
-
-/// Whether what goes to GitHub is encrypted. The key itself is not here: it is a secret, so it sits in `.ledger/.env`
-/// with the access token (see `keystore.rs`).
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct EncryptionSettings {
-    pub enabled: bool,
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct VaultSettings {
-    pub github: GithubSettings,
     pub screenshot_hotkey: Option<String>,
     pub screenshot_tool: ScreenshotTool,
-    pub encryption: EncryptionSettings,
     pub layout: LayoutSettings,
 }
 
@@ -202,47 +175,10 @@ pub fn update_settings(root: &Path, change: impl FnOnce(&mut VaultSettings)) -> 
     if let Some(dir) = file.parent() {
         fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
     }
-    fs::write(&file, serde_json::to_string_pretty(&settings).unwrap_or_default()).map_err(|e| Error::io(&file, e))?;
-    ensure_gitignore(root)
+    fs::write(&file, serde_json::to_string_pretty(&settings).unwrap_or_default()).map_err(|e| Error::io(&file, e))
 }
 
-// ---- GitHub sync: settings plus the secret ----------------------------------------------------------
-
-/// The repository and branch from `settings.json` and the token from `.ledger/.env`, filled in or not.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SyncEnv {
-    pub repo: String,
-    pub branch: String,
-    pub token: String,
-}
-
-/// Sync is on when all three are filled in.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SyncConfig {
-    pub repo: String,
-    pub branch: String,
-    pub token: String,
-}
-
-impl SyncEnv {
-    pub fn complete(&self) -> Option<SyncConfig> {
-        if self.repo.is_empty() || self.branch.is_empty() || self.token.is_empty() {
-            return None;
-        }
-        Some(SyncConfig { repo: self.repo.clone(), branch: self.branch.clone(), token: self.token.clone() })
-    }
-}
-
-pub fn read_env(root: &Path) -> SyncEnv {
-    let github = read_settings(root).github;
-    SyncEnv { repo: github.repo, branch: github.branch, token: read_secret(root, KEY_TOKEN).unwrap_or_default() }
-}
-
-/// The repository and branch go to `settings.json`, the token to `.env`; other lines in `.env` stay as they were.
-pub fn write_env(root: &Path, env: &SyncEnv) -> Result<()> {
-    update_settings(root, |s| s.github = GithubSettings { repo: env.repo.clone(), branch: env.branch.clone() })?;
-    write_secret(root, KEY_TOKEN, &env.token)
-}
+// ---- the secrets ---------------------------------------------------------------------------------------
 
 /// One value from `.ledger/.env`; the last line that sets it wins. `None` when the file or the line isn't there.
 pub fn read_secret(root: &Path, name: &str) -> Option<String> {
@@ -250,14 +186,14 @@ pub fn read_secret(root: &Path, name: &str) -> Option<String> {
     text.lines().filter_map(parse_line).filter(|(key, _)| *key == name).map(|(_, value)| value).last()
 }
 
-/// Sets one line in `.ledger/.env` and leaves every other line as it was. The file stays on this machine: it is
-/// gitignored and never synced, and where the system allows it only its owner can read it.
+/// Sets one line in `.ledger/.env` and leaves every other line as it was. Where the system allows it only its owner
+/// can read the file.
 pub fn write_secret(root: &Path, name: &str, value: &str) -> Result<()> {
     let file = secrets_path(root);
     let existing = fs::read_to_string(&file).unwrap_or_default();
     let mut lines: Vec<String> = existing.lines().map(str::to_string).collect();
     if lines.is_empty() {
-        lines.push("# Ledger's secrets: the GitHub access token and the vault's encryption key. This file stays on this machine: it is gitignored and never synced.".into());
+        lines.push("# Ledger's secrets for this vault, on this machine.".into());
     }
     let line = format!("{name}={}", quote(value));
     match lines.iter().position(|l| parse_line(l).is_some_and(|(k, _)| k == name)) {
@@ -270,7 +206,7 @@ pub fn write_secret(root: &Path, name: &str, value: &str) -> Result<()> {
     }
     fs::write(&file, lines.join("\n") + "\n").map_err(|e| Error::io(&file, e))?;
     restrict_to_owner(&file);
-    ensure_gitignore(root)
+    Ok(())
 }
 
 fn parse_line(line: &str) -> Option<(&str, String)> {
@@ -300,53 +236,3 @@ fn restrict_to_owner(file: &Path) {
 
 #[cfg(not(unix))]
 fn restrict_to_owner(_file: &Path) {}
-
-/// Makes sure the vault's `.gitignore` keeps `.ledger/` (settings, token, sync bookkeeping) and any stray `.env`
-/// out of GitHub.
-pub fn ensure_gitignore(root: &Path) -> Result<()> {
-    let file = root.join(".gitignore");
-    let Ok(existing) = fs::read_to_string(&file) else {
-        return fs::write(&file, DEFAULT_GITIGNORE).map_err(|e| Error::io(&file, e));
-    };
-
-    let has = |names: &[&str]| existing.lines().any(|l| names.contains(&l.trim()));
-    let mut missing = String::new();
-    if !has(&[".ledger/", ".ledger", "/.ledger/", "/.ledger"]) {
-        missing.push_str(".ledger/\n");
-    }
-    if !has(&[".env", "/.env"]) {
-        missing.push_str(".env\n");
-    }
-    if missing.is_empty() {
-        return Ok(());
-    }
-    let separator = if existing.is_empty() || existing.ends_with('\n') { "" } else { "\n" };
-    fs::write(&file, format!("{existing}{separator}{missing}")).map_err(|e| Error::io(&file, e))
-}
-
-/// `owner/name`, from either that or a github.com URL.
-pub fn normalize_repo(input: &str) -> Result<String> {
-    let mut s = input.trim();
-    for prefix in ["https://github.com/", "http://github.com/", "git@github.com:", "github.com/"] {
-        if let Some(rest) = s.strip_prefix(prefix) {
-            s = rest;
-            break;
-        }
-    }
-    let s = s.trim_end_matches('/');
-    let s = s.strip_suffix(".git").unwrap_or(s);
-
-    let valid = |part: &str| !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
-    match s.split_once('/') {
-        Some((owner, name)) if valid(owner) && valid(name) => Ok(format!("{owner}/{name}")),
-        _ => Err(Error::invalid("The repository must look like owner/name, or be a github.com URL")),
-    }
-}
-
-pub fn normalize_branch(input: &str) -> Result<String> {
-    let branch = input.trim().strip_prefix("refs/heads/").unwrap_or(input.trim());
-    if branch.is_empty() || branch.contains(char::is_whitespace) || branch.contains("..") || branch.starts_with('/') || branch.ends_with('/') {
-        return Err(Error::invalid("Enter the name of the branch to sync, for example main"));
-    }
-    Ok(branch.to_string())
-}

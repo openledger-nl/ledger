@@ -625,56 +625,7 @@ export interface SearchHit {
 	snippet: string;
 }
 
-// ---- settings, sync, screenshots --------------------------------------------------------------------
-
-export interface SyncStatus {
-	configured: boolean;
-	repo: string | null;
-	branch: string | null;
-	state: 'disabled' | 'idle' | 'syncing' | 'error';
-	/** Changes made here that have not been pushed yet. */
-	pending: boolean;
-	/** Whether syncs encrypt what they upload (the setting as it stood when the last sync started). */
-	encrypted: boolean;
-	lastSyncAt: string | null;
-	lastError: string | null;
-	summary: string | null;
-}
-
-/** What GitHub holds of the vault as of the last sync that finished, counted without asking GitHub. */
-export interface SyncOverview {
-	/** The commit both sides last agreed on. */
-	head: string | null;
-	files: number;
-	deliverables: number;
-	attachments: number;
-	/** Everything else: threads, posts, stories, templates, semesters … */
-	notes: number;
-	/** The key the files on GitHub are encrypted with (two hex digits), once they all are. */
-	key: string | null;
-}
-
-export interface SyncSettings {
-	repo: string;
-	branch: string;
-	/** The token itself never reaches the screen. */
-	hasToken: boolean;
-	tokenHint: string;
-	configured: boolean;
-}
-
-export interface EncryptionStatus {
-	/** Whether what is synced is encrypted. */
-	enabled: boolean;
-	/** The key lives in the vault's .ledger/.env; the screen only learns whether it is there. */
-	hasKey: boolean;
-	/** The key's one-byte label as two hex digits, to tell keys apart between machines. */
-	keyId: string | null;
-	/** Why the key can't be read, if it can't (a damaged line in .ledger/.env, an unreadable file). */
-	problem: string | null;
-	/** This vault already synced the configured repository and branch without encryption: that branch can't become an encrypted one. */
-	needsFreshTarget: boolean;
-}
+// ---- settings, screenshots ----------------------------------------------------------------------------
 
 /** What a folded sidebar becomes: an icon rail (the default) or nothing. */
 export type SidebarFold = 'rail' | 'hide';
@@ -712,13 +663,10 @@ export interface Settings {
 	vaultPath: string;
 	/** Fixed by the LEDGER_VAULT environment variable. */
 	vaultLocked: boolean;
+	/** Where this machine's settings for the vault are kept. */
 	settingsFile: string;
-	secretsFile: string;
 	version: string;
-	sync: SyncSettings;
-	status: SyncStatus;
 	screenshot: ScreenshotSettings;
-	encryption: EncryptionStatus;
 }
 
 /** The guide on the home page for a new client (see onboarding.rs). */

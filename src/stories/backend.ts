@@ -3,7 +3,7 @@
 // the opener, the dialog) to `answer` below through Tauri's own mock (`mockIPC`), so components that load their own data
 // show the sample vault from fixtures.ts. A command that isn't listed answers null, and says so in the console.
 
-import type { LayoutSettings, PortflowStatus, PortflowView, SyncStatus, UpdateView } from '$lib/types';
+import type { LayoutSettings, PortflowStatus, PortflowView, UpdateView } from '$lib/types';
 import * as fx from './fixtures';
 
 const portflowStatus: PortflowStatus = {
@@ -46,7 +46,6 @@ const updates: UpdateView = {
 	configFile: '/home/student/.config/nl.openledger.ledger/config.json'
 };
 
-const syncStatus: SyncStatus = fx.settings.status;
 const layout: LayoutSettings = { sidebarFold: 'rail' };
 
 /** What each command answers: a value, or a function of the call's arguments. */
@@ -122,11 +121,8 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	preview_dropped_image: () => fx.sketchBytes(),
 	check_vault_changes: false,
 
-	// settings, sync and the app
+	// settings and the app
 	get_settings: fx.settings,
-	sync_status: syncStatus,
-	sync_overview: { head: 'a1b2c3d', files: 120, deliverables: 4, attachments: 6, notes: 40, key: null },
-	sync_commits: 0,
 	layout_settings: layout,
 	onboarding_status: fx.onboarding,
 	set_onboarding_purpose: (a: Record<string, unknown>) => ({ ...fx.onboarding, purpose: a.purpose }),
@@ -134,10 +130,9 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	create_vault: fx.vaults,
 	open_vault: fx.vaults,
 	forget_vault: fx.vaults,
-	encryption_status: fx.settings.encryption,
 	update_status: updates,
 	log_read: [
-		{ at: '2026-11-16T09:12:00.000Z', level: 'info', source: 'sync', message: 'Synced with GitHub: up to date' },
+		{ at: '2026-11-16T09:12:00.000Z', level: 'info', source: 'vault', message: 'Reloaded changes made outside Ledger' },
 		{ at: '2026-11-16T09:10:00.000Z', level: 'info', source: 'portflow', message: 'Took 2 evidence items from Portflow' }
 	],
 	log_write: null,

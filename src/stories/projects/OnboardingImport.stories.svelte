@@ -7,5 +7,5 @@
 </script>
 
 <Story name="Default" asChild>
-	<OnboardingImport settings={fx.settings} projects={[]} semesters={[]} ondone={() => {}} onempty={() => {}} onback={() => {}} />
+	<OnboardingImport settings={fx.settings} ondone={() => {}} onempty={() => {}} onback={() => {}} />
 </Story>

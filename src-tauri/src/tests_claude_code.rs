@@ -378,10 +378,6 @@ fn settings_persist_in_the_ledger_folder_which_git_ignores() {
     assert!(fs::read_to_string(config::settings_path(dir.path())).unwrap().contains("\"autoRun\": true"));
     config::save(dir.path(), &ClaudeSettings { auto_run: false, ..saved }).unwrap();
     assert!(!config::load(dir.path()).auto_run);
-
-    // `.ledger/` is what the vault's .gitignore lists, so the file is neither committed nor synced.
-    let ignore = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
-    assert!(ignore.lines().any(|l| l.trim() == ".ledger/"), "{ignore}");
 }
 
 #[test]

@@ -63,8 +63,7 @@ impl Host for TauriHost {
             finish::refresh_vault(&mut core, request, changes, link)
         };
         if outcome.reloaded || !outcome.linked.is_empty() || !outcome.kept.is_empty() {
-            // What the run wrote is part of the vault now, and goes to GitHub like anything else; the window refreshes.
-            state.syncer.dirty();
+            // What the run wrote is part of the vault now: the window refreshes.
             let _ = self.app.emit("vault-changed", ());
         }
         outcome
@@ -76,8 +75,7 @@ impl Host for TauriHost {
             let mut core = state.lock();
             finish::keep_record(&mut core, record).map_err(|e| e.to_string())?;
         }
-        // The note is part of the vault now: it goes to GitHub like anything else, and the window refreshes.
-        state.syncer.dirty();
+        // The note is part of the vault now: the window refreshes.
         let _ = self.app.emit("vault-changed", ());
         Ok(())
     }

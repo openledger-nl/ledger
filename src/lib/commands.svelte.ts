@@ -13,7 +13,7 @@ import { canonicalHotkey, hotkeyRecorder, prettyHotkey } from './hotkey';
 import { toggleSidebar } from './layout.svelte';
 import { portflow } from './portflow.svelte';
 import { today } from './semesters';
-import { attempt, setTheme, sync, themes, toast } from './ui.svelte';
+import { attempt, setTheme, themes, toast } from './ui.svelte';
 import { openVaultPicker } from './vaults.svelte';
 import { groups } from './components/settings/panels';
 import type { ProjectSummary } from './types';
@@ -134,7 +134,6 @@ export function commands(): Command[] {
 		{ id: 'debug.capture', title: 'Start or stop a debug capture', group: 'App', keywords: 'record log report bug', defaultKey: 'CommandOrControl+Alt+Shift+D', run: handled('debug.capture') },
 		{ id: 'go.settings.shortcuts', title: 'Keyboard shortcuts', group: 'App', keywords: 'hotkeys keys bindings settings', run: go('/settings/tools#shortcuts') }
 	);
-	if (sync.status?.configured) list.push({ id: 'sync.now', title: 'Sync with GitHub now', group: 'App', run: () => attempt(api.syncNow) });
 	for (const t of themes) list.push({ id: `theme.${t.id}`, title: `Theme: ${t.name}`, group: 'Theme', keywords: 'colours colors look', run: () => setTheme(t.id) });
 
 	return list;

@@ -620,20 +620,7 @@ export const settings: Settings = {
 	vaultPath: '/home/student/Documents/Ledger',
 	vaultLocked: false,
 	settingsFile: '/home/student/Documents/Ledger/.ledger/settings.json',
-	secretsFile: '/home/student/Documents/Ledger/.ledger/.env',
 	version: '0.8.0',
-	sync: { repo: 'student/ledger-vault', branch: 'main', hasToken: true, tokenHint: '...a1b2', configured: true },
-	status: {
-		configured: true,
-		repo: 'student/ledger-vault',
-		branch: 'main',
-		state: 'idle',
-		pending: false,
-		encrypted: false,
-		lastSyncAt: at(16, '09:12'),
-		lastError: null,
-		summary: 'Up to date'
-	},
 	screenshot: {
 		hotkey: 'CommandOrControl+Shift+S',
 		defaultHotkey: 'CommandOrControl+Shift+S',
@@ -644,8 +631,7 @@ export const settings: Settings = {
 		presets: [],
 		builtin: 'Built in',
 		platform: 'linux'
-	},
-	encryption: { enabled: false, hasKey: false, keyId: null, problem: null, needsFreshTarget: false }
+	}
 };
 
 export const anchor: Anchor = { text: 'corrode far less than resistive ones', prefix: 'Capacitive sensors ', suffix: '. The datasheet' };

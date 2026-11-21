@@ -186,8 +186,6 @@
 	<section class="onb" aria-label="Import a vault">
 		<OnboardingImport
 			{settings}
-			{projects}
-			{semesters}
 			onback={() => (importing = false)}
 			onempty={() => {
 				importing = false;
@@ -200,14 +198,14 @@
 	<section class="onb onb-welcome" aria-label="Welcome">
 		<h2>Welcome to Ledger</h2>
 		<p class="sub">
-			Everything you write lives in a folder of markdown files, a vault, that you can open in any editor and sync to a private GitHub repository. Do you
+			Everything you write lives in a folder, a vault, that your cloud storage (OneDrive, SharePoint, Nextcloud) keeps in sync and backs up. Do you
 			have a vault already?
 		</p>
 		<div class="onb-choices">
 			<button class="onb-choice" onclick={() => (importing = true)} disabled={!settings}>
 				<span class="onb-choice-icon"><FolderInput size={20} /></span>
 				<strong>Import an existing vault</strong>
-				<span class="onb-choice-sub">From a folder on this computer, or from the GitHub repository it is synced to.</span>
+				<span class="onb-choice-sub">From its folder, synced here by your cloud storage.</span>
 			</button>
 			<button class="onb-choice primary" onclick={() => (started = true)}>
 				<span class="onb-choice-icon"><Rocket size={20} /></span>

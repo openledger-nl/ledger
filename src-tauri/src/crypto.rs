@@ -1,5 +1,4 @@
-//! Encrypting the vault's files on their way to GitHub. The vault on disk stays plain markdown; only what is
-//! uploaded is sealed, with a key that stays on this machine (see `keystore.rs`) and is never uploaded.
+//! Sealing files with a vault's key: AES-256-GCM, with the key kept as a recovery string that carries a checksum.
 //!
 //! A sealed file is, byte for byte:
 //!
@@ -13,10 +12,9 @@
 //!
 //! The header and the file's vault-relative path are the AEAD's associated data: a blob moved to another path,
 //! or with its header altered, fails to decrypt. Files are deflated *before* they are sealed, because ciphertext
-//! does not compress. [`armor`] turns a sealed file into base64 text for storage on GitHub, which lets the
-//! GitHub client upload it inside the tree request like any markdown file instead of as one blob request per file.
+//! does not compress.
 //!
-//! On GitHub a file is stored not under its path but under its [`remote_name`], a keyed hash of the path.
+//! [`remote_name`] is a keyed hash of a path, which says nothing about the path to anyone without the key.
 
 use std::fmt;
 use std::io::{Read, Write};
@@ -24,7 +22,7 @@ use std::io::{Read, Write};
 use aes_gcm::aead::{Aead, Generate, Nonce, Payload};
 use aes_gcm::{Aes256Gcm, KeyInit};
 use base64::Engine;
-use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE_NO_PAD};
+use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
 use flate2::Compression;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
@@ -32,7 +30,9 @@ use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
-use crate::sync::MAX_FILE_BYTES;
+
+/// The largest file that is sealed, so that a damaged or hostile one can't make this machine inflate gigabytes.
+pub const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
 
 pub const KEY_BYTES: usize = 32;
 const MAGIC: [u8; 4] = [0x89, b'L', b'D', b'G'];
@@ -194,8 +194,8 @@ impl Key {
     }
 }
 
-/// The name the file at the vault-relative `path` is stored under on GitHub: 32 hex digits, the same on every
-/// machine with the key, and saying nothing about the path to anyone without it.
+/// A name for the file at the vault-relative `path`: 32 hex digits, the same on every machine with the key, and
+/// saying nothing about the path to anyone without it.
 pub fn remote_name(key: &Key, path: &str) -> String {
     let name_key = Zeroizing::new(digest(b"ledger remote names", &key.0[..]));
     #[expect(clippy::expect_used, reason = "HMAC takes a key of any length: it can't fail")]
@@ -283,27 +283,4 @@ fn inflate(packed: &[u8], limit: u64) -> std::result::Result<Vec<u8>, CryptoErro
 #[cfg(test)]
 pub(crate) fn inflate_for_test(packed: &[u8], limit: u64) -> std::result::Result<Vec<u8>, CryptoError> {
     inflate(packed, limit)
-}
-
-// ---- how a sealed file is stored --------------------------------------------------------------------
-
-/// A sealed file as the text kept on GitHub.
-pub fn armor(sealed: &[u8]) -> Vec<u8> {
-    STANDARD.encode(sealed).into_bytes()
-}
-
-/// The sealed file inside what [`armor`] made. `NotEncrypted` for anything that doesn't begin like one.
-pub fn unarmor(stored: &[u8]) -> std::result::Result<Vec<u8>, CryptoError> {
-    if !is_encrypted(stored) {
-        return Err(CryptoError::NotEncrypted);
-    }
-    STANDARD.decode(stored.trim_ascii_end()).map_err(|_| CryptoError::Corrupt)
-}
-
-/// Whether a file as stored on GitHub is one of ours. Only looks at how it starts.
-pub fn is_encrypted(stored: &[u8]) -> bool {
-    // Base64 turns every three bytes into four characters, so the four magic bytes are fixed in the first six.
-    let mut head = MAGIC.to_vec();
-    head.push(0);
-    stored.starts_with(&STANDARD.encode(head).as_bytes()[..6])
 }
