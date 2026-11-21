@@ -132,7 +132,7 @@
 			{#if !view.scoped}
 				<div class="notice">
 					{view.semester ? 'This semester isn\'t linked to a Portflow section yet' : 'No semester covers today'}, so the newest goal set is shown. Say which section a
-					semester is under <a href="/settings/semesters">Settings > Semesters</a>.
+					semester is under <a href="/semesters">Shared > Semesters</a>.
 				</div>
 			{/if}
 			{#if view.semester}

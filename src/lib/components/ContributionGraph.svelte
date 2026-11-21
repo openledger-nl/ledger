@@ -213,7 +213,7 @@
 		<div class="contrib-empty">
 			<b>No semester set up yet</b>
 			<p class="sub">Set one up to follow it here, day by day, or pick a year above.</p>
-			<a class="btn primary small" href="/settings/semesters">Set up a semester</a>
+			<a class="btn primary small" href="/semesters">Set up a semester</a>
 		</div>
 	{:else}
 		<div class="contrib-scroll" bind:this={scroller}>
