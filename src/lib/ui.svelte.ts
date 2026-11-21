@@ -1,7 +1,7 @@
 // App-wide UI state: toasts, modal dialogs and the theme (the shell's own state is in layout.svelte.ts). Kept as module-level
 // runes so any component can raise a toast or ask a question without prop drilling.
 
-import { listen } from '@tauri-apps/api/event';
+import { listeners } from './listeners';
 import { invalidateAll } from '$app/navigation';
 import { api } from './api';
 import type { ScreenshotTaken } from './types';
@@ -124,25 +124,15 @@ export const screenshot = $state<{ pending: ScreenshotTaken | null }>({ pending:
  * focus. Returns the cleanup.
  */
 export function startBackendEvents(): () => void {
-	const cleanups: Array<() => void> = [];
-	let alive = true;
-	const keep = (unlisten: () => void) => (alive ? cleanups.push(unlisten) : unlisten());
-
-	listen('vault-changed', () => {
+	const events = listeners();
+	events.on('vault-changed', () => {
 		void refresh();
-	})
-		.then(keep)
-		.catch(() => {});
-
+	});
 	// A screenshot was taken: the main window asks where it belongs. A failure is said out loud.
-	listen<ScreenshotTaken>('screenshot-ready', (event) => {
+	events.on<ScreenshotTaken>('screenshot-ready', (event) => {
 		screenshot.pending = event.payload;
-	})
-		.then(keep)
-		.catch(() => {});
-	listen<string>('screenshot-error', (event) => toast(event.payload, true))
-		.then(keep)
-		.catch(() => {});
+	});
+	events.on<string>('screenshot-error', (event) => toast(event.payload, true));
 	// Ledger may have been launched with a picture (Flameshot's "Open with") before anything was listening.
 	api.pendingScreenshot()
 		.then((taken) => {
@@ -166,9 +156,8 @@ export function startBackendEvents(): () => void {
 	window.addEventListener('focus', onFocus);
 
 	return () => {
-		alive = false;
 		window.removeEventListener('focus', onFocus);
-		cleanups.forEach((fn) => fn());
+		events.stop();
 	};
 }
 
