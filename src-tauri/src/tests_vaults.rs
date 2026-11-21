@@ -128,7 +128,7 @@ name: Thesis
 
     // Opened last time, by an older Ledger: the app starts on the picker instead, and the list says why.
     settings::remember_vault(config.path(), old.path()).unwrap();
-    let core = Core::open(config.path().to_path_buf(), None).unwrap();
+    let core = Core::open(config.path().to_path_buf()).unwrap();
     assert!(!core.open);
     assert_eq!(walk(old.path()), before);
 }

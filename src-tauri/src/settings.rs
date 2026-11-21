@@ -89,19 +89,13 @@ pub fn update_config(dir: &Path, change: impl FnOnce(&mut AppConfig)) -> Result<
     save_config(dir, &config)
 }
 
-/// Where the vault is: `LEDGER_VAULT` if set (and then not changeable from the UI), else the vault opened last.
-/// Before the vault picker, a machine that never chose a folder used `Ledger` inside the user's documents (or `vault`
-/// in the config folder without one); such a vault is still found there, so it keeps opening. `None` means no vault
-/// has been chosen yet: the app starts on the picker and asks for one.
-pub fn resolve_vault(config_dir: &Path, documents_dir: Option<PathBuf>) -> (Option<PathBuf>, bool) {
+/// Where the vault is: `LEDGER_VAULT` if set (and then not changeable from the UI), else the vault opened last. `None`
+/// means no vault has been chosen yet: the app starts on the picker and asks for one.
+pub fn resolve_vault(config_dir: &Path) -> (Option<PathBuf>, bool) {
     if let Some(path) = std::env::var_os("LEDGER_VAULT").filter(|p| !p.is_empty()) {
         return (Some(PathBuf::from(path)), true);
     }
-    if let Some(path) = load_config(config_dir).vault_path.filter(|p| !p.trim().is_empty()) {
-        return (Some(PathBuf::from(path)), false);
-    }
-    let legacy = documents_dir.map_or_else(|| config_dir.join("vault"), |d| d.join("Ledger"));
-    (legacy.is_dir().then_some(legacy), false)
+    (load_config(config_dir).vault_path.filter(|p| !p.trim().is_empty()).map(PathBuf::from), false)
 }
 
 /// How many vaults the picker remembers.

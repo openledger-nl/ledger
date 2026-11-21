@@ -68,11 +68,10 @@ fn thread_dir(project: &str, thread: &str) -> String {
     format!("projects/{project}/threads/{thread}")
 }
 
-/// The live paths a prompt's links stand for, each once. Older vaults linked the version a run published
-/// ("plan@v0.2.md"); a prompt belongs to the deliverable, so that reads as "plan.md".
+/// The deliverables a prompt's links name, each once.
 fn live_paths(paths: Vec<String>) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
-    paths.into_iter().map(|p| crate::deliverables::split_version(&p).0).filter(|p| seen.insert(p.clone())).collect()
+    paths.into_iter().filter(|p| seen.insert(p.clone())).collect()
 }
 
 fn entity_file(project: &str, thread: &str, folder: &str, id: &str) -> String {
@@ -155,8 +154,6 @@ impl Vault {
     /// written back out by the persist at the end.
     pub fn load(&mut self) -> Result<Connection> {
         let conn = db::open_in_memory()?;
-        move_versions_out_of_deliverables(&self.root);
-        crate::daily::bring_notes_over(&self.root);
         let listing = managed_listing(&self.root);
         import(&conn, &self.root, &listing)?;
 
@@ -253,50 +250,6 @@ fn managed(rel: &str) -> bool {
     in_project("deliverables")
         || (in_project("versions") && deliverables::split_version(&parts[3..].join("/")).1.is_some())
         || rel.ends_with(".md")
-}
-
-/// Published versions used to be kept beside their live file in `deliverables/`. Moves any that are still there (from a
-/// vault an older Ledger wrote, or synced in from one) to the same place under `versions/`. One that is already there
-/// with the same bytes is removed from `deliverables/`; one that differs from what is there is left where it is. A move
-/// that fails is tried again on the next load, and meanwhile the version is read from where it is (see
-/// [`import_deliverables`]).
-fn move_versions_out_of_deliverables(root: &Path) {
-    fn walk(dir: &Path, rel: &str, out: &mut Vec<String>) {
-        let Ok(entries) = fs::read_dir(dir) else { return };
-        for entry in entries.flatten() {
-            let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
-            let Ok(kind) = entry.file_type() else { continue };
-            if name.starts_with('.') || kind.is_symlink() {
-                continue;
-            }
-            let child = if rel.is_empty() { name } else { format!("{rel}/{name}") };
-            if kind.is_dir() {
-                walk(&entry.path(), &child, out);
-            } else if deliverables::split_version(&child).1.is_some() {
-                out.push(child);
-            }
-        }
-    }
-
-    let Ok(projects) = fs::read_dir(root.join("projects")) else { return };
-    for project in projects.flatten() {
-        let from_dir = project.path().join("deliverables");
-        let to_dir = project.path().join("versions");
-        let mut found = vec![];
-        walk(&from_dir, "", &mut found);
-        for rel in found {
-            let (from, to) = (from_dir.join(&rel), to_dir.join(&rel));
-            let moved = if to.exists() {
-                let same = fs::read(&from).ok().is_some_and(|bytes| fs::read(&to).ok().as_ref() == Some(&bytes));
-                same && fs::remove_file(&from).is_ok()
-            } else {
-                to.parent().is_some_and(|dir| fs::create_dir_all(dir).is_ok()) && fs::rename(&from, &to).is_ok()
-            };
-            if moved {
-                prune_empty_dirs(&from_dir, &from);
-            }
-        }
-    }
 }
 
 /// Every managed file, with its fingerprint. Dotfiles (including the temporary files writes go through) are not
@@ -973,8 +926,7 @@ fn import_semesters(conn: &Connection, source: &Source) -> Result<()> {
         if let Some(section) = section {
             conn.execute("INSERT OR IGNORE INTO semester_sections (semester_id, section_id) VALUES (?1, ?2)", params![id, section])?;
         }
-        // Written as `gamma:` before Epsilon+ had its name: read once, and written back as `epsilon:`.
-        if let Some(Value::Mapping(epsilon)) = meta.get("epsilon").or_else(|| meta.get("gamma")) {
+        if let Some(Value::Mapping(epsilon)) = meta.get("epsilon") {
             crate::portflow_epsilon::import_goals(conn, &id, epsilon)?;
         }
     }
@@ -1219,8 +1171,8 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
 }
 
 /// Every file in the project's deliverables folder is a deliverable, and every published version in its versions folder
-/// is a version of one; markdown ones are read in. A version still in the deliverables folder (one that couldn't be
-/// moved, see [`move_versions_out_of_deliverables`]) counts only when the versions folder doesn't have it.
+/// is a version of one; markdown ones are read in. A file in the deliverables folder named like a version
+/// ("plan@v0.1.md") is not: versions are kept in the versions folder.
 fn import_deliverables(conn: &Connection, source: &Source, project: &str) -> Result<()> {
     // (path in the vault, path as the app names the deliverable, fingerprint) of the files in one of the project's folders
     let in_folder = |folder: &str| -> Vec<(String, String, Fingerprint)> {
@@ -1233,8 +1185,7 @@ fn import_deliverables(conn: &Connection, source: &Source, project: &str) -> Res
     };
     let is_version = |path: &str| deliverables::split_version(path).1.is_some();
     let versions: Vec<_> = in_folder("versions").into_iter().filter(|(_, path, _)| is_version(path)).collect();
-    let published: HashSet<String> = versions.iter().map(|(_, path, _)| path.clone()).collect();
-    let live = in_folder("deliverables").into_iter().filter(|(_, path, _)| !published.contains(path));
+    let live = in_folder("deliverables").into_iter().filter(|(_, path, _)| !is_version(path));
     for (rel, path, (size, nanos)) in versions.into_iter().chain(live) {
         let body = if deliverables::is_markdown(&path) { source.read(&rel) } else { None };
         let modified = ids::format_millis((nanos / 1_000_000) as i64);

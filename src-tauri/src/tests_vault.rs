@@ -341,39 +341,6 @@ fn deleting_things_deletes_their_files_and_leaves_no_empty_folders() {
 }
 
 #[test]
-fn versions_kept_beside_their_live_file_by_an_older_ledger_are_moved_to_the_versions_folder() {
-    let dir = tempdir().unwrap();
-    let root = dir.path();
-    write(root, "projects/acme/project.md", "---\nname: Acme\n---\n");
-    write(root, "projects/acme/deliverables/plan.md", "# Plan\n\nthird\n");
-    write(root, "projects/acme/deliverables/plan@v0.1.md", "# Plan\n\nfirst\n");
-    write(root, "projects/acme/deliverables/reports/q3@v1.0.md", "# Q3\n");
-    write(root, "projects/acme/deliverables/chart@v0.1.png", "png");
-    // Already moved by another machine, with the same bytes: the old copy goes.
-    write(root, "projects/acme/deliverables/plan@v0.2.md", "# Plan\n\nsecond\n");
-    write(root, "projects/acme/versions/plan@v0.2.md", "# Plan\n\nsecond\n");
-    // In both places but not the same: the one in versions/ counts, the other is left where it is.
-    write(root, "projects/acme/deliverables/plan@v0.3.md", "# Plan\n\nby hand\n");
-    write(root, "projects/acme/versions/plan@v0.3.md", "# Plan\n\nthird\n");
-    let record = "---\nid: 1-abcdefgh\ndeliverable: plan.md\nversion: '0.1'\nby: human\ncreatedAt: 2026-01-01T00:00:00.000Z\n---\n";
-    write(root, "projects/acme/versions/1-abcdefgh.md", record);
-
-    let (_vault, conn) = open(root);
-    assert_eq!(names(root, "projects/acme/deliverables"), ["plan.md", "plan@v0.3.md"]);
-    assert_eq!(names(root, "projects/acme/versions"), ["1-abcdefgh.md", "chart@v0.1.png", "plan@v0.1.md", "plan@v0.2.md", "plan@v0.3.md", "reports"]);
-    assert_eq!(read(root, "projects/acme/versions/reports/q3@v1.0.md"), "# Q3\n");
-    assert_eq!(read(root, "projects/acme/versions/plan@v0.1.md"), "# Plan\n\nfirst\n", "moved as it was");
-
-    assert_eq!(deliverables::versions_of(&conn, "acme", "plan.md").unwrap(), ["0.1", "0.2", "0.3"]);
-    assert!(deliverables::get(&conn, "acme", "plan@v0.3.md").unwrap().body.unwrap().contains("third"));
-    assert_eq!(deliverables::versions_of(&conn, "acme", "reports/q3.md").unwrap(), ["1.0"]);
-    assert_eq!(deliverables::versions_of(&conn, "acme", "chart.png").unwrap(), ["0.1"]);
-    assert_eq!(deliverables::list(&conn, "acme").unwrap().len(), 3, "plan.md, chart.png and reports/q3.md: a version is no deliverable of its own");
-    let known = provenance::resolve(&conn, "acme", "plan.md").unwrap();
-    assert_eq!(known.iter().find(|v| v.version == "0.1").unwrap().author, "human", "the record beside the versions is still read");
-}
-
-#[test]
 fn deleting_a_project_removes_its_folder_with_the_files_the_database_does_not_own() {
     let dir = tempdir().unwrap();
     let root = dir.path();
@@ -460,7 +427,7 @@ fn a_hand_written_vault_loads_and_is_repaired() {
 
     // Deliverables of every kind, nested ones included; a markdown one keeps its own frontmatter.
     write(root, "projects/ideas/deliverables/x.md", "---\ntitle: X\nauthor: me\n---\n\n# The brief\n");
-    write(root, "projects/ideas/deliverables/x@v1.0.md", "# The brief, v1\n");
+    write(root, "projects/ideas/versions/x@v1.0.md", "# The brief, v1\n");
     write(root, "projects/ideas/deliverables/sub/data.csv", "a,b\n1,2\n");
     write(root, "projects/ideas/deliverables/diagram.png", "not really a png");
 
@@ -702,17 +669,12 @@ fn an_env_file_keeps_lines_that_are_not_the_one_written() {
 #[test]
 fn the_vault_location_is_remembered_in_the_app_config() {
     let config = tempdir().unwrap();
-    let docs = tempdir().unwrap();
-
-    let (path, locked) = settings::resolve_vault(config.path(), Some(docs.path().to_path_buf()));
+    let (path, locked) = settings::resolve_vault(config.path());
     if std::env::var_os("LEDGER_VAULT").is_none() {
-        assert_eq!((path, locked), (None, false), "nothing chosen and nothing in the old default place: the picker asks");
-        std::fs::create_dir(docs.path().join("Ledger")).unwrap();
-        let (path, _) = settings::resolve_vault(config.path(), Some(docs.path().to_path_buf()));
-        assert_eq!(path, Some(docs.path().join("Ledger")), "a vault from before the picker keeps opening");
+        assert_eq!((path, locked), (None, false), "nothing chosen: the picker asks");
         let chosen = config.path().join("elsewhere");
         settings::update_config(config.path(), |c| c.vault_path = Some(chosen.display().to_string())).unwrap();
-        assert_eq!(settings::resolve_vault(config.path(), None).0, Some(chosen));
+        assert_eq!(settings::resolve_vault(config.path()).0, Some(chosen));
     }
 }
 
@@ -794,8 +756,9 @@ fn hand_written_version_records_are_read_leniently() {
     let project = "projects/acme";
     write(root, &format!("{project}/project.md"), "---\nname: Acme\n---\n");
     write(root, &format!("{project}/threads/call/thread.md"), "---\ntitle: Call\n---\n");
-    for name in ["plan.md", "plan@v0.1.md", "plan@v0.2.md"] {
-        write(root, &format!("{project}/deliverables/{name}"), &format!("# {name}\n"));
+    write(root, &format!("{project}/deliverables/plan.md"), "# plan.md\n");
+    for name in ["plan@v0.1.md", "plan@v0.2.md"] {
+        write(root, &format!("{project}/versions/{name}"), &format!("# {name}\n"));
     }
     // Upper case and strangers are read as what they mean; an unknown level or author is ignored, not an error.
     write(root, &format!("{project}/versions/a.md"), "---\nid: a\ndeliverable: plan.md\nversion: '0.1'\nby: AI\nmmm: Cyborg\nthread: call\ncreatedAt: 2026-01-01T00:00:00.000Z\nsomething: else\n---\n\nA note.\n");
@@ -816,14 +779,14 @@ fn hand_written_version_records_are_read_leniently() {
 }
 
 #[test]
-fn a_vault_from_before_version_records_loads_as_it_was_and_is_not_rewritten() {
+fn a_version_without_a_record_loads_as_it_was_and_is_not_rewritten() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let project = "projects/acme";
     write(root, &format!("{project}/project.md"), "---\nname: Acme\n---\n");
     write(root, &format!("{project}/threads/call/thread.md"), "---\ntitle: Call\n---\n");
     write(root, &format!("{project}/deliverables/plan.md"), "# Plan\n\ntwo\n");
-    write(root, &format!("{project}/deliverables/plan@v0.1.md"), "# Plan\n\none\n");
+    write(root, &format!("{project}/versions/plan@v0.1.md"), "# Plan\n\none\n");
     write(
         root,
         &format!("{project}/threads/call/posts/n1.md"),
@@ -831,7 +794,7 @@ fn a_vault_from_before_version_records_loads_as_it_was_and_is_not_rewritten() {
     );
 
     let (_vault, conn) = open(root);
-    // The version itself moves to versions/, but no record is written for it.
+    // A version put in the versions folder by hand: what the note proves is shown, and no record is written for it.
     assert_eq!(names(root, &format!("{project}/versions")), ["plan@v0.1.md"], "nothing is written for versions that have no record");
     let known = provenance::resolve(&conn, "acme", "plan.md").unwrap();
     assert_eq!((known[0].author, known[0].thread.as_deref(), known[0].record.is_none()), ("", Some("call"), true));
@@ -840,27 +803,6 @@ fn a_vault_from_before_version_records_loads_as_it_was_and_is_not_rewritten() {
     let (mut again, reloaded) = open(root);
     assert_eq!(again.persist(&reloaded).unwrap(), 0);
     assert!(read(root, &format!("{project}/threads/call/posts/n1.md")).starts_with("---\nid: n1\nversionPublished: true"));
-}
-
-#[test]
-fn a_prompt_an_older_vault_linked_to_versions_reads_as_linked_to_the_deliverable() {
-    let dir = tempdir().unwrap();
-    let root = dir.path();
-    write(root, "projects/ideas/deliverables/plan.md", "# Plan\n");
-    write(root, "projects/ideas/deliverables/plan@v0.1.md", "# Plan\n");
-    write(root, "projects/ideas/deliverables/plan@v0.2.md", "# Plan, again\n");
-    write(root, "projects/ideas/threads/first/prompts/p1.md", "---\ntitle: Plan it\ndeliverables:\n  - plan@v0.1.md\n  - plan@v0.2.md\n  - plan.md\n---\n\nWrite a plan.\n");
-
-    let (mut vault, conn) = open(root);
-    let prompt = prompts::list(&conn, "ideas", "first").unwrap().remove(0);
-    assert_eq!(prompt.deliverables.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(), ["plan.md"], "one link, to the file");
-    assert_eq!(prompt.deliverables[0].versions, ["0.1", "0.2"], "and the file knows its versions");
-
-    // Written again, it says so.
-    prompts::update(&conn, "ideas", "first", &prompt.id, None, Some("Write a better plan.")).unwrap();
-    vault.persist(&conn).unwrap();
-    let text = read(root, "projects/ideas/threads/first/prompts/p1.md");
-    assert!(text.contains("- plan.md") && !text.contains("@v0"), "{text}");
 }
 
 #[test]
@@ -906,20 +848,3 @@ fn the_folded_sidebar_is_a_rail_until_the_vault_settings_say_otherwise() {
     assert_eq!(got.screenshot_hotkey.as_deref(), Some("Control+Shift+S"));
 }
 
-#[test]
-fn a_semesters_goals_written_as_gamma_are_read_and_written_back_as_epsilon() {
-    let dir = tempdir().unwrap();
-    let root = dir.path();
-    write(root, "semesters/fall.md", "---\nname: Fall 2026\nstart: 2026-09-01\nend: 2027-01-31\ngamma:\n  layers:\n    U: 2\n---\n");
-    let (mut vault, conn) = open(root);
-    let goals = crate::portflow_epsilon::goals_of(&conn, "fall").unwrap();
-    assert_eq!(goals.layers.get("U"), Some(&2), "the goals under the old key are kept");
-
-    // The next save of the semester writes them under `epsilon:` and drops `gamma:`.
-    let fall = semesters::list(&conn).unwrap().remove(0);
-    let draft = SemesterDraft { name: fall.name, start: fall.start, end: fall.end, notes: "Renamed.".into(), ..Default::default() };
-    semesters::update(&conn, "fall", &draft).unwrap();
-    vault.persist(&conn).unwrap();
-    let written = read(root, "semesters/fall.md");
-    assert!(written.contains("epsilon:") && !written.contains("gamma:"), "{written}");
-}

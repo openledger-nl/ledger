@@ -160,7 +160,7 @@ pub fn run() {
                 }),
             );
             applog::info("app", format!("Ledger {} started on {} {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH));
-            let core = state::Core::open(config_dir.clone(), app.path().document_dir().ok())?;
+            let core = state::Core::open(config_dir.clone())?;
             let core = Arc::new(Mutex::new(core));
             let trello_core = core.clone(); // for the Trello sync (feat/trello-sync), started below
             let portflow_core = core.clone(); // for Portflow (feat/portflow-integration), started below

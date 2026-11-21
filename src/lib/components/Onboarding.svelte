@@ -77,7 +77,7 @@
 	const project = $derived(projects.find((p) => p.slug === chosenProject) ?? projects[0]);
 	const firstThread = $derived(projects.flatMap((p) => p.threads)[0]);
 
-	// Not asked yet (or a backend from before the question, which leaves it out).
+	// Not asked yet.
 	const purpose = $derived(onboarding.purpose ?? null);
 	const chosen = $derived(purposes.find((p) => p.id === purpose));
 	// Only school works in semesters, so the semester step comes with that answer.

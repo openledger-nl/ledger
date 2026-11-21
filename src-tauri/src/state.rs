@@ -26,13 +26,9 @@ pub struct Core {
 impl Core {
     /// Opens the vault wherever it is configured to be, and loads it; with none chosen yet, starts without one. So
     /// does a vault that can't be opened (one from Ledger 0.x, say): the picker then says why.
-    pub fn open(config_dir: PathBuf, documents_dir: Option<PathBuf>) -> Result<Core> {
-        match settings::resolve_vault(&config_dir, documents_dir) {
+    pub fn open(config_dir: PathBuf) -> Result<Core> {
+        match settings::resolve_vault(&config_dir) {
             (Some(root), from_env) => {
-                if !from_env {
-                    // A vault from before the picker, found in its old default place, is put on the list.
-                    let _ = settings::remember_vault(&config_dir, &root);
-                }
                 if let Some(refused) = crate::marker::refusal(&root, &crate::marker::inspect(&root)) {
                     crate::applog::info("vault", format!("Not opening {}: {refused}", root.display()));
                     return Core::without_vault(config_dir);
