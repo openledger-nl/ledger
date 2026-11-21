@@ -18,7 +18,7 @@ use crate::portflow_auth::Session;
 use crate::portflow_config::{self as config, Portfolio};
 use crate::portflow_epsilon::{self as epsilon, parse_sub_goal};
 use crate::portflow_store as store;
-use crate::portflow_sync::{self, CoreLedger};
+use crate::portflow_sync::{self, CoreLedger, Ledger};
 use crate::state::Core;
 use crate::{feedback, frontmatter, projects, semesters, threads};
 
@@ -396,7 +396,7 @@ impl Machine {
     fn at(dir: TempDir) -> Machine {
         let config = tempdir().unwrap();
         let core = Arc::new(Mutex::new(Core::open_at(dir.path().to_path_buf(), config.path().to_path_buf(), false).unwrap()));
-        let ledger = CoreLedger { core: core.clone(), changed: Arc::new(|| {}) };
+        let ledger = CoreLedger { core: core.clone(), changed: Arc::new(|| {}), vault: dir.path().to_path_buf() };
         Machine { dir, _config: config, core, ledger }
     }
 
@@ -802,6 +802,44 @@ fn the_worker_runs_only_while_switched_on() {
     assert!(syncer.auth.session().is_none(), "switching off drops the session");
     assert!(crate::portflow_auth::load_session(m.root(), 0).is_none(), "and clears the saved one");
     assert_eq!(syncer.status().state, "off");
+}
+
+#[test]
+fn another_vault_starts_portflow_again_from_its_own_switch() {
+    let m = Machine::new();
+    m.switch(true);
+    let syncer = crate::portflow::PortflowSyncer::new(
+        m.core.clone(),
+        Arc::new(|_| {}),
+        Arc::new(|| {}),
+        Arc::new(|_: &Session, _| Ok(Box::new(FakePortflow::new()) as Box<dyn Portflow>)),
+        None,
+        Duration::from_secs(3600),
+    );
+    let token = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDI0NDQ4MDB9.sig";
+    crate::portflow_auth::save_session(m.root(), &Session { token: token.into(), csrf: None, portfolio: Some(P), expires_at: None }).unwrap();
+    syncer.reconfigure();
+    wait_for(|| syncer.status().state == "idle");
+    // A round that started in the old vault, still holding its ledger.
+    let stale = CoreLedger { core: m.core.clone(), changed: Arc::new(|| {}), vault: m.root().to_path_buf() };
+
+    // A new vault: Portflow was never switched on in it.
+    let other = tempdir().unwrap();
+    m.core.lock().unwrap().set_vault(other.path(), false).unwrap();
+    syncer.vault_switched();
+    assert!(!syncer.running());
+    assert_eq!(syncer.status().state, "off", "nothing of the old vault's Portflow shows");
+    assert!(syncer.auth.session().is_none(), "the old vault's Canvas session is not this vault's");
+    assert!(crate::portflow_auth::load_session(m.root(), 0).is_some(), "but the old vault keeps it for later");
+    assert!(stale.write(&mut |_, _| Ok(())).is_err(), "and the old round writes nothing into the new vault");
+    assert!(stale.read(&mut |_| Ok(())).is_err());
+    assert!(!other.path().join(".ledger/portflow.json").exists());
+
+    // Back in the old vault, Portflow is on again, signed in with its own session.
+    m.core.lock().unwrap().set_vault(m.root(), false).unwrap();
+    syncer.vault_switched();
+    assert!(syncer.running());
+    assert_eq!(syncer.auth.session().map(|s| s.token), Some(token.to_string()));
 }
 
 fn wait_for(done: impl Fn() -> bool) {

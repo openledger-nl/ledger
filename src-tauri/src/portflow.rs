@@ -167,6 +167,15 @@ impl PortflowSyncer {
         }
     }
 
+    /// Another vault was opened. Portflow is switched on or off per vault, and so is its Canvas session: what the
+    /// syncer knew belongs to the vault that was open before, so it starts again on the one open now. The old vault's
+    /// saved session stays in its own `.ledger/.env`, for when it is opened again.
+    pub fn vault_switched(&self) {
+        self.auth.forget();
+        update(&self.status, &self.emit, |s| *s = PortflowStatus { state: "off".into(), ..PortflowStatus::default() });
+        self.reconfigure();
+    }
+
     /// A round right away (does nothing while switched off).
     pub fn now(&self) {
         if let Some(tx) = lock(&self.tx).as_ref() {
@@ -217,6 +226,11 @@ impl Worker {
         });
     }
 
+    /// The vault open now is still `root`, the one the round started in.
+    fn still_in(&self, root: &Path) -> bool {
+        lock(&self.core).vault.root() == root
+    }
+
     fn round(&self) -> PResult<()> {
         let root = lock(&self.core).vault.root().to_path_buf();
         let settings = config::read_settings(&root);
@@ -229,6 +243,8 @@ impl Worker {
             Some(_) | None => match (&self.refresh, self.auth.session().is_some() || settings.portfolio.is_some()) {
                 // Signed in before (on this run, or a portfolio is known): try to get a session without asking.
                 (Some(refresh), true) => match refresh(&settings.launch_url) {
+                    // Signing in can take a while; a session for the vault that was left is not this vault's.
+                    _ if !self.still_in(&root) => return Ok(()),
                     Ok(session) => {
                         if let Err(e) = auth::save_session(&root, &session) {
                             crate::applog::error("portflow", format!("Could not keep the Portflow session: {e}"));
@@ -246,15 +262,23 @@ impl Worker {
                 }
             },
         };
+        if !self.still_in(&root) {
+            return Ok(());
+        }
         self.set(|s| {
             s.state = "syncing".into();
             s.signed_in = true;
             s.expires_at = session.expires_at;
         });
         let result = (self.connect)(&session, Gate::new(settings.enabled, &settings.access)).and_then(|client| {
-            let ledger = CoreLedger { core: self.core.clone(), changed: self.changed.clone() };
+            let ledger = CoreLedger { core: self.core.clone(), changed: self.changed.clone(), vault: root.clone() };
             portflow_sync::run(&*client, &ledger, &settings)
         });
+        // Another vault was opened during the round: the outcome is the old vault's, and the syncer has already
+        // started again on the new one (see `PortflowSyncer::vault_switched`).
+        if !self.still_in(&root) {
+            return Ok(());
+        }
         match result {
             Ok(report) => {
                 if report.vault_changed() {

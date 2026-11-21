@@ -40,14 +40,25 @@ pub trait Ledger: Send + Sync {
 }
 
 /// The running app's vault. `changed` tells the GitHub sync there is something to push.
+/// `vault` is the vault the round started in: when the app switches to another one halfway, the rest of the round is
+/// refused, so what was read from the one vault's Portflow never lands in the other.
 pub struct CoreLedger {
     pub core: Arc<Mutex<Core>>,
     pub changed: Arc<dyn Fn() + Send + Sync>,
+    pub vault: PathBuf,
+}
+
+/// The round started in another vault than the one open now.
+fn switched_away() -> Error {
+    Error::sync("Another vault was opened during the Portflow round")
 }
 
 impl Ledger for CoreLedger {
     fn read(&self, f: &mut dyn FnMut(&Connection) -> Result<()>) -> Result<()> {
         let core = self.core.lock().unwrap_or_else(PoisonError::into_inner);
+        if core.vault.root() != self.vault {
+            return Err(switched_away());
+        }
         f(&core.conn)
     }
 
@@ -55,6 +66,9 @@ impl Ledger for CoreLedger {
         let touched = {
             let mut guard = self.core.lock().unwrap_or_else(PoisonError::into_inner);
             let core = &mut *guard;
+            if core.vault.root() != self.vault {
+                return Err(switched_away());
+            }
             let tx = core.conn.unchecked_transaction()?;
             f(&tx, core.vault.root())?;
             tx.commit()?;
@@ -67,7 +81,7 @@ impl Ledger for CoreLedger {
     }
 
     fn root(&self) -> PathBuf {
-        self.core.lock().unwrap_or_else(PoisonError::into_inner).vault.root().to_path_buf()
+        self.vault.clone()
     }
 }
 

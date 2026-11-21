@@ -1033,7 +1033,8 @@ pub fn set_vault_path(app: AppHandle, path: String, copy: bool) -> Result<Settin
     Ok(view(&app.state::<App>()))
 }
 
-/// Switches vaults with `change`, then sets up what belongs to the new one: its sync and its screenshot hotkey.
+/// Switches vaults with `change`, then sets up what belongs to the new one: its sync, its Portflow and its screenshot
+/// hotkey.
 fn switch_vault<T>(app: &AppHandle, change: impl FnOnce(&mut crate::state::Core) -> Result<T>) -> Result<T> {
     let state = app.state::<App>();
     let (out, config) = {
@@ -1042,6 +1043,9 @@ fn switch_vault<T>(app: &AppHandle, change: impl FnOnce(&mut crate::state::Core)
         (out, core.sync.clone())
     };
     state.syncer.reconfigure(config.as_ref());
+    if let Some(portflow) = app.try_state::<crate::portflow::PortflowSyncer>() {
+        portflow.vault_switched();
+    }
     screenshot::register_saved(app);
     Ok(out)
 }
