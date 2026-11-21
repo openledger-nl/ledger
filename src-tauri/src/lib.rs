@@ -405,6 +405,7 @@ pub fn run() {
             claude_code::claude_code_run,
             onboarding::onboarding_status,
             onboarding::skip_onboarding_step,
+            onboarding::set_onboarding_purpose,
             onboarding::finish_onboarding,
             onboarding::restart_onboarding,
             updates::update_status,

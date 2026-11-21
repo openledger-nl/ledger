@@ -1,16 +1,21 @@
 <script lang="ts">
-	// The guide on the home page for a new client: bring in a vault that exists, or set one up in four steps (a semester,
-	// sync to GitHub, a first thread, a first deliverable). What a step needs is read from the vault, so it ticks itself off
-	// when it is done, wherever it was done, and the guide ends with the first deliverable (onboarding.rs keeps the rest).
+	// The guide on the home page for a new client: bring in a vault that exists, or set one up step by step (what Ledger is
+	// for, a semester when that is school, sync to GitHub, a first thread, a first deliverable). What a step needs is read
+	// from the vault, so it ticks itself off when it is done, wherever it was done, and the guide ends with the first
+	// deliverable (onboarding.rs keeps the rest).
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import { goto } from '$app/navigation';
+	import Briefcase from '@lucide/svelte/icons/briefcase';
 	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CloudUpload from '@lucide/svelte/icons/cloud-upload';
+	import Compass from '@lucide/svelte/icons/compass';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import FolderInput from '@lucide/svelte/icons/folder-input';
+	import GraduationCap from '@lucide/svelte/icons/graduation-cap';
 	import MessageSquareText from '@lucide/svelte/icons/message-square-text';
+	import Palette from '@lucide/svelte/icons/palette';
 	import PartyPopper from '@lucide/svelte/icons/party-popper';
 	import Rocket from '@lucide/svelte/icons/rocket';
 	import { api } from '$lib/api';
@@ -18,7 +23,7 @@
 	import { nj26Draft } from '$lib/semesters';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import type { Component } from 'svelte';
-	import type { OnboardingStatus, ProjectSummary, Semester, SemesterDraft, Settings } from '$lib/types';
+	import type { OnboardingStatus, ProjectSummary, Purpose, Semester, SemesterDraft, Settings } from '$lib/types';
 	import OnboardingImport from './OnboardingImport.svelte';
 	import SemesterModal from './SemesterModal.svelte';
 	import EncryptionSettings from './settings/EncryptionSettings.svelte';
@@ -40,7 +45,7 @@
 		onboarding: OnboardingStatus;
 	} = $props();
 
-	type StepId = 'semester' | 'sync' | 'thread' | 'deliverable';
+	type StepId = 'purpose' | 'semester' | 'sync' | 'thread' | 'deliverable';
 	interface Step {
 		id: StepId;
 		title: string;
@@ -51,10 +56,16 @@
 		summary: string;
 	}
 
+	const purposes: { id: Purpose; title: string; sub: string; icon: Component<{ size?: number }> }[] = [
+		{ id: 'school', title: 'School', sub: 'Courses and projects in semesters and sprints, with a calendar to count your work in.', icon: GraduationCap },
+		{ id: 'work', title: 'Work', sub: 'Clients and projects that run as long as they run.', icon: Briefcase },
+		{ id: 'hobby', title: 'Hobby', sub: 'Projects of your own, at your own pace.', icon: Palette }
+	];
+
 	/** "Set up a new vault" was chosen, or "Import" is open. */
 	let started = $state(false);
 	let importing = $state(false);
-	/** A skipped step that is being done after all. */
+	/** A skipped step that is being done after all, or what Ledger is for, being changed. */
 	let revisiting = $state<StepId | null>(null);
 	let editor = $state<{ preset?: SemesterDraft } | undefined>(undefined);
 	let busy = $state(false);
@@ -70,15 +81,31 @@
 	const project = $derived(projects.find((p) => p.slug === chosenProject) ?? projects[0]);
 	const firstThread = $derived(projects.flatMap((p) => p.threads)[0]);
 
+	// Not asked yet (or a backend from before the question, which leaves it out).
+	const purpose = $derived(onboarding.purpose ?? null);
+	const chosen = $derived(purposes.find((p) => p.id === purpose));
+	// Only school works in semesters, so the semester step comes with that answer.
 	const steps = $derived<Step[]>([
 		{
-			id: 'semester',
-			title: 'Set up your semester',
-			icon: CalendarRange,
-			done: semesters.length > 0,
-			skipped: onboarding.skipped.includes('semester'),
-			summary: semesters[0]?.name ?? ''
+			id: 'purpose',
+			title: 'What you use Ledger for',
+			icon: chosen?.icon ?? Compass,
+			done: purpose !== null,
+			skipped: false,
+			summary: chosen?.title ?? ''
 		},
+		...(purpose === 'school'
+			? [
+					{
+						id: 'semester' as const,
+						title: 'Set up your semester',
+						icon: CalendarRange,
+						done: semesters.length > 0,
+						skipped: onboarding.skipped.includes('semester'),
+						summary: semesters[0]?.name ?? ''
+					}
+				]
+			: []),
 		{
 			id: 'sync',
 			title: 'Sync with GitHub',
@@ -109,6 +136,16 @@
 	const open = $derived(revisiting ?? current?.id ?? null);
 	const finishedCount = $derived(steps.filter(passed).length);
 	const welcome = $derived(!started && !importing && finishedCount === 0 && projects.length === 0);
+	const stepCount = $derived(steps.length === 5 ? 'Five' : 'Four');
+
+	async function choosePurpose(answer: Purpose) {
+		busy = true;
+		if (await attempt(() => api.setOnboardingPurpose(answer))) {
+			revisiting = null;
+			await refresh();
+		}
+		busy = false;
+	}
 
 	async function skip(step: 'semester' | 'sync') {
 		revisiting = null;
@@ -187,7 +224,7 @@
 			<button class="onb-choice primary" onclick={() => (started = true)}>
 				<span class="onb-choice-icon"><Rocket size={20} /></span>
 				<strong>Set up a new vault</strong>
-				<span class="onb-choice-sub">Four short steps: a semester, sync to GitHub, a first thread and a first deliverable.</span>
+				<span class="onb-choice-sub">A few short steps: what it is for, sync to GitHub, a first thread and a first deliverable.</span>
 			</button>
 		</div>
 	</section>
@@ -196,7 +233,7 @@
 		<header class="onb-head">
 			<div>
 				<h2>Set up your vault</h2>
-				<p class="sub">{current ? 'Four short steps, and you are ready to work.' : 'Everything is set up.'}</p>
+				<p class="sub">{current ? `${stepCount} short steps, and you are ready to work.` : 'Everything is set up.'}</p>
 			</div>
 			<div class="onb-meta">
 				<span class="badge accent">{finishedCount} of {steps.length}</span>
@@ -219,12 +256,32 @@
 							{#if step.skipped && !step.done && open !== step.id}
 								<button class="link accent" onclick={() => (revisiting = step.id)}>Set it up now</button>
 							{/if}
+							{#if step.id === 'purpose' && step.done && open !== step.id}
+								<button class="link accent" onclick={() => (revisiting = 'purpose')}>Change</button>
+							{/if}
 						</div>
-						{#if step.done && step.summary}<div class="onb-summary">{step.summary}</div>{/if}
+						{#if step.done && step.summary && open !== step.id}<div class="onb-summary">{step.summary}</div>{/if}
 
-						{#if open === step.id && !step.done}
+						{#if open === step.id && (!step.done || revisiting === step.id)}
 							<div class="onb-body">
-								{#if step.id === 'semester'}
+								{#if step.id === 'purpose'}
+									<p>The steps below follow your answer: only school works in semesters, so only school sets one up.</p>
+									<div class="onb-choices compact">
+										{#each purposes as p (p.id)}
+											{@const Choice = p.icon}
+											<button class="onb-choice" class:primary={purpose === p.id} onclick={() => choosePurpose(p.id)} disabled={busy}>
+												<span class="onb-choice-icon"><Choice size={18} /></span>
+												<strong>{p.title}</strong>
+												<span class="onb-choice-sub">{p.sub}</span>
+											</button>
+										{/each}
+									</div>
+									{#if revisiting === 'purpose'}
+										<div class="onb-actions">
+											<button class="btn ghost" onclick={() => (revisiting = null)}>Keep {chosen?.title ?? 'it'}</button>
+										</div>
+									{/if}
+								{:else if step.id === 'semester'}
 									<p>
 										A semester gives the dashboard its calendar: the weeks, the vacations and the sprints that your work is counted in.
 										Start from the NJ26 preset, or lay out your own.

@@ -1,11 +1,11 @@
-//! The guide a new client gets on the home page: bring in a vault that exists, or set one up step by step (a
-//! semester, sync to GitHub, a first thread, a first deliverable).
+//! The guide a new client gets on the home page: bring in a vault that exists, or set one up step by step (what Ledger
+//! is for, a semester when it is for school, sync to GitHub, a first thread, a first deliverable).
 //!
 //! Whether the guide shows is a fact about this machine's copy of Ledger, not about a vault, so it is kept in
 //! `config.json` with the vault's location (see `settings`). What each step needs is read from the vault by the page,
 //! so the steps cannot disagree with what is really there, and a vault brought in from elsewhere finds them done
-//! already. All that is kept here is what the vault cannot say: that the guide is on or finished, and which of the
-//! steps that can wait were put off.
+//! already. All that is kept here is what the vault cannot say: that the guide is on or finished, what Ledger is used
+//! for, and which of the steps that can wait were put off.
 
 use std::path::Path;
 
@@ -31,11 +31,22 @@ pub enum Stage {
     Done,
 }
 
+/// What Ledger is used for. Only school works in semesters, so only school is asked for one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Purpose {
+    Work,
+    Hobby,
+    School,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct OnboardingConfig {
     pub stage: Stage,
     pub skipped: Vec<String>,
+    /// Not asked yet: the guide then asks first.
+    pub purpose: Option<Purpose>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -45,10 +56,11 @@ pub struct OnboardingView {
     pub active: bool,
     /// The steps that were put off (see [`SKIPPABLE`]).
     pub skipped: Vec<String>,
+    pub purpose: Option<Purpose>,
 }
 
 fn view(config: &OnboardingConfig) -> OnboardingView {
-    OnboardingView { active: config.stage == Stage::Active, skipped: config.skipped.clone() }
+    OnboardingView { active: config.stage == Stage::Active, skipped: config.skipped.clone(), purpose: config.purpose }
 }
 
 /// Whether the vault holds anything of its own yet: a project or a semester. A vault that does has been set up already,
@@ -83,15 +95,22 @@ pub fn skip(config_dir: &Path, step: &str) -> Result<OnboardingView> {
     Ok(view(&settings::load_config(config_dir).onboarding))
 }
 
+/// What Ledger is used for, which decides the steps.
+pub fn set_purpose(config_dir: &Path, purpose: Purpose) -> Result<OnboardingView> {
+    settings::update_config(config_dir, |c| c.onboarding.purpose = Some(purpose))?;
+    Ok(view(&settings::load_config(config_dir).onboarding))
+}
+
 /// The guide is over: finished, or set aside. It stays over until it is asked for again.
 pub fn finish(config_dir: &Path) -> Result<OnboardingView> {
     settings::update_config(config_dir, |c| c.onboarding.stage = Stage::Done)?;
     Ok(view(&settings::load_config(config_dir).onboarding))
 }
 
-/// Shows the guide again, from the start.
+/// Shows the guide again, from the start: what Ledger is for is asked again too, as a new vault may be for something
+/// else.
 pub fn restart(config_dir: &Path) -> Result<OnboardingView> {
-    settings::update_config(config_dir, |c| c.onboarding = OnboardingConfig { stage: Stage::Active, skipped: vec![] })?;
+    settings::update_config(config_dir, |c| c.onboarding = OnboardingConfig { stage: Stage::Active, ..OnboardingConfig::default() })?;
     Ok(view(&settings::load_config(config_dir).onboarding))
 }
 
@@ -101,7 +120,7 @@ pub fn restart(config_dir: &Path) -> Result<OnboardingView> {
 pub fn onboarding_status(app: State<App>) -> Result<OnboardingView> {
     // Before any vault is open there is nothing to judge it by, so nothing is decided yet.
     if !app.lock().open {
-        return Ok(OnboardingView { active: false, skipped: vec![] });
+        return Ok(OnboardingView { active: false, skipped: vec![], purpose: None });
     }
     let content = app.read(|conn, _| has_content(conn))?;
     let dir = app.lock().config_dir.clone();
@@ -112,6 +131,12 @@ pub fn onboarding_status(app: State<App>) -> Result<OnboardingView> {
 pub fn skip_onboarding_step(app: State<App>, step: String) -> Result<OnboardingView> {
     let dir = app.lock().config_dir.clone();
     skip(&dir, &step)
+}
+
+#[tauri::command]
+pub fn set_onboarding_purpose(app: State<App>, purpose: Purpose) -> Result<OnboardingView> {
+    let dir = app.lock().config_dir.clone();
+    set_purpose(&dir, purpose)
 }
 
 #[tauri::command]

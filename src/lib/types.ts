@@ -743,11 +743,16 @@ export interface Vaults {
 	suggestedParent: string | null;
 }
 
+/** What Ledger is used for. Only school works in semesters, so only school is asked for one. */
+export type Purpose = 'work' | 'hobby' | 'school';
+
 export interface OnboardingStatus {
 	/** The guide is on the home page. */
 	active: boolean;
 	/** The steps that were put off: only "semester" and "sync" can be. */
 	skipped: string[];
+	/** Not asked yet: the guide asks first. */
+	purpose: Purpose | null;
 }
 
 /** A dragged rectangle, in the capture's own pixels. */

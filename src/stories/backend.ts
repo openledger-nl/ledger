@@ -129,6 +129,7 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	sync_commits: 0,
 	layout_settings: layout,
 	onboarding_status: fx.onboarding,
+	set_onboarding_purpose: (a: Record<string, unknown>) => ({ ...fx.onboarding, purpose: a.purpose }),
 	list_vaults: fx.vaults,
 	create_vault: fx.vaults,
 	open_vault: fx.vaults,

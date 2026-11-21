@@ -7,7 +7,7 @@ use tempfile::tempdir;
 
 use crate::db;
 use crate::models::SemesterDraft;
-use crate::onboarding::{self, OnboardingConfig, Stage};
+use crate::onboarding::{self, OnboardingConfig, Purpose, Stage};
 use crate::projects;
 use crate::semesters;
 use crate::settings;
@@ -86,7 +86,7 @@ fn the_guide_shares_the_config_file_without_costing_the_vault_its_place() {
     onboarding::finish(dir.path()).unwrap();
     let config = settings::load_config(dir.path());
     assert_eq!(config.vault_path.as_deref(), Some("/somewhere/else"));
-    assert_eq!(config.onboarding, OnboardingConfig { stage: Stage::Done, skipped: vec!["sync".into()] });
+    assert_eq!(config.onboarding, OnboardingConfig { stage: Stage::Done, skipped: vec!["sync".into()], purpose: None });
 
     // And changing the vault's location leaves the guide as it was.
     settings::update_config(dir.path(), |c| c.vault_path = Some("/elsewhere/still".into())).unwrap();
@@ -103,4 +103,23 @@ fn a_config_edited_into_nonsense_falls_back_without_losing_the_rest() {
     // An old config, from before the guide, has no such key and reads the same way.
     fs::write(dir.path().join("config.json"), r#"{"vaultPath":"/kept"}"#).unwrap();
     assert_eq!(settings::load_config(dir.path()).onboarding.stage, Stage::Undecided);
+}
+
+#[test]
+fn what_ledger_is_for_is_asked_once_per_guide() {
+    let dir = tempdir().unwrap();
+    assert_eq!(onboarding::status(dir.path(), false).unwrap().purpose, None, "a new guide asks first");
+    assert_eq!(onboarding::set_purpose(dir.path(), Purpose::Hobby).unwrap().purpose, Some(Purpose::Hobby));
+    assert_eq!(onboarding::status(dir.path(), true).unwrap().purpose, Some(Purpose::Hobby));
+    assert_eq!(onboarding::set_purpose(dir.path(), Purpose::School).unwrap().purpose, Some(Purpose::School), "and it can be changed");
+    // A new vault may be for something else, so the guide asks again.
+    assert_eq!(onboarding::restart(dir.path()).unwrap().purpose, None);
+}
+
+#[test]
+fn the_purpose_is_kept_in_plain_words() {
+    let dir = tempdir().unwrap();
+    onboarding::set_purpose(dir.path(), Purpose::Work).unwrap();
+    let text = fs::read_to_string(dir.path().join("config.json")).unwrap();
+    assert!(text.contains(r#""purpose": "work""#), "{text}");
 }

@@ -6,7 +6,7 @@ import type { LayoutLoad } from './$types';
 
 export const ssr = false;
 
-const noGuide: OnboardingStatus = { active: false, skipped: [] };
+const noGuide: OnboardingStatus = { active: false, skipped: [], purpose: null };
 
 export const load: LayoutLoad = async ({ url }) => {
 	// The screenshot overlay is its own window and needs none of this.

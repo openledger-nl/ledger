@@ -40,6 +40,7 @@ import type {
 	OnboardingStatus,
 	Prompt,
 	Provenance,
+	Purpose,
 	PublishChoices,
 	ReaderPreset,
 	Region,
@@ -330,6 +331,7 @@ export const api = {
 	// the guide for a new client
 	onboardingStatus: () => call<OnboardingStatus>('onboarding_status'),
 	skipOnboardingStep: (step: 'semester' | 'sync') => call<OnboardingStatus>('skip_onboarding_step', { step }),
+	setOnboardingPurpose: (purpose: Purpose) => call<OnboardingStatus>('set_onboarding_purpose', { purpose }),
 	finishOnboarding: () => call<OnboardingStatus>('finish_onboarding'),
 	restartOnboarding: () => call<OnboardingStatus>('restart_onboarding'),
 	reloadVault: () => call<void>('reload_vault'),
