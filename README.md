@@ -253,6 +253,12 @@ key the ruleset lets through: the write key whose private half is the Actions se
 pnpm release:preview   # what the next release would be, and its notes; changes nothing
 ```
 
+To try a version before it reaches `main`, push its branch to `alpha` (`git push -f origin HEAD:alpha`).
+[.github/workflows/prerelease.yml](.github/workflows/prerelease.yml) builds the next version as `vX.Y.Z-alpha.N` on the
+three platforms and publishes it as a GitHub pre-release. It commits nothing and leaves `CHANGELOG.md` alone; the
+release script skips its tags. Installed copies are never offered an alpha, because the updater reads the latest
+release and that skips pre-releases.
+
 ## Layout
 
 ```
