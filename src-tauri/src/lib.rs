@@ -20,6 +20,7 @@ mod history;
 mod ids;
 mod images;
 mod keystore;
+mod marker;
 mod links;
 mod markdown;
 mod models;

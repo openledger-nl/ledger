@@ -77,16 +77,16 @@
 				<h3>Your vaults</h3>
 				<ul>
 					{#each vaults.vaults as vault (vault.path)}
-						<li class:current={vault.open} class:gone={!vault.exists}>
+						<li class:current={vault.open} class:gone={!vault.exists || !!vault.refused}>
 							<button
 								class="vp-vault"
-								disabled={busy || vault.open || !vault.exists || vaults.locked}
+								disabled={busy || vault.open || !vault.exists || !!vault.refused || vaults.locked}
 								onclick={() => openPath(vault.path)}
-								title={vault.exists ? vault.path : `${vault.path} isn't there any more`}
+								title={vault.refused ?? (vault.exists ? vault.path : `${vault.path} isn't there any more`)}
 							>
 								<span class="vp-name">{vault.name}{#if vault.open}<span class="vp-tag">open</span>{/if}</span>
 								<span class="vp-path mono">{vault.path}</span>
-								{#if !vault.exists}<span class="vp-where">Folder not found</span>{/if}
+								{#if !vault.exists}<span class="vp-where">Folder not found</span>{:else if vault.refused}<span class="vp-where">Can't be opened by this Ledger</span>{/if}
 							</button>
 							{#if !vault.open}
 								<button class="vp-forget" aria-label="Remove {vault.name} from the list" title="Remove from the list (the folder is left alone)" onclick={() => forget(vault)}>

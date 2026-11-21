@@ -25,6 +25,7 @@ fn read(root: &Path, rel: &str) -> String {
 }
 
 fn open(root: &Path) -> (Vault, Connection) {
+    crate::marker::ensure(root);
     let mut vault = Vault::open(root.to_path_buf()).unwrap();
     let conn = vault.load().unwrap();
     (vault, conn)

@@ -52,7 +52,7 @@ use crate::db::{self, query_all};
 use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
 use crate::models::{SemesterDraft, Sprint, Vacation};
-use crate::{board, deliverables, ids, posts, projects, provenance, semesters, settings, templates};
+use crate::{board, deliverables, ids, marker, posts, projects, provenance, semesters, templates};
 
 // ---- layout -----------------------------------------------------------------------------------------
 
@@ -112,6 +112,8 @@ type Fingerprint = (u64, u128);
 
 pub struct Vault {
     root: PathBuf,
+    /// The vault's id, from its marker (see `marker`); empty while no vault is open.
+    id: String,
     /// The hash of the canonical text of every file this vault owns, as last written (or read).
     written: HashMap<String, u64>,
     /// What the managed folders looked like when we last wrote or read them.
@@ -119,21 +121,33 @@ pub struct Vault {
 }
 
 impl Vault {
-    /// Creates the folder if needed, along with a `.gitignore` that keeps local-only files out of GitHub.
+    /// Opens the vault in `root`, making the folder and its marker when it is new. A folder that holds a vault from
+    /// Ledger 0.x, or one from a newer Ledger, is refused (see `marker`), and nothing in it is changed.
     pub fn open(root: PathBuf) -> Result<Vault> {
-        fs::create_dir_all(&root).map_err(|e| Error::io(&root, e))?;
-        settings::ensure_gitignore(&root)?;
-        Ok(Vault { root, written: HashMap::new(), disk: BTreeMap::new() })
+        let found = marker::inspect(&root);
+        if let Some(refused) = marker::refusal(&root, &found) {
+            return Err(refused);
+        }
+        let marker = match found {
+            marker::Found::Vault(marker) => marker,
+            _ => marker::create(&root)?,
+        };
+        Ok(Vault { root, id: marker.id, written: HashMap::new(), disk: BTreeMap::new() })
     }
 
     /// Stands in for a vault while none is chosen yet (the app is on the vault picker). Nothing is created on disk,
     /// and nothing is written: `App::mutate` refuses every change until a vault is open.
     pub fn none(root: PathBuf) -> Vault {
-        Vault { root, written: HashMap::new(), disk: BTreeMap::new() }
+        Vault { root, id: String::new(), written: HashMap::new(), disk: BTreeMap::new() }
     }
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// The vault's id, from its marker: the same on every machine that syncs it.
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
     /// Reads every file into a fresh in-memory database. Anything the files leave out or get wrong is repaired

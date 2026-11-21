@@ -730,6 +730,8 @@ export interface VaultEntry {
 	exists: boolean;
 	/** It is the vault that is open. */
 	open: boolean;
+	/** Why it can't be opened (a vault from Ledger 0.x, say); null when it can. */
+	refused: string | null;
 }
 
 export interface Vaults {

@@ -32,6 +32,7 @@ fn names(root: &Path, rel: &str) -> Vec<String> {
 }
 
 fn open(root: &Path) -> (Vault, Connection) {
+    crate::marker::ensure(root);
     let mut vault = Vault::open(root.to_path_buf()).unwrap();
     let conn = vault.load().unwrap();
     (vault, conn)
@@ -203,9 +204,8 @@ fn the_vault_has_the_agreed_folder_structure() {
     let global = read(root, "templates/interview.md");
     assert!(global.contains("name: Interview") && global.contains("trigger: after a call") && global.contains("- Who?") && global.ends_with("## Who\n"), "{global}");
 
-    // Settings and the secret are kept apart from the notes, and out of git.
-    let ignore = read(root, ".gitignore");
-    assert!(ignore.lines().any(|l| l == ".ledger/") && ignore.lines().any(|l| l == ".env"), "{ignore}");
+    // The marker says it is a vault, and of which format.
+    assert!(read(root, "ledger.json").contains("\"ledger\": 1"));
 }
 
 #[test]

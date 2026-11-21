@@ -1062,6 +1062,8 @@ pub struct VaultEntry {
     pub exists: bool,
     /// It is the vault the app has open.
     pub open: bool,
+    /// Why it can't be opened (a vault from Ledger 0.x, say); `None` when it can.
+    pub refused: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1083,6 +1085,7 @@ fn vault_entry(path: &Path, open: bool) -> VaultEntry {
         name: path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().to_string()),
         exists: path.is_dir(),
         open,
+        refused: if open || !path.is_dir() { None } else { crate::marker::refusal(path, &crate::marker::inspect(path)).map(|e| e.to_string()) },
     }
 }
 
