@@ -858,26 +858,6 @@ fn came_from_portflow(conn: &Connection, project: &str, base: &str) -> Result<bo
     )?)
 }
 
-/// Versions of the item that came from Portflow under another file than its deliverable (an earlier Ledger put each
-/// differently named file of a new version beside the first): `(version path now, the path it should have)`.
-fn versions_to_fold(conn: &Connection, project: &str, evidence: &str, main: &str) -> Result<Vec<(String, String)>> {
-    let item: String = conn.query_row("SELECT name FROM evidence WHERE project_slug = ?1 AND slug = ?2", [project, evidence], |r| r.get(0))?;
-    let have = crate::deliverables::versions_of(conn, project, main)?;
-    let mut out = vec![];
-    for (number, files) in version_rows(conn, project, evidence)? {
-        let path = &main_row(&item, &files).1;
-        let (base, version) = crate::deliverables::split_version(path);
-        let wanted = format!("{number}.0");
-        if base == main || version.as_deref() != Some(wanted.as_str()) || ext_of(&base) != ext_of(main) || have.contains(&wanted) {
-            continue;
-        }
-        if came_from_portflow(conn, project, &base)? && crate::deliverables::exists(conn, project, path)? {
-            out.push((path.clone(), crate::deliverables::snapshot_path(main, &wanted)));
-        }
-    }
-    Ok(out)
-}
-
 /// The renames that make the item's files look like one deliverable named after it, in the order to make them: each
 /// attachment from Portflow into `<item>/` under Portflow's name for it, then the deliverable to `<item>.<ext>` (both
 /// only for files that came from Portflow; Ledger's own keep their names, and are still shown by the item's).
@@ -913,22 +893,13 @@ fn renames_to_settle(conn: &Connection, project: &str, evidence: &str) -> Result
 
 /// Whether [`settle_name`] has anything to do for the item.
 pub fn needs_settling(conn: &Connection, project: &str, evidence: &str) -> Result<bool> {
-    if let Some(main) = item_deliverable(conn, project, evidence)?
-        && !versions_to_fold(conn, project, evidence, &main)?.is_empty()
-    {
-        return Ok(true);
-    }
     Ok(!renames_to_settle(conn, project, evidence)?.is_empty())
 }
 
-/// Keeps an item one deliverable, named after the item. Versions from Portflow that sit under another file are moved
-/// onto it (and that file goes once nothing of it is left); its attachments from Portflow go into `<item>/`; and a
+/// Keeps an item one deliverable, named after the item: its attachments from Portflow go into `<item>/`; and a
 /// deliverable that came from Portflow is renamed — with its versions — to `<item>.<ext>` when the item was renamed in
 /// Portflow or came in under another name. A name that is taken is left as it is. Returns the renames made.
 pub fn settle_name(conn: &Connection, root: &std::path::Path, project: &str, evidence: &str) -> Result<Vec<(String, String)>> {
-    if let Some(main) = item_deliverable(conn, project, evidence)? {
-        fold_versions(conn, root, project, evidence, &main)?;
-    }
     let mut done = vec![];
     for (from, to, is_main) in renames_to_settle(conn, project, evidence)? {
         let taken = |p: &str| -> Result<bool> { Ok(crate::deliverables::exists(conn, project, p)? || !crate::deliverables::versions_of(conn, project, p)?.is_empty()) };
@@ -945,70 +916,6 @@ pub fn settle_name(conn: &Connection, root: &std::path::Path, project: &str, evi
         done.push((from, to));
     }
     Ok(done)
-}
-
-/// Moves the versions [`versions_to_fold`] finds onto the item's deliverable; a file left with no versions goes (its
-/// live copy too, when that is one of them), and the deliverable's live file becomes its newest version unless it was
-/// changed in Ledger.
-fn fold_versions(conn: &Connection, root: &std::path::Path, project: &str, evidence: &str, main: &str) -> Result<()> {
-    use crate::deliverables::{exists, file_of, split_version, versions_of};
-    let moves = versions_to_fold(conn, project, evidence, main)?;
-    if moves.is_empty() {
-        return Ok(());
-    }
-    let sha_of = |path: &str| -> Result<Option<String>> {
-        let body: Option<Option<String>> = query_opt(conn, "SELECT body FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, path], |r| r.get(0))?;
-        Ok(match body {
-            None => None,
-            Some(Some(text)) => Some(crate::provenance::sha256_hex(text.as_bytes())),
-            Some(None) => std::fs::read(file_of(root, project, path)).ok().map(|b| crate::provenance::sha256_hex(&b)),
-        })
-    };
-    // The live file as it was, and whether it matched a version (then it follows the newest).
-    let live_before = sha_of(main)?;
-    let mut version_shas = vec![];
-    for v in versions_of(conn, project, main)? {
-        version_shas.extend(sha_of(&crate::deliverables::snapshot_path(main, &v))?);
-    }
-    let follows = live_before.as_ref().is_none_or(|sha| version_shas.contains(sha));
-    for (from, to) in &moves {
-        let moved_sha = sha_of(from)?;
-        crate::deliverables::move_version(conn, root, project, from, to)?;
-        let base = split_version(from).0;
-        if versions_of(conn, project, &base)?.is_empty() {
-            // Its live copy goes when it is just that version (else it was changed in Ledger, and stays).
-            if exists(conn, project, &base)? && sha_of(&base)? == moved_sha {
-                let binary: bool = conn.query_row("SELECT body IS NULL FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, &base], |r| r.get(0))?;
-                conn.execute("DELETE FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, &base])?;
-                if binary {
-                    let file = file_of(root, project, &base);
-                    std::fs::remove_file(&file).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(Error::io(&file, e)) })?;
-                }
-            }
-            if !exists(conn, project, &base)? {
-                conn.execute("DELETE FROM evidence_files WHERE project_slug = ?1 AND evidence_slug = ?2 AND path = ?3", [project, evidence, &base])?;
-            }
-        }
-    }
-    if follows
-        && let Some(newest) = versions_of(conn, project, main)?.last()
-    {
-        let snapshot = crate::deliverables::snapshot_path(main, newest);
-        let body: Option<String> = query_opt(conn, "SELECT body FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, &snapshot], |r| r.get(0))?.flatten();
-        let at = ids::now();
-        match body {
-            Some(text) => crate::deliverables::upsert(conn, project, main, text.len() as i64, &at, Some(&text))?,
-            None => {
-                let (from, to) = (file_of(root, project, &snapshot), file_of(root, project, main));
-                if let Some(dir) = to.parent() {
-                    std::fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
-                }
-                let size = std::fs::copy(&from, &to).map_err(|e| Error::io(&to, e))?;
-                crate::deliverables::upsert(conn, project, main, size as i64, &at, None)?;
-            }
-        }
-    }
-    Ok(())
 }
 
 /// What became of the live file when a downloaded version was stored.

@@ -461,8 +461,7 @@ fn import_sections(conn: &Connection, source: &Source) -> Result<()> {
 fn import_collections(conn: &Connection, source: &Source, project: &str) -> Result<()> {
     for semester in source.stems(&format!("projects/{project}/portflow")) {
         let rel = collection_file(project, &semester);
-        // A file from before the description became the reading guide still has it as its body: it is not read, and the
-        // next write leaves it out.
+        // Its body is not read: the collection's description is the project's reading guide.
         let Some((meta, _)) = source.parsed(&rel) else { continue };
         let Some(collection) = int(&meta, "collection") else { continue };
         conn.execute(

@@ -1392,7 +1392,7 @@ fn a_machine_that_had_edit_descriptions_on_starts_with_the_guide_write_off() {
 }
 
 #[test]
-fn a_launch_address_on_the_old_canvas_moves_to_the_new_one() {
+fn a_saved_launch_address_is_kept_and_a_blank_one_is_the_default() {
     let m = Machine::new();
     let local = crate::settings::local_dir(m.root());
     fs::create_dir_all(&local).unwrap();
@@ -1400,10 +1400,7 @@ fn a_launch_address_on_the_old_canvas_moves_to_the_new_one() {
         fs::write(local.join("portflow.json"), serde_json::json!({ "enabled": true, "launchUrl": url }).to_string()).unwrap();
         m.settings().launch_url
     };
-    let old_default = "https://fhict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation";
-    assert_eq!(saved(old_default), config::DEFAULT_LAUNCH_URL, "the old default is the new default");
     assert_eq!(saved(""), config::DEFAULT_LAUNCH_URL);
-    assert_eq!(saved("https://fhict.instructure.com/courses/12/assignments/34"), "https://fontysict.instructure.com/courses/12/assignments/34");
     assert_eq!(saved("https://canvas.example.edu/courses/1"), "https://canvas.example.edu/courses/1", "another school's page stays");
 }
 
@@ -1775,41 +1772,6 @@ fn a_new_version_under_another_file_name_is_the_next_version_of_the_same_deliver
 }
 
 #[test]
-fn a_version_left_under_another_file_is_folded_onto_the_items_deliverable() {
-    let m = Machine::new();
-    m.switch(true);
-    m.linked();
-    let fake = FakePortflow::new();
-    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
-    // Version 2 came in (with an earlier Ledger) as a deliverable of its own, named after its file.
-    fake.world.lock().unwrap().versions.get_mut(&800).unwrap().insert(0, version(8002, 800, 2, "file", vec![file(6, "Research final.pdf")]));
-    fake.broken.lock().unwrap().insert(6);
-    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
-    fake.broken.lock().unwrap().clear();
-    let root = m.root().to_path_buf();
-    m.edit(|c| {
-        let stray = store::OpenFile { number: 2, name: "Research final.pdf".into(), portflow_file: 6, first: true };
-        store::store_download(c, &root, "speed-edit", "research", &stray, "research-final.pdf", &bytes_of(6), true).unwrap()
-    });
-    assert_eq!(m.read(|c| crate::deliverables::list(c, "speed-edit")).unwrap().len(), 2, "folded in already: one item, one deliverable");
-
-    let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
-    assert_eq!(report.downloaded, 0);
-    let project = m.root().join("projects/speed-edit");
-    let view = m.read(|c| crate::deliverables::get(c, "speed-edit", "Research.pdf")).unwrap();
-    assert_eq!(view.versions, ["1.0", "2.0"]);
-    assert!(view.attachments.is_empty(), "{:?}", view.attachments);
-    assert_eq!(fs::read(project.join("deliverables/Research.pdf")).unwrap(), bytes_of(6), "the live file is the newest version");
-    assert_eq!(fs::read(project.join("versions/Research@v2.0.pdf")).unwrap(), bytes_of(6));
-    assert!(!project.join("deliverables/research-final.pdf").exists());
-    assert!(!project.join("versions/research-final@v2.0.pdf").exists());
-    let note: String = m.read(|c| c.query_row("SELECT note FROM version_records WHERE deliverable_path = 'Research.pdf' AND version = '2.0'", [], |r| r.get(0)).unwrap());
-    assert_eq!(note, "From Portflow, version 2");
-    m.reload();
-    assert_eq!(portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap().files_touched, 0);
-}
-
-#[test]
 fn an_older_layout_in_a_folder_of_the_items_comes_to_the_top_under_the_items_name() {
     let m = Machine::new();
     m.switch(true);
@@ -1861,44 +1823,6 @@ fn of_an_items_files_the_one_named_like_it_is_the_deliverable() {
     let view = m.read(|c| crate::deliverables::get(c, "speed-edit", "Research.pdf")).unwrap();
     assert_eq!(fs::read(m.root().join("projects/speed-edit/deliverables/Research.pdf")).unwrap(), bytes_of(4));
     assert_eq!(view.attachments, ["Research/02-interview.pdf"]);
-}
-
-#[test]
-fn a_file_named_after_the_item_that_isnt_it_makes_way_for_the_one_that_is() {
-    let m = Machine::new();
-    m.switch(true);
-    m.linked();
-    // An earlier Ledger took the version's first file (the interview) for the item and named it so; the report itself
-    // sits in a folder of the item's.
-    let project = m.root().join("projects/speed-edit");
-    fs::create_dir_all(project.join("versions/research")).unwrap();
-    fs::create_dir_all(project.join("evidence")).unwrap();
-    fs::write(project.join("versions/Research@v1.0.pdf"), bytes_of(3)).unwrap();
-    fs::write(project.join("versions/research/02-research@v1.0.pdf"), bytes_of(4)).unwrap();
-    for (id, path) in [("a", "Research.pdf"), ("b", "research/02-research.pdf")] {
-        fs::write(
-            project.join(format!("versions/portflow-{id}.md")),
-            format!("---\nid: portflow-{id}\ndeliverable: {path}\nversion: '1.0'\nsha256: x\ncreatedAt: 2026-10-01T10:00:00Z\n---\n\nVersion 1 in Portflow\n"),
-        )
-        .unwrap();
-    }
-    fs::write(
-        project.join("evidence/research.md"),
-        "---\nname: Research\nfiles:\n- Research.pdf\n- research/02-research.pdf\nportflowEvidence: 800\ntype: file\ncreatedAt: 2026-09-02T10:00:00Z\nupdatedAt: 2026-09-02T10:00:00Z\nversions:\n- number: 1\n  portflowVersion: 8001\n  type: file\n  createdAt: 2026-10-01T10:00:00Z\n  files:\n    research/02-interview.pdf: Research@v1.0.pdf\n    research/02-research.pdf: research/02-research@v1.0.pdf\n---\n",
-    )
-    .unwrap();
-    m.reload();
-    let fake = FakePortflow::new();
-    fake.world.lock().unwrap().versions.insert(800, vec![version(8001, 800, 1, "file", vec![file(3, "02-interview.pdf"), file(4, "02-research.pdf")])]);
-    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
-    assert!(!downloads(&fake).iter().any(|u| u.contains("/files/3?") || u.contains("/files/4?")), "both are in Ledger already");
-    assert_eq!(fs::read(project.join("versions/Research@v1.0.pdf")).unwrap(), bytes_of(4), "the report is the item");
-    assert_eq!(fs::read(project.join("versions/Research/02-interview@v1.0.pdf")).unwrap(), bytes_of(3), "the interview is beside it");
-    assert!(!project.join("versions/research").exists());
-    let view = m.read(|c| crate::deliverables::get(c, "speed-edit", "Research.pdf")).unwrap();
-    assert_eq!(view.attachments, ["Research/02-interview.pdf"]);
-    m.reload();
-    assert_eq!(portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap().files_touched, 0);
 }
 
 // ---- an evidence item's description ---------------------------------------------------------------------------
