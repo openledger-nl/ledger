@@ -511,8 +511,8 @@ fn a_round_mirrors_outcomes_people_and_the_linked_collection() {
 
     // The files: the mirror, the collection, the evidence items, and their files as deliverables.
     let root = m.root();
-    assert!(root.join("portflow/outcomes/10-analysis.md").is_file());
-    assert!(root.join("portflow/people.md").is_file());
+    assert!(root.join("shared/portflow/outcomes/10-analysis.md").is_file());
+    assert!(root.join("shared/portflow/people.md").is_file());
     assert!(root.join(format!("projects/speed-edit/portflow/{semester}.md")).is_file());
     let plan = fs::read_to_string(root.join("projects/speed-edit/evidence/project-plan.md")).unwrap();
     assert!(plan.contains("portflowEvidence: 700"), "{plan}");
@@ -733,7 +733,7 @@ fn switched_off_the_portflow_files_are_left_byte_for_byte() {
     m.edit(|c| store::place_evidence(c, "speed-edit", "project-plan", Some("plan")).unwrap());
     portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
     let before = m.files();
-    assert!(before.keys().any(|k| k.starts_with("portflow/")));
+    assert!(before.keys().any(|k| k.starts_with("shared/portflow/")));
 
     m.switch(false);
     // The app keeps working: the vault is loaded, edited and written, and the Portflow files stay as they were.
@@ -743,7 +743,7 @@ fn switched_off_the_portflow_files_are_left_byte_for_byte() {
     m.reload();
     let after = m.files();
     for (path, bytes) in &before {
-        if path.starts_with("portflow/") || path.contains("/evidence/") || path.contains("/portflow/") || path.contains("/feedback/") || path.contains("/deliverables/") {
+        if path.starts_with("shared/portflow/") || path.contains("/evidence/") || path.contains("/portflow/") || path.contains("/feedback/") || path.contains("/deliverables/") {
             assert_eq!(after.get(path), Some(bytes), "{path} changed while Portflow was off");
         }
     }
@@ -974,9 +974,9 @@ fn a_round_links_the_section_to_its_semester_and_fills_the_matrix() {
     let sections = m.read(epsilon::sections).unwrap();
     assert_eq!(sections.len(), 1);
     assert_eq!(sections[0].semester.as_deref(), Some(semester.as_str()));
-    let file = fs::read_to_string(m.root().join(format!("semesters/{semester}.md"))).unwrap();
+    let file = fs::read_to_string(m.root().join(format!("shared/semesters/{semester}.md"))).unwrap();
     assert!(file.contains("portflowSection: 9"), "{file}");
-    assert!(m.root().join("portflow/sections.md").is_file());
+    assert!(m.root().join("shared/portflow/sections.md").is_file());
 
     // The current semester's matrix: activities across, layers down, evidence per cell, the highest level with evidence.
     let view = m.read(|c| epsilon::epsilon(c, None, "2026-11-04", ME)).unwrap();
@@ -1082,7 +1082,7 @@ fn intended_development_marks_the_rows_aimed_for_and_keeps_the_learning_plan() {
     assert_eq!((plan.name.as_str(), plan.version, plan.delivered_at.as_deref()), ("Project plan", Some(2), Some("2026-10-02T10:00:00Z")));
 
     // Kept in the semester's file, and read back from it.
-    let file = fs::read_to_string(m.root().join(format!("semesters/{semester}.md"))).unwrap();
+    let file = fs::read_to_string(m.root().join(format!("shared/semesters/{semester}.md"))).unwrap();
     assert!(file.contains("epsilon:") && file.contains("learningPlan: speed-edit/project-plan"), "{file}");
     m.reload();
     assert_eq!(m.read(|c| epsilon::goals_of(c, &semester)).unwrap().layers, BTreeMap::from([("U".into(), 1), ("I".into(), 2)]));
@@ -1093,7 +1093,7 @@ fn intended_development_marks_the_rows_aimed_for_and_keeps_the_learning_plan() {
     assert!(bad(epsilon::EpsilonGoals { layers: BTreeMap::from([("I".into(), 0)]), ..Default::default() }));
     assert!(bad(epsilon::EpsilonGoals { study_guide: Some("javascript:alert(1)".into()), ..Default::default() }));
     m.edit(|c| epsilon::set_goals(c, &semester, &epsilon::EpsilonGoals::default())).unwrap();
-    let file = fs::read_to_string(m.root().join(format!("semesters/{semester}.md"))).unwrap();
+    let file = fs::read_to_string(m.root().join(format!("shared/semesters/{semester}.md"))).unwrap();
     assert!(!file.contains("epsilon:"), "{file}");
 }
 

@@ -9,8 +9,9 @@
 //! `exports/<name> (draft).pdf`; exporting again replaces it. A version's PDF says what that version said, so it can
 //! be made again at any time and comes out the same (apart from its date when it is a draft).
 //!
-//! The layout is Ledger's (`ledger.typ`, which explains what it is handed), or one's own: `projects/<project>/pdf/
-//! layout.typ` for one project, `pdf/layout.typ` for the vault, each starting as a copy of the one under it
+//! The layout is Ledger's (`ledger.typ`, which explains what it is handed), or one's own, kept with the templates:
+//! `projects/<project>/templates/pdf/layout.typ` for one project, `shared/templates/pdf/layout.typ` for the vault, each
+//! starting as a copy of the one under it
 //! ([`customise_layout`]); the files of its folder (pictures, fonts, other Typst files) can be used by it.
 //!
 //! Exporting is two steps, so the vault is only held while it is read: [`prepare`] gathers the text, the pictures and
@@ -260,11 +261,13 @@ pub struct LayoutView {
     pub vault: Option<String>,
 }
 
-/// The `pdf/` folder of a scope, on disk and as the vault names it.
+/// The `templates/pdf/` folder of a scope, on disk and as the vault names it.
 fn layout_dir(root: &Path, project: &str, scope: LayoutScope) -> Result<(PathBuf, String)> {
     match scope {
-        LayoutScope::Project => Ok((uploads::project_dir(root, project).join("pdf"), format!("projects/{project}/pdf"))),
-        LayoutScope::Vault => Ok((root.join("pdf"), "pdf".to_string())),
+        LayoutScope::Project => {
+            Ok((uploads::project_dir(root, project).join("templates").join("pdf"), format!("projects/{project}/templates/pdf")))
+        }
+        LayoutScope::Vault => Ok((root.join("shared").join("templates").join("pdf"), "shared/templates/pdf".to_string())),
         LayoutScope::Ledger => Err(Error::invalid("Ledger's own layout is not a file in the vault")),
     }
 }

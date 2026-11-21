@@ -200,8 +200,9 @@ fn the_vault_has_the_agreed_folder_structure() {
     let task_name = &names(root, &format!("{project}/tasks"))[0];
     let task = read(root, &format!("{project}/tasks/{task_name}"));
     assert!(task.contains("title: Draw the pricing page") && task.contains("columnId: doing") && task.contains("story: MM01") && task.contains("thread: alpha-the-first") && task.ends_with("In figma.\n"), "{task}");
-    assert_eq!(names(root, &format!("{project}/templates")), ["house-style.md"]);
-    let global = read(root, "templates/interview.md");
+    assert_eq!(names(root, &format!("{project}/templates")), ["prompts"]);
+    assert_eq!(names(root, &format!("{project}/templates/prompts")), ["house-style.md"]);
+    let global = read(root, "shared/templates/prompts/interview.md");
     assert!(global.contains("name: Interview") && global.contains("trigger: after a call") && global.contains("- Who?") && global.ends_with("## Who\n"), "{global}");
 
     // The marker says it is a vault, and of which format.
@@ -236,7 +237,7 @@ fn a_templates_kinds_and_readers_are_kept_in_its_frontmatter() {
     templates::create(&conn, "", &draft).unwrap();
     vault.persist(&conn).unwrap();
 
-    let text = read(root, "templates/brief.md");
+    let text = read(root, "shared/templates/prompts/brief.md");
     assert!(text.contains("kinds:\n- study\n- company\nreaders:\n- who: client\n  needs: reads the summary first\n  keepFrom: the rate\n- me\nreadersShown: true\n"), "{text}");
     let (_, reloaded) = open(root);
     let brief = templates::get(&reloaded, "", "brief").unwrap();
@@ -251,7 +252,7 @@ fn the_shipped_project_plan_is_offered_until_the_vault_has_its_own() {
     let plan = templates::get(&conn, "", templates::BUILTIN_PLAN).unwrap();
     assert!(plan.builtin && !plan.customised_builtin && plan.name == "Project plan" && plan.kinds.is_empty());
     vault.persist(&conn).unwrap();
-    assert!(!root.join("templates/project-plan.md").exists(), "the shipped template is not a file of the vault");
+    assert!(!root.join("shared/templates/prompts/project-plan.md").exists(), "the shipped template is not a file of the vault");
     assert!(templates::delete(&conn, "", templates::BUILTIN_PLAN).is_err(), "and it can't be deleted");
     assert_eq!(templates::create(&conn, "", &TemplateDraft::basic("Project plan", "", &[], "")).unwrap().id, "project-plan-2", "its id stays free");
 
@@ -259,7 +260,7 @@ fn the_shipped_project_plan_is_offered_until_the_vault_has_its_own() {
     let mine = templates::update(&conn, "", "project-plan", &TemplateDraft { body: "# My plan\n".into(), ..templates::draft_of(&plan) }).unwrap();
     assert!(!mine.builtin && mine.customised_builtin);
     vault.persist(&conn).unwrap();
-    assert!(read(root, "templates/project-plan.md").contains("# My plan"));
+    assert!(read(root, "shared/templates/prompts/project-plan.md").contains("# My plan"));
     let (mut again, reloaded) = open(root);
     assert_eq!(templates::get(&reloaded, "", "project-plan").unwrap().body, "# My plan");
 
@@ -267,7 +268,7 @@ fn the_shipped_project_plan_is_offered_until_the_vault_has_its_own() {
     templates::delete(&reloaded, "", "project-plan").unwrap();
     assert!(templates::get(&reloaded, "", "project-plan").unwrap().builtin);
     again.persist(&reloaded).unwrap();
-    assert!(!root.join("templates/project-plan.md").exists());
+    assert!(!root.join("shared/templates/prompts/project-plan.md").exists());
 }
 
 #[test]
@@ -358,7 +359,7 @@ fn deleting_a_project_removes_its_folder_with_the_files_the_database_does_not_ow
     vault.remove_project_dir(&p).unwrap();
     assert!(!root.join(format!("projects/{p}")).exists());
     assert!(root.join(format!("projects/{other}/project.md")).exists());
-    assert!(root.join("templates/interview.md").exists(), "vault-wide templates stay");
+    assert!(root.join("shared/templates/prompts/interview.md").exists(), "vault-wide templates stay");
 }
 
 #[test]
@@ -439,8 +440,8 @@ fn a_hand_written_vault_loads_and_is_repaired() {
 
     // A project that is nothing but a reading guide, and templates in both scopes.
     write(root, "projects/bare/README.md", "# Bare\n\nJust a guide.");
-    write(root, "templates/memo.md", "---\nname: Memo\nquestions: Who is it for?\n---\n\n# Memo\n");
-    write(root, "projects/ideas/templates/memo.md", "---\nname: Ideas memo\n---\nProject memo.");
+    write(root, "shared/templates/prompts/memo.md", "---\nname: Memo\nquestions: Who is it for?\n---\n\n# Memo\n");
+    write(root, "projects/ideas/templates/prompts/memo.md", "---\nname: Ideas memo\n---\nProject memo.");
 
     let (_, conn) = open(root);
 
@@ -512,9 +513,9 @@ fn a_hand_written_vault_loads_and_is_repaired() {
 fn a_hand_written_semester_loads_with_european_dates_and_gets_its_sprints() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    write(root, "semesters/spring.md", "---\nname: Spring 2027\nstart: 01-02-2027\nend: 31-07-2027\nsprintWeeks: 3\n---\nInternship half.\n");
-    write(root, "semesters/broken.md", "---\nname: Broken\nstart: someday\nend: 2027-07-31\n---\n");
-    write(root, "semesters/odd.md", "---\nname: Odd sprints\nstart: 2027-08-01\nend: 2027-08-31\nsprints:\n  - name: Late\n    start: 2027-09-10\n    end: 2027-09-20\n---\n");
+    write(root, "shared/semesters/spring.md", "---\nname: Spring 2027\nstart: 01-02-2027\nend: 31-07-2027\nsprintWeeks: 3\n---\nInternship half.\n");
+    write(root, "shared/semesters/broken.md", "---\nname: Broken\nstart: someday\nend: 2027-07-31\n---\n");
+    write(root, "shared/semesters/odd.md", "---\nname: Odd sprints\nstart: 2027-08-01\nend: 2027-08-31\nsprints:\n  - name: Late\n    start: 2027-09-10\n    end: 2027-09-20\n---\n");
     let (mut vault, conn) = open(root);
 
     let all = semesters::list(&conn).unwrap();
@@ -526,7 +527,7 @@ fn a_hand_written_semester_loads_with_european_dates_and_gets_its_sprints() {
 
     // Like every hand-written file, it keeps its form until it is changed in the app; a reload agrees.
     assert_eq!(vault.persist(&conn).unwrap(), 0);
-    assert!(read(root, "semesters/spring.md").contains("start: 01-02-2027"));
+    assert!(read(root, "shared/semesters/spring.md").contains("start: 01-02-2027"));
     let (_, again) = open(root);
     assert_eq!(format!("{:?}", semesters::list(&conn).unwrap()), format!("{:?}", semesters::list(&again).unwrap()));
 
@@ -535,7 +536,7 @@ fn a_hand_written_semester_loads_with_european_dates_and_gets_its_sprints() {
     let draft = SemesterDraft { name: spring.name.clone(), start: spring.start.clone(), end: spring.end.clone(), notes: "Internship.".into(), ..Default::default() };
     semesters::update(&conn, "spring", &draft).unwrap();
     vault.persist(&conn).unwrap();
-    let written = read(root, "semesters/spring.md");
+    let written = read(root, "shared/semesters/spring.md");
     assert!(written.contains("start: 2027-02-01") && written.contains("- name: Sprint 1") && written.ends_with("Internship.\n"), "{written}");
 }
 

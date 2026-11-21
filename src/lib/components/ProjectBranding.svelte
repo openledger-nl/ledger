@@ -38,7 +38,7 @@
 	/** Counts logo changes, so a new picture under the same name is shown. */
 	let logoVersion = $state(0);
 
-	// The layout the PDFs are set in: Ledger's, the vault's own (pdf/layout.typ) or this project's.
+	// The layout the PDFs are set in: Ledger's, the vault's own (shared/templates/pdf/layout.typ) or this project's.
 	let layout = $state<PdfLayoutView | null>(null);
 
 	$effect(() => {

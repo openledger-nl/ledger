@@ -167,7 +167,7 @@ pub fn compile(main: &str, layout: &Layout, files: Vec<(String, Vec<u8>)>) -> Re
 }
 
 /// The compiler's complaints, as one message, each with the file and line it is about, so a mistake in a layout of
-/// one's own can be found: "pdf/layout.typ, line 12: unknown variable: foo".
+/// one's own can be found: "shared/templates/pdf/layout.typ, line 12: unknown variable: foo".
 fn failed(world: &Sandbox, errors: &[SourceDiagnostic]) -> Error {
     let said: Vec<String> = errors
         .iter()

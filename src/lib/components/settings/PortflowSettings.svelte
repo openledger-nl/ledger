@@ -597,7 +597,7 @@
 			</div>
 			<div class="hint">
 				Ledger looks at Portflow every ten minutes while you are signed in, and right after you link a collection or place an evidence item. The outcomes and
-				people are mirrored to <code>portflow/</code> in your vault, each linked collection to <code>projects/.../portflow/</code>, and each evidence item to
+				people are mirrored to <code>shared/portflow/</code> in your vault, each linked collection to <code>projects/.../portflow/</code>, and each evidence item to
 				<code>projects/.../evidence/</code>; Portflow stays their owner, so edits to them are overwritten by the next sync. Version 3 in Portflow is v3.0 of
 				the evidence's files: when you published v3.0 in Ledger it links to those files, and a version you uploaded in Portflow is not copied but opens
 				there.

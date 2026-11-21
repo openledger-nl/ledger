@@ -242,13 +242,13 @@ fn a_layout_of_ones_own_is_used_and_its_mistakes_are_located() {
     // The vault's layout starts as Ledger's; a project's starts as the vault's.
     let view = customise_layout(root, &project, LayoutScope::Vault).unwrap();
     assert_eq!(view.used, LayoutScope::Vault);
-    assert_eq!(view.vault.as_deref(), Some("pdf/layout.typ"));
-    let vault_file = root.join("pdf/layout.typ");
+    assert_eq!(view.vault.as_deref(), Some("shared/templates/pdf/layout.typ"));
+    let vault_file = root.join("shared/templates/pdf/layout.typ");
     assert_eq!(fs::read_to_string(&vault_file).unwrap(), world::LAYOUT);
     fs::write(&vault_file, format!("{}\n// mine\n", world::LAYOUT)).unwrap();
     let view = customise_layout(root, &project, LayoutScope::Project).unwrap();
     assert_eq!(view.used, LayoutScope::Project);
-    let project_file = uploads::project_dir(root, &project).join("pdf/layout.typ");
+    let project_file = uploads::project_dir(root, &project).join("templates/pdf/layout.typ");
     assert!(fs::read_to_string(&project_file).unwrap().ends_with("// mine\n"));
 
     // It can read a picture beside it, by its name.
@@ -263,7 +263,7 @@ fn a_layout_of_ones_own_is_used_and_its_mistakes_are_located() {
     // A mistake names the file and the line.
     fs::write(&project_file, "#let ledger-doc(data, doc) = {\n  doc\n  nonsense-here\n}\n").unwrap();
     let err = make(prepare(&c, root, &project, &doc.path).unwrap()).unwrap_err().to_string();
-    assert!(err.contains(&format!("projects/{project}/pdf/layout.typ, line 3")), "{err}");
+    assert!(err.contains(&format!("projects/{project}/templates/pdf/layout.typ, line 3")), "{err}");
     assert!(err.contains("unknown variable: nonsense-here"), "{err}");
 
     // Back to the vault's, then to Ledger's.
