@@ -1,4 +1,5 @@
 <script lang="ts">
+	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import FileText from '@lucide/svelte/icons/file-text';
@@ -9,6 +10,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Settings from '@lucide/svelte/icons/settings';
 	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
+	import Users from '@lucide/svelte/icons/users';
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
@@ -192,6 +194,14 @@
 		{:else}
 			<div class="space-empty">No projects yet</div>
 		{/each}
+	</nav>
+
+	<!-- What every project shares, kept in the vault's shared/ folder: one page each, not the semesters or people one by
+	     one. -->
+	<div class="section-head"><span>Shared</span></div>
+	<nav class="space-list" aria-label="Shared">
+		<a class="nav-item" class:active={on('/semesters')} href="/semesters"><span class="nav-ico"><CalendarRange size={16} /></span>Semesters</a>
+		<a class="nav-item" class:active={on('/people')} href="/people"><span class="nav-ico"><Users size={16} /></span>People</a>
 	</nav>
 
 	<div class="spacer"></div>

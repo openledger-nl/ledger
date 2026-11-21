@@ -3,11 +3,13 @@
 	// is folded, and between 720 and 1199 px (Ledger snapped to half the screen, next to Canvas or Portflow). The main
 	// pages as icons, each project as its initial, Portflow's dot and the vault switch; hovering or focusing an item shows its name.
 	// Wireframes A6 and A7.
+	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import House from '@lucide/svelte/icons/house';
 	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
 	import Inbox from '@lucide/svelte/icons/inbox';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Settings from '@lucide/svelte/icons/settings';
+	import Users from '@lucide/svelte/icons/users';
 	import Vault from '@lucide/svelte/icons/vault';
 	import { page } from '$app/state';
 	import { newProjectFlow, projectUrl } from '$lib/actions';
@@ -49,6 +51,8 @@
 		{/if}
 		<a class="rail-item" class:active={on('/feedback')} href="/feedback" data-tip="Feedback" aria-label="Feedback"><Inbox size={18} /></a>
 		<a class="rail-item" class:active={on('/meetings')} href="/meetings" data-tip="Meeting notes" aria-label="Meeting notes"><NotebookPen size={18} /></a>
+		<a class="rail-item" class:active={on('/semesters')} href="/semesters" data-tip="Semesters (shared)" aria-label="Semesters"><CalendarRange size={18} /></a>
+		<a class="rail-item" class:active={on('/people')} href="/people" data-tip="People (shared)" aria-label="People"><Users size={18} /></a>
 		<a class="rail-item" class:active={on('/settings')} href="/settings" data-tip="Settings" aria-label="Settings"><Settings size={18} /></a>
 	</nav>
 
