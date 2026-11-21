@@ -6,16 +6,14 @@ import type { Preview } from '@storybook/sveltekit';
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 import '../src/app.css';
 import { loadPortflow } from '../src/lib/portflow.svelte';
-import { sync } from '../src/lib/ui.svelte';
 import { answer } from '../src/stories/backend';
-import { PROJECT, settings } from '../src/stories/fixtures';
+import { PROJECT } from '../src/stories/fixtures';
 
 mockWindows('main');
 mockIPC((command, args) => answer(command, (args ?? {}) as Record<string, unknown>), { shouldMockEvents: true });
 
 // What the app's layout loads once at the start, and components read from Ledger's shared state.
 void loadPortflow();
-sync.status = settings.status;
 
 const THEMES = ['sepia', 'light', 'dark', 'night', 'forest', 'ocean'];
 
