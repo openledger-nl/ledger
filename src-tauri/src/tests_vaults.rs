@@ -18,7 +18,8 @@ fn without_a_vault_nothing_is_written_until_one_is_made() {
     assert!(!core.vault.root().exists(), "the stand-in vault is never created on disk");
     core.reload().unwrap();
 
-    let path = core.create_vault(place.path(), "  School  ").unwrap();
+    let (path, recovery) = core.create_vault(place.path(), "  School  ", None).unwrap();
+    assert!(recovery.is_none(), "a vault of plain files has no key");
     assert_eq!(path, place.path().join("School"));
     assert!(core.open);
     assert!(path.join("ledger.json").exists(), "a new vault gets its marker");
@@ -42,10 +43,10 @@ fn a_new_vault_never_takes_over_a_folder_with_something_in_it() {
     fs::create_dir(place.path().join("Empty")).unwrap();
 
     let mut core = Core::without_vault(config.path().to_path_buf()).unwrap();
-    assert!(core.create_vault(place.path(), "Notes").is_err());
+    assert!(core.create_vault(place.path(), "Notes", None).is_err());
     assert!(!core.open);
-    assert!(core.create_vault(Path::new("relative"), "Notes").is_err());
-    core.create_vault(place.path(), "Empty").unwrap();
+    assert!(core.create_vault(Path::new("relative"), "Notes", None).is_err());
+    core.create_vault(place.path(), "Empty", None).unwrap();
     assert_eq!(fs::read_to_string(place.path().join("Notes/todo.md")).unwrap(), "mine");
 }
 

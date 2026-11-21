@@ -51,6 +51,8 @@ flate2 = "1.1.10"
 sha2 = "0.11.1"
 zeroize = "1.9.1"
 hmac = "0.13"
+# Making an encrypted vault's passphrase into the key that seals its key (`vault_crypto.rs`).
+argon2 = "0.5"
 # Installing new releases from inside the app (`updates.rs`). Registered in release builds only, see `lib.rs`.
 tauri-plugin-updater = "2"
 # JPEG XL pictures, decoded for display (`images.rs`): the web view on Linux has no JPEG XL decoder.

@@ -22,8 +22,6 @@ use crate::settings::local_dir;
 /// Where Fontys ICT students open Portflow: the Canvas page that launches it.
 pub const DEFAULT_LAUNCH_URL: &str = "https://fontysict.instructure.com/accounts/1/external_tools/23360?launch_type=global_navigation&toolId=portfolio-23360";
 
-/// Fontys ICT's Canvas before it moved to `fontysict.instructure.com`, and the page that launched Portflow there.
-
 /// The write that puts a project's reading guide (its README.md) in the description of the collection it is linked to
 /// for the current semester. Replaces "edit-descriptions": the guide is how a description is edited in Ledger, so a
 /// machine that had that switch on starts with this one off.

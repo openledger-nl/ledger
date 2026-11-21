@@ -1,4 +1,4 @@
-//! Sealing, opening and keeping keys. Keys go into memory, or into the `.env` of a temporary vault.
+//! Sealing and opening files, and keys as text.
 
 use std::io::Write;
 
@@ -21,40 +21,64 @@ fn different_from(other: &Key) -> Key {
 
 // ---- sealing and opening ----------------------------------------------------------------------------
 
+fn sealed(key: &Key, path: &str, bytes: &[u8]) -> Vec<u8> {
+    crypto::seal(key, path, bytes).unwrap()
+}
+
 #[test]
-fn a_file_survives_the_round_trip() {
+fn a_file_and_its_path_survive_the_round_trip() {
     let key = key(1);
     for plaintext in [&b""[..], b"hello", "naïve — ünïcode ✓".as_bytes(), &[0u8, 159, 146, 150, 255], &vec![42u8; 100_000]] {
-        let sealed = crypto::encrypt(&key, "projects/p/readme.md", plaintext).unwrap();
-        assert_eq!(crypto::decrypt(&key, "projects/p/readme.md", &sealed).unwrap(), plaintext);
+        for path in ["projects/p/README.md", "projects/p/attachments/chart.png"] {
+            let blob = sealed(&key, path, plaintext);
+            assert_eq!(crypto::open(&key, &blob).unwrap(), (path.to_string(), plaintext.to_vec()));
+        }
     }
+}
+
+#[test]
+fn the_path_is_read_from_the_start_of_the_file_alone() {
+    let key = key(2);
+    let path = "projects/acquisition-company-x/threads/layoffs-q1/thread.md";
+    let blob = sealed(&key, path, &vec![7u8; 50_000]);
+    let needed = crypto::path_bytes_needed(&blob[..32]).unwrap();
+    assert!(needed < 200, "{needed}");
+    assert_eq!(crypto::open_path(&key, &blob[..needed]).unwrap(), path);
+    assert!(crypto::path_bytes_needed(&blob[..10]).is_none(), "too short to say");
 }
 
 #[test]
 fn what_is_sealed_looks_nothing_like_the_file_and_is_new_every_time() {
     let key = key(2);
     let text = b"the quick brown fox jumps over the lazy dog, again and again and again";
-    let (a, b) = (crypto::encrypt(&key, "a.md", text).unwrap(), crypto::encrypt(&key, "a.md", text).unwrap());
-    assert_ne!(a, b, "a fresh nonce for every encryption");
-    assert!(!a.windows(text.len().min(12)).any(|w| w == &text[..w.len()]), "no plaintext shows through");
+    let path = "projects/secret-client/notes.md";
+    let (a, b) = (sealed(&key, path, text), sealed(&key, path, text));
+    assert_ne!(a, b, "fresh nonces for every write");
+    for needle in [&text[..12], b"secret-client"] {
+        assert!(!a.windows(needle.len()).any(|w| w == needle), "no plaintext shows through, the path neither");
+    }
     assert_eq!(&a[..4], &[0x89, b'L', b'D', b'G'], "magic");
-    assert_eq!(a[4], 2, "format version");
+    assert_eq!(a[4], 3, "format version");
     assert_eq!(a[5], key.id(), "key id");
 }
 
 #[test]
-fn files_are_compressed_before_they_are_sealed() {
+fn text_is_compressed_before_it_is_sealed_and_pictures_are_not() {
     let key = key(3);
     let text = "the same line over and over\n".repeat(2_000);
-    let sealed = crypto::encrypt(&key, "notes.md", text.as_bytes()).unwrap();
-    assert!(sealed.len() < text.len() / 10, "{} bytes sealed from {}", sealed.len(), text.len());
+    let blob = sealed(&key, "notes.md", text.as_bytes());
+    assert!(blob.len() < text.len() / 10, "{} bytes sealed from {}", blob.len(), text.len());
+    assert_eq!(blob[6] & 1, 1, "marked as deflated");
+    let picture = sealed(&key, "chart.png", text.as_bytes());
+    assert_eq!(picture[6] & 1, 0, "a picture is compressed already");
+    assert_eq!(crypto::open(&key, &picture).unwrap().1, text.as_bytes());
 }
 
 #[test]
 fn the_wrong_key_is_recognised_and_says_which_key_it_was() {
     let (right, wrong) = (key(4), different_from(&key(4)));
-    let sealed = crypto::encrypt(&right, "a.md", b"secret").unwrap();
-    assert_eq!(crypto::decrypt(&wrong, "a.md", &sealed), Err(CryptoError::WrongKey { found: right.id(), expected: wrong.id() }));
+    let blob = sealed(&right, "a.md", b"secret");
+    assert_eq!(crypto::open(&wrong, &blob), Err(CryptoError::WrongKey { found: right.id(), expected: wrong.id() }));
 }
 
 #[test]
@@ -69,64 +93,58 @@ fn a_key_with_the_same_label_still_cannot_open_it() {
         })
         .find(|k| k.id() == right.id())
         .expect("some other key shares the label");
-    let sealed = crypto::encrypt(&right, "a.md", b"secret").unwrap();
-    assert_eq!(crypto::decrypt(&twin, "a.md", &sealed), Err(CryptoError::Failed));
+    let blob = sealed(&right, "a.md", b"secret");
+    assert_eq!(crypto::open(&twin, &blob), Err(CryptoError::Failed));
 }
 
 #[test]
 fn a_tampered_file_is_refused_wherever_it_was_touched() {
     let key = key(6);
-    let sealed = crypto::encrypt(&key, "a.md", b"some words worth protecting").unwrap();
-
-    // Every byte after the header: nonce, ciphertext, tag.
-    for i in 6..sealed.len() {
-        let mut bad = sealed.clone();
+    let blob = sealed(&key, "a.md", b"some words worth protecting");
+    // Every byte after the header, the length of the sealed path apart (changing it cuts the file up differently).
+    let length_at = crypto::HEADER_BYTES + 12;
+    for i in crypto::HEADER_BYTES..blob.len() {
+        if i == length_at || i == length_at + 1 {
+            continue;
+        }
+        let mut bad = blob.clone();
         bad[i] ^= 0x01;
-        assert_eq!(crypto::decrypt(&key, "a.md", &bad), Err(CryptoError::Failed), "byte {i}");
+        assert!(crypto::open(&key, &bad).is_err(), "byte {i}");
     }
+    let mut longer = blob.clone();
+    longer[length_at] ^= 0x01;
+    assert!(crypto::open(&key, &longer).is_err());
 
-    let mut newer = sealed.clone();
-    newer[4] = 3;
-    assert_eq!(crypto::decrypt(&key, "a.md", &newer), Err(CryptoError::UnsupportedVersion(3)));
-    assert!(CryptoError::UnsupportedVersion(3).to_string().contains("newer version"));
-    // Format 1 was sealed under readable paths; it is not read any more.
-    let mut earlier = sealed.clone();
-    earlier[4] = 1;
-    assert_eq!(crypto::decrypt(&key, "a.md", &earlier), Err(CryptoError::UnsupportedVersion(1)));
-    assert!(CryptoError::UnsupportedVersion(1).to_string().contains("earlier version"));
-
-    let mut other_label = sealed.clone();
+    let mut newer = blob.clone();
+    newer[4] = 4;
+    assert_eq!(crypto::open(&key, &newer), Err(CryptoError::UnsupportedVersion(4)));
+    let mut other_label = blob.clone();
     other_label[5] ^= 0x01;
-    assert!(matches!(crypto::decrypt(&key, "a.md", &other_label), Err(CryptoError::WrongKey { .. })));
+    assert!(matches!(crypto::open(&key, &other_label), Err(CryptoError::WrongKey { .. })));
+    let mut flags = blob.clone();
+    flags[6] ^= 0x01;
+    assert_eq!(crypto::open(&key, &flags), Err(CryptoError::Failed), "the flags are authenticated");
 
-    assert_eq!(crypto::decrypt(&key, "a.md", &sealed[..sealed.len() - 1]), Err(CryptoError::Failed), "a clipped tag");
-    assert_eq!(crypto::decrypt(&key, "a.md", &sealed[..10]), Err(CryptoError::Corrupt), "cut short");
-    assert!(crypto::decrypt(&key, "a.md", &sealed).is_ok(), "the original is untouched");
+    assert!(crypto::open(&key, &blob[..blob.len() - 1]).is_err(), "a clipped tag");
+    assert_eq!(crypto::open(&key, &blob[..10]), Err(CryptoError::Corrupt), "cut short");
+    assert!(crypto::open(&key, &blob).is_ok(), "the original is untouched");
 }
 
 #[test]
-fn a_file_moved_to_another_path_no_longer_opens() {
-    let key = key(7);
-    let sealed = crypto::encrypt(&key, "projects/a/readme.md", b"for a").unwrap();
-    assert_eq!(crypto::decrypt(&key, "projects/b/readme.md", &sealed), Err(CryptoError::Failed));
-    assert_eq!(crypto::decrypt(&key, "projects/a/readme.md", &sealed).unwrap(), b"for a");
-}
-
-#[test]
-fn a_path_is_stored_under_a_name_only_the_key_can_make() {
-    let name = crypto::remote_name(&key(12), "projects/acquisition-company-x/threads/layoffs-q1/thread.md");
+fn a_file_is_kept_under_a_name_only_the_key_can_make() {
+    let name = crypto::blob_name(&key(12), "projects/acquisition-company-x/threads/layoffs-q1/thread.md");
     assert_eq!(name.len(), 32);
     assert!(name.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)), "{name}");
-    assert_eq!(name, crypto::remote_name(&key(12), "projects/acquisition-company-x/threads/layoffs-q1/thread.md"), "the same on every machine");
-    assert_ne!(name, crypto::remote_name(&key(13), "projects/acquisition-company-x/threads/layoffs-q1/thread.md"), "another key, another name");
-    assert_ne!(crypto::remote_name(&key(12), "a.md"), crypto::remote_name(&key(12), "b.md"));
+    assert_eq!(name, crypto::blob_name(&key(12), "projects/acquisition-company-x/threads/layoffs-q1/thread.md"), "the same on every machine");
+    assert_ne!(name, crypto::blob_name(&key(13), "projects/acquisition-company-x/threads/layoffs-q1/thread.md"), "another key, another name");
+    assert_ne!(crypto::blob_name(&key(12), "a.md"), crypto::blob_name(&key(12), "b.md"));
 }
 
 #[test]
 fn a_plain_file_is_not_mistaken_for_a_sealed_one() {
     let key = key(8);
-    assert_eq!(crypto::decrypt(&key, "a.md", b"# just markdown"), Err(CryptoError::NotEncrypted));
-    assert_eq!(crypto::decrypt(&key, "a.md", b""), Err(CryptoError::NotEncrypted));
+    assert_eq!(crypto::open(&key, b"# just markdown"), Err(CryptoError::NotEncrypted));
+    assert_eq!(crypto::open(&key, b""), Err(CryptoError::NotEncrypted));
 }
 
 #[test]
@@ -141,7 +159,16 @@ fn a_decompression_bomb_is_stopped_and_so_is_an_oversized_file() {
     assert_eq!(crypto::inflate_for_test(&bomb, 1_000_000).unwrap().len(), 1_000_000);
 
     let too_big = vec![0u8; MAX_FILE_BYTES as usize + 1];
-    assert_eq!(crypto::encrypt(&key(9), "huge.bin", &too_big), Err(CryptoError::TooLarge));
+    assert_eq!(crypto::seal(&key(9), "huge.bin", &too_big), Err(CryptoError::TooLarge));
+}
+
+#[test]
+fn a_key_sealed_with_another_opens_only_with_it_and_its_context() {
+    let (outer, inner) = (key(20), key(21));
+    let wrapped = crypto::wrap(&outer, b"ledger vault key 1234", inner.as_bytes()).unwrap();
+    assert_eq!(&crypto::unwrap(&outer, b"ledger vault key 1234", &wrapped).unwrap()[..], &inner.as_bytes()[..]);
+    assert!(crypto::unwrap(&outer, b"ledger vault key 9999", &wrapped).is_err(), "bound to the vault");
+    assert!(crypto::unwrap(&different_from(&outer), b"ledger vault key 1234", &wrapped).is_err());
 }
 
 // ---- keys as text -----------------------------------------------------------------------------------

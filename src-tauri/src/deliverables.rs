@@ -92,11 +92,14 @@ pub fn snapshot_path(base: &str, version: &str) -> String {
     if dir.is_empty() { file } else { format!("{dir}/{file}") }
 }
 
+/// Where the live files are on disk in a vault of plain files, for tests that put files there by hand.
+#[cfg(test)]
 pub fn deliverables_dir(root: &Path, project: &str) -> PathBuf {
     uploads::project_dir(root, project).join("deliverables")
 }
 
-/// Where published versions are kept, next to the records of how each came to be (see [`provenance`]).
+/// Where published versions are kept, next to the records of how each came to be (see [`provenance`]), for tests.
+#[cfg(test)]
 pub fn versions_dir(root: &Path, project: &str) -> PathBuf {
     uploads::project_dir(root, project).join("versions")
 }

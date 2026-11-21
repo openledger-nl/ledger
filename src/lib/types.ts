@@ -693,6 +693,23 @@ export interface VaultEntry {
 	open: boolean;
 	/** Why it can't be opened (a vault from Ledger 0.x, say); null when it can. */
 	refused: string | null;
+	/** Its files are encrypted. */
+	encrypted: boolean;
+	/** Encrypted, and this computer doesn't have its key: opening it takes the passphrase or the recovery key. */
+	needsKey: boolean;
+}
+
+/** A vault just made, with its recovery key when it is encrypted (shown once). */
+export interface CreatedVault {
+	vaults: Vaults;
+	recovery: string | null;
+}
+
+/** Whether the open vault is encrypted, and whether this computer's keychain keeps its key. Never the key. */
+export interface EncryptionView {
+	encrypted: boolean;
+	keyId: string | null;
+	kept: boolean;
 }
 
 export interface Vaults {

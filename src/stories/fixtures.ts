@@ -695,10 +695,10 @@ export const vaults: Vaults = {
 	locked: false,
 	suggestedParent: '/home/student/Documents',
 	vaults: [
-		{ path: '/home/student/OneDrive/Ledger', name: 'Ledger', exists: true, open: true, refused: null },
-		{ path: '/home/student/Nextcloud/School 2025', name: 'School 2025', exists: true, open: false, refused: null },
-		{ path: '/home/student/Documents/Hobby', name: 'Hobby', exists: true, open: false, refused: "/home/student/Documents/Hobby holds a vault from Ledger 0.x. Ledger 1.0 can't open it and doesn't change it: create a new vault, in a folder your cloud storage keeps in sync." },
-		{ path: '/media/usb/Old vault', name: 'Old vault', exists: false, open: false, refused: null }
+		{ path: '/home/student/OneDrive/Ledger', name: 'Ledger', exists: true, open: true, refused: null, encrypted: false, needsKey: false },
+		{ path: '/home/student/Nextcloud/School 2025', name: 'School 2025', exists: true, open: false, refused: null, encrypted: true, needsKey: true },
+		{ path: '/home/student/Documents/Hobby', name: 'Hobby', exists: true, open: false, refused: "/home/student/Documents/Hobby holds a vault from Ledger 0.x. Ledger 1.0 can't open it and doesn't change it: create a new vault, in a folder your cloud storage keeps in sync.", encrypted: false, needsKey: false },
+		{ path: '/media/usb/Old vault', name: 'Old vault', exists: false, open: false, refused: null, encrypted: false, needsKey: false }
 	]
 };
 

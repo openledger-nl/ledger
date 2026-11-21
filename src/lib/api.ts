@@ -16,6 +16,8 @@ import type {
 	PostKind,
 	EpistemicLabel,
 	ConflictView,
+	CreatedVault,
+	EncryptionView,
 	Person,
 	PersonDraft,
 	ProjectPerson,
@@ -319,8 +321,19 @@ export const api = {
 	setVaultPath: (path: string, copy: boolean) => call<Settings>('set_vault_path', { path, copy }),
 	// the vault picker
 	listVaults: () => call<Vaults>('list_vaults'),
-	/** A new vault: a folder called `name` in `parent`, which must not be there yet or be empty. */
-	createVault: (parent: string, name: string) => call<Vaults>('create_vault', { parent, name }),
+	/** A new vault: a folder called `name` in `parent`, which must not be there yet or be empty. With a passphrase it is encrypted. */
+	createVault: (parent: string, name: string, passphrase: string | null = null) => call<CreatedVault>('create_vault', { parent, name, passphrase }),
+	/** Opens an encrypted vault with its passphrase or recovery key; `keep` keeps its key in this computer's keychain. */
+	unlockVault: (path: string, secret: string, keep: boolean) => call<Vaults>('unlock_vault', { path, secret, keep }),
+	// the open vault's encryption
+	vaultEncryption: () => call<EncryptionView>('vault_encryption'),
+	changePassphrase: (current: string, passphrase: string) => call<EncryptionView>('change_passphrase', { current, passphrase }),
+	/** The recovery key, for the passphrase: the one call that hands out the key. */
+	recoveryKey: (passphrase: string) => call<string>('recovery_key', { passphrase }),
+	/** Takes the key out of this computer's keychain: the next start asks for the passphrase. */
+	forgetVaultKey: () => call<EncryptionView>('forget_vault_key'),
+	/** An encrypted copy of the open vault in a new folder, opened at once; the vault of plain files stays as it is. */
+	encryptedCopy: (parent: string, name: string, passphrase: string) => call<CreatedVault>('encrypted_copy', { parent, name, passphrase }),
 	openVault: (path: string) => call<Vaults>('open_vault', { path }),
 	/** Off the list; the folder is left alone. */
 	forgetVault: (path: string) => call<Vaults>('forget_vault', { path }),

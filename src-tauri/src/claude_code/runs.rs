@@ -26,7 +26,7 @@ use super::render::{self, ResultInfo, Step};
 use super::runner::{self, Exit, Process, Runner, SpawnSpec};
 use super::versions::{Baseline, Change};
 use crate::error::{Error, Result};
-use crate::{deliverables, ids};
+use crate::ids;
 
 /// How many runs may be going at once.
 pub const MAX_CONCURRENT: usize = 3;
@@ -336,10 +336,7 @@ impl Runs {
         };
 
         // How the deliverables stand before the run, to tell afterwards what it changed and what to publish.
-        let baseline = Baseline::capture(
-            &deliverables::deliverables_dir(&ctx.root, &request.project),
-            &deliverables::versions_dir(&ctx.root, &request.project),
-        );
+        let baseline = Baseline::capture(&request.cwd.join("deliverables"), &request.cwd.join("versions"));
 
         let run = Arc::new(Run::new(&request));
         request.run_id = run.id.clone();
@@ -586,7 +583,7 @@ fn spawn_failure(e: &io::Error, spec: &SpawnSpec) -> String {
 #[allow(clippy::too_many_arguments, reason = "the run and how it ended: a struct for one call would only name them again")]
 fn finish(inner: &Inner, sink: &Sink, request: &RunRequest, ctx: &RunContext, baseline: &Baseline, status: Status, message: Option<String>, code: Option<i32>) {
     let run = &sink.run;
-    let changes: Vec<Change> = baseline.changes(&deliverables::deliverables_dir(&ctx.root, &request.project));
+    let changes: Vec<Change> = baseline.changes(&request.cwd.join("deliverables"));
     let vault = inner.host.vault_after_run(request, &changes, status == Status::Finished);
     if let Some(error) = &vault.error {
         sink.push(&format!("✗ After the run: {error}\n"));

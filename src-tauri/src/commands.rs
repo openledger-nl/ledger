@@ -7,6 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
+use zeroize::Zeroizing;
 
 use crate::error::{Error, Result};
 use crate::history;
@@ -896,6 +897,10 @@ pub struct VaultEntry {
     pub open: bool,
     /// Why it can't be opened (a vault from Ledger 0.x, say); `None` when it can.
     pub refused: Option<String>,
+    /// Its files are encrypted.
+    pub encrypted: bool,
+    /// Encrypted, and this machine doesn't have its key: opening it takes the passphrase or the recovery key.
+    pub needs_key: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -912,12 +917,19 @@ pub struct VaultsView {
 }
 
 fn vault_entry(path: &Path, open: bool) -> VaultEntry {
+    let found = crate::marker::inspect(path);
+    let (encrypted, needs_key) = match &found {
+        crate::marker::Found::Vault(m) if m.encryption.is_some() => (true, crate::vault_crypto::known(&m.id).is_none()),
+        _ => (false, false),
+    };
     VaultEntry {
         path: path.display().to_string(),
         name: path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().to_string()),
         exists: path.is_dir(),
         open,
-        refused: if open || !path.is_dir() { None } else { crate::marker::refusal(path, &crate::marker::inspect(path)).map(|e| e.to_string()) },
+        refused: if open || !path.is_dir() { None } else { crate::marker::refusal(path, &found).map(|e| e.to_string()) },
+        encrypted,
+        needs_key: needs_key && !open,
     }
 }
 
@@ -946,15 +958,118 @@ pub fn list_vaults(app: AppHandle) -> VaultsView {
     vaults_view(&app)
 }
 
-/// Makes a new vault called `name` in the folder `parent`, opens it, and starts the setup guide for it.
+/// A vault just made: the vaults, and its recovery key when it is encrypted, to be shown once.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedVault {
+    pub vaults: VaultsView,
+    pub recovery: Option<String>,
+}
+
+/// Makes a new vault called `name` in the folder `parent`, opens it, and starts the setup guide for it. With a
+/// passphrase it is encrypted.
 #[tauri::command]
-pub fn create_vault(app: AppHandle, parent: String, name: String) -> Result<VaultsView> {
-    let config_dir = switch_vault(&app, |core| {
-        core.create_vault(&PathBuf::from(parent.trim()), &name)?;
-        Ok(core.config_dir.clone())
+pub fn create_vault(app: AppHandle, parent: String, name: String, passphrase: Option<String>) -> Result<CreatedVault> {
+    let passphrase = passphrase.map(Zeroizing::new);
+    let (config_dir, recovery) = switch_vault(&app, |core| {
+        let (_, recovery) = core.create_vault(&PathBuf::from(parent.trim()), &name, passphrase.as_deref().map(String::as_str))?;
+        Ok((core.config_dir.clone(), recovery))
     })?;
     crate::onboarding::restart(&config_dir)?;
+    Ok(CreatedVault { vaults: vaults_view(&app), recovery: recovery.map(|r| String::clone(&r)) })
+}
+
+/// Opens an encrypted vault with its passphrase or its recovery key. With `keep`, this machine keeps its key in the
+/// system's keychain, so the next start opens it without asking.
+#[tauri::command]
+pub fn unlock_vault(app: AppHandle, path: String, secret: String, keep: bool) -> Result<VaultsView> {
+    let secret = Zeroizing::new(secret);
+    let path = PathBuf::from(path.trim());
+    let crate::marker::Found::Vault(marker) = crate::marker::inspect(&path) else {
+        return Err(Error::invalid(format!("{} isn't a vault", path.display())));
+    };
+    let Some(header) = &marker.encryption else { return Err(Error::invalid("That vault isn't encrypted")) };
+    let key = crate::vault_crypto::unlock(header, &marker.id, &secret)?;
+    crate::vault_crypto::remember(&marker.id, key, keep);
+    switch_vault(&app, |core| core.open_vault(&path))?;
     Ok(vaults_view(&app))
+}
+
+// ---- the open vault's encryption ------------------------------------------------------------------
+
+/// Whether the open vault is encrypted, and what this machine keeps of its key. Never the key.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptionView {
+    pub encrypted: bool,
+    /// The key's one-byte label, to tell keys apart.
+    pub key_id: Option<String>,
+    /// The system's keychain keeps the key, so a start doesn't ask for the passphrase.
+    pub kept: bool,
+}
+
+fn open_marker(app: &App) -> Result<(PathBuf, crate::marker::Marker)> {
+    let root = app.lock().vault.root().to_path_buf();
+    match crate::marker::inspect(&root) {
+        crate::marker::Found::Vault(marker) => Ok((root, marker)),
+        _ => Err(Error::invalid("No vault is open")),
+    }
+}
+
+fn encryption_view(app: &App) -> EncryptionView {
+    match open_marker(app) {
+        Ok((_, marker)) => EncryptionView {
+            encrypted: marker.encryption.is_some(),
+            key_id: marker.encryption.as_ref().map(|h| h.key_id.clone()),
+            kept: marker.encryption.is_some() && crate::vault_crypto::kept(&marker.id),
+        },
+        Err(_) => EncryptionView { encrypted: false, key_id: None, kept: false },
+    }
+}
+
+#[tauri::command]
+pub fn vault_encryption(app: State<App>) -> EncryptionView {
+    encryption_view(&app)
+}
+
+/// Seals the vault's key under a new passphrase; the current one (or the recovery key) says it may.
+#[tauri::command]
+pub fn change_passphrase(app: State<App>, current: String, passphrase: String) -> Result<EncryptionView> {
+    let (current, passphrase) = (Zeroizing::new(current), Zeroizing::new(passphrase));
+    let (root, mut marker) = open_marker(&app)?;
+    let Some(header) = marker.encryption.clone() else { return Err(Error::invalid("This vault isn't encrypted")) };
+    let key = crate::vault_crypto::unlock(&header, &marker.id, &current)?;
+    marker.encryption = Some(crate::vault_crypto::rewrap(&header, &marker.id, &key, &passphrase)?);
+    crate::marker::write(&root, &marker)?;
+    Ok(encryption_view(&app))
+}
+
+/// The recovery key of the open vault, for its passphrase: the key itself, as text. Only ever handed out on request.
+#[tauri::command]
+pub fn recovery_key(app: State<App>, passphrase: String) -> Result<String> {
+    let passphrase = Zeroizing::new(passphrase);
+    let (_, marker) = open_marker(&app)?;
+    let Some(header) = &marker.encryption else { return Err(Error::invalid("This vault isn't encrypted")) };
+    let key = crate::vault_crypto::unlock(header, &marker.id, &passphrase)?;
+    Ok(String::clone(&key.to_recovery()))
+}
+
+/// Takes the key out of this machine's keychain: the next start asks for the passphrase.
+#[tauri::command]
+pub fn forget_vault_key(app: State<App>) -> Result<EncryptionView> {
+    let (_, marker) = open_marker(&app)?;
+    crate::vault_crypto::forget(&marker.id);
+    Ok(encryption_view(&app))
+}
+
+/// Makes an encrypted copy of the open vault in a new folder `name` in `parent`, and opens it. The vault of plain
+/// files is left as it is: delete it yourself once the copy is synced (its files stay in the cloud's version history
+/// and recycle bin for a while).
+#[tauri::command]
+pub fn encrypted_copy(app: AppHandle, parent: String, name: String, passphrase: String) -> Result<CreatedVault> {
+    let passphrase = Zeroizing::new(passphrase);
+    let recovery = switch_vault(&app, |core| core.encrypted_copy(&PathBuf::from(parent.trim()), &name, &passphrase))?.1;
+    Ok(CreatedVault { vaults: vaults_view(&app), recovery: Some(String::clone(&recovery)) })
 }
 
 /// Opens a folder that exists as the vault: one from the list, or any folder picked.
@@ -1066,6 +1181,8 @@ pub fn resolve_conflict(app: State<App>, copy: String, keep: String) -> Result<V
 #[tauri::command]
 pub fn check_vault_changes(app: State<App>) -> Result<bool> {
     let mut core = app.lock();
+    // In an encrypted vault, what a program changed in the plain copies is taken in first.
+    let _ = core.vault.store().take_back();
     if !core.vault.changed_on_disk() {
         return Ok(false);
     }

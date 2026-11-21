@@ -53,14 +53,17 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, thread: &str, prom
     let prompt = prompts::get(conn, project, thread, prompt_id)?;
     let name = query_opt(conn, "SELECT name FROM projects WHERE slug = ?1", [project], |r| r.get::<_, String>(0))?.unwrap_or_default();
 
-    let cwd = uploads::project_dir(root, project);
+    // The run works in the project's folder; in an encrypted vault in a plain copy of it outside the synced folder,
+    // whose changes are taken back in when it is over (see `store::Store::materialize_dir`).
+    let store = crate::store::at(root);
+    let cwd = store.materialize_dir(&format!("projects/{project}")).map_err(|e| Error::io(&uploads::project_dir(root, project), e))?;
     if !cwd.is_dir() {
         return Err(Error::invalid(format!(
             "The project's folder isn't on disk ({}). Use Reload from disk under Settings, or check that the vault is where you expect it.",
             cwd.display()
         )));
     }
-    let dir = deliverables::deliverables_dir(root, project);
+    let dir = cwd.join("deliverables");
     fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
 
     let text = compose(&name, &prompt);

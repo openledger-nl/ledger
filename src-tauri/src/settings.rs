@@ -238,7 +238,7 @@ pub fn read_secret(root: &Path, name: &str) -> Option<String> {
         return Some(value).filter(|v| !v.is_empty());
     }
     let text = fs::read_to_string(secrets_path(root)).ok()?;
-    text.lines().filter_map(parse_line).filter(|(key, _)| *key == name).map(|(_, value)| value).last().filter(|v| !v.is_empty())
+    text.lines().filter_map(parse_line).filter(|(key, _)| *key == name).map(|(_, value)| value).next_back().filter(|v| !v.is_empty())
 }
 
 /// Keeps a secret for the vault in `root` on this machine, never in the vault: in the system's keychain (the

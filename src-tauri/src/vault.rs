@@ -148,7 +148,13 @@ impl Vault {
             marker::Found::Vault(marker) => marker,
             _ => marker::create(&root)?,
         };
-        let store = Store::plain(root.clone());
+        let store = match &marker.encryption {
+            None => Store::plain(root.clone()),
+            Some(_) => {
+                let key = crate::vault_crypto::known(&marker.id).ok_or_else(|| Error::Locked(format!("{} is encrypted: enter its passphrase to open it", root.display())))?;
+                Store::sealed(root.clone(), std::sync::Arc::new(crate::vault_crypto::Sealed::new(key, &marker.id)))
+            }
+        };
         store::register(&store);
         Ok(Vault::with(root, store, marker.id))
     }

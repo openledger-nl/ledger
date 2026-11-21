@@ -17,6 +17,8 @@ pub enum Error {
     Update(String),
     /// Making a PDF of a deliverable went wrong.
     Export(String),
+    /// The vault is encrypted, and this machine doesn't have its key yet: it takes the passphrase.
+    Locked(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -55,7 +57,13 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Invalid(message) | Error::NotFound(message) | Error::Sync(message) | Error::Screenshot(message) | Error::Update(message) | Error::Export(message) => {
+            Error::Invalid(message)
+            | Error::NotFound(message)
+            | Error::Sync(message)
+            | Error::Screenshot(message)
+            | Error::Update(message)
+            | Error::Export(message)
+            | Error::Locked(message) => {
                 f.write_str(message)
             }
             Error::Db(e) => write!(f, "Database error: {e}"),

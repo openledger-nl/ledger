@@ -9,7 +9,9 @@ use rusqlite::Connection;
 use crate::error::{Error, Result};
 use crate::screenshot::Screenshots;
 use crate::settings;
+use crate::store::Store;
 use crate::vault::Vault;
+use zeroize::Zeroizing;
 
 pub struct Core {
     /// The working copy every read is answered from.
@@ -33,7 +35,14 @@ impl Core {
                     crate::applog::info("vault", format!("Not opening {}: {refused}", root.display()));
                     return Core::without_vault(config_dir);
                 }
-                Core::open_at(root, config_dir, from_env)
+                match Core::open_at(root, config_dir.clone(), from_env) {
+                    // An encrypted vault whose key this machine doesn't keep: the picker asks for the passphrase.
+                    Err(Error::Locked(why)) => {
+                        crate::applog::info("vault", why);
+                        Core::without_vault(config_dir)
+                    }
+                    other => other,
+                }
             }
             (None, _) => Core::without_vault(config_dir),
         }
@@ -96,21 +105,48 @@ impl Core {
     }
 
     /// Makes a new, empty vault: a folder called `name` in `parent`, and switches to it. A folder of that name may be
-    /// there already, but only when it is empty, so nothing that is there is ever taken over by mistake.
-    pub fn create_vault(&mut self, parent: &Path, name: &str) -> Result<PathBuf> {
-        let name = vault_name(name)?;
-        if !parent.is_absolute() {
-            return Err(Error::invalid("Choose the folder to put the vault in"));
+    /// there already, but only when it is empty, so nothing that is there is ever taken over by mistake. With a
+    /// passphrase the vault is encrypted (see `vault_crypto`), and its recovery key is returned, to be shown once.
+    pub fn create_vault(&mut self, parent: &Path, name: &str, passphrase: Option<&str>) -> Result<(PathBuf, Option<Zeroizing<String>>)> {
+        let path = new_vault_folder(parent, name)?;
+        let recovery = match passphrase {
+            Some(passphrase) => {
+                fs::create_dir_all(&path).map_err(|e| Error::io(&path, e))?;
+                let (marker, key) = crate::marker::create_encrypted(&path, passphrase)?;
+                let recovery = key.to_recovery();
+                crate::vault_crypto::remember(&marker.id, key, true);
+                Some(recovery)
+            }
+            None => None,
+        };
+        self.set_vault(&path, false)?;
+        Ok((path, recovery))
+    }
+
+    /// Makes an encrypted copy of the open vault, a vault of plain files, in a new folder `name` in `parent`, and
+    /// switches to it. The open vault is left as it is. Returns the new vault's folder and its recovery key.
+    pub fn encrypted_copy(&mut self, parent: &Path, name: &str, passphrase: &str) -> Result<(PathBuf, Zeroizing<String>)> {
+        if !self.open {
+            return Err(Error::invalid("Open the vault to copy first"));
         }
-        let path = parent.join(name);
-        if path.exists() {
-            let empty = path.is_dir() && fs::read_dir(&path).map_err(|e| Error::io(&path, e))?.next().is_none();
-            if !empty {
-                return Err(Error::invalid(format!("{} already exists and isn't empty. Pick another name, or open it as a vault", path.display())));
+        if self.vault.store().is_sealed() {
+            return Err(Error::invalid("This vault is encrypted already"));
+        }
+        let path = new_vault_folder(parent, name)?;
+        fs::create_dir_all(&path).map_err(|e| Error::io(&path, e))?;
+        let (marker, key) = crate::marker::create_encrypted(&path, passphrase)?;
+        let recovery = key.to_recovery();
+        let key = crate::vault_crypto::remember(&marker.id, key, true);
+        {
+            let target = Store::sealed(path.clone(), Arc::new(crate::vault_crypto::Sealed::new(key, &marker.id)));
+            let source = self.vault.store().clone();
+            for rel in source.list(&["projects", crate::vault::SHARED, crate::daily::FOLDER], |_| false).keys() {
+                let bytes = source.read(rel).map_err(|e| Error::io(&source.path(rel), e))?;
+                target.write(rel, &bytes).map_err(|e| Error::io(&path.join(rel), e))?;
             }
         }
         self.set_vault(&path, false)?;
-        Ok(path)
+        Ok((path, recovery))
     }
 
     /// Opens a folder that is already there as the vault (as Obsidian's "Open folder as vault"). Files Ledger doesn't
@@ -121,6 +157,22 @@ impl Core {
         }
         self.set_vault(path, false)
     }
+}
+
+/// The folder a new vault called `name` goes in, in `parent`: one that isn't there yet, or is empty.
+fn new_vault_folder(parent: &Path, name: &str) -> Result<PathBuf> {
+    let name = vault_name(name)?;
+    if !parent.is_absolute() {
+        return Err(Error::invalid("Choose the folder to put the vault in"));
+    }
+    let path = parent.join(name);
+    if path.exists() {
+        let empty = path.is_dir() && fs::read_dir(&path).map_err(|e| Error::io(&path, e))?.next().is_none();
+        if !empty {
+            return Err(Error::invalid(format!("{} already exists and isn't empty. Pick another name, or open it as a vault", path.display())));
+        }
+    }
+    Ok(path)
 }
 
 /// A vault's name is its folder's name, so it must be one that every system (and every cloud drive) accepts.

@@ -23,6 +23,7 @@ import ShortcutSettings from './ShortcutSettings.svelte';
 import ThemeSettings from './ThemeSettings.svelte';
 import TrelloSettings from './TrelloSettings.svelte';
 import UpdateSettings from './UpdateSettings.svelte';
+import VaultEncryption from './VaultEncryption.svelte';
 import VaultSettings from './VaultSettings.svelte';
 import YellSettings from './YellSettings.svelte';
 
@@ -32,7 +33,7 @@ export const groups: { id: GroupId; label: string; icon: Component }[] = [
 	{ id: 'features', label: 'Features', icon: Sparkles },
 	{ id: 'templates', label: 'Templates', icon: LayoutTemplate },
 	{ id: 'visual', label: 'Visual', icon: Palette },
-	{ id: 'sync', label: 'Sync & external', icon: RefreshCw },
+	{ id: 'sync', label: 'Vault & external', icon: RefreshCw },
 	{ id: 'tools', label: 'Tools', icon: Wrench },
 	{ id: 'about', label: 'About', icon: Info },
 	{ id: 'logs', label: 'Logs', icon: ScrollText }
@@ -56,6 +57,7 @@ export const panels: Panel[] = [
 	{ id: 'sidebar', group: 'visual', title: 'Sidebar', keywords: 'sidebar hide fold collapse rail icons narrow half screen window resize minimise minimize', component: SidebarFoldSettings },
 	{ id: 'order', group: 'visual', title: 'Order', keywords: 'sort newest oldest first lists posts threads feedback versions', component: OrderSettings },
 	{ id: 'vault', group: 'sync', title: 'Vault', keywords: 'folder location path obsidian markdown reload disk files switch open another vault picker move cloud onedrive google drive dropbox icloud nextcloud backup', component: VaultSettings },
+	{ id: 'encryption', group: 'sync', title: 'Encryption', keywords: 'encrypt encrypted encryption passphrase password recovery key lock unlock keychain copy secret private', component: VaultEncryption },
 	{ id: 'portflow', group: 'sync', title: 'Portflow', keywords: 'portflow fontys portfolio canvas drieam feedback coach teacher learning outcomes evidence collection semester sign in', component: PortflowSettings },
 	{ id: 'trello', group: 'sync', title: 'Sync with Trello', keywords: 'trello cards board tasks stories api key token person', component: TrelloSettings },
 	{ id: 'shortcuts', group: 'tools', title: 'Keyboard shortcuts', keywords: 'keyboard shortcut shortcuts hotkey hotkeys keys bindings command palette ctrl p commands', component: ShortcutSettings },

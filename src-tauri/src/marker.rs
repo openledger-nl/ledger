@@ -1,8 +1,8 @@
 //! The vault's marker: `ledger.json` at its root. It says that the folder is a vault, which format its files are in,
-//! and the vault's id:
+//! the vault's id, and how it is encrypted when it is (see `vault_crypto`):
 //!
 //! ```json
-//! { "ledger": 1, "id": "3f9a…" }
+//! { "ledger": 1, "id": "3f9a…", "encryption": { "cipher": "aes-256-gcm", "kdf": { … }, … } }
 //! ```
 //!
 //! - **The cutoff.** Ledger opens only folders with a marker of a format it reads. A folder that holds a vault from
@@ -33,6 +33,9 @@ pub struct Marker {
     /// The format of the vault's files.
     pub ledger: u32,
     pub id: String,
+    /// How the vault is encrypted; absent for a vault of plain files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption: Option<crate::vault_crypto::Header>,
 }
 
 /// What a folder is, as far as opening it as a vault goes.
@@ -88,14 +91,23 @@ pub fn new_id() -> String {
     <[u8; 16]>::generate().iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Writes the marker of a new vault and returns it.
+/// Writes the marker of a new vault of plain files and returns it.
 pub fn create(root: &Path) -> Result<Marker> {
-    let marker = Marker { ledger: FORMAT, id: new_id() };
+    let marker = Marker { ledger: FORMAT, id: new_id(), encryption: None };
     write(root, &marker)?;
     Ok(marker)
 }
 
-/// Writes the marker. It is written when the vault is made, and not changed after that.
+/// Writes the marker of a new encrypted vault, its key sealed with `passphrase`, and returns it with the key.
+pub fn create_encrypted(root: &Path, passphrase: &str) -> Result<(Marker, crate::crypto::Key)> {
+    let id = new_id();
+    let (header, key) = crate::vault_crypto::new_header(&id, passphrase)?;
+    let marker = Marker { ledger: FORMAT, id, encryption: Some(header) };
+    write(root, &marker)?;
+    Ok((marker, key))
+}
+
+/// Writes the marker. It is written when the vault is made, and changes only when an encrypted vault's passphrase does.
 pub fn write(root: &Path, marker: &Marker) -> Result<()> {
     fs::create_dir_all(root).map_err(|e| Error::io(root, e))?;
     let file = root.join(FILE);

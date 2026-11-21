@@ -60,6 +60,10 @@ impl Host for TauriHost {
         let state = self.app.state::<App>();
         let outcome = {
             let mut core = state.lock();
+            // In an encrypted vault the run wrote into a plain copy of the project: that is taken in first.
+            if let Err(e) = core.vault.store().take_back() {
+                crate::applog::error("claude", format!("What the run wrote couldn't all be taken into the vault: {e}"));
+            }
             finish::refresh_vault(&mut core, request, changes, link)
         };
         if outcome.reloaded || !outcome.linked.is_empty() || !outcome.kept.is_empty() {

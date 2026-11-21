@@ -926,7 +926,7 @@ impl Run<'_> {
         frontmatter::set(&mut meta, "item", id);
         frontmatter::set(&mut meta, "card", card);
         frontmatter::set(&mut meta, "title", title);
-        let file = crate::settings::local_dir(&self.root)
+        let file = crate::settings::local_dir(self.root)
             .join("conflicts")
             .join(&self.stamp)
             .join("trello")

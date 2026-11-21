@@ -42,6 +42,7 @@ mod threads;
 mod updates;
 mod uploads;
 mod vault;
+mod vault_crypto;
 mod watcher;
 
 // ---- Trello sync (feat/trello-sync) ----
@@ -75,6 +76,8 @@ mod tests_applog;
 mod tests_claude_code;
 #[cfg(test)]
 mod tests_cloud;
+#[cfg(test)]
+mod tests_encrypted;
 #[cfg(test)]
 mod tests_trello;
 #[cfg(test)]
@@ -367,6 +370,12 @@ pub fn run() {
             commands::set_feedback_from,
             commands::check_vault_changes,
             commands::list_conflicts,
+            commands::unlock_vault,
+            commands::vault_encryption,
+            commands::change_passphrase,
+            commands::recovery_key,
+            commands::forget_vault_key,
+            commands::encrypted_copy,
             commands::resolve_conflict,
             commands::save_screenshot_hotkey,
             commands::save_screenshot_tool,

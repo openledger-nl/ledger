@@ -1,6 +1,7 @@
 //! Every file of the vault is read and written through here, by its path in the vault (`projects/acme/project.md`,
-//! always with `/`). That keeps one place that knows how the files are kept, and one place that takes care of what a
-//! folder synced by cloud storage needs:
+//! always with `/`). That keeps one place that knows how the files are kept: as they are, in a vault of plain files,
+//! or sealed, in an encrypted one (see `vault_crypto`); and one place that takes care of what a folder synced by
+//! cloud storage needs:
 //!
 //! - **Writes are atomic**: a file is written beside its place under a dot-name and renamed over it, so a crash or a
 //!   sync client never sees half a note.
@@ -15,7 +16,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::{Duration, UNIX_EPOCH};
 
 /// A file's size and modification time: enough to notice that something else touched it.
@@ -24,6 +25,8 @@ pub type Fingerprint = (u64, u128);
 #[derive(Clone)]
 pub struct Store {
     root: PathBuf,
+    /// The vault's key and what it knows of the sealed files; `None` for a vault of plain files.
+    sealed: Option<Arc<crate::vault_crypto::Sealed>>,
 }
 
 static STORES: LazyLock<Mutex<HashMap<PathBuf, Store>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -95,7 +98,16 @@ pub fn prune_empty_dirs(root: &Path, file: &Path) {
 
 impl Store {
     pub fn plain(root: PathBuf) -> Store {
-        Store { root }
+        Store { root, sealed: None }
+    }
+
+    pub fn sealed(root: PathBuf, sealed: Arc<crate::vault_crypto::Sealed>) -> Store {
+        Store { root, sealed: Some(sealed) }
+    }
+
+    /// Whether the vault's files are encrypted.
+    pub fn is_sealed(&self) -> bool {
+        self.sealed.is_some()
     }
 
     /// Where the file at the vault path `rel` is on disk, in a vault of plain files.
@@ -106,6 +118,13 @@ impl Store {
     /// Every file of the vault under the folders `tops`, by its path in the vault, with its fingerprint; `skip` leaves
     /// out a folder (by its path in the vault) and everything in it.
     pub fn list(&self, tops: &[&str], skip: impl Fn(&str) -> bool) -> BTreeMap<String, Fingerprint> {
+        if let Some(sealed) = &self.sealed {
+            return sealed
+                .list(&self.root)
+                .into_iter()
+                .filter(|(rel, _)| tops.iter().any(|top| rel.starts_with(&format!("{top}/"))) && !ancestors(rel).any(&skip))
+                .collect();
+        }
         fn walk(root: &Path, rel: &str, skip: &dyn Fn(&str) -> bool, out: &mut BTreeMap<String, Fingerprint>) {
             let Ok(entries) = fs::read_dir(root.join(rel)) else { return };
             for entry in entries.flatten() {
@@ -142,15 +161,24 @@ impl Store {
     }
 
     pub fn fingerprint(&self, rel: &str) -> Option<Fingerprint> {
-        fingerprint_of(&self.root.join(rel))
+        match &self.sealed {
+            Some(sealed) => sealed.fingerprint(&self.root, rel),
+            None => fingerprint_of(&self.root.join(rel)),
+        }
     }
 
     pub fn exists(&self, rel: &str) -> bool {
-        self.root.join(rel).is_file()
+        match &self.sealed {
+            Some(_) => self.fingerprint(rel).is_some(),
+            None => self.root.join(rel).is_file(),
+        }
     }
 
     pub fn read(&self, rel: &str) -> io::Result<Vec<u8>> {
-        fs::read(self.root.join(rel))
+        match &self.sealed {
+            Some(sealed) => sealed.read(&self.root, rel),
+            None => fs::read(self.root.join(rel)),
+        }
     }
 
     pub fn read_string(&self, rel: &str) -> io::Result<String> {
@@ -159,11 +187,17 @@ impl Store {
 
     /// Writes the file at `rel` in one step, making its folders.
     pub fn write(&self, rel: &str, bytes: &[u8]) -> io::Result<()> {
-        write_atomic(&self.root.join(rel), bytes)
+        match &self.sealed {
+            Some(sealed) => sealed.write(&self.root, rel, bytes),
+            None => write_atomic(&self.root.join(rel), bytes),
+        }
     }
 
     /// Removes the file at `rel` (one that isn't there is fine), and the folders that leaves empty.
     pub fn remove(&self, rel: &str) -> io::Result<()> {
+        if let Some(sealed) = &self.sealed {
+            return sealed.remove(&self.root, rel);
+        }
         let file = self.root.join(rel);
         match retrying(|| fs::remove_file(&file)) {
             Ok(()) => {}
@@ -176,6 +210,11 @@ impl Store {
 
     /// Moves the file at `from` to `to`, making the folders `to` needs and removing those `from` leaves empty.
     pub fn rename(&self, from: &str, to: &str) -> io::Result<()> {
+        if self.sealed.is_some() {
+            let bytes = self.read(from)?;
+            self.write(to, &bytes)?;
+            return self.remove(from);
+        }
         let (a, b) = (self.root.join(from), self.root.join(to));
         if let Some(dir) = b.parent() {
             fs::create_dir_all(dir)?;
@@ -194,6 +233,12 @@ impl Store {
 
     /// Removes the folder `rel` and everything in it.
     pub fn remove_dir(&self, rel: &str) -> io::Result<()> {
+        if self.sealed.is_some() {
+            for file in self.list_under(rel).keys() {
+                self.remove(file)?;
+            }
+            return Ok(());
+        }
         let dir = self.root.join(rel);
         if dir.is_dir() {
             retrying(|| fs::remove_dir_all(&dir))?;
@@ -201,8 +246,45 @@ impl Store {
         Ok(())
     }
 
-    /// A file on disk with what the vault holds at `rel`, for a program outside Ledger to open.
+    /// A file on disk with what the vault holds at `rel`, for a program outside Ledger to open: the file itself in a
+    /// vault of plain files; in an encrypted one a plain copy in the work folder, outside the synced folder, whose
+    /// changes [`Store::take_back`] takes in.
     pub fn materialize(&self, rel: &str) -> io::Result<PathBuf> {
-        Ok(self.root.join(rel))
+        match &self.sealed {
+            Some(sealed) => sealed.materialize(&self.root, rel),
+            None => Ok(self.root.join(rel)),
+        }
     }
+
+    /// The folder `dir` of the vault on disk, for a program that works in a folder (a Claude Code run): the folder
+    /// itself in a vault of plain files; in an encrypted one a plain copy of everything in it in the work folder,
+    /// whose changes and new files [`Store::take_back`] takes in.
+    pub fn materialize_dir(&self, dir: &str) -> io::Result<PathBuf> {
+        match &self.sealed {
+            Some(sealed) => {
+                let files: Vec<String> = self.list_under(dir).into_keys().collect();
+                sealed.materialize_dir(&self.root, dir, &files)
+            }
+            None => Ok(self.root.join(dir)),
+        }
+    }
+
+    /// Takes in what programs outside Ledger changed in the plain copies; nothing to do in a vault of plain files.
+    /// Returns how many files were taken in.
+    pub fn take_back(&self) -> io::Result<usize> {
+        match &self.sealed {
+            Some(sealed) => sealed.take_back(&self.root),
+            None => Ok(0),
+        }
+    }
+}
+
+/// `projects/acme/attachments/a.png` → `projects/acme/attachments`, `projects/acme`, `projects`.
+fn ancestors(rel: &str) -> impl Iterator<Item = &str> {
+    let mut end = rel.len();
+    std::iter::from_fn(move || {
+        let cut = rel[..end].rfind('/')?;
+        end = cut;
+        Some(&rel[..cut])
+    })
 }
