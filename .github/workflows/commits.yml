@@ -20,7 +20,7 @@ jobs:
     name: Commits # the ruleset on main requires this check by name
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }} # the branch itself, not the merge GitHub makes to test it
           fetch-depth: 0 # its whole history and main's, to tell the branch's own commits apart
