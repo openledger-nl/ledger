@@ -1430,7 +1430,7 @@ export interface ProjectMeta {
 	goal: string;
 	/** "semester" ends with the semester it runs in; otherwise a day of your own (ISO), or null for no end. */
 	end: 'semester' | string | null;
-	/** The semester a study project runs in, by name (NJ26). */
+	/** The semester a study project runs in, by its id in shared/semesters (nj26-semester-4-2). */
 	semester: string | null;
 	/** The label you mean the work to get; offered when publishing, and compared with what you publish. */
 	intendedMmm: MmmLevel | null;

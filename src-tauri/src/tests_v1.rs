@@ -31,13 +31,21 @@ fn open(root: &Path) -> (Vault, Connection) {
     (vault, conn)
 }
 
+/// The semester `study` runs in; `with_semester` makes it.
+const NJ26: &str = "nj26";
+
+fn with_semester(conn: &Connection) {
+    let draft = crate::models::SemesterDraft { name: "NJ26".into(), start: "2026-08-31".into(), end: "2027-01-24".into(), ..Default::default() };
+    crate::semesters::create(conn, &draft).unwrap();
+}
+
 fn study(slug: &str) -> ProjectMeta {
     ProjectMeta {
         slug: slug.into(),
         kind: "study".into(),
         goal: "  Give the bakery a rota tool.  ".into(),
         end: Some("semester".into()),
-        semester: Some("NJ26".into()),
+        semester: Some(NJ26.into()),
         intended_mmm: Some("cyborg".into()),
         main_question: Some("How can staff swap shifts?".into()),
         client: Some(String::new()),
@@ -62,6 +70,7 @@ fn a_projects_facts_are_kept_in_its_project_file_and_load_back() {
     let root = dir.path();
     let (mut vault, conn) = open(root);
     let slug = projects::create(&conn, "Thrym Player").unwrap().slug;
+    with_semester(&conn);
     let saved = project_facts::save(&conn, &slug, &study(&slug)).unwrap();
     assert_eq!(saved.goal, "Give the bakery a rota tool.", "trimmed");
     assert_eq!(saved.client, None, "an empty client is none");
@@ -72,6 +81,7 @@ fn a_projects_facts_are_kept_in_its_project_file_and_load_back() {
     let meta = frontmatter::parse(&text).unwrap().meta;
     assert_eq!(meta.text("kind").as_deref(), Some("study"));
     assert_eq!(meta.text("end").as_deref(), Some("semester"));
+    assert_eq!(meta.text("semester").as_deref(), Some(NJ26), "the semester by its id, which a rename leaves alone");
     assert_eq!(meta.text("intendedAiUse").as_deref(), Some("cyborg"));
     assert_eq!(meta.text("mainQuestion").as_deref(), Some("How can staff swap shifts?"));
     assert!(meta.get("client").is_none(), "{text}");
@@ -86,6 +96,8 @@ fn facts_that_make_no_sense_are_refused() {
     let (_vault, conn) = open(dir.path());
     let slug = projects::create(&conn, "Synth").unwrap().slug;
     let bad = |m: ProjectMeta| project_facts::save(&conn, &slug, &m).is_err();
+    assert!(bad(study(&slug)), "a semester that isn't in the vault");
+    with_semester(&conn);
     assert!(bad(ProjectMeta { kind: "school".into(), ..study(&slug) }));
     assert!(bad(ProjectMeta { goal: " ".into(), ..study(&slug) }));
     assert!(bad(ProjectMeta { end: Some("next week".into()), ..study(&slug) }));

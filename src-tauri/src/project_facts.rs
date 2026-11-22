@@ -5,7 +5,7 @@
 //! kind: study                  study, work or hobby
 //! goal: Give the bakery a rota tool their staff can use on a phone.
 //! end: semester                semester, a calendar day (2027-01-31), or left out for no end
-//! semester: NJ26               the semester a study project runs in
+//! semester: nj26-semester-4-2  the semester a study project runs in, by its id (see `semesters`)
 //! intendedAiUse: cyborg        the label the work is meant to get
 //! mainQuestion: How can …?     a study project's main question
 //! client: bakery-bos           a work project's client, by its id (see `clients`)
@@ -140,6 +140,11 @@ pub fn save(conn: &Connection, slug: &str, meta: &ProjectMeta) -> Result<Project
         && !crate::clients::exists(conn, client)?
     {
         return Err(Error::invalid(format!("There is no client {client} in this vault: add it under Clients first")));
+    }
+    if let Some(semester) = &m.semester
+        && crate::semesters::get(conn, semester).is_err()
+    {
+        return Err(Error::invalid(format!("There is no semester {semester} in this vault: add it under Shared, Semesters first")));
     }
     conn.execute(
         "UPDATE projects SET kind = ?2, goal = ?3, project_end = ?4, semester = ?5, intended_mmm = ?6, main_question = ?7, client = ?8,

@@ -96,7 +96,7 @@ export const cleanTag = (text: string) =>
 
 /** The day a project ends: its own day, or the end of its semester; null when it has none. */
 export function endDay(meta: ProjectMeta, semesters: Semester[]): string | null {
-	if (meta.end === 'semester') return semesters.find((s) => s.name === meta.semester)?.end ?? null;
+	if (meta.end === 'semester') return semesters.find((s) => s.id === meta.semester)?.end ?? null;
 	return meta.end;
 }
 
