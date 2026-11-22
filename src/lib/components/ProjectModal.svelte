@@ -86,7 +86,7 @@
 		semester: kind === 'study' ? (semester?.name ?? null) : null,
 		intendedMmm: intended || null,
 		mainQuestion: mainQuestion.trim() || null,
-		client: kind === 'company' ? client.trim() || null : null
+		client: kind === 'work' ? client.trim() || null : null
 	});
 	const end = $derived(endDay({ ...meta, slug: '', tag: '' }, semesters));
 	const left = $derived(daysLeft(end));
@@ -183,7 +183,7 @@
 			<span>Main question (optional)</span>
 			<input bind:value={mainQuestion} placeholder="e.g. How can a music player make offline listening as easy as streaming?" />
 		</label>
-	{:else if kind === 'company'}
+	{:else if kind === 'work'}
 		<label class="field">
 			<span>Client (optional)</span>
 			<input bind:value={client} placeholder="e.g. Bakkerij De Korenaar" />

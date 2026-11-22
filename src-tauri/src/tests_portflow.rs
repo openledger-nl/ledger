@@ -1304,8 +1304,8 @@ fn a_linked_project_that_isnt_a_study_project_is_never_kept_in_step() {
     m.linked();
     guide_on(&m, true, &[config::GUIDE_WRITE]);
     let fake = FakePortflow::new();
-    // A project said to be a hobby or a company one: nothing read, nothing written.
-    for kind in ["hobby", "company"] {
+    // A project said to be a work or a hobby one: nothing read, nothing written.
+    for kind in ["work", "hobby"] {
         m.edit(|c| crate::project_facts::save(c, "speed-edit", &crate::project_facts::ProjectMeta { kind: kind.into(), goal: "Fun.".into(), ..Default::default() }).unwrap());
         m.edit(|c| projects::save_readme(c, "speed-edit", "Mine.").unwrap());
         portflow_says(&fake, "<p>Theirs.</p>");

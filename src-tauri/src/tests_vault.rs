@@ -233,12 +233,12 @@ fn a_templates_kinds_and_readers_are_kept_in_its_frontmatter() {
         TemplateReader { who: "client".into(), needs: "reads the summary first".into(), keep_from: "the rate".into() },
         TemplateReader { who: "me".into(), ..Default::default() },
     ];
-    let draft = TemplateDraft { kinds: vec!["study".into(), "company".into()], readers, readers_shown: true, ..TemplateDraft::basic("Brief", "", &[], "# Brief\n") };
+    let draft = TemplateDraft { kinds: vec!["study".into(), "work".into()], readers, readers_shown: true, ..TemplateDraft::basic("Brief", "", &[], "# Brief\n") };
     templates::create(&conn, "", &draft).unwrap();
     vault.persist(&conn).unwrap();
 
     let text = read(root, "shared/templates/prompts/brief.md");
-    assert!(text.contains("kinds:\n- study\n- company\nreaders:\n- who: client\n  needs: reads the summary first\n  keepFrom: the rate\n- me\nreadersShown: true\n"), "{text}");
+    assert!(text.contains("kinds:\n- study\n- work\nreaders:\n- who: client\n  needs: reads the summary first\n  keepFrom: the rate\n- me\nreadersShown: true\n"), "{text}");
     let (_, reloaded) = open(root);
     let brief = templates::get(&reloaded, "", "brief").unwrap();
     assert_eq!((brief.kinds.clone(), brief.readers.clone(), brief.readers_shown), (draft.kinds.clone(), templates::get(&conn, "", "brief").unwrap().readers, true));

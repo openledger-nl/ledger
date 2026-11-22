@@ -723,8 +723,8 @@ export interface Vaults {
 	suggestedParent: string | null;
 }
 
-/** What Ledger is used for. Only school works in semesters, so only school is asked for one. */
-export type Purpose = 'work' | 'hobby' | 'school';
+/** What Ledger is used for first: the kind of the first project. Only study works in semesters. */
+export type Purpose = 'study' | 'work' | 'hobby';
 
 export interface OnboardingStatus {
 	/** The guide is on the home page. */
@@ -1415,7 +1415,7 @@ export interface EpsilonView {
 // camelCase on the wire like the rest.
 
 /** Every project is one of three kinds, in the same vault and the same layout; the study parts are optional extras. */
-export type ProjectKind = 'study' | 'hobby' | 'company';
+export type ProjectKind = 'study' | 'work' | 'hobby';
 
 /** The facts in a project's `00 Overview.md` frontmatter that 0.8 doesn't have. */
 export interface ProjectMeta {
@@ -1482,7 +1482,7 @@ export interface DailyNote {
 /** Your own note (for yourself or for Claude), or feedback from someone else. */
 export type FeedbackKind = 'own' | 'someone';
 
-export type FeedbackRole = 'coach' | 'expert' | 'teammate' | 'client' | 'colleague' | 'other';
+export type FeedbackRole = 'coach' | 'expert' | 'teammate' | 'stakeholder' | 'colleague' | 'other';
 
 /** Someone who is part of a project (its coach, a teammate, the client), listed in its project.md. */
 /** How a project's exported PDFs look and who they name (branding.rs), kept in its project.md. */

@@ -2,7 +2,7 @@
 //! Kept in the frontmatter of the project's `project.md`:
 //!
 //! ```text
-//! kind: study                  study, hobby or company
+//! kind: study                  study, work or hobby
 //! goal: Give the bakery a rota tool their staff can use on a phone.
 //! end: semester                semester, a calendar day (2027-01-31), or left out for no end
 //! semester: NJ26               the semester a study project runs in
@@ -36,8 +36,8 @@ use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
 use crate::{ids, projects, provenance};
 
-pub const KINDS: [&str; 3] = ["study", "hobby", "company"];
-pub const ROLES: [&str; 6] = ["coach", "expert", "teammate", "client", "colleague", "other"];
+pub const KINDS: [&str; 3] = ["study", "work", "hobby"];
+pub const ROLES: [&str; 6] = ["coach", "expert", "teammate", "stakeholder", "colleague", "other"];
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -95,7 +95,7 @@ fn trimmed(text: &Option<String>) -> Option<String> {
 fn clean(meta: &ProjectMeta) -> Result<ProjectMeta> {
     let kind = meta.kind.trim();
     if !KINDS.contains(&kind) {
-        return Err(Error::invalid("A project is a study, hobby or company project"));
+        return Err(Error::invalid("A project is a study, work or hobby project"));
     }
     let goal = meta.goal.trim();
     if goal.is_empty() {
@@ -180,7 +180,7 @@ pub struct ProjectPerson {
     pub project: String,
     /// Their id in the vault (see `people`).
     pub person: String,
-    /// coach, expert, teammate, client, colleague or other: their role in this project.
+    /// coach, expert, teammate, stakeholder, colleague or other: their role in this project.
     pub role: String,
     /// Their name, from the vault (filled in by Ledger).
     pub name: String,
@@ -219,7 +219,7 @@ pub fn save_people(conn: &Connection, slug: &str, people: &[ProjectPerson]) -> R
         }
         let role = p.role.trim().to_lowercase();
         if !ROLES.contains(&role.as_str()) {
-            return Err(Error::invalid("A person is a coach, expert, teammate, client, colleague or other"));
+            return Err(Error::invalid("A person is a coach, expert, teammate, stakeholder, colleague or other"));
         }
         if !cleaned.iter().any(|(other, _)| other == id) {
             cleaned.push((id.to_string(), role));

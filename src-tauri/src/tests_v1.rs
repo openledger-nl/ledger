@@ -102,7 +102,7 @@ fn hand_written_facts_are_read_leniently() {
         "projects/synth/project.md",
         "---\nname: Synth build\nkind: Hobby\ngoal: A working synth.\nend: someday\nintendedMmm: robot\n---\n",
     );
-    write(root, "projects/bare/project.md", "---\nname: Bare\nkind: company\n---\n");
+    write(root, "projects/bare/project.md", "---\nname: Bare\nkind: work\n---\n");
     let (_vault, conn) = open(root);
     let synth = project_facts::get(&conn, "synth").unwrap().unwrap();
     assert_eq!(synth.kind, "hobby");
@@ -162,7 +162,7 @@ fn a_person_shows_only_in_the_projects_they_are_attached_to_with_a_role_in_each(
     let frank = vault_person(&conn, "Frank de Vries");
     let sanne = vault_person(&conn, "Sanne");
 
-    let saved = project_facts::save_people(&conn, &thrym, &[attached(&frank, "coach"), attached(&sanne, "teammate"), attached(&sanne, "Client")]).unwrap();
+    let saved = project_facts::save_people(&conn, &thrym, &[attached(&frank, "coach"), attached(&sanne, "teammate"), attached(&sanne, "Stakeholder")]).unwrap();
     assert_eq!(saved.iter().map(|p| (p.tag.as_str(), p.role.as_str(), p.name.as_str())).collect::<Vec<_>>(), [("people/frank-de-vries", "coach", "Frank de Vries"), ("people/sanne", "teammate", "Sanne")], "once each");
     project_facts::save_people(&conn, &bakery, &[attached(&frank, "expert")]).unwrap();
     assert_eq!(project_facts::get(&conn, &thrym).unwrap(), None, "people without facts");

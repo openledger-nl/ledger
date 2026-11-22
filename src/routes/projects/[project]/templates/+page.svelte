@@ -8,7 +8,7 @@
 	const project = $derived(data.project.slug);
 	// For the PDFs: who they are for when no name is given (a company project's client, else the first client listed),
 	// and the other projects to take your side from.
-	const clientName = $derived(data.meta?.client ?? data.people.find((p) => p.role === 'client')?.name ?? null);
+	const clientName = $derived(data.meta?.client ?? data.people.find((p) => p.role === 'stakeholder')?.name ?? null);
 	const others = $derived(data.projects.filter((p) => p.slug !== project).map((p) => ({ slug: p.slug, name: p.name })));
 </script>
 

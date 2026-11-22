@@ -177,7 +177,7 @@ fn a_vault_wide_template_is_offered_only_in_the_kinds_of_project_it_is_for() {
     let (p, _) = setup(&c);
     let study = TemplateDraft { kinds: vec!["study".into(), "bogus".into()], ..TemplateDraft::basic("Reflection", "", &[], "") };
     templates::create(&c, "", &study).unwrap();
-    let every = TemplateDraft { kinds: vec!["company".into(), "hobby".into(), "study".into()], ..TemplateDraft::basic("Memo", "", &[], "") };
+    let every = TemplateDraft { kinds: vec!["work".into(), "hobby".into(), "study".into()], ..TemplateDraft::basic("Memo", "", &[], "") };
     assert!(templates::create(&c, "", &every).unwrap().kinds.is_empty(), "all kinds is the same as every kind");
     assert_eq!(templates::get(&c, "", "reflection").unwrap().kinds, ["study"], "unknown kinds are dropped");
 

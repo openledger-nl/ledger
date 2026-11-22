@@ -53,7 +53,7 @@
 	}
 
 	const purposes: { id: Purpose; title: string; sub: string; icon: Component<{ size?: number }> }[] = [
-		{ id: 'school', title: 'School', sub: 'Courses and projects in semesters and sprints, with a calendar to count your work in.', icon: GraduationCap },
+		{ id: 'study', title: 'Study', sub: 'Courses and projects in semesters and sprints, with a calendar to count your work in.', icon: GraduationCap },
 		{ id: 'work', title: 'Work', sub: 'Clients and projects that run as long as they run.', icon: Briefcase },
 		{ id: 'hobby', title: 'Hobby', sub: 'Projects of your own, at your own pace.', icon: Palette }
 	];
@@ -90,7 +90,7 @@
 			skipped: false,
 			summary: chosen?.title ?? ''
 		},
-		...(purpose === 'school'
+		...(purpose === 'study'
 			? [
 					{
 						id: 'semester' as const,

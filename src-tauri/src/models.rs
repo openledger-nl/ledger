@@ -347,7 +347,7 @@ pub struct TemplateView {
     pub questions: Vec<String>,
     /// The skeleton of the deliverable.
     pub body: String,
-    /// The kinds of project it is offered in (study, hobby, company); empty for every kind.
+    /// The kinds of project it is offered in (study, work, hobby); empty for every kind.
     pub kinds: Vec<String>,
     /// Who its deliverables are written for: told to Claude, and noted in the deliverable.
     pub readers: Vec<TemplateReader>,

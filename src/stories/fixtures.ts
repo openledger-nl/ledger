@@ -127,7 +127,7 @@ export const people: ProjectPerson[] = [
 	{ project: PROJECT, person: 'frank-de-vries', name: 'Frank de Vries', role: 'coach', portflowUser: 101, tag: 'people/frank-de-vries' },
 	{ project: PROJECT, person: 'sanne-jansen', name: 'Sanne Jansen', role: 'expert', portflowUser: 102, tag: 'people/sanne-jansen' },
 	{ project: PROJECT, person: 'sam-bakker', name: 'Sam Bakker', role: 'teammate', portflowUser: null, tag: 'people/sam-bakker' },
-	{ project: PROJECT, person: 'ries-van-dam', name: 'Ries van Dam', role: 'client', portflowUser: null, tag: 'people/ries-van-dam' }
+	{ project: PROJECT, person: 'ries-van-dam', name: 'Ries van Dam', role: 'stakeholder', portflowUser: null, tag: 'people/ries-van-dam' }
 ];
 
 export const projectOptions = projects.map((p) => ({ value: p.slug, label: p.name }));
@@ -137,7 +137,7 @@ export const vaultPeople: Person[] = [
 		id: p.person,
 		name: p.name,
 		email: '',
-		organisation: p.role === 'client' ? 'Kwekerij Van Dam' : p.role === 'teammate' ? '' : 'Fontys ICT',
+		organisation: p.role === 'stakeholder' ? 'Kwekerij Van Dam' : p.role === 'teammate' ? '' : 'Fontys ICT',
 		portflowUser: p.portflowUser,
 		notes: '',
 		projects: [{ project: PROJECT, projectName: 'Smart Greenhouse', role: p.role }],
@@ -644,7 +644,7 @@ export const activity: ActivityEvent[] = Array.from({ length: 60 }, (_, i) => ({
 	at: new Date(Date.UTC(2026, 8, 1 + Math.floor(i * 1.3))).toISOString()
 }));
 
-export const onboarding: OnboardingStatus = { active: true, skipped: [], purpose: 'school' };
+export const onboarding: OnboardingStatus = { active: true, skipped: [], purpose: 'study' };
 
 export const settings: Settings = {
 	vaultPath: '/home/student/Documents/Ledger',

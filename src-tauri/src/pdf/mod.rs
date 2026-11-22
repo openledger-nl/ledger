@@ -170,12 +170,12 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
         None => dates::long_day(dates::today()),
     };
 
-    // Who it is for: as the branding says, else a company project's client, else the first client among its people.
+    // Who it is for: as the branding says, else a work project's client, else the first stakeholder among its people.
     let facts = project_facts::get(conn, project)?;
     let kind = facts.as_ref().map(|f| f.kind.clone()).unwrap_or_default();
     let intended_mmm = facts.as_ref().and_then(|f| f.intended_mmm.clone());
     let client_name = brand.client_name.clone().or_else(|| facts.and_then(|f| f.client)).or_else(|| {
-        project_facts::people(conn, Some(project)).ok()?.into_iter().find(|p| p.role == "client").map(|p| p.name)
+        project_facts::people(conn, Some(project)).ok()?.into_iter().find(|p| p.role == "stakeholder").map(|p| p.name)
     });
 
     // The AI-use label, bottom left on the cover: the version's own, else the one meant for this deliverable or for the

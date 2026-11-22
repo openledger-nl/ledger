@@ -198,7 +198,7 @@ pub fn collection_links(conn: &Connection) -> Result<Vec<CollectionLink>> {
 /// The collection whose description a project's reading guide is: the one linked to the project for the semester that
 /// covers today, or else for the latest semester that has started, or else for the first one still to come. One per
 /// project; a past semester's collection keeps the description it was handed in with. Only a study project (its facts
-/// say `kind: study`) has one: a hobby or company project, or one without facts, is never kept in step, even if linked.
+/// say `kind: study`) has one: a work or hobby project, or one without facts, is never kept in step, even if linked.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GuideTarget {
     pub project: String,
@@ -670,7 +670,7 @@ pub fn store_version(conn: &Connection, project: &str, evidence: &str, version: 
 // downloaded on the next round (and on every round after, until that works).
 
 /// The projects whose evidence comes in as deliverables: linked to a collection, and a study project or one without a
-/// kind (a hobby or company project keeps its files in Portflow).
+/// kind (a work or hobby project keeps its files in Portflow).
 pub fn delivering_projects(conn: &Connection) -> Result<BTreeSet<String>> {
     Ok(query_all(
         conn,

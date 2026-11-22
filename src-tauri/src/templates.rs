@@ -266,7 +266,7 @@ fn unique_id(conn: &Connection, scope: &str, name: &str) -> Result<String> {
 /// The frontmatter a template keeps its kinds and readers in:
 ///
 /// ```text
-/// kinds: [study, company]          left out for every kind
+/// kinds: [study, work]             left out for every kind
 /// readers:
 /// - who: client                    a preset, or someone in your own words
 ///   needs: reads the summary first
