@@ -2168,7 +2168,9 @@ fn the_worker_syncs_on_request_and_says_what_it_did() {
 fn changes_are_synced_after_a_pause_and_a_burst_of_them_is_one_round() {
     let (trello, m, p) = configured_machine();
     let id = m.task(&p, "A task", "");
-    let worker = start_worker(&m, &trello, quick());
+    // Each edit writes the vault, which can take longer than `quick`'s pause on a busy machine: a wider one here keeps
+    // the burst one burst.
+    let worker = start_worker(&m, &trello, Timing { debounce: Duration::from_millis(500), max_debounce: Duration::from_secs(3), ..quick() });
     worker.syncer.now();
     wait_for("the first round", || worker.syncer.status().last_sync_at.is_some());
     let rounds = trello.calls("cards");
