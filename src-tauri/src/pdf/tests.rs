@@ -42,6 +42,18 @@ fn notes_links_and_frontmatter_are_left_out_or_reduced_to_their_words() {
 }
 
 #[test]
+fn a_rule_with_text_right_under_it_is_a_rule_not_frontmatter() {
+    // What broke an export: a `---` mid-document, text on the next line, and another `---` further down. The parser
+    // took all of it in between for a metadata block and the PDF showed it as raw lines.
+    let c = convert("# Plan\n\nIntro.\n\n---\nMy own words, see [[ledger-tests]].\n\n## 1. Headings\n\n**Bold.**\n\n---\n\n## 2. Last\n");
+    assert_eq!(c.title.as_deref(), Some("Plan"));
+    assert_eq!(c.body.matches("#ledger-rule()").count(), 2, "{}", c.body);
+    assert!(c.body.contains("My own words, see ledger\\-tests\\."), "{}", c.body);
+    assert!(c.body.contains("#heading(level: 1)[1\\. Headings]") && c.body.contains("#strong[Bold\\.]"), "{}", c.body);
+    assert!(!c.body.contains("\\#\\#"), "no heading left as raw text: {}", c.body);
+}
+
+#[test]
 fn lists_tables_code_and_pictures_become_calls() {
     let c = convert("- [x] done\n- open\n\n1. one\n\n| A | B |\n|:-|-:|\n| 1 | 2 |\n\n```rust\nfn x() {}\n```\n\n![A chart](chart.png) ![gone](https://x.y/z.png)\n");
     assert!(c.body.contains("#list([#ledger-task(true) done], [open], )"), "{}", c.body);

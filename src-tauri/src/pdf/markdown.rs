@@ -24,18 +24,15 @@ pub struct Converted {
 /// Converts `source`. `picture` is asked for each picture's address as written and gives the name the PDF reads it
 /// under, or `None` when it can't be had (a web address, a file that isn't there): its alt text is shown instead.
 pub fn to_typst(source: &str, picture: &mut dyn FnMut(&str) -> Option<String>) -> Converted {
-    let source = crate::markdown::strip_comments(source);
-    let options = Options::ENABLE_TABLES
-        | Options::ENABLE_STRIKETHROUGH
-        | Options::ENABLE_TASKLISTS
-        | Options::ENABLE_WIKILINKS
-        | Options::ENABLE_FOOTNOTES
-        | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS;
+    // Frontmatter is the caller's to read; it is not part of the text. Only a block at the very top is frontmatter: the
+    // parser's own metadata blocks also start at a `---` further down (a horizontal rule with text right under it) and
+    // run to the next one, which would turn all the text in between into raw lines.
+    let body = crate::frontmatter::parse(source).map(|parsed| parsed.body);
+    let source = crate::markdown::strip_comments(body.as_deref().unwrap_or(source));
+    let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_WIKILINKS | Options::ENABLE_FOOTNOTES;
     let mut events: Vec<Event> = Parser::new_ext(&source, options).collect();
 
     // The title: a first-level heading before anything else.
-    // Frontmatter is the caller's to read; it is not part of the text.
-    events.drain(..metadata_end(&events));
     let mut title = None;
     let at = 0;
     if let Some(Event::Start(Tag::Heading { level: HeadingLevel::H1, .. })) = events.get(at) {
@@ -70,14 +67,6 @@ pub fn to_typst(source: &str, picture: &mut dyn FnMut(&str) -> Option<String>) -
     writer.run(&body_events, picture);
     let headings = writer.headings;
     Converted { body: writer.finish(), title, headings }
-}
-
-/// The index just after a leading YAML metadata block (a deliverable's frontmatter), or 0.
-fn metadata_end(events: &[Event]) -> usize {
-    match events.first() {
-        Some(Event::Start(Tag::MetadataBlock(_))) => events.iter().position(|e| matches!(e, Event::End(TagEnd::MetadataBlock(_)))).map_or(0, |i| i + 1),
-        _ => 0,
-    }
 }
 
 /// The index of the `End` that closes the `Start` at `start`.
