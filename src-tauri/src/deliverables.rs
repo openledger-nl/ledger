@@ -1,10 +1,17 @@
 //! Deliverables are the files prompts produce, kept in a project's `deliverables/` folder. They can be anything;
 //! markdown ones can be read and edited here. Publishing freezes a copy as "<name>@v1.0.<ext>" in the project's
-//! `versions/` folder, at the same place under it as the live file is under `deliverables/`, and that snapshot never
-//! changes. So `deliverables/` holds only the live files, and reads the same in any other tool.
+//! `versions/` folder, in a folder of the deliverable's own named after it, and that snapshot never changes. Beside it
+//! is its manifest, how it came to be (see `provenance`). So `deliverables/` holds only the live files, and reads the
+//! same in any other tool:
+//!
+//! ```text
+//! deliverables/reports/plan.md                         the live file
+//! versions/reports/plan/plan@v1.2.md                   its version 1.2
+//! versions/reports/plan/plan@v1.2.manifest.md          who made 1.2, in which thread, with what AI-use label
+//! ```
 //!
 //! Paths in this module are relative to the deliverables folder and use `/`; a snapshot's path is named the same way
-//! ("reports/plan@v1.2.md") even though its file is under `versions/` ([`file_of`]).
+//! ("reports/plan@v1.2.md") even though its file is under `versions/` ([`in_project`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -111,8 +118,37 @@ pub fn file_of(root: &Path, project: &str, path: &str) -> PathBuf {
 
 /// The deliverable's file by its path in the vault (see `store`).
 pub fn rel_of(project: &str, path: &str) -> String {
-    let folder = if split_version(path).1.is_some() { "versions" } else { "deliverables" };
-    format!("projects/{project}/{folder}/{path}")
+    format!("projects/{project}/{}", in_project(path))
+}
+
+/// The deliverable's file by its path in its project's folder: a live file under `deliverables/`, a published version
+/// under `versions/`, in its deliverable's own folder ("reports/plan@v1.2.md" is `versions/reports/plan/plan@v1.2.md`).
+pub fn in_project(path: &str) -> String {
+    match split_version(path) {
+        (base, Some(_)) => format!("versions/{}/{}", attachment_dir(&base), file_name(path)),
+        (_, None) => format!("deliverables/{path}"),
+    }
+}
+
+/// The version a file under a project's `versions/` folder is, named as the app names it ("reports/plan/plan@v1.2.md"
+/// is "reports/plan@v1.2.md"). None for anything else there: a manifest, or a version outside its deliverable's folder.
+pub fn version_at(rel: &str) -> Option<String> {
+    let (dir, file) = rel.rsplit_once('/')?;
+    let (base, version) = split_version(file);
+    version?;
+    let (parent, folder) = dir.rsplit_once('/').unwrap_or(("", dir));
+    // Matched whatever the case: a folder renamed by its case alone keeps its old name on Windows and macOS.
+    attachment_dir(&base).eq_ignore_ascii_case(folder).then(|| if parent.is_empty() { file.to_string() } else { format!("{parent}/{file}") })
+}
+
+/// Where the manifest of `base`'s `version` is, in its project's folder: beside the version, as "plan@v1.2.manifest.md".
+/// `others` are the project's deliverables that have manifests: when one of them keeps its versions in the same folder
+/// ("plan.md" and "plan.pdf"), the name keeps the extension ("plan.md@v1.2.manifest.md"), so the two never clash.
+pub fn manifest_in_project<'a>(base: &str, version: &str, others: impl IntoIterator<Item = &'a str>) -> String {
+    let folder = attachment_dir(base);
+    let shared = others.into_iter().any(|other| other != base && attachment_dir(other) == folder);
+    let name = if shared { file_name(base) } else { file_name(&folder) };
+    format!("versions/{folder}/{name}@v{version}.manifest.md")
 }
 
 // ---- reading ----------------------------------------------------------------------------------------

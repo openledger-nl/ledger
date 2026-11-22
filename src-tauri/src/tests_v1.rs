@@ -412,13 +412,8 @@ fn a_version_published_with_another_label_keeps_the_intended_one_and_why() {
     assert!(crate::provenance::confirm_label(&conn, &project, &plan, &version, "robot", "").is_err());
     vault.persist(&conn).unwrap();
 
-    let records: Vec<_> = fs::read_dir(root.join(format!("projects/{project}/versions")))
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .filter(|p| p.extension().is_some_and(|x| x == "md") && !p.file_name().unwrap().to_string_lossy().contains("@v"))
-        .collect();
-    assert_eq!(records.len(), 1);
-    let text = fs::read_to_string(&records[0]).unwrap();
+    let manifest = root.join(format!("projects/{project}/{}", deliverables::manifest_in_project(&plan, &version, [])));
+    let text = fs::read_to_string(&manifest).unwrap();
     let meta = frontmatter::parse(&text).unwrap().meta;
     assert_eq!(meta.text("intendedMmm").as_deref(), Some("man-made"));
     assert_eq!(meta.text("labelReason").as_deref(), Some("I wrote it myself."));
@@ -426,7 +421,7 @@ fn a_version_published_with_another_label_keeps_the_intended_one_and_why() {
     // It loads back, and is written again the same.
     let (mut vault, again) = open(root);
     vault.persist(&again).unwrap();
-    assert_eq!(fs::read_to_string(&records[0]).unwrap(), text);
+    assert_eq!(fs::read_to_string(&manifest).unwrap(), text);
 }
 
 // ---- feedback recorded from the inbox -------------------------------------------------------------------

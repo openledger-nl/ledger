@@ -53,14 +53,13 @@ projects/<project>/threads/<thread>/runs/<id>.md        a run of a prompt with C
 projects/<project>/userstories/<id>.md              a user story
 projects/<project>/tasks/<id>.md                    a task (a card on the board)
 projects/<project>/deliverables/                    what prompts produce — any kind of file; only the live files
-projects/<project>/versions/                        the published versions, tagged name@v0.1.ext, each at the same place
-                                                    under versions/ as its live file is under deliverables/
-projects/<project>/versions/<id>.md                 how a published version came to be: who made it, the thread, prompt
-                                                    and run behind it, its AI-use label (and the intended one, with why,
-                                                    when they differ)
-projects/<project>/history/<deliverable>/v0.3.md  what changed in a markdown deliverable's v0.3 and who made it, with
-                                                    ==added== and ~~removed~~ text as Obsidian shows it; made from the
-                                                    versions and never read back, so editing it changes nothing
+projects/<project>/versions/<deliverable>/          a deliverable's published versions, in a folder named after it at the
+                                                    same place under versions/ as its live file is under deliverables/:
+                                                    name@v0.1.ext, the version itself, tagged
+                                                    name@v0.1.manifest.md, how it came to be: who made it, the thread,
+                                                    prompt and run behind it, its AI-use label (and the intended one, with
+                                                    why, when they differ); name.ext@v0.1.manifest.md when two
+                                                    deliverables share the folder (plan.md and plan.pdf)
 projects/<project>/evidence/<item>.md              a Portflow evidence item (mirrored): its outcomes, versions and their files
 projects/<project>/attachments/                     files uploaded to a thread, screenshots included
 projects/<project>/branding/                        the logos on its PDFs' covers: own.png (yours) and client.png
@@ -330,7 +329,7 @@ src-tauri/src/
   schema.sql             the in-memory database's shape and rules
   projects.rs threads.rs posts.rs prompts.rs feedback.rs uploads.rs deliverables.rs templates.rs
   provenance.rs          how published versions came to be: the records, what old versions prove, the "Produced by" window
-  history.rs             what changed between versions and who wrote what: the comparisons and the history/ notes
+  history.rs             what changed between versions and who wrote what, worked out from the versions
   stories.rs board.rs search.rs links.rs
                          one store per concern, plain functions over the in-memory connection
   vault.rs frontmatter.rs   files ⇄ database: layout, lenient import, canonical export, write-through that looks

@@ -360,7 +360,7 @@ export interface ProvenanceVersion {
 	size: number;
 	sizeChange: number | null;
 	sha256: string | null;
-	/** The id of the record file in the vault (`versions/<id>.md`), when there is one. */
+	/** The version's manifest, by its path in the project's folder (`versions/plan/plan@v0.1.manifest.md`), when it has one. */
 	record: string | null;
 	/** The "version published" note, in its thread. */
 	post: { threadSlug: string; id: string } | null;

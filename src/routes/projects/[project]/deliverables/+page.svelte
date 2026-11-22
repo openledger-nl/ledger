@@ -51,7 +51,7 @@
 			<p class="sub" style="margin:0">
 				Deliverables are what prompts produce. They are plain files in <code>deliverables/</code>: markdown you can edit here, or anything
 				else - images, spreadsheets, PDFs - that you or an assistant drop into the folder. Publishing freezes a copy as
-				<code>name@v1.0.md</code> in <code>versions/</code>, so <code>deliverables/</code> keeps only the live files.
+				<code>name@v1.0.md</code> in a folder of its own under <code>versions/</code>, so <code>deliverables/</code> keeps only the live files.
 			</p>
 			<div class="form-row">
 				<label class="field grow">

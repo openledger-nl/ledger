@@ -281,7 +281,6 @@ CREATE TABLE deliverables (
 -- are deliberately not foreign keys: deleting a thread, a prompt or a note must not erase how a version came about.
 -- `author` is 'ai', 'human', or '' when the origin was never recorded.
 CREATE TABLE version_records (
-    id               TEXT PRIMARY KEY,
     project_slug     TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
     deliverable_path TEXT NOT NULL,
     version          TEXT NOT NULL,
@@ -296,7 +295,7 @@ CREATE TABLE version_records (
     -- Published with another label than the project's intended one: that label, and why (in your words, maybe '').
     intended_mmm     TEXT,
     label_reason     TEXT,
-    UNIQUE (project_slug, deliverable_path, version)
+    PRIMARY KEY (project_slug, deliverable_path, version)
 );
 
 -- scope '' is a vault-wide template, otherwise it is the slug of the project the template belongs to.

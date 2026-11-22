@@ -18,11 +18,10 @@
 //!                                    /feedback/<id>.md    its feedback (on a deliverable)
 //!                                    /uploads/<id>.md     a manifest: when, where the file is, a description
 //!                                    /runs/<id>.md        a run of a prompt with Claude Code: how it went, what it did
-//! projects/<project>/versions/<id>.md            how a published version came to be: who made it, its thread, its AI-use label
-//! projects/<project>/versions/…                  the published versions themselves, "@v1.0" in the name, each at the same
-//!                                                place under versions/ as its live file is under deliverables/
-//! projects/<project>/history/<deliverable>/v0.3.md  what changed in a markdown deliverable's v0.3, and who made it:
-//!                                                made from the versions (see `history`), never read back
+//! projects/<project>/versions/<deliverable>/…    a deliverable's published versions, in a folder named after it, at the
+//!                                                same place under versions/ as its live file is under deliverables/:
+//!                                                plan@v1.0.md, the version itself, and plan@v1.0.manifest.md, how it came
+//!                                                to be (who made it, its thread, its AI-use label)
 //! projects/<project>/userstories/<id>.md         a user story
 //! projects/<project>/tasks/<id>.md               a task on the board
 //! projects/<project>/templates/prompts/<id>.md   the project's own templates
@@ -82,10 +81,6 @@ fn entity_file(project: &str, thread: &str, folder: &str, id: &str) -> String {
     format!("{}/{folder}/{id}.md", thread_dir(project, thread))
 }
 
-fn version_file(project: &str, id: &str) -> String {
-    format!("projects/{project}/versions/{id}.md")
-}
-
 fn story_file(project: &str, id: &str) -> String {
     format!("projects/{project}/userstories/{id}.md")
 }
@@ -112,12 +107,6 @@ fn semester_file(id: &str) -> String {
     format!("{SEMESTERS}/{id}.md")
 }
 
-/// A live deliverable is under `deliverables/`, a published version ("plan@v0.1.md") under `versions/`.
-fn deliverable_file(project: &str, path: &str) -> String {
-    let folder = if deliverables::split_version(path).1.is_some() { "versions" } else { "deliverables" };
-    format!("projects/{project}/{folder}/{path}")
-}
-
 // ---- the vault on disk ------------------------------------------------------------------------------
 
 pub struct Vault {
@@ -128,7 +117,8 @@ pub struct Vault {
     id: String,
     /// The hash of the canonical text of every file this vault owns, as last written (or read).
     written: HashMap<String, u64>,
-    /// What the managed folders looked like when we last wrote or read them.
+    /// What the managed folders looked like when we last wrote or read them, by path as the file system tells them
+    /// apart (see `fold`).
     disk: BTreeMap<String, Fingerprint>,
     /// The conflict copies found when it was last read (see `conflicts`).
     conflicts: Vec<Conflict>,
@@ -212,12 +202,13 @@ impl Vault {
         // A file that is already on disk is taken to match its canonical rendering, so that opening a vault
         // someone formatted by hand does not rewrite all of it.
         self.written.clear();
+        let seen = folded(&listing);
         for (path, content) in export(&conn)? {
-            if listing.contains_key(&path) {
+            if seen.contains_key(&fold(&path)) {
                 self.written.insert(path, hash(&content));
             }
         }
-        self.disk = everything;
+        self.disk = folded(&everything);
         self.stale = false;
 
         self.persist(&conn)?;
@@ -251,7 +242,7 @@ impl Vault {
             self.store.write(path, content.as_bytes()).map_err(|e| Error::io(&self.root.join(path), e))?;
             self.written.insert(path.clone(), digest);
             if let Some(fp) = self.store.fingerprint(path) {
-                self.disk.insert(path.clone(), fp);
+                self.disk.insert(fold(path), fp);
             }
             touched += 1;
         }
@@ -264,7 +255,7 @@ impl Vault {
             }
             self.store.remove(&path).map_err(|e| Error::io(&self.root.join(&path), e))?;
             self.written.remove(&path);
-            self.disk.remove(&path);
+            self.disk.remove(&fold(&path));
             touched += 1;
         }
         Ok(touched)
@@ -272,7 +263,7 @@ impl Vault {
 
     /// Whether the file at `path` is not as this vault last saw it: changed, or there when it wasn't.
     fn changed_under_us(&self, path: &str) -> bool {
-        match (self.disk.get(path), self.store.fingerprint(path)) {
+        match (self.disk.get(&fold(path)), self.store.fingerprint(path)) {
             (Some(seen), Some(now)) => *seen != now,
             (None, Some(_)) => true,
             _ => false,
@@ -281,7 +272,7 @@ impl Vault {
 
     /// Whether files were added, removed or edited by something other than this vault since it last looked.
     pub fn changed_on_disk(&self) -> bool {
-        managed_listing(&self.store) != self.disk
+        folded(&managed_listing(&self.store)) != self.disk
     }
 
     /// Forgets a project folder's leftovers after the project was deleted: attachments and non-markdown
@@ -289,10 +280,22 @@ impl Vault {
     pub fn remove_project_dir(&mut self, project: &str) -> Result<()> {
         let rel = format!("projects/{project}");
         self.store.remove_dir(&rel).map_err(|e| Error::io(&self.root.join(&rel), e))?;
-        self.disk.retain(|p, _| !p.starts_with(&format!("projects/{project}/")));
+        let prefix = fold(&format!("projects/{project}/"));
+        self.disk.retain(|p, _| !p.starts_with(&prefix));
         self.written.retain(|p, _| !p.starts_with(&format!("projects/{project}/")));
         Ok(())
     }
+}
+
+/// A path as the file system tells files apart. Windows and macOS ignore case, so there "versions/Plan/…" and
+/// "versions/plan/…" are one file, and a folder whose name only changed case keeps its old name on disk. What the
+/// vault has seen on disk is kept by this, so such a file is never taken for one that changed under it.
+fn fold(path: &str) -> String {
+    if cfg!(any(windows, target_os = "macos")) { path.to_lowercase() } else { path.to_string() }
+}
+
+fn folded(listing: &BTreeMap<String, Fingerprint>) -> BTreeMap<String, Fingerprint> {
+    listing.iter().map(|(path, fp)| (fold(path), *fp)).collect()
 }
 
 /// When a conflict copy was made, as its name says it: `2026-11-20 101500`.
@@ -314,12 +317,13 @@ fn stamp_of(fp: Option<&Fingerprint>) -> String {
 }
 
 /// Whether the app looks at this path: markdown anywhere under `projects/`, `shared/` and `meetings/`,
-/// any file at all under a project's `deliverables/`, and any published version ("chart@v0.1.png") under its `versions/`.
+/// any file at all under a project's `deliverables/`, and any published version ("chart/chart@v0.1.png") under its
+/// `versions/`.
 fn managed(rel: &str) -> bool {
     let parts: Vec<&str> = rel.split('/').collect();
     let in_project = |folder: &str| parts.len() >= 4 && parts[0] == "projects" && parts[2] == folder;
     in_project("deliverables")
-        || (in_project("versions") && deliverables::split_version(&parts[3..].join("/")).1.is_some())
+        || (in_project("versions") && deliverables::version_at(&parts[3..].join("/")).is_some())
         || rel.ends_with(".md")
 }
 
@@ -351,8 +355,6 @@ pub fn export(conn: &Connection) -> Result<BTreeMap<String, String>> {
     export_stories_and_tasks(conn, &mut files)?;
     export_deliverables(conn, &mut files)?;
     export_version_records(conn, &mut files)?;
-    // Made from the versions, never read back: what changed in each, readable in Obsidian.
-    crate::history::export(conn, &mut files)?;
     for (path, text) in crate::daily::export(conn)? {
         files.insert(path, text);
     }
@@ -654,39 +656,42 @@ fn export_deliverables(conn: &Connection, files: &mut BTreeMap<String, String>) 
     for (project, path, body) in query_all(conn, "SELECT project_slug, path, body FROM deliverables WHERE body IS NOT NULL", [], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
     })? {
-        files.insert(deliverable_file(&project, &path), body);
+        files.insert(deliverables::rel_of(&project, &path), body);
     }
     Ok(())
 }
 
-/// How each published version came to be, one file per version.
+/// How each published version came to be: its manifest, beside it (see `deliverables::manifest_in_project`).
 fn export_version_records(conn: &Connection, files: &mut BTreeMap<String, String>) -> Result<()> {
-    type RecordRow = (String, String, String, String, Option<String>, Option<String>, Option<String>, String, Option<String>, Option<String>, String, String);
-    for (id, project, deliverable, version, thread, prompt, run, author, mmm, sha256, note, created_at) in query_all::<RecordRow, _>(
+    type RecordRow = (String, String, String, Option<String>, Option<String>, Option<String>, String, Option<String>, Option<String>, String, String, Option<String>, Option<String>);
+    let rows = query_all::<RecordRow, _>(
         conn,
-        "SELECT id, project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at
+        "SELECT project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at, intended_mmm, label_reason
          FROM version_records",
         [],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?)),
-    )? {
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?, r.get(12)?)),
+    )?;
+    let mut recorded: HashMap<&str, HashSet<&str>> = HashMap::new();
+    for row in &rows {
+        recorded.entry(row.0.as_str()).or_default().insert(row.1.as_str());
+    }
+    for (project, deliverable, version, thread, prompt, run, author, mmm, sha256, note, created_at, intended, reason) in &rows {
         let mut meta = Mapping::new();
-        frontmatter::set(&mut meta, "id", id.clone());
-        frontmatter::set(&mut meta, "deliverable", deliverable);
-        frontmatter::set(&mut meta, "version", version);
+        frontmatter::set(&mut meta, "deliverable", deliverable.clone());
+        frontmatter::set(&mut meta, "version", version.clone());
         frontmatter::set_opt(&mut meta, "thread", thread.as_deref());
         frontmatter::set_opt(&mut meta, "prompt", prompt.as_deref());
         frontmatter::set_opt(&mut meta, "run", run.as_deref());
-        frontmatter::set_opt(&mut meta, "by", Some(&author));
+        frontmatter::set_opt(&mut meta, "by", Some(author));
         frontmatter::set_opt(&mut meta, "mmm", mmm.as_deref());
         frontmatter::set_opt(&mut meta, "sha256", sha256.as_deref());
-        if let Some((intended, reason)) = crate::db::query_opt(conn, "SELECT intended_mmm, label_reason FROM version_records WHERE id = ?1 AND intended_mmm IS NOT NULL", [&id], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
-        })? {
-            frontmatter::set(&mut meta, "intendedMmm", intended);
+        if let Some(intended) = intended {
+            frontmatter::set(&mut meta, "intendedMmm", intended.clone());
             frontmatter::set_opt(&mut meta, "labelReason", reason.as_deref());
         }
-        frontmatter::set(&mut meta, "createdAt", created_at);
-        files.insert(version_file(&project, &id), frontmatter::render(&meta, &note));
+        frontmatter::set(&mut meta, "createdAt", created_at.clone());
+        let others = recorded.get(project.as_str()).into_iter().flatten().copied();
+        files.insert(format!("projects/{project}/{}", deliverables::manifest_in_project(deliverable, version, others)), frontmatter::render(&meta, note));
     }
     Ok(())
 }
@@ -1165,7 +1170,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
 }
 
 /// Every file in the project's deliverables folder is a deliverable, and every published version in its versions folder
-/// is a version of one; markdown ones are read in. A file in the deliverables folder named like a version
+/// (in the folder of its deliverable) is a version of one; markdown ones are read in. A file in the deliverables folder named like a version
 /// ("plan@v0.1.md") is not: versions are kept in the versions folder.
 fn import_deliverables(conn: &Connection, source: &Source, project: &str) -> Result<()> {
     // (path in the vault, path as the app names the deliverable, fingerprint) of the files in one of the project's folders
@@ -1178,7 +1183,7 @@ fn import_deliverables(conn: &Connection, source: &Source, project: &str) -> Res
             .collect()
     };
     let is_version = |path: &str| deliverables::split_version(path).1.is_some();
-    let versions: Vec<_> = in_folder("versions").into_iter().filter(|(_, path, _)| is_version(path)).collect();
+    let versions: Vec<_> = in_folder("versions").into_iter().filter_map(|(rel, path, fp)| Some((rel, deliverables::version_at(&path)?, fp))).collect();
     let live = in_folder("deliverables").into_iter().filter(|(_, path, _)| !is_version(path));
     for (rel, path, (size, nanos)) in versions.into_iter().chain(live) {
         let body = if deliverables::is_markdown(&path) { source.read(&rel) } else { None };
@@ -1188,14 +1193,15 @@ fn import_deliverables(conn: &Connection, source: &Source, project: &str) -> Res
     Ok(())
 }
 
-/// The record of each published version. One for a version that is not there (any more) is left alone in the vault but
-/// not loaded; of two for the same version the older wins.
+/// The manifest of each published version: every `*.manifest.md` under the project's versions folder, whatever its name
+/// (it says which version it is of). One for a version that is not there (any more) is left alone in the vault but not
+/// loaded; of two for the same version the older wins.
 fn import_version_records(conn: &Connection, source: &Source, project: &str) -> Result<()> {
+    let prefix = format!("projects/{project}/versions/");
+    let manifests: Vec<String> =
+        source.listing.range(prefix.clone()..).map_while(|(rel, _)| rel.starts_with(&prefix).then(|| rel.clone())).filter(|rel| rel.ends_with(".manifest.md")).collect();
     let mut records = vec![];
-    // The published versions in the same folder ("plan@v0.1.md") are not records.
-    let stems = source.stems(&format!("projects/{project}/versions"));
-    for stem in stems.into_iter().filter(|s| deliverables::split_version(s).1.is_none()) {
-        let rel = version_file(project, &stem);
+    for rel in manifests {
         let Some((meta, note)) = source.parsed(&rel) else { continue };
         let (Some(deliverable), Some(version)) = (meta.text("deliverable"), meta.text("version")) else { continue };
         let Some((major, minor)) = deliverables::parse_version(&version) else { continue };
@@ -1204,16 +1210,15 @@ fn import_version_records(conn: &Connection, source: &Source, project: &str) -> 
             continue;
         }
         let created_at = meta.text("createdAt").unwrap_or_else(|| source.stamp(&rel));
-        records.push((meta.text("id").unwrap_or(stem), deliverable, version, meta, note, created_at));
+        records.push((rel, deliverable, version, meta, note, created_at));
     }
     records.sort_by(|a, b| (&a.5, &a.0).cmp(&(&b.5, &b.0)));
-    for (id, deliverable, version, meta, note, created_at) in records {
+    for (_, deliverable, version, meta, note, created_at) in records {
         conn.execute(
             "INSERT OR IGNORE INTO version_records
-                (id, project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                (project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at, intended_mmm, label_reason)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
-                id,
                 project,
                 deliverable,
                 version,
@@ -1224,15 +1229,11 @@ fn import_version_records(conn: &Connection, source: &Source, project: &str) -> 
                 meta.text("mmm").and_then(|m| provenance::level(&m).map(str::to_string)),
                 meta.text("sha256"),
                 note,
-                created_at
+                created_at,
+                meta.text("intendedMmm").and_then(|m| provenance::level(&m).map(str::to_string)),
+                meta.text("labelReason"),
             ],
         )?;
-        if let Some(intended) = meta.text("intendedMmm").and_then(|m| provenance::level(&m).map(str::to_string)) {
-            conn.execute(
-                "UPDATE version_records SET intended_mmm = ?2, label_reason = ?3 WHERE id = ?1",
-                params![id, intended, meta.text("labelReason")],
-            )?;
-        }
     }
     Ok(())
 }

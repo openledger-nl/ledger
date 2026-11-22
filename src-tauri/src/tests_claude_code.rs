@@ -734,7 +734,7 @@ first text
     assert!(!text.contains("Choose a short"), "the file is named already: {text}");
     assert!(text.contains("already linked to deliverables/plan.md"), "{text}");
     assert!(
-        text.contains("versions/plan@v0.1.md, versions/plan@v0.2.md") && text.contains("frozen history to read, not to change"),
+        text.contains("versions/plan/plan@v0.1.md, versions/plan/plan@v0.2.md") && text.contains("frozen history to read, not to change"),
         "the versions, oldest first, as history: {text}"
     );
     assert!(!text.contains("(not written yet)"));
@@ -858,8 +858,11 @@ fn a_baseline_tells_new_and_changed_files_from_untouched_ones_and_remembers_unpu
     let (live, versions) = (dir.path().join("deliverables"), dir.path().join("versions"));
     // A published version goes in the versions folder, beside the deliverables one.
     let put = |name: &str, text: &str| {
-        let folder = if crate::deliverables::split_version(name).1.is_some() { &versions } else { &live };
-        let file = folder.join(name);
+        // A version is in its deliverable's own folder under versions/.
+        let file = match crate::deliverables::in_project(name).strip_prefix("versions/") {
+            Some(in_versions) => versions.join(in_versions),
+            None => live.join(name),
+        };
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(file, text).unwrap();
     };
@@ -1604,7 +1607,7 @@ fn a_new_file_is_published_as_the_first_version_and_the_prompt_is_linked_to_the_
     assert_eq!(linked_paths(&f), ["chart.png", "summary.md"], "the prompt is linked to the deliverables, not to their versions");
     assert!(body_of(&f, "summary@v0.1.md").contains("Ana wants SSO"));
     assert!(body_of(&f, "summary.md").contains("Ana wants SSO"), "the live file stays");
-    assert_eq!(fs::read(versions_folder(&f).join("chart@v0.1.png")).unwrap(), b"\x89PNG", "a file that isn't text is copied");
+    assert_eq!(fs::read(versions_folder(&f).join("chart/chart@v0.1.png")).unwrap(), b"\x89PNG", "a file that isn't text is copied");
 
     // Each version is noted in the thread, and the deliverable knows the prompt that produced it.
     let posts = version_posts(&f);
@@ -1617,7 +1620,7 @@ fn a_new_file_is_published_as_the_first_version_and_the_prompt_is_linked_to_the_
     // Written to the vault's files, so it survives a reload.
     f.core.reload().unwrap();
     assert_eq!(linked_paths(&f), ["chart.png", "summary.md"]);
-    assert!(versions_folder(&f).join("summary@v0.1.md").is_file() && !dir.join("summary@v0.1.md").exists(), "a version is kept in versions/");
+    assert!(versions_folder(&f).join("summary/summary@v0.1.md").is_file() && !dir.join("summary@v0.1.md").exists(), "a version is kept in versions/");
 }
 
 #[test]

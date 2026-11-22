@@ -6,10 +6,7 @@
 //! a Claude Code run always gets a version of its own: edits of yours that no version holds are published before the run
 //! changes the file (see `claude_code::versions`).
 //!
-//! What is written: one note per published version, in the project's `history/` folder ([`export`]), so the history
-//! reads in Obsidian too. `history/<deliverable>/v0.3.md` says who made v0.3 and what changed since v0.2, with
-//! `==added==` and `~~removed~~` text. The notes are made from the versions and made again when those change, so editing
-//! one changes nothing.
+//! Nothing is written: the history is in the versions and their manifests, and worked out from them here.
 //!
 //! How text is compared: a document is cut into blocks (a paragraph, a heading, a list item, a table, a code block) and
 //! each block into tokens (words, spaces, punctuation, and markdown that has to stay whole, such as a link or `code`).
@@ -26,10 +23,10 @@ use rusqlite::Connection;
 use serde::Serialize;
 use similar::{Algorithm, ChangeTag, DiffOp, TextDiff, capture_diff_slices_deadline};
 
-use crate::db::{query_all, query_opt};
+use crate::db::query_opt;
 use crate::deliverables::{self, split_version};
 use crate::error::{Error, Result};
-use crate::{frontmatter, markdown, provenance};
+use crate::{markdown, provenance};
 
 /// How long one comparison may take before it settles for a rougher answer.
 const DEADLINE: Duration = Duration::from_secs(2);
@@ -795,36 +792,25 @@ fn block_segs<'a>(d: &Doc<'a>, x: &Block, mark: impl Fn(usize) -> Mark) -> Vec<S
     (x.t0..x.t1).map(|i| Seg { text: d.tok(i), kind: d.toks[i].kind, mark: mark(i) }).collect()
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Style {
-    /// Private-use characters that [`expand`] turns into tags once the markdown is HTML.
-    Html,
-    /// Obsidian's `==highlight==` and `~~strike~~`.
-    Note,
-}
-
 fn origin_char(o: u16) -> char {
     char::from_u32(0xE100 + u32::from(o.min(0x0DFF))).unwrap_or('\u{E100}')
 }
 
-fn open(mark: Mark, style: Style) -> String {
-    match (style, mark) {
-        (Style::Html, Mark::Ins(o)) => format!("\u{E000}{}", origin_char(o)),
-        (Style::Html, Mark::Del) => "\u{E002}".into(),
-        (Style::Html, Mark::By(o)) => format!("\u{E004}{}", origin_char(o)),
-        (Style::Note, Mark::Ins(_)) => "==".into(),
-        (Style::Note, Mark::Del) => "~~".into(),
+/// Where a marked run starts, as a private-use character that [`expand`] turns into a tag once the markdown is HTML.
+fn open(mark: Mark) -> String {
+    match mark {
+        Mark::Ins(o) => format!("\u{E000}{}", origin_char(o)),
+        Mark::Del => "\u{E002}".into(),
+        Mark::By(o) => format!("\u{E004}{}", origin_char(o)),
         _ => String::new(),
     }
 }
 
-fn close(mark: Mark, style: Style) -> &'static str {
-    match (style, mark) {
-        (Style::Html, Mark::Ins(_)) => "\u{E001}",
-        (Style::Html, Mark::Del) => "\u{E003}",
-        (Style::Html, Mark::By(_)) => "\u{E005}",
-        (Style::Note, Mark::Ins(_)) => "==",
-        (Style::Note, Mark::Del) => "~~",
+fn close(mark: Mark) -> &'static str {
+    match mark {
+        Mark::Ins(_) => "\u{E001}",
+        Mark::Del => "\u{E003}",
+        Mark::By(_) => "\u{E005}",
         _ => "",
     }
 }
@@ -832,7 +818,7 @@ fn close(mark: Mark, style: Style) -> &'static str {
 /// The markdown of `segs`, with the marked runs marked. A mark never covers a line's start (`## `, `- `), emphasis or a
 /// table's `|`, and never runs over the end of a line, so the markdown keeps its shape. What was taken out of the
 /// structure itself (a list marker, a `**`) is left out: the text says what it is now.
-fn emit(segs: &[Seg], code: bool, style: Style) -> String {
+fn emit(segs: &[Seg], code: bool) -> String {
     let mut out = String::new();
     let mut i = 0;
     while i < segs.len() {
@@ -865,11 +851,11 @@ fn emit(segs: &[Seg], code: bool, style: Style) -> String {
             to -= 1;
         }
         if from < to {
-            out.push_str(&open(s.mark, style));
+            out.push_str(&open(s.mark));
             for seg in &segs[from..to] {
                 out.push_str(seg.text);
             }
-            out.push_str(close(s.mark, style));
+            out.push_str(close(s.mark));
         }
         for seg in &segs[to..j] {
             out.push_str(seg.text);
@@ -970,7 +956,7 @@ fn expand(html: &str, sources: &[Source]) -> String {
 const BLOCK_ENDS: [&str; 13] = ["p>", "li>", "h1>", "h2>", "h3>", "h4>", "h5>", "h6>", "td>", "th>", "pre>", "blockquote>", "code>"];
 
 fn html_of(segs: &[Seg], code: bool, sources: &[Source]) -> String {
-    expand(&markdown::render(&emit(segs, code, Style::Html)), sources)
+    expand(&markdown::render(&emit(segs, code)), sources)
 }
 
 /// The version most of these words come from.
@@ -1634,245 +1620,9 @@ pub fn live_changes(conn: &Connection, project: &str, base: &str, text: &str, ag
     Ok(LiveChanges { against: chain.sources[ai].version.clone(), sources: chain.sources, changes })
 }
 
-// ---- the history notes in the vault -----------------------------------------------------------------
-
-/// The notes, kept by what they are made from: a note is only worked out again when a version or its record changes.
-static NOTES: LazyLock<Mutex<HashMap<u64, String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
-
-/// Where the history of the deliverable at `base` is kept: `history/<its path without the extension>/`.
-pub fn folder(project: &str, base: &str) -> String {
-    format!("projects/{project}/history/{}", deliverables::attachment_dir(base))
-}
-
-/// One note per published version of every markdown deliverable: `history/<deliverable>/v0.3.md`.
-pub fn export(conn: &Connection, files: &mut BTreeMap<String, String>) -> Result<()> {
-    let rows: Vec<(String, String)> =
-        query_all(conn, "SELECT project_slug, path FROM deliverables WHERE body IS NOT NULL", [], |r| Ok((r.get(0)?, r.get(1)?)))?;
-    let bases: BTreeSet<(String, String)> = rows
-        .into_iter()
-        .filter_map(|(project, path)| match split_version(&path) {
-            (base, Some(_)) if deliverables::is_markdown(&base) => Some((project, base)),
-            _ => None,
-        })
-        .collect();
-    let mut cache = NOTES.lock().unwrap_or_else(|e| e.into_inner());
-    if cache.len() > 4096 {
-        cache.clear();
-    }
-    for (project, base) in bases {
-        let mut previous: Option<(String, String)> = None;
-        for v in provenance::resolve(conn, &project, &base)? {
-            let snapshot = deliverables::snapshot_path(&base, &v.version);
-            let Some(text) = body_of(conn, &project, &snapshot)? else {
-                continue;
-            };
-            let (by, who) = who(v.author, v.run.is_some());
-            let prompt = prompt_title(conn, v.prompt.as_deref())?;
-            let head = Head {
-                base: &base,
-                snapshot: &snapshot,
-                version: &v.version,
-                by,
-                who,
-                mmm: v.mmm.as_deref(),
-                at: &v.at,
-                prompt: prompt.as_deref(),
-                note: &v.note,
-            };
-            let mut hasher = DefaultHasher::new();
-            (previous.as_ref(), &text, &head).hash(&mut hasher);
-            let key = hasher.finish();
-            let note = match cache.get(&key) {
-                Some(note) => note.clone(),
-                None => {
-                    let note = write_note(&head, previous.as_ref().map(|(v, t)| (v.as_str(), t.as_str())), &text);
-                    cache.insert(key, note.clone());
-                    note
-                }
-            };
-            files.insert(format!("{}/v{}.md", folder(&project, &base), v.version), note);
-            previous = Some((v.version.clone(), text));
-        }
-    }
-    Ok(())
-}
-
-#[derive(Hash)]
-struct Head<'a> {
-    base: &'a str,
-    snapshot: &'a str,
-    version: &'a str,
-    by: &'a str,
-    who: &'a str,
-    mmm: Option<&'a str>,
-    at: &'a str,
-    prompt: Option<&'a str>,
-    note: &'a str,
-}
-
-/// A link from a note to a file in the project, which Obsidian follows: relative, spaces written as `%20`.
-fn link_up(base: &str, to: &str) -> String {
-    let up = "../".repeat(base.matches('/').count() + 2);
-    format!("{up}{}", to.replace(' ', "%20"))
-}
-
-fn write_note(head: &Head, previous: Option<(&str, &str)>, text: &str) -> String {
-    let name = deliverables::file_name(head.base);
-    let mut meta = serde_yaml_ng::Mapping::new();
-    frontmatter::set(&mut meta, "deliverable", head.base);
-    frontmatter::set(&mut meta, "version", head.version);
-    frontmatter::set_opt(&mut meta, "previous", previous.map(|(v, _)| v));
-    frontmatter::set(&mut meta, "by", head.by);
-    frontmatter::set(&mut meta, "madeBy", head.who);
-    frontmatter::set_opt(&mut meta, "mmm", head.mmm);
-    frontmatter::set_opt(&mut meta, "prompt", head.prompt);
-    frontmatter::set(&mut meta, "publishedAt", head.at);
-
-    let mut body = String::new();
-    let day = head.at.get(..10).unwrap_or(head.at);
-    let _ = writeln!(body, "# {name} v{}\n", head.version);
-    let _ = writeln!(body, "> [!info] Made by {}, {day}", head.who);
-    let version_link = link_up(head.base, &format!("versions/{}", head.snapshot));
-
-    let changes = match previous {
-        None => {
-            let doc = Doc::new(text);
-            let words = doc.blocks.iter().filter(|b| b.kind.shown()).map(|b| doc.words(b)).sum::<usize>();
-            frontmatter::set(&mut meta, "words", words as u64);
-            let _ = writeln!(body, "> The first version, {words} words: [{}]({version_link}).", head.snapshot);
-            None
-        }
-        Some((prev_version, prev_text)) => {
-            let (a, b) = (Doc::new(prev_text), Doc::new(text));
-            let note = note_changes(&a, &b);
-            frontmatter::set(&mut meta, "wordsAdded", note.added as u64);
-            frontmatter::set(&mut meta, "wordsRemoved", note.removed as u64);
-            let mut said = format!("> +{} words, -{} words since [v{prev_version}](v{prev_version}.md)", note.added, note.removed);
-            if note.moved > 0 {
-                let _ = write!(said, ", {} {} moved", note.moved, if note.moved == 1 { "passage" } else { "passages" });
-            }
-            let _ = writeln!(body, "{said}. The whole text: [{}]({version_link}).", head.snapshot);
-            Some(note.text)
-        }
-    };
-    if let Some(prompt) = head.prompt {
-        let _ = writeln!(body, "> From the prompt \"{prompt}\".");
-    }
-    let changelog = head.note.trim();
-    if !changelog.is_empty() {
-        let _ = writeln!(body, "> Changelog: {}", changelog.replace('\n', " "));
-    }
-    let _ = writeln!(body, "\n%% Ledger writes this note from the published versions; a change made here is not kept. %%");
-    match changes {
-        Some(text) if !text.trim().is_empty() => {
-            let _ = write!(body, "\n## What changed\n\n{text}");
-        }
-        Some(_) => {
-            let _ = writeln!(body, "\nThe text is the same as in v{}.", previous.map_or("", |(v, _)| v));
-        }
-        None => {}
-    }
-    frontmatter::render(&meta, &body)
-}
-
-struct NoteChanges {
-    text: String,
-    added: usize,
-    removed: usize,
-    moved: usize,
-}
-
-/// What changed, as markdown Obsidian shows: the changed blocks only, `==added==` and `~~removed~~`, code and tables as
-/// a `diff` block, and under which heading each change is when that is not the change itself.
-fn note_changes(a: &Doc, b: &Doc) -> NoteChanges {
-    let mut out = NoteChanges { text: String::new(), added: 0, removed: 0, moved: 0 };
-    let mut heading: Option<&str> = None;
-    let mut told: Option<&str> = None;
-    let none = vec![0u16; b.toks.len()];
-    for item in compare_blocks(a, b) {
-        let (doc, blk) = match item {
-            Item::Same(n) | Item::Added(n) | Item::Changed(_, n) | Item::Moved(n, _) => (b, b.blocks[n]),
-            Item::Removed(o) | Item::MovedAway(o) => (a, a.blocks[o]),
-        };
-        if !blk.kind.shown() {
-            continue;
-        }
-        if let Item::Same(_) = item {
-            if blk.kind == BlockKind::Heading {
-                heading = Some(doc.block_text(&blk).trim().trim_start_matches('#').trim());
-            }
-            continue;
-        }
-        if matches!(item, Item::MovedAway(_)) {
-            continue;
-        }
-        if blk.kind != BlockKind::Heading && heading.is_some() && told != heading {
-            let _ = writeln!(out.text, "*Under \"{}\"*\n", heading.unwrap_or_default());
-            told = heading;
-        }
-        let piece = match item {
-            Item::Added(_) => {
-                out.added += b.words(&blk);
-                if blk.kind.prose() { emit(&block_segs(b, &blk, |_| Mark::Ins(0)), false, Style::Note) } else { lines_diff("", b.block_text(&blk)) }
-            }
-            Item::Removed(_) => {
-                out.removed += a.words(&blk);
-                if blk.kind.prose() { emit(&block_segs(a, &blk, |_| Mark::Del), false, Style::Note) } else { lines_diff(a.block_text(&blk), "") }
-            }
-            Item::Changed(o, _) => {
-                let old = a.blocks[o];
-                let segs = changed_segs(a, &old, b, &blk, &none);
-                out.added += segs.iter().filter(|s| s.kind.counts() && matches!(s.mark, Mark::Ins(_))).count();
-                out.removed += segs.iter().filter(|s| s.kind.counts() && s.mark == Mark::Del).count();
-                if blk.kind.prose() && old.kind.prose() { emit(&segs, false, Style::Note) } else { lines_diff(a.block_text(&old), b.block_text(&blk)) }
-            }
-            Item::Moved(_, o) => {
-                out.moved += 1;
-                let old = a.blocks[o];
-                if a.block_text(&old).trim_end() == b.block_text(&blk).trim_end() {
-                    format!("*Moved here:*\n\n{}", b.block_text(&blk))
-                } else {
-                    let segs = changed_segs(a, &old, b, &blk, &none);
-                    out.added += segs.iter().filter(|s| s.kind.counts() && matches!(s.mark, Mark::Ins(_))).count();
-                    out.removed += segs.iter().filter(|s| s.kind.counts() && s.mark == Mark::Del).count();
-                    let text =
-                        if blk.kind.prose() && old.kind.prose() { emit(&segs, false, Style::Note) } else { lines_diff(a.block_text(&old), b.block_text(&blk)) };
-                    format!("*Moved here, and changed:*\n\n{text}")
-                }
-            }
-            Item::Same(_) | Item::MovedAway(_) => continue,
-        };
-        if blk.kind == BlockKind::Heading {
-            heading = Some(b.block_text(&blk).trim().trim_start_matches('#').trim());
-            told = heading;
-        }
-        let _ = writeln!(out.text, "{}\n", piece.trim_end());
-    }
-    out
-}
-
-/// Lines taken out and put in, as a `diff` block.
-fn lines_diff(old: &str, new: &str) -> String {
-    let mut out = String::from("```diff\n");
-    for change in TextDiff::from_lines(old, new).iter_all_changes() {
-        let sign = match change.tag() {
-            ChangeTag::Equal => ' ',
-            ChangeTag::Insert => '+',
-            ChangeTag::Delete => '-',
-        };
-        let _ = writeln!(out, "{sign} {}", change.value().trim_end_matches(['\n', '\r']));
-    }
-    out.push_str("```");
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn note(old: &str, new: &str) -> NoteChanges {
-        note_changes(&Doc::new(old), &Doc::new(new))
-    }
 
     #[test]
     fn blocks_are_paragraphs_headings_items_and_code() {
@@ -1889,28 +1639,6 @@ mod tests {
         let doc = Doc::new("See [the plan](plan.md), `a b` and [[Other note|that]].");
         let atoms: Vec<&str> = (0..doc.toks.len()).filter(|&i| doc.toks[i].kind == Kind::Atom).map(|i| doc.tok(i)).collect();
         assert_eq!(atoms, vec!["[the plan](plan.md)", "`a b`", "[[Other note|that]]"]);
-    }
-
-    #[test]
-    fn a_changed_word_is_marked_in_its_sentence() {
-        let n = note("# Plan\n\nWe build a small app.\n", "# Plan\n\nWe build a large app.\n");
-        assert_eq!(n.text.trim(), "*Under \"Plan\"*\n\nWe build a ~~small~~==large== app.");
-        assert_eq!((n.added, n.removed), (1, 1));
-    }
-
-    #[test]
-    fn marks_leave_list_markers_and_emphasis_alone() {
-        let n = note("- one\n", "- one and **two**\n");
-        assert_eq!(n.text.trim(), "- one ==and== **==two==**");
-    }
-
-    #[test]
-    fn a_moved_paragraph_is_moved_not_rewritten() {
-        let old = "First paragraph that stays.\n\nThis paragraph is going to move down.\n\nLast paragraph here.\n";
-        let new = "First paragraph that stays.\n\nLast paragraph here.\n\nThis paragraph is going to move down.\n";
-        let n = note(old, new);
-        assert_eq!(n.moved, 1);
-        assert_eq!((n.added, n.removed), (0, 0));
     }
 
     #[test]
