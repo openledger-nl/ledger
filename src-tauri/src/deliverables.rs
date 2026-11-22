@@ -668,7 +668,7 @@ fn freeze(
             &tx,
             project,
             thread,
-            &provenance::announcement(&tx, project, &live.name, &version, origin)?,
+            "",
             AddOptions {
                 version_published: true,
                 deliverable_path: Some(base.to_string()),

@@ -428,21 +428,26 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         files.insert(format!("{}/thread.md", thread_dir(&project, &slug)), frontmatter::render(&meta, &description));
     }
 
-    type PostRow = (String, String, String, Option<String>, bool, bool, Option<String>, Option<String>, Option<String>, String, String, String, Option<String>, String);
-    for (id, project, thread, parent, guiding, published, path, version, prompt, created_at, updated_at, body, kind, labels) in query_all::<PostRow, _>(
+    // The deliverables of each project that have manifests, to name a version's manifest by (see `version_note`).
+    let mut recorded: HashMap<String, HashSet<String>> = HashMap::new();
+    for (project, path) in query_all(conn, "SELECT project_slug, deliverable_path FROM version_records", [], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+        recorded.entry(project).or_default().insert(path);
+    }
+    type PostRow = (String, String, String, Option<String>, bool, bool, Option<String>, Option<String>, String, String, String, Option<String>, String);
+    for (id, project, thread, parent, guiding, published, path, version, created_at, updated_at, body, kind, labels) in query_all::<PostRow, _>(
         conn,
         "SELECT id, project_slug, thread_slug, parent_id, guiding_question, version_published, deliverable_path,
-                deliverable_version, prompt_id, created_at, updated_at, body, kind, labels FROM posts",
+                deliverable_version, created_at, updated_at, body, kind, labels FROM posts",
         [],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?, r.get(12)?, r.get(13)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?, r.get(12)?)),
     )? {
+        let body = match (published, &path, &version) {
+            (true, Some(path), Some(version)) => version_note(&recorded, &project, path, version),
+            _ => body,
+        };
         let mut meta = Mapping::new();
         frontmatter::set_opt(&mut meta, "parentId", parent.as_deref());
         frontmatter::set_flag(&mut meta, "guidingQuestion", guiding);
-        frontmatter::set_flag(&mut meta, "versionPublished", published);
-        frontmatter::set_opt(&mut meta, "deliverable", path.as_deref());
-        frontmatter::set_opt(&mut meta, "deliverableVersion", version.as_deref());
-        frontmatter::set_opt(&mut meta, "prompt", prompt.as_deref());
         frontmatter::set_opt(&mut meta, "kind", kind.as_deref());
         frontmatter::set_list(&mut meta, "labels", &labels.split(',').filter(|l| !l.is_empty()).map(str::to_string).collect::<Vec<_>>());
         frontmatter::set(&mut meta, "createdAt", created_at);
@@ -658,6 +663,38 @@ fn export_deliverables(conn: &Connection, files: &mut BTreeMap<String, String>) 
     Ok(())
 }
 
+/// A thread's "version published" note, as its file holds it: a link to the version's manifest and nothing else
+/// (`provenance::note_link`); what it says is made from the record when it is shown. `recorded` are the deliverables
+/// of each project that have manifests.
+fn version_note(recorded: &HashMap<String, HashSet<String>>, project: &str, path: &str, version: &str) -> String {
+    let others = recorded.get(project).into_iter().flatten().map(String::as_str);
+    let manifest = deliverables::manifest_in_project(path, version, others);
+    provenance::note_link(&manifest, deliverables::file_name(&deliverables::snapshot_path(path, version)))
+}
+
+/// Takes each post whose file is a link to one of the project's manifests as that version's "version published"
+/// note (see `version_note`). Run once the project's records are in.
+fn relink_version_notes(conn: &Connection, project: &str) -> Result<()> {
+    type Record = (String, String, Option<String>);
+    let records: Vec<Record> =
+        query_all(conn, "SELECT deliverable_path, version, prompt_id FROM version_records WHERE project_slug = ?1", [project], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+    let paths: HashSet<&str> = records.iter().map(|r| r.0.as_str()).collect();
+    let by_manifest: HashMap<String, &(String, String, Option<String>)> =
+        records.iter().map(|r| (fold(&deliverables::manifest_in_project(&r.0, &r.1, paths.iter().copied())), r)).collect();
+    let posts = query_all(conn, "SELECT thread_slug, id, body FROM posts WHERE project_slug = ?1 AND version_published = 0", [project], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+    })?;
+    for (thread, id, body) in posts {
+        let Some((path, version, prompt)) = provenance::note_manifest(&body).and_then(|m| by_manifest.get(&fold(&m)).copied()) else { continue };
+        conn.execute(
+            "UPDATE posts SET version_published = 1, deliverable_path = ?4, deliverable_version = ?5, prompt_id = ?6, body = ''
+             WHERE project_slug = ?1 AND thread_slug = ?2 AND id = ?3",
+            params![project, thread, id, path, version, prompt],
+        )?;
+    }
+    Ok(())
+}
+
 /// How each published version came to be: its manifest, beside it (see `deliverables::manifest_in_project`).
 fn export_version_records(conn: &Connection, files: &mut BTreeMap<String, String>) -> Result<()> {
     type RecordRow = (String, String, String, Option<String>, Option<String>, Option<String>, String, Option<String>, Option<String>, String, String, Option<String>, Option<String>);
@@ -763,6 +800,7 @@ fn import(conn: &Connection, root: &Path, store: &Store, listing: &BTreeMap<Stri
         import_deliverables(&tx, &source, project)?;
         crate::deliverable_facts::reattach(&tx, project)?;
         import_version_records(&tx, &source, project)?;
+        relink_version_notes(&tx, project)?;
         import_stories(&tx, &source, project, &threads)?;
         import_tasks(&tx, &source, project, &threads)?;
     }
@@ -970,10 +1008,12 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
                 slug.clone(),
                 meta.text("parentId"),
                 meta.flag("guidingQuestion"),
-                meta.flag("versionPublished"),
-                meta.text("deliverable"),
-                meta.text("deliverableVersion"),
-                meta.text("prompt"),
+                // A "version published" note is a link to its manifest: `relink_version_notes` knows it once the
+                // records are in.
+                false,
+                None,
+                None,
+                None,
                 created_at.clone(),
                 meta.text("updatedAt").unwrap_or(created_at),
                 body,

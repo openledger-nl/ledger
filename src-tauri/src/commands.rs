@@ -506,7 +506,7 @@ pub fn upload_dropped(app: State<App>, request: tauri::ipc::Request<'_>) -> Resu
 }
 
 /// Undoes `encodeURIComponent`: `%XX` escapes to bytes, read as UTF-8; `None` for a broken escape or text.
-fn percent_decode(s: &str) -> Option<String> {
+pub(crate) fn percent_decode(s: &str) -> Option<String> {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;

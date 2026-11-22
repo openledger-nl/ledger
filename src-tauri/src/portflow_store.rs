@@ -977,7 +977,6 @@ pub fn store_download(
     let thread: Option<String> =
         query_opt(conn, "SELECT thread_slug FROM evidence WHERE project_slug = ?1 AND slug = ?2", [project, evidence], |r| r.get::<_, Option<String>>(0))?.flatten();
     let origin = crate::provenance::Origin {
-        cause: crate::provenance::Cause::Manual,
         thread,
         ai: false,
         prompt: None,

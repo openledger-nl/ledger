@@ -421,7 +421,7 @@ fn a_prompts_deliverable_is_edited_published_and_announced_in_its_thread() {
     // The thread of the prompt that produced it hears about each publish.
     let notes: Vec<_> = posts::list(&c, &p, &t).unwrap().into_iter().filter(|x| x.version_published).collect();
     assert_eq!(notes.len(), 2);
-    assert_eq!(notes[0].body, "Version 1.0 of **launch-plan.md** was just published.");
+    assert_eq!(notes[0].body, "Version 1.0 of **launch-plan.md** was published.");
     assert_eq!((notes[0].deliverable_path.as_deref(), notes[0].deliverable_version.as_deref()), (Some("launch-plan.md"), Some("1.0")));
 
     let listed = deliverables::list(&c, &p).unwrap();

@@ -72,8 +72,16 @@ pub fn set_meta(conn: &Connection, project: &str, thread: &str, id: &str, kind: 
     get(conn, project, thread, id)
 }
 
-/// Names the prompt a note points at, when it still exists.
+/// Names the prompt a note points at, when it still exists. A "version published" note says what its version's record
+/// says (its file holds only a link to the manifest).
 fn complete(conn: &Connection, project: &str, mut post: PostView) -> Result<PostView> {
+    if post.version_published
+        && post.body.is_empty()
+        && let (Some(path), Some(version)) = (&post.deliverable_path, &post.deliverable_version)
+    {
+        post.body = crate::provenance::announcement(conn, project, path, version)?;
+        post.html = markdown::render(&post.body);
+    }
     if let Some(id) = &post.prompt_id {
         if let Some((thread, title)) = prompts::locate(conn, project, id)? {
             post.prompt_thread = Some(thread);
@@ -105,9 +113,10 @@ fn get(conn: &Connection, project: &str, thread: &str, id: &str) -> Result<PostV
     complete(conn, project, post)
 }
 
+/// A "version published" note has no body of its own: what it says comes from the version's record.
 pub fn add(conn: &Connection, project: &str, thread: &str, body: &str, options: AddOptions) -> Result<PostView> {
     let body = body.trim();
-    if body.is_empty() {
+    if body.is_empty() && !options.version_published {
         return Err(Error::invalid("Post body is required"));
     }
     threads::require(conn, project, thread)?;

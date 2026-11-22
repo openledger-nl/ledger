@@ -52,7 +52,7 @@ pub fn refresh_vault(core: &mut Core, request: &RunRequest, changes: &[Change], 
                     continue;
                 }
             };
-            let origin = Origin::held(&request.thread, &request.prompt_id, stopped.as_ref());
+            let origin = Origin::held(&request.thread, stopped.as_ref());
             match deliverables::publish_run(&core.conn, &root, &request.project, base, Some(held), &origin) {
                 Ok(version) => {
                     outcome.kept.push(deliverables::snapshot_path(base, &version));
