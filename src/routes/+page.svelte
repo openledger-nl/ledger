@@ -6,14 +6,16 @@
 	import { newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl } from '$lib/actions';
 	import ContributionGraph from '$lib/components/ContributionGraph.svelte';
 	import ProjectLatest from '$lib/components/ProjectLatest.svelte';
-	import SyncWidget from '$lib/components/SyncWidget.svelte';
-	import { ago, LOCALE, newest, plural, stamp } from '$lib/format';
+	import Onboarding from '$lib/components/Onboarding.svelte';
+	import PortflowFeedbackWidget from '$lib/components/PortflowFeedbackWidget.svelte';
+	import { ago, newest, numericDay, plural, stamp, todayKey, weekday } from '$lib/format';
 	import { dashboard, isPinned, togglePin } from '$lib/dashboard.svelte';
+	import { daysLeft, daysLeftText, endDay } from '$lib/v1';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	const today = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+	const today = `${weekday(todayKey())} ${numericDay(todayKey())}`;
 
 	/** Every project with what it shows, the most recently active first. */
 	const cards = $derived(
@@ -38,12 +40,30 @@
 
 	type Card = (typeof cards)[number];
 
+	/** A project's goal and days left, the most important things it has (A1). */
+	function goal(slug: string) {
+		const m = data.meta.find((x) => x.slug === slug);
+		return m ? { text: m.goal, left: daysLeftText(daysLeft(endDay(m, data.semesters))) } : null;
+	}
+
 	/** Pinned projects first, in the order they were pinned; then the rest, the most recently active first. */
 	const pinned = $derived(
 		dashboard.pins.map((slug) => cards.find((c) => c.project.slug === slug)).filter((c): c is Card => !!c)
 	);
 	const others = $derived(cards.filter((c) => !dashboard.pins.includes(c.project.slug)));
+
+	const deliverableCount = $derived(Object.values(data.details).reduce((n, d) => n + d.deliverables.length, 0));
 </script>
+
+{#snippet guide()}
+	<Onboarding
+		projects={data.projects}
+		semesters={data.semesters}
+		{deliverableCount}
+		settings={data.settings}
+		onboarding={data.onboarding}
+	/>
+{/snippet}
 
 {#snippet card(c: Card)}
 	{@const p = c.project}
@@ -69,6 +89,10 @@
 				<span>{plural(p.storyCount, 'story', 'stories')}</span>
 				{#if c.openFeedback}<span class="badge draft">{c.openFeedback} open feedback</span>{/if}
 			</div>
+			{#if goal(p.slug)}
+				{@const g = goal(p.slug)}
+				<p class="proj-goal"><strong>{g?.left}</strong> {g?.text}</p>
+			{/if}
 		</header>
 
 		<ProjectLatest project={p} deliverables={data.details[p.slug]?.deliverables ?? []} />
@@ -86,51 +110,58 @@
 
 <svelte:head><title>Ledger</title></svelte:head>
 
-{#if data.projects.length === 0}
+{#if data.projects.length === 0 && !data.onboarding.active}
 	<div class="empty-state">
 		<h1>Welcome to Ledger</h1>
 		<p>
-			Everything lives in a folder of markdown files — a vault — that you can open in any editor and sync to a private GitHub
-			repository. Start with a project: it holds your threads, deliverables, user stories and board.
+			Everything lives in a folder - a vault - that your cloud storage keeps in sync and backs up. Start with a project: it holds
+			your threads, deliverables, user stories and board.
 		</p>
 		<button class="btn primary" onclick={newProjectFlow}>Create your first project</button>
-		<p class="hint">Choose where the vault lives, and connect GitHub, in Settings.</p>
+		<p class="hint">Choose where the vault lives in Settings.</p>
 	</div>
 {:else}
-	<div class="header-wrap flat">
-		<div class="header-top">
-			<div>
-				<h1>Dashboard</h1>
-				<div class="sub">{today} · {plural(data.projects.length, 'project')} in your vault</div>
-			</div>
-			<div class="header-actions">
-				<button class="btn primary" onclick={newProjectFlow}><Plus size={16} />New project</button>
+	{#if data.projects.length > 0}
+		<div class="header-wrap flat">
+			<div class="header-top">
+				<div>
+					<h1>Dashboard</h1>
+					<div class="sub">{today} | {plural(data.projects.length, 'project')} in your vault</div>
+				</div>
+				<div class="header-actions">
+					<button class="btn primary" onclick={newProjectFlow}><Plus size={16} />New project</button>
+				</div>
 			</div>
 		</div>
-	</div>
+	{/if}
 
+	<!-- The guide keeps its place when the first project arrives (it is not drawn twice), or a vault synced in by the cloud
+	     would restart it instead of closing it. -->
 	<div class="page">
-		<div class="page-inner wide">
-			{#if dashboard.showActivity}
-				<ContributionGraph events={data.activity} projects={data.projects} semesters={data.semesters} />
+		<div class="page-inner">
+			{#if data.onboarding.active}{@render guide()}{/if}
+			{#if data.projects.length > 0}
+				{#if dashboard.showActivity}
+					<ContributionGraph events={data.activity} projects={data.projects} semesters={data.semesters} />
+				{/if}
+				{#if pinned.length}
+					<section class="proj-group" aria-label="Pinned projects">
+						<h2 class="proj-group-head"><Pin size={13} />Pinned</h2>
+						<div class="proj-grid">
+							{#each pinned as c (c.project.slug)}{@render card(c)}{/each}
+						</div>
+					</section>
+				{/if}
+				{#if others.length}
+					<section class="proj-group" aria-label="Projects">
+						{#if pinned.length}<h2 class="proj-group-head">Other projects</h2>{/if}
+						<div class="proj-grid">
+							{#each others as c (c.project.slug)}{@render card(c)}{/each}
+						</div>
+					</section>
+				{/if}
 			{/if}
-			{#if pinned.length}
-				<section class="proj-group" aria-label="Pinned projects">
-					<h2 class="proj-group-head"><Pin size={13} />Pinned</h2>
-					<div class="proj-grid">
-						{#each pinned as c (c.project.slug)}{@render card(c)}{/each}
-					</div>
-				</section>
-			{/if}
-			{#if others.length}
-				<section class="proj-group" aria-label="Projects">
-					{#if pinned.length}<h2 class="proj-group-head">Other projects</h2>{/if}
-					<div class="proj-grid">
-						{#each others as c (c.project.slug)}{@render card(c)}{/each}
-					</div>
-				</section>
-			{/if}
-			<SyncWidget />
+			<PortflowFeedbackWidget version={data} />
 		</div>
 	</div>
 {/if}

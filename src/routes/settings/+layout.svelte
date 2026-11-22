@@ -58,7 +58,7 @@
 				{/each}
 			{:else}
 				<div class="empty-state">
-					<p>No settings match “{query.trim()}”.</p>
+					<p>No settings match "{query.trim()}".</p>
 					<button class="btn small" onclick={() => (query = '')}><X size={13} /> Clear the search</button>
 				</div>
 			{/each}

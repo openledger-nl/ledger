@@ -1,27 +1,38 @@
 <script lang="ts">
+	import Building2 from '@lucide/svelte/icons/building-2';
+	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
+	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import House from '@lucide/svelte/icons/house';
+	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
+	import Inbox from '@lucide/svelte/icons/inbox';
+	import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Settings from '@lucide/svelte/icons/settings';
+	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
+	import Users from '@lucide/svelte/icons/users';
 	import { untrack } from 'svelte';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
+	import { prettyKeyOf } from '$lib/commands.svelte';
 	import { deliverableTarget, deliverableUrl, newDeliverableFlow, newProjectFlow, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
-	import { ago, newest } from '$lib/format';
 	import { orderThreads } from '$lib/order';
 	import { listOrder } from '$lib/order.svelte';
-	import { drawer, sync } from '$lib/ui.svelte';
+	import { layout, toggleSidebar } from '$lib/layout.svelte';
+	import { portflow, portflowFooter } from '$lib/portflow.svelte';
+	import { openVaultPicker } from '$lib/vaults.svelte';
 	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
+	import EpsilonIcon from '$lib/components/EpsilonIcon.svelte';
 	import Wordmark from '$lib/components/Wordmark.svelte';
 
-	let { projects }: { projects: ProjectSummary[] } = $props();
+	/** `vaultName`: the open vault, on the switch button at the bottom; `conflicts`: how many conflict copies wait. */
+	let { projects, vaultName = '', conflicts = 0 }: { projects: ProjectSummary[]; vaultName?: string; conflicts?: number } = $props();
 
 	const OPEN_KEY = 'ledger-open-project';
+	const sidebarKey = $derived(prettyKeyOf('sidebar.toggle'));
 
-	let query = $state('');
 	/** The project that is unfolded: one at a time, null when none is. */
 	let open = $state<string | null>(load());
 	const path = $derived(page.url.pathname);
@@ -59,11 +70,11 @@
 		remember();
 	}
 
-	/** Choosing a project unfolds it and goes to its page. Choosing the one that is already unfolded folds it instead and
-	 *  goes nowhere: what is open stays open, be it the project's page, a thread or a deliverable. */
+	/** Choosing a project always goes to its page, and unfolds it. Only on that page already does choosing it fold it
+	 *  (or unfold it again). The arrow before it folds and unfolds it anywhere. */
 	function choose(e: MouseEvent, slug: string) {
 		const plain = e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey;
-		if (open === slug && plain) {
+		if (path === projectUrl(slug) && plain) {
 			e.preventDefault();
 			toggle(slug);
 		} else {
@@ -77,8 +88,8 @@
 		if (slug) untrack(() => unfold(slug));
 	});
 
-	// Every project's deliverables, by project: the unfolded project's list and the Latest section read them. They are
-	// looked up again whenever the vault changes (the projects are loaded afresh then).
+	// Every project's deliverables, by project, for the unfolded project's list. They are looked up again whenever the
+	// vault changes (the projects are loaded afresh then).
 	let deliverables = $state<Record<string, DeliverableSummary[]>>({});
 	$effect(() => {
 		const slugs = projects.map((p) => p.slug);
@@ -90,20 +101,6 @@
 	});
 	const byPath = (items: DeliverableSummary[]) => [...items].sort((a, b) => a.path.localeCompare(b.path));
 
-	/** What was last worked on across all projects: the newest threads and deliverables. */
-	const LATEST = 3;
-	const latestThreads = $derived(
-		newest(projects.flatMap((project) => project.threads.map((thread) => ({ thread, project }))), (x) => x.thread.lastActivity).slice(0, LATEST)
-	);
-	const latestDeliverables = $derived(
-		newest(projects.flatMap((project) => (deliverables[project.slug] ?? []).map((d) => ({ d, project }))), (x) => x.d.modified).slice(0, LATEST)
-	);
-
-	// Reflect an open search in the box, so refining it is one edit away.
-	$effect(() => {
-		if (path === '/search') query = page.url.searchParams.get('q') ?? '';
-	});
-
 	// "just now" and "5 min ago" are worked out when drawn, so the footer redraws every half minute to keep them true.
 	let tick = $state(0);
 	$effect(() => {
@@ -111,80 +108,36 @@
 		return () => clearInterval(timer);
 	});
 
-	// What the footer says about the vault and GitHub: how it stands, where the files go (owner/repo@branch) and
-	// whether they go up sealed; a problem adds its message.
-	const footer = $derived.by(() => {
+	const pf = $derived.by(() => {
 		void tick;
-		const s = sync.status;
-		if (!s || !s.configured) return { dot: 'off', title: 'Local vault', when: '', where: 'Not synced to GitHub', encryption: '', error: '' };
-		const base = { when: '', where: `${s.repo ?? ''}@${s.branch ?? ''}`, encryption: s.encrypted ? 'Encrypted' : 'Not encrypted', error: '' };
-		if (s.state === 'syncing') return { ...base, dot: 'warn pulse', title: 'Syncing…' };
-		if (s.state === 'error') return { ...base, dot: 'bad', title: 'Sync problem', error: s.lastError ?? 'See Settings' };
-		if (s.pending) return { ...base, dot: 'warn', title: 'Changes waiting to sync' };
-		return { ...base, dot: 'ok', title: 'Synced with GitHub', when: s.lastSyncAt ? ago(s.lastSyncAt) : '' };
+		return portflowFooter(portflow.status);
 	});
-
-	function search(e: SubmitEvent) {
-		e.preventDefault();
-		const q = query.trim();
-		if (q) goto(`/search?q=${encodeURIComponent(q)}`);
-	}
 
 	// On a narrow window the drawer closes after every choice (but not after folding a project).
 	function closeDrawer(e: MouseEvent) {
 		// Folding a project goes nowhere, so the drawer stays.
 		if (e.defaultPrevented) return;
 		const target = (e.target as HTMLElement).closest('a, button');
-		if (target && !target.classList.contains('folder-toggle')) drawer.open = false;
+		if (target && !target.classList.contains('folder-toggle')) layout.drawerOpen = false;
 	}
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-<aside class="sidebar" class:open={drawer.open} onclick={closeDrawer}>
-	<div class="brand"><Wordmark /></div>
-
-	<form class="search-wrap" onsubmit={search}>
-		<input type="search" placeholder="Search everything…" autocomplete="off" spellcheck="false" bind:value={query} />
-	</form>
+<aside class="sidebar" class:open={layout.drawerOpen} onclick={closeDrawer} aria-label="Sidebar">
+	<div class="brand">
+		<a href="/" class="brand-link" aria-label="Home"><Wordmark /></a>
+		<a class="icon-btn side-settings" class:active={on('/settings')} href="/settings" title="Settings" aria-label="Settings"><Settings size={18} /></a>
+		<button class="icon-btn side-hide" title={sidebarKey ? `Hide sidebar (${sidebarKey})` : 'Hide sidebar'} aria-label="Hide sidebar" onclick={toggleSidebar}>
+			<PanelLeftClose size={18} />
+		</button>
+	</div>
 
 	<a class="nav-item" class:active={path === '/'} href="/"><span class="nav-ico"><House size={16} /></span>Home</a>
-	<a class="nav-item" class:active={on('/settings')} href="/settings"><span class="nav-ico"><Settings size={16} /></span>Settings</a>
-
-	{#if latestThreads.length || latestDeliverables.length}
-		<div class="section-head"><span>Latest</span></div>
-		<nav class="space-list" aria-label="Latest">
-			{#if latestThreads.length}
-				<div class="tree-label plain">Threads</div>
-				{#each latestThreads as { thread, project } (project.slug + '/' + thread.slug)}
-					<a class="tree-item" class:active={path === threadUrl(project.slug, thread.slug)} href={threadUrl(project.slug, thread.slug)}>
-						<span class="dot"></span>
-						<span class="stack">
-							<span class="name">{thread.title}</span>
-							<span class="of">{project.name}</span>
-						</span>
-					</a>
-				{/each}
-			{/if}
-			{#if latestDeliverables.length}
-				<div class="tree-label plain">Deliverables</div>
-				{#each latestDeliverables as { d, project } (project.slug + '/' + d.path)}
-					{@const target = deliverableTarget(d)}
-					<a
-						class="tree-item"
-						class:active={currentProject === project.slug && (viewing === target || viewing === d.path)}
-						href={deliverableUrl(project.slug, target)}
-						title={d.path}
-					>
-						<span class="file"><FileText size={13} /></span>
-						<span class="stack">
-							<span class="name">{d.name}</span>
-							<span class="of">{project.name}</span>
-						</span>
-					</a>
-				{/each}
-			{/if}
-		</nav>
+	{#if portflow.enabled}
+		<a class="nav-item" class:active={on('/epsilon')} href="/epsilon"><span class="nav-ico"><EpsilonIcon size={16} /></span>Epsilon+</a>
 	{/if}
+	<a class="nav-item" class:active={on('/feedback')} href="/feedback"><span class="nav-ico"><Inbox size={16} /></span>Feedback</a>
+	<a class="nav-item" class:active={on('/meetings')} href="/meetings"><span class="nav-ico"><NotebookPen size={16} /></span>Meeting notes</a>
 
 	<div class="section-head">
 		<span>Projects</span>
@@ -245,15 +198,35 @@
 		{/each}
 	</nav>
 
+	<!-- What every project shares, kept in the vault's shared/ folder: one page each, not the semesters or people one by
+	     one. -->
+	<div class="section-head"><span>Shared</span></div>
+	<nav class="space-list" aria-label="Shared">
+		<a class="nav-item" class:active={on('/semesters')} href="/semesters"><span class="nav-ico"><CalendarRange size={16} /></span>Semesters</a>
+		<a class="nav-item" class:active={on('/people')} href="/people"><span class="nav-ico"><Users size={16} /></span>People</a>
+		<a class="nav-item" class:active={on('/clients')} href="/clients"><span class="nav-ico"><Building2 size={16} /></span>Clients</a>
+		<a class="nav-item" class:active={on('/templates')} href="/templates"><span class="nav-ico"><LayoutTemplate size={16} /></span>Templates</a>
+	</nav>
+
 	<div class="spacer"></div>
 
+	<!-- The bottom left: how the Portflow sync stands (the details are in Settings and in the tooltip), and the button
+	     that switches vaults. -->
 	<div class="sync-box">
-		<div class="sync-line">
-			<span class="dot {footer.dot}"></span><span>{footer.title}</span>
-			{#if footer.when}<span class="sync-when">· {footer.when}</span>{/if}
-		</div>
-		<div class="sync-sub" title={footer.where}>{footer.where}</div>
-		{#if footer.encryption}<div class="sync-sub">{footer.encryption}</div>{/if}
-		{#if footer.error}<div class="sync-sub error">{footer.error}</div>{/if}
+		{#if conflicts}
+			<a class="sync-line" href="/conflicts" title="Two machines changed the same files: choose which version to keep">
+				<span class="dot bad"></span><span class="sync-title">{conflicts === 1 ? '1 conflict to settle' : `${conflicts} conflicts to settle`}</span>
+			</a>
+		{/if}
+		{#if portflow.enabled}
+			<a class="sync-line" href="/settings/sync#portflow" title={[pf.canvas, pf.error].filter(Boolean).join(' | ')}>
+				<span class="dot {pf.dot}"></span><span class="sync-title">{pf.title}</span>
+				{#if pf.when}<span class="sync-when">{pf.when}</span>{/if}
+			</a>
+		{/if}
+		<button class="vault-switch" onclick={openVaultPicker} title="Switch vault">
+			<span class="vault-switch-name">{vaultName || 'Vault'}</span><ChevronsUpDown size={14} class="vault-switch-chev" />
+		</button>
 	</div>
+
 </aside>

@@ -3,12 +3,12 @@
 //! The deliverables are looked at before the run starts ([`Baseline::capture`]) and again when it is over
 //! ([`Baseline::changes`]), so it doesn't matter how the run wrote a file. What a change means for the versions:
 //!
-//! * a file that wasn't there is new: it is published as the first version and that version is linked to the prompt;
+//! * a file that wasn't there is new: it is published as the first version, and the prompt is linked to the file;
 //! * a file that was there, and is the same as its latest version, was edited: the edit is published as the next
-//!   minor version and that is linked;
+//!   minor version, and the prompt is linked to the file;
 //! * a file that was there with edits no version holds (it was never published, or was edited after the latest
 //!   version) first has those edits published as a version, from what was read before the run; then the run's edit is
-//!   published as the next minor and that one is linked. The version made to keep the earlier edits is not linked.
+//!   published as the next minor. The version made to keep the earlier edits is not the run's, and is not reported as such.
 //!
 //! A file that has never been published and holds nothing but a title (what "Create deliverable" starts one with) is
 //! a new deliverable that has yet to be written, so it counts as new rather than having a stub published.
@@ -20,7 +20,7 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use super::prompt::list_files;
-use crate::deliverables::{parse_version, split_version};
+use crate::deliverables::{is_description, parse_version, split_version, version_at};
 
 /// A file this big is not followed: a run writes text, and holding one to keep earlier edits would cost too much.
 const MAX_TRACKED_BYTES: u64 = 16 * 1024 * 1024;
@@ -99,11 +99,12 @@ fn is_placeholder(bytes: &[u8]) -> bool {
     }
 }
 
-/// For each live path with published versions, the path of the latest of them.
+/// For each live path with published versions, the file of the latest of them (in the versions folder: `files`).
 fn latest_versions(files: &BTreeSet<String>) -> HashMap<String, String> {
     let mut latest: HashMap<String, ((u32, u32), String)> = HashMap::new();
     for path in files {
-        if let (base, Some(version)) = split_version(path)
+        if let Some(snapshot) = version_at(path)
+            && let (base, Some(version)) = split_version(&snapshot)
             && let Some(number) = parse_version(&version)
             && latest.get(&base).is_none_or(|(known, _)| number > *known)
         {
@@ -114,18 +115,19 @@ fn latest_versions(files: &BTreeSet<String>) -> HashMap<String, String> {
 }
 
 impl Baseline {
-    /// Reads the deliverables folder: which files there are, and for each whether a version holds what it says.
-    pub fn capture(dir: &Path) -> Baseline {
+    /// Reads the deliverables folder `dir`: which files there are, and for each whether a version holds what it says (the
+    /// latest of its published versions, in the versions folder `versions`).
+    pub fn capture(dir: &Path, versions: &Path) -> Baseline {
         let files = list_files(dir);
-        let latest = latest_versions(&files);
+        let latest = latest_versions(&list_files(versions));
         let mut baseline = Baseline::default();
-        for path in files.iter().filter(|p| split_version(p).1.is_none()) {
+        for path in files.iter().filter(|p| split_version(p).1.is_none() && !is_description(p)) {
             let Some(bytes) = read_capped(&dir.join(path)) else {
                 baseline.skipped.insert(path.clone());
                 continue;
             };
             let before = match latest.get(path) {
-                Some(snapshot) if read_capped(&dir.join(snapshot)).is_some_and(|published| published == bytes) => Before::Published,
+                Some(snapshot) if read_capped(&versions.join(snapshot)).is_some_and(|published| published == bytes) => Before::Published,
                 Some(_) => Before::Unpublished(bytes.clone()),
                 None if is_placeholder(&bytes) => Before::Placeholder,
                 None => Before::Unpublished(bytes.clone()),
@@ -138,7 +140,7 @@ impl Baseline {
     /// What the run changed, by path.
     pub fn changes(&self, dir: &Path) -> Vec<Change> {
         let mut changes = Vec::new();
-        for path in list_files(dir).into_iter().filter(|p| split_version(p).1.is_none()) {
+        for path in list_files(dir).into_iter().filter(|p| split_version(p).1.is_none() && !is_description(p)) {
             let Some(seen) = self.seen.get(&path) else {
                 if !self.skipped.contains(&path) {
                     changes.push(Change::New(path));

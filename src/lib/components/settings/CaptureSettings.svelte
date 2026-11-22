@@ -9,6 +9,7 @@
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import { logApi } from '$lib/api';
 	import { ago, dateTime } from '$lib/format';
+	import { prettyKeyOf } from '$lib/commands.svelte';
 	import { capture, startCapture, stopCapture } from '$lib/log.svelte';
 	import { captureAiPrompt, captureIssueUrl } from '$lib/report';
 	import { attempt, toast } from '$lib/ui.svelte';
@@ -19,6 +20,7 @@
 		logApi.about().then((a) => (about = a), () => {});
 	});
 
+	const key = $derived(prettyKeyOf('debug.capture'));
 	const last = $derived(capture.last);
 	const errors = $derived(last ? last.entries.filter((e) => e.level === 'error').length : 0);
 	const name = $derived(last ? (last.path.split(/[\\/]/).pop() ?? last.path) : '');
@@ -63,8 +65,8 @@
 	{#if capture.active}
 		<div class="notice bad">
 			<strong>Recording</strong>
-			{#if capture.startedAt}since <span title={dateTime(capture.startedAt)}>{ago(capture.startedAt)}</span>{/if} · {capture.events} steps so far. Go and
-			do what goes wrong; stop here or with the bar at the top.
+			{#if capture.startedAt}since <span title={dateTime(capture.startedAt)}>{ago(capture.startedAt)}</span>{/if} | {capture.events} steps so far. Go and
+			do what goes wrong; stop here or with the bar at the top{#if key}, or with {key}{/if}.
 		</div>
 		<div class="row-end" style="justify-content:flex-start">
 			<button class="btn primary" onclick={stop} disabled={capture.busy}><CircleStop size={14} />Stop capture</button>
@@ -72,11 +74,12 @@
 	{:else}
 		<div class="row-end" style="justify-content:flex-start">
 			<button class="btn primary" onclick={start} disabled={capture.busy}><CircleDot size={14} />Start capture</button>
+			{#if key}<span class="hint" style="align-self:center">or press {key} on any screen</span>{/if}
 		</div>
 	{/if}
 
 	<div class="hint">
-		It records each action Ledger’s window asks for (its name, whether it worked and how long it took), each page you open, each message Ledger shows
+		It records each action Ledger's window asks for (its name, whether it worked and how long it took), each page you open, each message Ledger shows
 		you, sync and Trello rounds, and every error. Not what you type, nor what the actions carry. Your home folder and anything shaped like a token are
 		taken out of the file; names of projects and threads are in it. A capture stops growing at 5 MB, and one that a crash cut short carries on when
 		Ledger starts again.
@@ -89,7 +92,7 @@
 				<dt>File</dt>
 				<dd class="mono">{last.path}</dd>
 				<dt>Recorded</dt>
-				<dd>{last.entries.length} steps, {errors} {errors === 1 ? 'error' : 'errors'}{last.startedAt ? ` · ${dateTime(last.startedAt)}` : ''}</dd>
+				<dd>{last.entries.length} steps, {errors} {errors === 1 ? 'error' : 'errors'}{last.startedAt ? ` | ${dateTime(last.startedAt)}` : ''}</dd>
 			</div>
 			<div class="row-end" style="justify-content:flex-start">
 				<button class="btn primary" onclick={report}><Bug size={14} />Send to the developer</button>
@@ -97,7 +100,7 @@
 				<button class="btn" onclick={showFile}><FolderOpen size={14} />Show the file</button>
 			</div>
 			<div class="hint">
-				<b>Send to the developer</b> opens a new issue on Ledger’s GitHub and the folder with the file in it: drag the file into the issue, check it,
+				<b>Send to the developer</b> opens a new issue on Ledger's GitHub and the folder with the file in it: drag the file into the issue, check it,
 				and submit. The repository is public, so look the file over first.
 			</div>
 		</div>

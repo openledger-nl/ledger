@@ -6,7 +6,7 @@
 	import MessagesSquare from '@lucide/svelte/icons/messages-square';
 	import { deliverableTarget, deliverableUrl, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
-	import { ago, newest, stamp, threadMeta } from '$lib/format';
+	import { ago, deliverableTime, newest, stamp, threadMeta } from '$lib/format';
 	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
 
 	// A project's latest threads and deliverables, as the dashboard's project card and the project's own Overview show them.
@@ -22,7 +22,7 @@
 	const ICON = { markdown: FileText, image: FileImage, other: File } as const;
 
 	const threads = $derived(newest(project.threads, (t) => t.lastActivity).slice(0, THREADS));
-	const latest = $derived(newest(deliverables, (d) => d.modified).slice(0, DELIVERABLES));
+	const latest = $derived(newest(deliverables, (d) => deliverableTime(d).at).slice(0, DELIVERABLES));
 </script>
 
 <section class="proj-section">
@@ -58,6 +58,7 @@
 	</div>
 	{#each latest as d (d.path)}
 		{@const Icon = ICON[d.kind]}
+		{@const when = deliverableTime(d)}
 		<a class="dash-row" href={deliverableUrl(project.slug, deliverableTarget(d))}>
 			<span class="dash-ico"><Icon size={16} /></span>
 			<span class="dash-main">
@@ -68,12 +69,13 @@
 					{:else}
 						<span class="badge draft">Draft</span>
 					{/if}
+					{#if d.delivered}<span class="badge accent" title={when.title}>v{d.delivered.number} in Portflow</span>{/if}
 					{#if d.mmm}<MmmBadge level={d.mmm} />{/if}
 					{#if d.openFeedback}<span class="badge draft">{d.openFeedback} open</span>{/if}
 					{#if !d.exists}<span class="badge">live file removed</span>{/if}
 				</span>
 			</span>
-			<span class="dash-when" class:fresh={within(d.modified, DAY)}>{ago(d.modified)}</span>
+			<span class="dash-when" class:fresh={within(when.at, DAY)} title={when.title}>{ago(when.at)}</span>
 		</a>
 	{:else}
 		<div class="dash-empty">

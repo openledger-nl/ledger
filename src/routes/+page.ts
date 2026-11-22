@@ -9,10 +9,14 @@ export interface ProjectDetail {
 }
 
 export const load: PageLoad = async ({ parent }) => {
-	const { projects } = await parent();
-	const [activity, semesters, details] = await Promise.all([
+	const { projects, onboarding } = await parent();
+	const [activity, semesters, settings, meta, details] = await Promise.all([
 		api.listActivity(),
 		api.listSemesters(),
+		// The guide's sync step is the settings' own form.
+		onboarding.active ? api.getSettings() : Promise.resolve(null),
+		// Each project's goal and end (A1).
+		api.listProjectMeta(),
 		Promise.all(
 			projects.map(async (p) => {
 				const [deliverables, view] = await Promise.all([api.listDeliverables(p.slug), api.getProject(p.slug)]);
@@ -20,5 +24,5 @@ export const load: PageLoad = async ({ parent }) => {
 			})
 		)
 	]);
-	return { activity, semesters, details: Object.fromEntries(details) as Record<string, ProjectDetail> };
+	return { activity, semesters, settings, meta, details: Object.fromEntries(details) as Record<string, ProjectDetail> };
 };

@@ -12,11 +12,10 @@ use std::time::{Duration, Instant};
 use rusqlite::Connection;
 use tempfile::{TempDir, tempdir};
 
-use crate::error::{Error, Result};
+use crate::error::Error;
 use crate::frontmatter::{self, MetaExt};
 use crate::models::{Criterion, StoryDraft, StoryView, TaskUpdate, TaskView};
 use crate::state::Core;
-use crate::sync::{self, Applier, Change as GitChange, Head, LocalOp, Remote};
 use crate::trello::{self, Connect, Emit, Timing, TrelloEvent};
 use crate::trello_api::*;
 use crate::trello_card::*;
@@ -405,7 +404,7 @@ struct Machine {
     _config: TempDir,
     core: Arc<Mutex<Core>>,
     ledger: CoreLedger,
-    /// How often a round told the GitHub sync that the vault changed.
+    /// How often a round said that the vault changed.
     changed: Arc<AtomicUsize>,
 }
 
@@ -516,7 +515,7 @@ impl Machine {
         self.core.lock().unwrap().reload().unwrap();
     }
 
-    /// What another machine would get from the GitHub sync: every file under `projects/`, copied over.
+    /// What another machine would get from the cloud storage: every file under `projects/`, copied over.
     fn copy_vault_to(&self, other: &Machine) {
         fn copy(from: &Path, to: &Path) {
             for entry in fs::read_dir(from).unwrap().flatten() {
@@ -546,7 +545,7 @@ impl Machine {
                 }
             }
         }
-        let base = self.root().join(".ledger/conflicts");
+        let base = crate::settings::local_dir(self.root()).join("conflicts");
         let mut out = vec![];
         walk(&base, &base, &mut out);
         out.sort();
@@ -736,7 +735,7 @@ fn a_new_task_becomes_a_card_with_the_person_assigned() {
     assert_eq!(task.trello_unlinked, None);
     assert_eq!(task.updated_at, before.updated_at);
     assert!(m.task_file(&p, &id).contains(&format!("trelloCard: {}", card.id)), "{}", m.task_file(&p, &id));
-    assert!(m.changed.load(Ordering::SeqCst) > 0, "the GitHub sync is told about the vault change");
+    assert!(m.changed.load(Ordering::SeqCst) > 0, "the vault change is told");
 }
 
 #[test]
@@ -1226,7 +1225,7 @@ fn a_second_machine_that_has_the_card_id_makes_no_card_and_no_duplicate() {
     a.run(&trello);
     assert_eq!(trello.created().len(), 2);
 
-    // The GitHub sync carries the files, card ids included, to a second machine with the same settings.
+    // The cloud storage carries the files, card ids included, to a second machine with the same settings.
     let b = Machine::new();
     a.copy_vault_to(&b);
     b.link(&ana(), &p, "b1", "Work");
@@ -1263,7 +1262,7 @@ fn two_machines_that_import_the_same_card_make_the_same_file() {
     let (ta, tb) = (a.tasks("acme"), b.tasks("acme"));
     assert_eq!((ta.len(), tb.len()), (1, 1));
     assert_eq!(ta[0].id, tb[0].id);
-    assert_eq!(a.task_file("acme", &ta[0].id), b.task_file("acme", &tb[0].id), "the same bytes, so the GitHub sync sees one file");
+    assert_eq!(a.task_file("acme", &ta[0].id), b.task_file("acme", &tb[0].id), "the same bytes, so the cloud storage sees one file");
     let file = |m: &Machine| m.file("projects/acme/userstories/TR-2.md");
     assert_eq!(file(&a), file(&b));
     assert_eq!(a.get_story("acme", "TR-2").trello_card.as_deref(), Some(story.as_str()));
@@ -1660,18 +1659,18 @@ fn the_key_and_token_are_checked_and_kept_in_the_env_file_only() {
     assert!(env.lines().any(|l| l == "TRELLO_API_KEY=KEY1234567890KEY") && env.lines().any(|l| l == "TRELLO_TOKEN=TOKEN1234567890TOKEN"), "{env}");
 
     // A blank field keeps what is saved; other lines of the file are left alone.
-    crate::settings::write_secret(root, "GITHUB_TOKEN", "ghp_other").unwrap();
+    crate::settings::write_secret(root, "OTHER_SECRET", "ghp_other").unwrap();
     trello::save_credentials(root, None, Some("NEWTOKEN1234567890")).unwrap();
     let saved = config::read_credentials(root);
     assert_eq!((saved.api_key.as_str(), saved.token.as_str()), ("KEY1234567890KEY", "NEWTOKEN1234567890"));
-    assert_eq!(crate::settings::read_secret(root, "GITHUB_TOKEN").as_deref(), Some("ghp_other"));
+    assert_eq!(crate::settings::read_secret(root, "OTHER_SECRET").as_deref(), Some("ghp_other"));
 
     // Removing them leaves the person and the project links.
     config::update_settings(root, |s| s.member = Some(ana())).unwrap();
     trello::disconnect(root).unwrap();
     assert!(!config::read_credentials(root).complete());
     assert!(config::read_settings(root).member.is_some());
-    assert_eq!(crate::settings::read_secret(root, "GITHUB_TOKEN").as_deref(), Some("ghp_other"));
+    assert_eq!(crate::settings::read_secret(root, "OTHER_SECRET").as_deref(), Some("ghp_other"));
 }
 
 #[test]
@@ -1805,10 +1804,10 @@ fn the_key_and_token_never_appear_anywhere_but_the_env_file() {
     let shown = serde_json::to_string(&view).unwrap();
     assert!(view.has_key && view.has_token);
     assert!(!shown.contains(KEY) && !shown.contains(TOKEN), "{shown}");
-    assert_eq!((view.key_hint.as_str(), view.token_hint.as_str()), ("…cdef", "…cdef"), "only how they end");
+    assert_eq!((view.key_hint.as_str(), view.token_hint.as_str()), ("...cdef", "...cdef"), "only how they end");
     assert!(!error.to_string().contains(KEY) && !error.to_string().contains(TOKEN));
 
-    // Not in the settings, the bookkeeping, the vault or the conflicts: only in .ledger/.env.
+    // Not in the settings, the bookkeeping, the vault or the conflicts: only with the secrets, outside the vault.
     fn walk(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
         for entry in fs::read_dir(dir).unwrap().flatten() {
             if entry.file_type().unwrap().is_dir() {
@@ -1820,6 +1819,7 @@ fn the_key_and_token_never_appear_anywhere_but_the_env_file() {
     }
     let mut files = vec![];
     walk(m.root(), &mut files);
+    walk(&crate::settings::local_dir(m.root()), &mut files);
     let mut holders = vec![];
     for file in files {
         let text = String::from_utf8_lossy(&fs::read(&file).unwrap()).into_owned();
@@ -1827,11 +1827,9 @@ fn the_key_and_token_never_appear_anywhere_but_the_env_file() {
             holders.push(file.file_name().unwrap().to_string_lossy().into_owned());
         }
     }
-    assert_eq!(holders, [".env"]);
+    assert_eq!(holders, ["secrets.env"]);
     assert!(fs::read_to_string(config::settings_path(m.root())).unwrap().contains("\"member\""));
-    assert!(m.root().join(".ledger/trello-sync.json").exists());
-    let ignore = fs::read_to_string(m.root().join(".gitignore")).unwrap();
-    assert!(ignore.lines().any(|l| l == ".ledger/"), "{ignore}");
+    assert!(crate::settings::local_dir(m.root()).join("trello-sync.json").exists());
 }
 
 // ---- the client: rate limits, retries, credentials ----------------------------------------------------
@@ -2076,130 +2074,6 @@ fn editing_through_the_apps_own_stores_keeps_the_card_id() {
     assert_eq!(m.get_story(&p, "MM01").trello_card.as_deref(), Some(story_card.as_str()));
 }
 
-// ---- the two syncs, side by side ----------------------------------------------------------------------
-
-/// A branch on "GitHub" as a list of snapshots.
-#[derive(Default)]
-struct MemRemote {
-    commits: Mutex<Vec<BTreeMap<String, Vec<u8>>>>,
-    pushes: AtomicUsize,
-}
-
-impl Remote for MemRemote {
-    fn head(&self) -> Result<Option<Head>> {
-        let commits = self.commits.lock().unwrap();
-        Ok(commits.len().checked_sub(1).map(|i| Head { commit: format!("commit-{i}"), tree: format!("tree-{i}") }))
-    }
-
-    fn tree(&self, head: &Head) -> Result<BTreeMap<String, String>> {
-        let i: usize = head.commit.strip_prefix("commit-").unwrap().parse().unwrap();
-        Ok(self.commits.lock().unwrap()[i].iter().map(|(p, b)| (p.clone(), sync::blob_sha(b))).collect())
-    }
-
-    fn blob(&self, _path: &str, sha: &str) -> Result<Vec<u8>> {
-        let commits = self.commits.lock().unwrap();
-        commits.iter().flat_map(|files| files.values()).find(|b| sync::blob_sha(b) == sha).cloned().ok_or_else(|| Error::sync("no such blob"))
-    }
-
-    fn push(&self, parent: Option<&Head>, changes: &[GitChange], _message: &str) -> Result<Head> {
-        let mut commits = self.commits.lock().unwrap();
-        let current = commits.len().checked_sub(1);
-        let parent_index = parent.map(|h| h.commit.strip_prefix("commit-").unwrap().parse::<usize>().unwrap());
-        if parent_index != current {
-            return Err(Error::Rejected);
-        }
-        let mut files = commits.last().cloned().unwrap_or_default();
-        for change in changes {
-            match change {
-                GitChange::Put { path, bytes } => files.insert(path.clone(), bytes.clone()),
-                GitChange::Delete { path } => files.remove(path),
-            };
-        }
-        commits.push(files);
-        self.pushes.fetch_add(1, Ordering::SeqCst);
-        let i = commits.len() - 1;
-        Ok(Head { commit: format!("commit-{i}"), tree: format!("tree-{i}") })
-    }
-}
-
-/// What the app's GitHub syncer does with a pull: write the files, then load them in again.
-struct ReloadingApplier(Arc<Mutex<Core>>);
-
-impl Applier for ReloadingApplier {
-    fn apply(&self, ops: Vec<LocalOp>) -> Result<Vec<String>> {
-        let mut core = self.0.lock().unwrap();
-        let root = core.vault.root().to_path_buf();
-        let (skipped, wrote) = sync::apply_to_disk(&root, ops)?;
-        if wrote {
-            core.reload()?;
-        }
-        Ok(skipped)
-    }
-}
-
-impl Machine {
-    fn github(&self, remote: &MemRemote) -> sync::Outcome {
-        sync::run(self.root(), "me/notes", "main", remote, &ReloadingApplier(self.core.clone())).unwrap()
-    }
-
-    fn managed_files(&self) -> BTreeMap<String, String> {
-        crate::vault::export(&self.core.lock().unwrap().conn).unwrap()
-    }
-}
-
-#[test]
-fn the_trello_sync_and_the_github_sync_settle_instead_of_echoing_each_other() {
-    let trello = FakeTrello::standard();
-    let remote = MemRemote::default();
-    let a = Machine::new();
-    let b = Machine::new();
-    let p = a.project("Acme");
-    a.link(&ana(), &p, "b1", "Work");
-
-    // A card comes in on A; GitHub carries the item to B; B's Trello sync finds nothing to do.
-    let card = trello.add_card("b1", "l2", "From Trello", "details", &["m-ana"], &["Task"]);
-    a.run(&trello);
-    a.github(&remote);
-    b.github(&remote);
-    b.link(&ana(), &p, "b1", "Work");
-    assert_eq!(b.tasks(&p).len(), 1);
-    let report = b.run(&trello);
-    assert_eq!((report.cards_created, report.cards_updated, report.items_created, report.vault_writes), (0, 0, 0, 0));
-    assert_eq!(b.github(&remote).pushed, 0, "nothing for GitHub to take from B");
-
-    // A task made on B goes to Trello, its card id goes to A through GitHub, and A's Trello sync makes no second card.
-    let made = b.task(&p, "Made on B", "body");
-    assert_eq!(b.run(&trello).cards_created, 1);
-    b.github(&remote);
-    a.github(&remote);
-    assert_eq!(a.run(&trello).cards_created, 0);
-    assert_eq!(trello.created().len(), 1);
-
-    // An edit on Trello comes in on A, and travels on through GitHub to B.
-    trello.edit(&card, |c| c.name = "Renamed on Trello".into());
-    assert_eq!(a.run(&trello).items_updated, 1);
-    a.github(&remote);
-    b.github(&remote);
-    assert_eq!(b.get_task(&p, &format!("trello-{card}")).title, "Renamed on Trello");
-
-    // Then everything is quiet: more rounds of both syncs, in any order, write nothing anywhere.
-    let pushes = remote.pushes.load(Ordering::SeqCst);
-    let (created, written) = (trello.created().len(), trello.written().len());
-    for _ in 0..3 {
-        for m in [&a, &b] {
-            let report = m.run(&trello);
-            assert_eq!((report.vault_writes, report.cards_created, report.cards_updated, report.conflicts), (0, 0, 0, 0), "{:?}", report.notes);
-            let outcome = m.github(&remote);
-            assert_eq!((outcome.pushed, outcome.pulled), (0, 0));
-        }
-    }
-    assert_eq!(remote.pushes.load(Ordering::SeqCst), pushes);
-    assert_eq!((trello.created().len(), trello.written().len()), (created, written));
-    assert_eq!(a.managed_files(), b.managed_files(), "both machines hold the same vault");
-    assert_eq!(a.get_task(&p, &made).trello_card, b.get_task(&p, &made).trello_card);
-    assert!(a.conflict_files().is_empty() && b.conflict_files().is_empty());
-}
-
 // ---- the worker ---------------------------------------------------------------------------------------
 
 fn quick() -> Timing {
@@ -2294,7 +2168,9 @@ fn the_worker_syncs_on_request_and_says_what_it_did() {
 fn changes_are_synced_after_a_pause_and_a_burst_of_them_is_one_round() {
     let (trello, m, p) = configured_machine();
     let id = m.task(&p, "A task", "");
-    let worker = start_worker(&m, &trello, quick());
+    // Each edit writes the vault, which can take longer than `quick`'s pause on a busy machine: a wider one here keeps
+    // the burst one burst.
+    let worker = start_worker(&m, &trello, Timing { debounce: Duration::from_millis(500), max_debounce: Duration::from_secs(3), ..quick() });
     worker.syncer.now();
     wait_for("the first round", || worker.syncer.status().last_sync_at.is_some());
     let rounds = trello.calls("cards");

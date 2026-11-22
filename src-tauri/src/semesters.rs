@@ -4,7 +4,8 @@
 //! runs into one carries on after it, and one that would start in it starts after it. Less than a week of work
 //! left at the end joins the last sprint. Sprints and vacations stay inside the semester, in order, without
 //! overlapping their own kind. Semesters don't overlap, so a day belongs to one semester at most. Kept as
-//! `semesters/<id>.md`.
+//! `shared/semesters/<id>.md` (see `file_meta`); a new one can start from a semester template (see
+//! `semester_templates`), a file of the same form.
 //!
 //! Dates are calendar days, inclusive at both ends: no time zone is involved. They are stored as "2026-09-01", the
 //! form YAML and other tools expect; a hand-written file may also use the European "01-09-2026". Messages show the
@@ -12,15 +13,11 @@
 
 use chrono::{Days, NaiveDate};
 use rusqlite::{Connection, params};
+use serde_yaml_ng::{Mapping, Value};
 
-use crate::db::{query_all, query_opt};
-use crate::error::{Error, Result};
-use crate::ids;
-use crate::models::{SemesterDraft, SemesterView, Sprint, Vacation};
+use crate::{db::{query_all, query_opt}, error::{Error, Result}, frontmatter::{self, MetaExt}, ids, models::{SemesterDraft, SemesterView, Sprint, Vacation}};
 
 const DEFAULT_WEEKS: i64 = 3;
-const FORMAT: &str = "%Y-%m-%d";
-const EUROPEAN: &str = "%d-%m-%Y";
 
 /// A draft that passed every check, with its sprints filled in.
 pub struct Checked {
@@ -34,19 +31,16 @@ pub struct Checked {
 }
 
 fn day(text: &str, what: &str) -> Result<NaiveDate> {
-    let text = text.trim();
-    NaiveDate::parse_from_str(text, FORMAT)
-        .or_else(|_| NaiveDate::parse_from_str(text, EUROPEAN))
-        .map_err(|_| Error::invalid(format!("{what} is not a date (use DD-MM-YYYY)")))
+    crate::dates::parse_typed_day(text).ok_or_else(|| Error::invalid(format!("{what} is not a date (use DD-MM-YYYY)")))
 }
 
-/// "01-09-2026", for messages.
+/// "1-9-2026", for messages, as the app writes a day.
 fn european(stored: &str) -> String {
-    NaiveDate::parse_from_str(stored, FORMAT).map_or_else(|_| stored.to_string(), |d| d.format(EUROPEAN).to_string())
+    crate::dates::parse_day(stored).map_or_else(|| stored.to_string(), crate::dates::numeric_day)
 }
 
 fn text(date: NaiveDate) -> String {
-    date.format(FORMAT).to_string()
+    crate::dates::day_key(date)
 }
 
 fn after(date: NaiveDate, days: u64) -> NaiveDate {
@@ -154,6 +148,30 @@ pub fn check(draft: &SemesterDraft) -> Result<Checked> {
     Ok(Checked { name: name.to_string(), start, end, sprint_weeks, notes: draft.notes.trim().to_string(), sprints, vacations })
 }
 
+impl Checked {
+    /// The checked semester as a draft again: its days as text, its sprints filled in.
+    pub fn draft(&self) -> SemesterDraft {
+        SemesterDraft {
+            name: self.name.clone(),
+            start: text(self.start),
+            end: text(self.end),
+            sprint_weeks: self.sprint_weeks,
+            notes: self.notes.clone(),
+            sprints: self.sprints.clone(),
+            vacations: self.vacations.clone(),
+        }
+    }
+}
+
+/// `check`, giving way where a hand-written file asks too much: sprints that don't fit are cut again, and vacations
+/// that don't fit are dropped, the sprints with them. None when not even that makes a semester.
+pub fn check_leniently(draft: SemesterDraft) -> Option<Checked> {
+    check(&draft)
+        .or_else(|_| check(&SemesterDraft { sprints: vec![], ..draft.clone() }))
+        .or_else(|_| check(&SemesterDraft { sprints: vec![], vacations: vec![], ..draft }))
+        .ok()
+}
+
 /// Refuses a semester that shares a day with another one (other than `own`, the one being changed).
 fn check_overlap(conn: &Connection, own: Option<&str>, checked: &Checked) -> Result<()> {
     let clash = query_opt(
@@ -164,7 +182,7 @@ fn check_overlap(conn: &Connection, own: Option<&str>, checked: &Checked) -> Res
     )?;
     match clash {
         Some((name, from, until)) => Err(Error::invalid(format!(
-            "It overlaps “{name}” ({} to {}); semesters can't share days",
+            "It overlaps \"{name}\" ({} to {}); semesters can't share days",
             european(&from),
             european(&until)
         ))),
@@ -279,4 +297,96 @@ pub fn delete(conn: &Connection, id: &str) -> Result<()> {
         return Err(Error::not_found("Semester not found"));
     }
     Ok(())
+}
+
+// ---- the file -----------------------------------------------------------------------------------------
+
+/// A semester as its file's frontmatter has it (a semester's and a semester template's alike):
+///
+/// ```text
+/// name: NJ26 - Semester 3
+/// start: 2026-08-31
+/// end: 2027-01-24
+/// sprintWeeks: 3
+/// sprints:
+/// - name: Kick-off
+///   start: 2026-08-31
+///   end: 2026-09-06
+///   goal: …                      optional
+/// vacations:                     left out without any
+/// - name: Autumn break
+///   start: 2026-10-19
+///   end: 2026-10-25
+/// ```
+pub fn file_meta(s: &SemesterDraft) -> Mapping {
+    let mut meta = Mapping::new();
+    frontmatter::set(&mut meta, "name", s.name.clone());
+    frontmatter::set(&mut meta, "start", s.start.clone());
+    frontmatter::set(&mut meta, "end", s.end.clone());
+    frontmatter::set(&mut meta, "sprintWeeks", s.sprint_weeks);
+    let sprints = s.sprints.iter().map(|sprint| {
+        let mut item = Mapping::new();
+        frontmatter::set(&mut item, "name", sprint.name.clone());
+        frontmatter::set(&mut item, "start", sprint.start.clone());
+        frontmatter::set(&mut item, "end", sprint.end.clone());
+        frontmatter::set_opt(&mut item, "goal", Some(&sprint.goal));
+        Value::Mapping(item)
+    });
+    frontmatter::set(&mut meta, "sprints", Value::Sequence(sprints.collect()));
+    let vacations: Vec<Value> = s
+        .vacations
+        .iter()
+        .map(|v| {
+            let mut item = Mapping::new();
+            frontmatter::set(&mut item, "name", v.name.clone());
+            frontmatter::set(&mut item, "start", v.start.clone());
+            frontmatter::set(&mut item, "end", v.end.clone());
+            Value::Mapping(item)
+        })
+        .collect();
+    if !vacations.is_empty() {
+        frontmatter::set(&mut meta, "vacations", Value::Sequence(vacations));
+    }
+    meta
+}
+
+/// What a semester's file says, as a draft to check; one without a name is called `fallback`.
+pub fn draft_from(meta: &Mapping, notes: &str, fallback: &str) -> SemesterDraft {
+    let span = |item: &Mapping| (item.text("name").unwrap_or_default(), item.text("start").unwrap_or_default(), item.text("end").unwrap_or_default());
+    SemesterDraft {
+        name: meta.name_or(fallback),
+        start: meta.text("start").unwrap_or_default(),
+        end: meta.text("end").unwrap_or_default(),
+        sprint_weeks: meta.text("sprintWeeks").and_then(|w| w.parse().ok()).unwrap_or(0),
+        notes: notes.to_string(),
+        sprints: meta
+            .maps("sprints")
+            .into_iter()
+            .map(|item| {
+                let (name, start, end) = span(item);
+                Sprint { name, start, end, goal: item.text("goal").unwrap_or_default() }
+            })
+            .collect(),
+        vacations: meta
+            .maps("vacations")
+            .into_iter()
+            .map(|item| {
+                let (name, start, end) = span(item);
+                Vacation { name, start, end }
+            })
+            .collect(),
+    }
+}
+
+/// A semester as it is, as a draft: what its file is written from.
+pub fn draft_of(s: &SemesterView) -> SemesterDraft {
+    SemesterDraft {
+        name: s.name.clone(),
+        start: s.start.clone(),
+        end: s.end.clone(),
+        sprint_weeks: s.sprint_weeks,
+        notes: s.notes.clone(),
+        sprints: s.sprints.clone(),
+        vacations: s.vacations.clone(),
+    }
 }

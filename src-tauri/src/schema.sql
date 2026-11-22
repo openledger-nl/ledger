@@ -17,7 +17,86 @@ CREATE TABLE projects (
     readme            TEXT NOT NULL DEFAULT '',
     backlog_column_id TEXT NOT NULL DEFAULT '',
     created_at        TEXT NOT NULL,
-    updated_at        TEXT NOT NULL
+    updated_at        TEXT NOT NULL,
+    -- What the project is (see project_facts.rs): its kind ('study', 'work' or 'hobby') and goal, when it ends
+    -- ('semester', a calendar day, or NULL for no end), the semester it runs in, the AI-use label the work is meant to
+    -- get, a study project's main question and a work project's client (a client's id, see clients.rs). A project
+    -- without a kind and a goal has none of these yet.
+    kind              TEXT,
+    goal              TEXT,
+    project_end       TEXT,
+    semester          TEXT,
+    intended_mmm      TEXT,
+    main_question     TEXT,
+    client            TEXT,
+    -- The number the project's next deliverable gets (see deliverable_facts.rs); 0 before any was numbered.
+    next_deliverable  INTEGER NOT NULL DEFAULT 0
+);
+
+-- What a deliverable is for (see deliverable_facts.rs), by its live path: its number, goal, own AI-use label, the
+-- question it answers and the template it started from.
+CREATE TABLE deliverable_facts (
+    project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    path         TEXT NOT NULL,
+    number       INTEGER NOT NULL,
+    goal         TEXT NOT NULL,
+    mmm          TEXT,
+    answers      TEXT,
+    template     TEXT,
+    PRIMARY KEY (project_slug, path)
+);
+
+-- A deliverable's evidence description (What? / Goal? / Why it contributes?), by its live path, ready for when it is
+-- handed in (see deliverable_facts.rs). A Portflow evidence item keeps its own in its evidence file instead.
+CREATE TABLE deliverable_descriptions (
+    project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    path         TEXT NOT NULL,
+    description  TEXT NOT NULL,
+    PRIMARY KEY (project_slug, path)
+);
+
+-- The clients the vault knows (see clients.rs), shared by every project: shared/clients/<id>.md.
+CREATE TABLE clients (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    website    TEXT NOT NULL DEFAULT '',
+    notes      TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+-- The people the vault knows (see people.rs), shared by every project: shared/people/<id>.md.
+CREATE TABLE people (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    email         TEXT NOT NULL DEFAULT '',
+    organisation  TEXT NOT NULL DEFAULT '',
+    portflow_user INTEGER,
+    notes         TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+
+-- Who is part of a project (see project_facts.rs), with the role they have in it, in the order they are listed.
+CREATE TABLE project_people (
+    project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    position     INTEGER NOT NULL,
+    person_id    TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    role         TEXT NOT NULL,
+    PRIMARY KEY (project_slug, position),
+    UNIQUE (project_slug, person_id)
+);
+
+-- How a project's exported PDFs look and who they name (see branding.rs): one row, or none for the defaults.
+CREATE TABLE project_branding (
+    project_slug TEXT PRIMARY KEY REFERENCES projects(slug) ON DELETE CASCADE,
+    author       TEXT,
+    accent       TEXT,
+    own_name     TEXT,
+    own_logo     TEXT,
+    client_name  TEXT,
+    client_logo  TEXT,
+    show_label   INTEGER
 );
 
 CREATE TABLE project_columns (
@@ -63,6 +142,10 @@ CREATE TABLE posts (
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     body                TEXT NOT NULL,
+    -- What the post is ('thought', 'devlog', 'research' or 'reflection') and how sure you are of it: its labels, a
+    -- comma-separated list of 'fact', 'to-check' and 'assumption'. Set by hand only; NULL and '' when not set.
+    kind                TEXT,
+    labels              TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (project_slug, thread_slug) REFERENCES threads(project_slug, slug) ON DELETE CASCADE
 );
 CREATE INDEX posts_by_thread ON posts (project_slug, thread_slug, created_at);
@@ -72,15 +155,19 @@ CREATE TABLE prompts (
     id           TEXT PRIMARY KEY,
     project_slug TEXT NOT NULL,
     thread_slug  TEXT NOT NULL,
+    -- The name it is given from what it asks.
     title        TEXT NOT NULL DEFAULT '',
     template_id  TEXT,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL,
-    body         TEXT NOT NULL,
+    -- What is filled in for the person (from a template, or from feedback), and what the person adds.
+    base         TEXT NOT NULL DEFAULT '',
+    body         TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (project_slug, thread_slug) REFERENCES threads(project_slug, slug) ON DELETE CASCADE
 );
 
--- The deliverables a prompt produced, by path relative to the project's deliverables/ folder.
+-- The deliverables a prompt asks for or has produced, by the live path relative to the project's deliverables/ folder
+-- (a prompt belongs to the deliverable, not to one of its versions: the versions know which run made them).
 CREATE TABLE prompt_deliverables (
     prompt_id TEXT NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
     position  INTEGER NOT NULL,
@@ -88,7 +175,8 @@ CREATE TABLE prompt_deliverables (
     PRIMARY KEY (prompt_id, path)
 );
 
--- Feedback lands on a deliverable (a path under deliverables/, possibly a published version).
+-- Feedback lands on a deliverable (a path under deliverables/, possibly a published version): on the whole document,
+-- or on a passage of it, which is kept as the quoted text and the words around it (null for the whole document).
 CREATE TABLE feedback (
     id                  TEXT PRIMARY KEY,
     project_slug        TEXT NOT NULL,
@@ -99,7 +187,39 @@ CREATE TABLE feedback (
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     body                TEXT NOT NULL,
+    quote               TEXT,
+    quote_prefix        TEXT,
+    quote_suffix        TEXT,
+    -- Who gave it: a name, and when they are someone in Portflow, their Portflow id and role there. `given` says how
+    -- it was given: 'in person', 'portflow', 'email' or 'other'. Kept whether or not Portflow is switched on.
+    from_name           TEXT,
+    from_user           INTEGER,
+    from_role           TEXT,
+    given               TEXT,
+    -- Feedback pulled from Portflow: the comment it is, the comment it answers, and the evidence item (its slug in
+    -- the project) and version it is on. Such feedback may have no deliverable (deliverable_path '').
+    portflow_comment    INTEGER,
+    reply_to            TEXT,
+    comment_type        TEXT,
+    evidence            TEXT,
+    evidence_version    INTEGER,
+    -- 'own' (your own note, for yourself or for Claude) or 'someone' (given by someone else); NULL in files written
+    -- before it was kept, which then reads as 'someone' when it names who gave it and 'own' when it doesn't.
+    kind                TEXT,
+    -- A user story it is about (its id in the project), and the day of the meeting note it was written down in.
+    story               TEXT,
+    daily               TEXT,
     FOREIGN KEY (project_slug, thread_slug) REFERENCES threads(project_slug, slug) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX feedback_by_comment ON feedback (portflow_comment) WHERE portflow_comment IS NOT NULL;
+
+-- The pieces of feedback a prompt was written to resolve: kept so a prompt shows what it covers, and a piece of feedback
+-- shows that it is in a prompt already.
+CREATE TABLE prompt_feedback (
+    prompt_id   TEXT NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
+    feedback_id TEXT NOT NULL REFERENCES feedback(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    PRIMARY KEY (prompt_id, feedback_id)
 );
 
 -- What running a prompt with Claude Code did: how it ended, and what it said and did. Kept as runs/<id>.md in the
@@ -145,7 +265,8 @@ CREATE TABLE uploads (
 );
 
 -- Every file under a project's deliverables/ folder, whatever its type. `body` is the text of a markdown file and
--- NULL for anything else, whose bytes stay on disk. A published version is its own row, named "<name>@v1.0.<ext>".
+-- NULL for anything else, whose bytes stay on disk. A published version is its own row, named "<name>@v1.0.<ext>"
+-- relative to deliverables/ like the rest, though its file is at that place under the project's versions/ folder.
 CREATE TABLE deliverables (
     project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
     path         TEXT NOT NULL,
@@ -160,7 +281,6 @@ CREATE TABLE deliverables (
 -- are deliberately not foreign keys: deleting a thread, a prompt or a note must not erase how a version came about.
 -- `author` is 'ai', 'human', or '' when the origin was never recorded.
 CREATE TABLE version_records (
-    id               TEXT PRIMARY KEY,
     project_slug     TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
     deliverable_path TEXT NOT NULL,
     version          TEXT NOT NULL,
@@ -172,18 +292,26 @@ CREATE TABLE version_records (
     sha256           TEXT,
     note             TEXT NOT NULL DEFAULT '',
     created_at       TEXT NOT NULL,
-    UNIQUE (project_slug, deliverable_path, version)
+    -- Published with another label than the project's intended one: that label, and why (in your words, maybe '').
+    intended_mmm     TEXT,
+    label_reason     TEXT,
+    PRIMARY KEY (project_slug, deliverable_path, version)
 );
 
 -- scope '' is a vault-wide template, otherwise it is the slug of the project the template belongs to.
+-- kinds: the kinds of project it is for, comma-separated ('' for every kind). readers: who its deliverable is written
+-- for, as JSON.
 CREATE TABLE templates (
-    scope      TEXT NOT NULL,
-    id         TEXT NOT NULL,
-    name       TEXT NOT NULL,
-    "trigger"  TEXT NOT NULL DEFAULT '',
-    body       TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    scope         TEXT NOT NULL,
+    id            TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    "trigger"     TEXT NOT NULL DEFAULT '',
+    body          TEXT NOT NULL DEFAULT '',
+    kinds         TEXT NOT NULL DEFAULT '',
+    readers       TEXT NOT NULL DEFAULT '[]',
+    readers_shown INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
     PRIMARY KEY (scope, id)
 );
 
@@ -275,6 +403,15 @@ CREATE TABLE sprints (
     PRIMARY KEY (semester_id, position)
 );
 
+-- Semester templates (see semester_templates.rs): what a new semester can start from, such as NJ26. Kept as
+-- shared/templates/semesters/<id>.md, in the form of a semester's file. draft: the semester it makes, as JSON.
+CREATE TABLE semester_templates (
+    id         TEXT PRIMARY KEY,
+    draft      TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 -- Days off within a semester, in order and not overlapping. Sprints are counted in days of work, around them.
 CREATE TABLE vacations (
     semester_id TEXT NOT NULL REFERENCES semesters(id) ON DELETE CASCADE,
@@ -283,4 +420,214 @@ CREATE TABLE vacations (
     start_date  TEXT NOT NULL,
     end_date    TEXT NOT NULL,
     PRIMARY KEY (semester_id, position)
+);
+
+-- ---- Portflow (see portflow.rs) ----------------------------------------------------------------------------------
+-- Which Portflow collection a project is in, per semester (one collection per project per semester). Kept in
+-- project.md as `portflowCollections`, whether or not Portflow is switched on.
+CREATE TABLE project_collections (
+    project_slug  TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    semester_id   TEXT NOT NULL,
+    collection_id INTEGER NOT NULL,
+    PRIMARY KEY (project_slug, semester_id)
+);
+
+-- Which Portflow section (a semester in the portfolio) a semester is. Kept in semesters/<id>.md as `portflowSection`,
+-- whether or not Portflow is switched on. A section is one semester's at most.
+CREATE TABLE semester_sections (
+    semester_id TEXT PRIMARY KEY REFERENCES semesters(id) ON DELETE CASCADE,
+    section_id  INTEGER NOT NULL UNIQUE
+);
+
+-- Epsilon+: what the student aims for in a semester (`epsilon:` in semesters/<id>.md, kept whether or not Portflow is on).
+-- `kind` 'layer': a whole row of the matrix (`key` U, S, O, H or I) at `level`; 'goal': a goal measured in levels only
+-- (`key` its nickname, or its name: "PS").
+CREATE TABLE semester_targets (
+    semester_id TEXT NOT NULL REFERENCES semesters(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL,
+    key         TEXT NOT NULL,
+    level       INTEGER NOT NULL,
+    PRIMARY KEY (semester_id, kind, key)
+);
+
+-- The semester's overview in Epsilon+: the learning plan (an evidence item, by project and slug) and the study guide (a link).
+CREATE TABLE semester_plans (
+    semester_id   TEXT PRIMARY KEY REFERENCES semesters(id) ON DELETE CASCADE,
+    plan_project  TEXT,
+    plan_evidence TEXT,
+    study_guide   TEXT
+);
+
+-- Everything below is only filled in while Portflow is switched on: its files are not read otherwise.
+
+-- The portfolio's sections (portflow/sections.md), mirrored from Portflow. `import_id` is the template import that made
+-- it; the goals of that semester carry the same one.
+CREATE TABLE portflow_sections (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    position    INTEGER NOT NULL DEFAULT 0,
+    import_id   INTEGER,
+    template    TEXT NOT NULL DEFAULT '',
+    imported_at TEXT
+);
+
+-- The learning outcomes, mirrored from Portflow (portflow/outcomes/<id>-<slug>.md). Never made or edited in Ledger.
+CREATE TABLE outcomes (
+    id            INTEGER PRIMARY KEY,
+    name          TEXT NOT NULL,
+    nickname      TEXT NOT NULL DEFAULT '',
+    position      INTEGER NOT NULL DEFAULT 0,
+    goal_set_id   INTEGER,
+    goal_set      TEXT NOT NULL DEFAULT '',
+    -- The template import it came with, shared with its section (see portflow_sections).
+    import_id     INTEGER,
+    status        TEXT NOT NULL DEFAULT '',
+    -- Markdown, converted from Portflow's HTML.
+    explanation   TEXT NOT NULL DEFAULT '',
+    -- Gone from Portflow: kept so that links to it keep a name.
+    removed       INTEGER NOT NULL DEFAULT 0,
+    -- When it last changed here (not written to the file, so an unchanged sync writes nothing).
+    synced_at     TEXT NOT NULL
+);
+
+CREATE TABLE sub_outcomes (
+    id          INTEGER PRIMARY KEY,
+    outcome_id  INTEGER NOT NULL REFERENCES outcomes(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    nickname    TEXT NOT NULL DEFAULT '',
+    position    INTEGER NOT NULL DEFAULT 0,
+    description TEXT NOT NULL DEFAULT '',
+    -- How many evidence items in the whole portfolio count for it, as Portflow counts them.
+    evidence_count INTEGER NOT NULL DEFAULT 0
+);
+
+-- The people the portfolio is shared with (portflow/people.md): who can be tagged on feedback.
+CREATE TABLE portflow_people (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    role       TEXT NOT NULL DEFAULT '',
+    share_type TEXT NOT NULL DEFAULT '',
+    expires    TEXT,
+    position   INTEGER NOT NULL DEFAULT 0
+);
+
+-- A linked collection as Portflow last showed it (projects/<p>/portflow/<semester-id>.md). Not its description: that
+-- is the project's reading guide (README.md), kept in step by `portflow_sync::sync_guide`.
+CREATE TABLE collection_mirrors (
+    project_slug  TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    semester_id   TEXT NOT NULL,
+    collection_id INTEGER NOT NULL,
+    name          TEXT NOT NULL,
+    subtitle      TEXT NOT NULL DEFAULT '',
+    section       TEXT NOT NULL DEFAULT '',
+    color         TEXT NOT NULL DEFAULT '',
+    synced_at     TEXT NOT NULL,
+    PRIMARY KEY (project_slug, semester_id)
+);
+
+CREATE TABLE collection_outcomes (
+    project_slug TEXT NOT NULL,
+    semester_id  TEXT NOT NULL,
+    outcome_id   INTEGER NOT NULL,
+    position     INTEGER NOT NULL,
+    PRIMARY KEY (project_slug, semester_id, outcome_id),
+    FOREIGN KEY (project_slug, semester_id) REFERENCES collection_mirrors(project_slug, semester_id) ON DELETE CASCADE
+);
+
+-- An evidence item (projects/<p>/evidence/<slug>.md): what is handed in, as one or more files delivered and versioned
+-- together. It belongs to at most one thread (where its feedback lands); a thread can hold several.
+CREATE TABLE evidence (
+    project_slug  TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    slug          TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    -- Deliberately not a foreign key: deleting a thread leaves the evidence item, unplaced.
+    thread_slug   TEXT,
+    portflow_id   INTEGER,
+    -- file, free_text, url, video, lms_submission or badge.
+    kind          TEXT NOT NULL DEFAULT 'file',
+    description   TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    PRIMARY KEY (project_slug, slug)
+);
+CREATE UNIQUE INDEX evidence_by_portflow ON evidence (portflow_id) WHERE portflow_id IS NOT NULL;
+
+-- The evidence item's files, by their path under deliverables/ (without a version). A file is in one item at most.
+CREATE TABLE evidence_files (
+    project_slug  TEXT NOT NULL,
+    evidence_slug TEXT NOT NULL,
+    position      INTEGER NOT NULL,
+    path          TEXT NOT NULL,
+    PRIMARY KEY (project_slug, path),
+    FOREIGN KEY (project_slug, evidence_slug) REFERENCES evidence(project_slug, slug) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- The collections (per semester) the evidence item is shown in.
+CREATE TABLE evidence_collections (
+    project_slug  TEXT NOT NULL,
+    evidence_slug TEXT NOT NULL,
+    semester_id   TEXT NOT NULL,
+    collection_id INTEGER NOT NULL,
+    PRIMARY KEY (project_slug, evidence_slug, semester_id),
+    FOREIGN KEY (project_slug, evidence_slug) REFERENCES evidence(project_slug, slug) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- The learning outcomes (goals and sub-goals, by their Portflow id) the evidence item counts for.
+CREATE TABLE evidence_outcomes (
+    project_slug  TEXT NOT NULL,
+    evidence_slug TEXT NOT NULL,
+    outcome_id    INTEGER NOT NULL,
+    PRIMARY KEY (project_slug, evidence_slug, outcome_id),
+    FOREIGN KEY (project_slug, evidence_slug) REFERENCES evidence(project_slug, slug) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- Portflow version N of an evidence item is major N of each of its files.
+CREATE TABLE evidence_versions (
+    project_slug     TEXT NOT NULL,
+    evidence_slug    TEXT NOT NULL,
+    number           INTEGER NOT NULL,
+    portflow_version INTEGER,
+    kind             TEXT NOT NULL DEFAULT 'file',
+    -- Markdown: the changelog that went with it.
+    description      TEXT NOT NULL DEFAULT '',
+    created_at       TEXT NOT NULL,
+    PRIMARY KEY (project_slug, evidence_slug, number),
+    FOREIGN KEY (project_slug, evidence_slug) REFERENCES evidence(project_slug, slug) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- The files of each version, by Portflow's name, in Portflow's order. `path` is the published version in Ledger it is
+-- ("<name>@vN.0.<ext>"): one Ledger handed in, or one downloaded (in a study project). With no `path` the file is in
+-- Portflow only: in a study project it is downloaded on the next sync; elsewhere it is opened in Portflow.
+CREATE TABLE evidence_version_files (
+    project_slug  TEXT NOT NULL,
+    evidence_slug TEXT NOT NULL,
+    number        INTEGER NOT NULL,
+    name          TEXT NOT NULL,
+    portflow_file INTEGER,
+    path          TEXT,
+    PRIMARY KEY (project_slug, evidence_slug, number, name),
+    FOREIGN KEY (project_slug, evidence_slug, number) REFERENCES evidence_versions(project_slug, evidence_slug, number) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- Meeting notes: one daily note per day, Daily/<date>.md (see daily.rs). What the file holds besides the meetings is
+-- kept to be written back: the text before the first meeting, frontmatter of your own (as YAML) and plain tags.
+CREATE TABLE daily_notes (
+    date       TEXT PRIMARY KEY,
+    id         TEXT NOT NULL,
+    preamble   TEXT NOT NULL DEFAULT '',
+    extra      TEXT NOT NULL DEFAULT '',
+    own_tags   TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
+
+-- A meeting in a daily note, in the order of the note. Projects and people are tags, one per line.
+CREATE TABLE daily_meetings (
+    date     TEXT NOT NULL REFERENCES daily_notes(date) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    time     TEXT,
+    title    TEXT NOT NULL DEFAULT '',
+    projects TEXT NOT NULL DEFAULT '',
+    people   TEXT NOT NULL DEFAULT '',
+    body     TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (date, position)
 );

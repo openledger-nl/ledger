@@ -2,7 +2,6 @@
 //! upload was: a file picked in the thread, or a screenshot); the thread gets a manifest — when it was uploaded,
 //! where the file is, and a description.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, Row, params};
@@ -10,13 +9,18 @@ use rusqlite::{Connection, Row, params};
 use crate::db::{query_all, query_opt};
 use crate::error::{Error, Result};
 use crate::models::UploadView;
-use crate::{ids, markdown, threads};
+use crate::{ids, markdown, store, threads};
 
 const COLUMNS: &str = "id, thread_slug, file, name, size, uploaded_at, description";
-const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"];
+const IMAGE_EXTENSIONS: [&str; 8] = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "jxl"];
 
 pub fn project_dir(root: &Path, project: &str) -> PathBuf {
     root.join("projects").join(project)
+}
+
+/// A file in the project's folder (`attachments/a.png`), by its path in the vault.
+pub fn project_rel(project: &str, file: &str) -> String {
+    format!("projects/{project}/{file}")
 }
 
 pub fn is_image(name: &str) -> bool {
@@ -24,14 +28,15 @@ pub fn is_image(name: &str) -> bool {
 }
 
 fn view(root: &Path, project: &str) -> impl Fn(&Row<'_>) -> rusqlite::Result<UploadView> {
-    let dir = project_dir(root, project);
+    let store = store::at(root);
+    let project = project.to_string();
     move |r| {
         let (file, name, description): (String, String, String) = (r.get(2)?, r.get(3)?, r.get(6)?);
         Ok(UploadView {
             id: r.get(0)?,
             thread_slug: r.get(1)?,
             image: is_image(&name),
-            exists: dir.join(&file).is_file(),
+            exists: store.exists(&project_rel(&project, &file)),
             file,
             name,
             size: r.get(4)?,
@@ -48,6 +53,16 @@ pub fn list(conn: &Connection, root: &Path, project: &str, thread: &str) -> Resu
         conn,
         &format!("SELECT {COLUMNS} FROM uploads WHERE project_slug = ?1 AND thread_slug = ?2 ORDER BY uploaded_at, rowid"),
         [project, thread],
+        view(root, project),
+    )
+}
+
+/// Every upload in the project, from all its threads, newest first: what its Attachments tab lists.
+pub fn list_project(conn: &Connection, root: &Path, project: &str) -> Result<Vec<UploadView>> {
+    query_all(
+        conn,
+        &format!("SELECT {COLUMNS} FROM uploads WHERE project_slug = ?1 ORDER BY uploaded_at DESC, rowid DESC"),
+        [project],
         view(root, project),
     )
 }
@@ -75,10 +90,10 @@ pub fn add_files(conn: &Connection, root: &Path, project: &str, thread: &str, so
             return Err(Error::invalid(format!("{} isn't a file", source.display())));
         }
         let name = source.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-        let target = place(root, project, name)?;
-        fs::copy(source, &target.0).map_err(|e| Error::io(&target.0, e))?;
-        let size = fs::metadata(&target.0).map_or(0, |m| m.len());
-        added.push(insert(conn, root, project, thread, &target.1, size, description)?);
+        let file = place(root, project, name);
+        let rel = project_rel(project, &file);
+        let size = store::at(root).import_file(source, &rel).map_err(|e| Error::io(&root.join(&rel), e))?;
+        added.push(insert(conn, root, project, thread, &file, size, description)?);
     }
     Ok(added)
 }
@@ -86,9 +101,10 @@ pub fn add_files(conn: &Connection, root: &Path, project: &str, thread: &str, so
 /// Saves bytes (a screenshot, say) as a new attachment and records it in the thread.
 pub fn add_bytes(conn: &Connection, root: &Path, project: &str, thread: &str, name: &str, bytes: &[u8], description: &str) -> Result<UploadView> {
     threads::require(conn, project, thread)?;
-    let target = place(root, project, name)?;
-    fs::write(&target.0, bytes).map_err(|e| Error::io(&target.0, e))?;
-    insert(conn, root, project, thread, &target.1, bytes.len() as u64, description)
+    let file = place(root, project, name);
+    let rel = project_rel(project, &file);
+    store::at(root).write(&rel, bytes).map_err(|e| Error::io(&root.join(&rel), e))?;
+    insert(conn, root, project, thread, &file, bytes.len() as u64, description)
 }
 
 pub fn set_description(conn: &Connection, root: &Path, project: &str, thread: &str, id: &str, description: &str) -> Result<UploadView> {
@@ -127,7 +143,7 @@ pub fn remove_unreferenced(conn: &Connection, root: &Path, project: &str, files:
             .query_row("SELECT COUNT(*) FROM uploads WHERE project_slug = ?1 AND file = ?2", [project, file], |r| r.get::<_, i64>(0))
             .unwrap_or(1);
         if still_used == 0 {
-            let _ = fs::remove_file(project_dir(root, project).join(file));
+            let _ = store::at(root).remove(&project_rel(project, file));
         }
     }
 }
@@ -143,11 +159,9 @@ fn insert(conn: &Connection, root: &Path, project: &str, thread: &str, file: &st
     get(conn, root, project, thread, &id)
 }
 
-/// A free spot in the project's attachments: the full path to write to, and the path as recorded
-/// ("attachments/<name>"). A name that is taken gets a number.
-fn place(root: &Path, project: &str, name: &str) -> Result<(PathBuf, String)> {
-    let dir = project_dir(root, project).join("attachments");
-    fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
+/// A free spot in the project's attachments, as recorded ("attachments/<name>"). A name that is taken gets a number.
+fn place(root: &Path, project: &str, name: &str) -> String {
+    let store = store::at(root);
 
     let clean = sanitize(name);
     let (stem, ext) = match clean.rsplit_once('.') {
@@ -156,15 +170,15 @@ fn place(root: &Path, project: &str, name: &str) -> Result<(PathBuf, String)> {
     };
     let mut candidate = clean;
     let mut n = 2;
-    while dir.join(&candidate).exists() {
+    while store.exists(&project_rel(project, &format!("attachments/{candidate}"))) {
         candidate = format!("{stem}-{n}{ext}");
         n += 1;
     }
-    Ok((dir.join(&candidate), format!("attachments/{candidate}")))
+    format!("attachments/{candidate}")
 }
 
 /// A file name that is safe on every platform.
-fn sanitize(name: &str) -> String {
+pub(crate) fn sanitize(name: &str) -> String {
     let cleaned: String = name.chars().map(|c| if c.is_control() || "<>:\"/\\|?*".contains(c) { '_' } else { c }).collect();
     let cleaned = cleaned.trim().trim_matches('.').chars().take(120).collect::<String>();
     if cleaned.is_empty() { "file".to_string() } else { cleaned }

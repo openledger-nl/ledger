@@ -27,6 +27,9 @@ export function orderFeedback<T extends { id: string; createdAt: string }>(items
 	return arrange(items, order, (a, b) => cmp(a.createdAt, b.createdAt) || cmp(a.id, b.id));
 }
 
+/** Prompts by when they were written: the same rule as feedback. */
+export const orderPrompts = orderFeedback;
+
 /**
  * Threads by their latest activity. Newest first is how the backend has always listed them: newest activity
  * first, then slug A–Z. Ties are ordered by slug the same way, so that default comes out exactly as it arrives.

@@ -1,9 +1,10 @@
 //! What gets sent to Claude Code for a prompt, and where it runs.
 //!
 //! The prompt is run in its project's folder (`<vault>/projects/<project>/`): there it can read the project's
-//! README (the reading guide), its threads and its other deliverables, and write the deliverable where this app
-//! looks for it, in `deliverables/`. Around the prompt's own text goes a short, fixed preamble that says exactly
-//! that and nothing more. The whole text is shown to the person before anything is started.
+//! README (the reading guide), its threads, its other deliverables and their published versions (in `versions/`),
+//! and write the deliverable where this app looks for it, in `deliverables/`. Around the prompt's own text goes a
+//! short, fixed preamble that says exactly that and nothing more. The whole text is shown to the person before
+//! anything is started.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -13,8 +14,9 @@ use rusqlite::Connection;
 
 use crate::db::query_opt;
 use crate::error::{Error, Result};
-use crate::models::{PromptDeliverable, PromptView, TemplateView};
-use crate::{deliverables, projects, prompts, templates, threads, uploads};
+use crate::models::{PromptDeliverable, PromptView};
+use crate::prompts::one_line;
+use crate::{deliverables, projects, prompts, threads, uploads};
 
 /// A prompt may be long, but this long means something went wrong.
 pub const MAX_PROMPT_BYTES: usize = 1024 * 1024;
@@ -51,18 +53,20 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, thread: &str, prom
     let prompt = prompts::get(conn, project, thread, prompt_id)?;
     let name = query_opt(conn, "SELECT name FROM projects WHERE slug = ?1", [project], |r| r.get::<_, String>(0))?.unwrap_or_default();
 
-    let cwd = uploads::project_dir(root, project);
+    // The run works in the project's folder; in an encrypted vault in a plain copy of it outside the synced folder,
+    // whose changes are taken back in when it is over (see `store::Store::materialize_dir`).
+    let store = crate::store::at(root);
+    let cwd = store.materialize_dir(&format!("projects/{project}")).map_err(|e| Error::io(&uploads::project_dir(root, project), e))?;
     if !cwd.is_dir() {
         return Err(Error::invalid(format!(
             "The project's folder isn't on disk ({}). Use Reload from disk under Settings, or check that the vault is where you expect it.",
             cwd.display()
         )));
     }
-    let dir = deliverables::deliverables_dir(root, project);
+    let dir = cwd.join("deliverables");
     fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
 
-    let template = prompt.template_id.as_deref().and_then(|id| templates::find(conn, project, id).ok());
-    let text = compose(&name, &prompt, template.as_ref());
+    let text = compose(&name, &prompt);
     if text.len() > MAX_PROMPT_BYTES {
         return Err(Error::invalid("That prompt is too long to send"));
     }
@@ -86,54 +90,40 @@ pub fn ensure_confirmed(request: &RunRequest, confirmed: &str) -> Result<()> {
     }
 }
 
-/// One line of text: names are the user's, and a stray newline in one must not read as an instruction.
-fn one_line(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// A code fence longer than any run of backticks inside `text`, so quoting a template can't end early.
-fn fence_for(text: &str) -> String {
-    let (mut longest, mut run) = (0, 0);
-    for c in text.chars() {
-        run = if c == '`' { run + 1 } else { 0 };
-        longest = longest.max(run);
-    }
-    "`".repeat((longest + 1).max(3))
-}
-
-/// The text sent to Claude Code: a preamble, a line, and the prompt exactly as written.
-pub fn compose(project_name: &str, prompt: &PromptView, template: Option<&TemplateView>) -> String {
+/// The text sent to Claude Code: a preamble, a line, and the prompt exactly as written (its base, then what the person
+/// added).
+pub fn compose(project_name: &str, prompt: &PromptView) -> String {
     let mut out = String::new();
     out.push_str(&format!(
         "You are working in the folder of the Ledger project \"{}\": your working directory. It is a vault of markdown files, and README.md is the project's reading guide, so read that first.\n\n",
         one_line(project_name)
     ));
     out.push_str(
-        "Put what the request below asks for in the deliverables/ folder, as a markdown file unless the request says otherwise. Stay inside this folder, and leave published versions (names like plan@v1.0.md) alone.\n",
+        "Put what the request below asks for in the deliverables/ folder, as a markdown file unless the request says otherwise. Stay inside this folder, and leave the published versions in versions/ (names like plan/plan@v1.0.md) alone.\n",
     );
 
     let linked: &[PromptDeliverable] = &prompt.deliverables;
-    if !linked.is_empty() {
+    if linked.is_empty() {
+        out.push_str("Choose a short, descriptive file name for it.\n");
+    } else {
         let names: Vec<String> =
             linked.iter().map(|d| format!("deliverables/{}{}", d.path, if d.exists { "" } else { " (not written yet)" })).collect();
         out.push_str(&format!("This request is already linked to {}. Write into those rather than creating other files.\n", names.join(", ")));
+        // The versions are the history of the file: there to be read (to see how it got here, and what a piece of feedback
+        // was given on), never to be written.
+        for d in linked.iter().filter(|d| !d.versions.is_empty()) {
+            let files: Vec<String> = d.versions.iter().map(|v| deliverables::in_project(&deliverables::snapshot_path(&d.path, v))).collect();
+            out.push_str(&format!("Published so far of deliverables/{}, oldest first: {}. They are frozen history to read, not to change.\n", d.path, files.join(", ")));
+        }
     }
     out.push_str(&format!("The discussion the request came out of is in threads/{}/ (thread.md, and the posts/ folder next to it).\n", prompt.thread_slug));
-
-    // A deliverable that exists already has the template's structure; one still to be written gets it here.
-    if let Some(template) = template.filter(|t| !t.body.trim().is_empty())
-        && !linked.iter().any(|d| d.exists)
-    {
-        let body = template.body.trim_end();
-        let fence = fence_for(body);
-        out.push_str(&format!("\nUse this structure for the deliverable (the template \"{}\"):\n\n{fence}markdown\n{body}\n{fence}\n", one_line(&template.name)));
-    }
+    // Templates carry their guidance as Obsidian comments, and a deliverable says who it is for in one of them.
+    out.push_str(
+        "Text between %% marks is a note to the writer (what a heading is for, an example): follow it, and leave it out of what you write. Keep a \"%% Readers: ... %%\" note, and a \"**Readers:**\" line, as they are: they say who the deliverable is written for, so write it for them.\n",
+    );
 
     out.push_str("\nWhen you are done, say in a sentence or two which files you wrote.\n\n---\n\n");
-    if !prompt.title.trim().is_empty() {
-        out.push_str(&format!("# {}\n\n", one_line(&prompt.title)));
-    }
-    out.push_str(prompt.body.trim());
+    out.push_str(&prompts::request_text(prompt));
     out.push('\n');
     out
 }

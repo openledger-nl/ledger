@@ -1,20 +1,20 @@
 //! Syncing with Trello: the settings screen's commands and the background worker.
 //!
-//! The worker works like the GitHub one (`syncer.rs`): shortly after the vault changes (once it has been quiet
-//! for a few seconds), every few minutes to notice what changed on Trello, and when asked; it reports its
+//! The worker runs shortly after the vault changes (once it has been quiet for a few seconds), every few minutes to notice what changed on Trello, and when asked; it reports its
 //! progress through an event, and does nothing at all until the sync is set up. It never holds the vault lock while
 //! it talks to Trello (see `trello_ledger.rs`).
 //!
 //! Setting up takes four things, in this order: the API key and token, the person whose cards are synced (picked
 //! from a board's members), a Trello board for each project that should sync, and optionally which list a column
-//! belongs to. A project with no board isn't synced. The key and token are kept in the vault's `.ledger/.env`; the
-//! rest in `.ledger/trello.json` (see `trello_config.rs`). None of it is ever uploaded, and the screen is only
+//! belongs to. A project with no board isn't synced. The key and token are kept with the vault's secrets on this
+//! machine; the rest in `trello.json` (see `trello_config.rs`). None of it is ever in the vault, and the screen is only
 //! ever told whether a key and token exist, plus the last four characters of each.
 //!
-//! The two syncs can't echo each other. A Trello round writes into the vault, which the GitHub sync then pushes;
+//! A round can't echo itself. It writes into the vault, which the cloud storage then carries to the other machines;
 //! that is the end of it, because what a round writes is a function of the card (an imported item's id, its
-//! timestamps and its text all come from the card), and a round that finds both sides agreeing writes nothing. A
-//! pull from GitHub is noticed by the next round, which finds the cards already in step and does nothing.
+//! timestamps and its text all come from the card), and a round that finds both sides agreeing writes nothing. What
+//! another machine's round wrote reaches this one through the cloud, and the next round here finds the cards already
+//! in step and does nothing.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
@@ -131,7 +131,7 @@ fn update(status: &Mutex<TrelloStatus>, emit: &Emit, change: impl FnOnce(&mut Tr
 
 impl TrelloSyncer {
     /// Something in the vault changed (the app reaches the worker through [`notify_vault_changed`]).
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(not(test), allow(dead_code, reason = "only the tests call it"))]
     pub fn dirty(&self) {
         let _ = lock(&self.tx).send(Msg::Dirty);
     }
@@ -177,7 +177,6 @@ pub fn start(core: Arc<Mutex<Core>>, emit: Emit, changed: Arc<dyn Fn() + Send + 
 /// What `lib.rs` calls: starts the worker, reports to the window, and keeps the handle as app state.
 pub fn start_app(handle: &AppHandle, core: Arc<Mutex<Core>>) {
     let emitter = handle.clone();
-    let notifier = handle.clone();
     let syncer = start(
         core,
         Arc::new(move |event| {
@@ -186,8 +185,8 @@ pub fn start_app(handle: &AppHandle, core: Arc<Mutex<Core>>) {
                 TrelloEvent::VaultChanged => emitter.emit("vault-changed", ()),
             };
         }),
-        // What a round wrote into the vault goes to GitHub like any other change.
-        Arc::new(move || notifier.state::<App>().syncer.dirty()),
+        // Nothing else needs to hear what a round wrote: the window refreshes on the event above.
+        Arc::new(|| {}),
     );
     handle.manage(syncer);
 }
@@ -519,7 +518,7 @@ pub fn view(root: &Path, snapshot: &trello_ledger::Snapshot, status: TrelloStatu
         unlinked,
         status,
         settings_file: config::settings_path(root).display().to_string(),
-        secrets_file: crate::settings::secrets_path(root).display().to_string(),
+        secrets_file: crate::settings::secrets_place(root),
     }
 }
 

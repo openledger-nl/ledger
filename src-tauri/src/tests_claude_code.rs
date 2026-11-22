@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use tempfile::{TempDir, tempdir};
 
 use crate::claude_code::cli::{self, Search};
+use crate::claude_code::naming;
 use crate::claude_code::config::{self, ClaudeSettings, PermissionMode};
 use crate::claude_code::prompt::{self, RunRequest};
 use crate::claude_code::records::{self, RunFacts, RunRecord};
@@ -27,7 +28,7 @@ use crate::claude_code::runs::{self, Host, MAX_CONCURRENT, MAX_OUTPUT_BYTES, Run
 use crate::claude_code::versions::{Baseline, Change};
 use crate::claude_code::{check_with, finish};
 use crate::error::Result;
-use crate::models::Bump;
+use crate::models::{BaseSpec, Bump, NewPrompt, TemplateDraft};
 use crate::state::Core;
 use crate::{deliverables, ids, projects, prompts, provenance, templates, threads};
 
@@ -72,7 +73,7 @@ impl Fixture {
         let core = Core::open_at(dir.path().join("vault"), config.path().to_path_buf(), false).unwrap();
         let project = projects::create(&core.conn, "Acme").unwrap().slug;
         let thread = threads::create(&core.conn, &project, "Call notes").unwrap().slug;
-        let prompt = prompts::create(&core.conn, &project, &thread, "Call summary", body, None).unwrap();
+        let prompt = prompts::create_titled(&core.conn, &project, &thread, "Call summary", body, None).unwrap();
         let mut f = Fixture { _dir: dir, _config: config, core, project, thread, prompt };
         f.persist();
         f
@@ -99,7 +100,7 @@ impl Fixture {
     }
 
     fn more_prompts(&self, n: usize) -> Vec<String> {
-        (0..n).map(|i| prompts::create(&self.core.conn, &self.project, &self.thread, &format!("Extra {i}"), "Another request.", None).unwrap().id).collect()
+        (0..n).map(|i| prompts::create_titled(&self.core.conn, &self.project, &self.thread, &format!("Extra {i}"), "Another request.", None).unwrap().id).collect()
     }
 
     fn context(&self, settings: ClaudeSettings) -> RunContext {
@@ -363,13 +364,14 @@ fn without_a_settings_file_the_defaults_apply() {
 }
 
 #[test]
-fn settings_persist_in_the_ledger_folder_which_git_ignores() {
+fn settings_persist_for_this_machine_outside_the_vault() {
     let dir = tempdir().unwrap();
-    let saved = ClaudeSettings::validated(" \"C:\\Program Files\\Claude\\claude.exe\" ", "plan", " claude-sonnet-4-5 ", false, true).unwrap();
+    let saved = ClaudeSettings::validated(" \"C:\\Program Files\\Claude\\claude.exe\" ", "plan", " claude-sonnet-4-5 ", false, true, true).unwrap();
     assert_eq!(saved.cli_path, "C:\\Program Files\\Claude\\claude.exe", "pasted quotes are dropped");
     config::save(dir.path(), &saved).unwrap();
 
-    assert_eq!(config::settings_path(dir.path()), dir.path().join(".ledger").join("claude-code.json"));
+    assert_eq!(config::settings_path(dir.path()), crate::settings::local_dir(dir.path()).join("claude-code.json"));
+    assert!(!config::settings_path(dir.path()).starts_with(dir.path()), "never in the vault");
     assert!(config::settings_path(dir.path()).is_file());
     assert_eq!(config::load(dir.path()), saved);
     assert_eq!(config::load(dir.path()).permission_mode, PermissionMode::Plan);
@@ -377,17 +379,13 @@ fn settings_persist_in_the_ledger_folder_which_git_ignores() {
     assert!(fs::read_to_string(config::settings_path(dir.path())).unwrap().contains("\"autoRun\": true"));
     config::save(dir.path(), &ClaudeSettings { auto_run: false, ..saved }).unwrap();
     assert!(!config::load(dir.path()).auto_run);
-
-    // `.ledger/` is what the vault's .gitignore lists, so the file is neither committed nor synced.
-    let ignore = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
-    assert!(ignore.lines().any(|l| l.trim() == ".ledger/"), "{ignore}");
 }
 
 #[test]
 fn an_old_or_damaged_settings_file_loads_field_by_field() {
     let dir = tempdir().unwrap();
     let write = |text: &str| {
-        fs::create_dir_all(dir.path().join(".ledger")).unwrap();
+        fs::create_dir_all(config::settings_path(dir.path()).parent().unwrap()).unwrap();
         fs::write(config::settings_path(dir.path()), text).unwrap();
     };
 
@@ -419,17 +417,34 @@ fn an_old_or_damaged_settings_file_loads_field_by_field() {
 #[test]
 fn what_is_typed_in_settings_is_checked_because_it_reaches_the_command_line() {
     for fine in ["sonnet", "opus", "claude-sonnet-4-5", "claude-opus-4-1-20250805", "sonnet[1m]", "us.anthropic.claude-sonnet-4-5-v1:0"] {
-        assert!(ClaudeSettings::validated("", "acceptEdits", fine, true, false).is_ok(), "{fine}");
+        assert!(ClaudeSettings::validated("", "acceptEdits", fine, true, false, true).is_ok(), "{fine}");
     }
     let too_long = "m".repeat(101);
     for bad in ["--dangerously-skip-permissions", "-p", "two words", "a&b", "%PATH%", "\"quoted\"", "x\ny", "a;b", "$(id)", "é", too_long.as_str()] {
-        assert!(ClaudeSettings::validated("", "acceptEdits", bad, true, false).is_err(), "{bad:?}");
+        assert!(ClaudeSettings::validated("", "acceptEdits", bad, true, false, true).is_err(), "{bad:?}");
     }
     for mode in ["bypassPermissions", "default", "auto", "", "AcceptEdits", "--dangerously-skip-permissions"] {
-        assert!(ClaudeSettings::validated("", mode, "", true, false).is_err(), "{mode:?}");
+        assert!(ClaudeSettings::validated("", mode, "", true, false, true).is_err(), "{mode:?}");
     }
-    assert!(ClaudeSettings::validated("a\nb", "plan", "", true, false).is_err());
-    assert_eq!(ClaudeSettings::validated("", "dontAsk", "", true, false).unwrap().permission_mode, PermissionMode::DontAsk);
+    assert!(ClaudeSettings::validated("a\nb", "plan", "", true, false, true).is_err());
+    assert_eq!(ClaudeSettings::validated("", "dontAsk", "", true, false, true).unwrap().permission_mode, PermissionMode::DontAsk);
+}
+
+#[test]
+fn the_model_chosen_for_one_run_replaces_the_setting_and_is_checked_the_same_way() {
+    let settings = ClaudeSettings { model: "sonnet".into(), ..Default::default() };
+    assert_eq!(settings.clone().for_run(None).unwrap().model, "sonnet");
+    assert_eq!(settings.clone().for_run(Some(" opus ")).unwrap().model, "opus");
+    // "" is Claude Code's own default: no --model at all.
+    let default = settings.clone().for_run(Some("")).unwrap();
+    assert_eq!(default.model, "");
+    assert!(!cli::run_args(&default, None).iter().any(|a| a == "--model"));
+    for bad in ["--dangerously-skip-permissions", "two words", "$(id)"] {
+        assert!(settings.clone().for_run(Some(bad)).is_err(), "{bad:?}");
+    }
+    // Only the model changes.
+    let chosen = ClaudeSettings { permission_mode: PermissionMode::Plan, confine: false, ..settings }.for_run(Some("haiku")).unwrap();
+    assert_eq!((chosen.permission_mode, chosen.confine), (PermissionMode::Plan, false));
 }
 
 // ---- the command line ---------------------------------------------------------------------------------
@@ -439,7 +454,7 @@ fn the_command_line_is_a_fixed_set_of_flags_and_the_chosen_values() {
     let plain = ClaudeSettings { confine: false, ..Default::default() };
     assert_eq!(cli::run_args(&plain, None), os(&["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"]));
 
-    let all = ClaudeSettings { permission_mode: PermissionMode::Plan, model: "opus".into(), confine: true, cli_path: String::new(), auto_run: true };
+    let all = ClaudeSettings { permission_mode: PermissionMode::Plan, model: "opus".into(), confine: true, cli_path: String::new(), auto_run: true, name_prompts: false };
     assert_eq!(
         cli::run_args(&all, Some(Path::new("/vault/.ledger/runs/claude-guard.json"))),
         os(&[
@@ -466,7 +481,7 @@ fn no_combination_of_settings_can_skip_the_permission_checks() {
     for mode in [PermissionMode::AcceptEdits, PermissionMode::Plan, PermissionMode::DontAsk] {
         for model in ["", "sonnet"] {
             for confine in [false, true] {
-                let settings = ClaudeSettings { permission_mode: mode, model: model.into(), confine, cli_path: String::new(), auto_run: false };
+                let settings = ClaudeSettings { permission_mode: mode, model: model.into(), confine, cli_path: String::new(), auto_run: false, name_prompts: true };
                 let args = cli::run_args(&settings, confine.then(|| Path::new("guard.json")));
                 for arg in &args {
                     let arg = arg.to_string_lossy();
@@ -528,7 +543,7 @@ fn guard_rails_name_the_vaults_secrets_and_confine_reads_and_writes() {
     let guard: serde_json::Value = serde_json::from_str(&cli::guard_settings(root.path())).unwrap();
     let deny: Vec<&str> = guard["permissions"]["deny"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
     assert!(deny.contains(&"Read(**/.env)") && deny.contains(&"Read(**/.env.*)"), "{deny:?}");
-    let ledger = cli::rule_path(&root.path().join(".ledger").display().to_string()).expect("a temp dir has a usable path");
+    let ledger = cli::rule_path(&crate::settings::local_dir(root.path()).display().to_string()).expect("a temp dir has a usable path");
     assert!(deny.contains(&format!("Read({ledger}/**)").as_str()) && deny.contains(&format!("Edit({ledger}/**)").as_str()), "{deny:?}");
     assert_eq!(guard["permissions"]["blockReadsOutsideWorkingDirectories"], true);
     assert_eq!(guard["permissions"]["blockWritesOutsideWorkingDirectories"], true);
@@ -544,7 +559,7 @@ fn a_run_with_guard_rails_writes_the_guard_file_and_points_at_it_without_them_it
     let at = spec.args.iter().position(|a| a == "--settings").expect("--settings is passed");
     let file = PathBuf::from(&spec.args[at + 1]);
     assert_eq!(file, config::guard_path(&f.root()));
-    assert!(file.starts_with(f.root().join(".ledger")), "the guard file sits in the folder that is never synced");
+    assert!(file.starts_with(crate::settings::local_dir(&f.root())) && !file.starts_with(f.root()), "the guard file sits outside the vault");
     assert_eq!(fs::read_to_string(&file).unwrap(), cli::guard_settings(&f.root()));
     assert!(spec.args.windows(2).any(|w| w[0] == "--setting-sources" && w[1] == "user"));
     assert!(spec.args.iter().any(|a| a == "--strict-mcp-config"), "a .mcp.json in the vault can't start a program");
@@ -666,33 +681,111 @@ fn the_check_runs_the_version_command_and_says_what_happened() {
 fn the_text_is_a_short_preamble_then_the_prompt_as_written() {
     let f = Fixture::new();
     let text = f.request().text;
-    for expected in ["\"Acme\"", "README.md", "deliverables/", &format!("threads/{}/", f.thread), "# Call summary", HOSTILE] {
+    for expected in ["\"Acme\"", "README.md", "deliverables/", &format!("threads/{}/", f.thread), HOSTILE] {
         assert!(text.contains(expected), "{expected}: {text}");
     }
+    assert!(!text.contains("# Call summary"), "the name a prompt is given is for the screen, not for the run: {text}");
     assert!(text.len() < HOSTILE.len() + 1200, "the preamble stays short: {} bytes", text.len() - HOSTILE.len());
     assert!(text.find("README.md").unwrap() < text.find(HOSTILE).unwrap(), "the instructions come first");
     assert!(!text.contains("already linked") && !text.contains("template"), "nothing about links or templates when there are none");
 }
 
 #[test]
-fn linked_deliverables_and_templates_are_mentioned_only_when_they_matter() {
+fn the_template_reaches_the_run_in_the_base_and_a_linked_deliverable_is_named() {
     let f = Fixture::with_body("Write up the call.");
     let skeleton = "# Interview\n\n```text\nfenced\n```\n## Who\n";
-    let template = templates::create(&f.core.conn, "", "Interview", "after a call", &[], skeleton).unwrap();
-    let prompt = prompts::create(&f.core.conn, &f.project, &f.thread, "Interview notes", "Summarise it.", Some(&template.id)).unwrap();
+    let template = templates::create(&f.core.conn, "", &TemplateDraft::basic("Interview", "after a call", &[], skeleton)).unwrap();
 
-    // A template and nothing written yet: the structure is included, in a fence long enough to hold the one inside it.
+    // The structure is in the base the dialog fills in from the template, in a fence long enough to hold the one inside it.
+    let spec = BaseSpec { template_id: Some(template.id.clone()), feedback: vec![] };
+    let base = prompts::suggest_base(&f.core.conn, &f.project, &spec).unwrap();
+    assert!(base.contains("the template \"Interview\"") && base.contains("## Who"), "{base}");
+    assert!(base.contains("````markdown\n# Interview"), "the fence is longer than the backticks inside: {base}");
+    let draft = NewPrompt { base, body: "Summarise it.".into(), template_id: Some(template.id.clone()), ..Default::default() };
+    let prompt = prompts::create(&f.core.conn, &f.project, &f.thread, &draft).unwrap();
+
+    // The run is sent the base, then what the person added.
     let text = f.request_for(&prompt.id).unwrap().text;
-    assert!(text.contains("the template \"Interview\"") && text.contains("## Who"), "{text}");
-    assert!(text.contains("````markdown\n# Interview"), "the fence is longer than the backticks inside: {text}");
+    assert!(text.find("## Who").unwrap() < text.find("Summarise it.").unwrap(), "the base comes first: {text}");
 
-    // A deliverable linked but not written yet: named, with the structure still offered.
+    // A deliverable linked but not written yet: named, and no longer asked to name the file.
     let made = deliverables::create(&f.core.conn, &f.project, "Interview notes", "").unwrap();
     prompts::link_deliverable(&f.core.conn, &f.project, &f.thread, &prompt.id, &made.path).unwrap();
     let text = f.request_for(&prompt.id).unwrap().text;
     assert!(text.contains("deliverables/interview-notes.md"), "{text}");
     assert!(!text.contains("(not written yet)"), "it exists in the vault, so it is not marked missing");
-    assert!(!text.contains("the template"), "the file exists and already has its structure: {text}");
+    assert!(!text.contains("Choose a short"), "{text}");
+}
+
+#[test]
+fn the_run_is_told_which_versions_the_deliverable_has_and_to_name_a_file_only_when_none_is_linked() {
+    let mut f = Fixture::new();
+    // Nothing linked: the run is asked to choose the file name.
+    let text = f.request().text;
+    assert!(text.contains("Choose a short, descriptive file name"), "{text}");
+
+    seed_published(&mut f, "plan.md", "# Plan
+
+first text
+");
+    deliverables::publish(&f.core.conn, &f.root(), &f.project, "plan.md", Bump::Minor, None).unwrap();
+    prompts::link_deliverable(&f.core.conn, &f.project, &f.thread, &f.prompt.id, "plan.md").unwrap();
+    let text = f.request().text;
+    assert!(!text.contains("Choose a short"), "the file is named already: {text}");
+    assert!(text.contains("already linked to deliverables/plan.md"), "{text}");
+    assert!(
+        text.contains("versions/plan/plan@v0.1.md, versions/plan/plan@v0.2.md") && text.contains("frozen history to read, not to change"),
+        "the versions, oldest first, as history: {text}"
+    );
+    assert!(!text.contains("(not written yet)"));
+}
+
+// ---- naming a prompt -----------------------------------------------------------------------------------
+
+#[test]
+fn a_name_is_the_first_line_of_the_answer_without_decoration() {
+    for (said, name) in [
+        ("Pricing brief for Ana\n", "Pricing brief for Ana"),
+        ("  \"Pricing brief for Ana\".  ", "Pricing brief for Ana"),
+        ("Title: **Fix the intro**\n\nBecause it is long.", "Fix the intro"),
+        ("“Prijzen uitleggen.”", "Prijzen uitleggen"),
+    ] {
+        assert_eq!(naming::clean(said).as_deref(), Some(name), "{said:?}");
+    }
+    assert_eq!(naming::clean("  \n \n"), None);
+    assert_eq!(naming::clean("\"\""), None);
+    let long = naming::clean(&"word ".repeat(40)).unwrap();
+    assert!(long.chars().count() <= 61 && long.ends_with("..."), "{long}");
+}
+
+#[test]
+fn claude_code_is_asked_for_a_name_with_nothing_it_could_use() {
+    let (_dir, search) = fake_cli();
+    let cwd = tempdir().unwrap();
+    let runner = FakeRunner::scripted(&["\"Pricing brief for Ana\"\n"], &[], 0);
+    let name = naming::suggest(&runner, &ClaudeSettings::default(), &search, cwd.path(), "Write the pricing brief for Ana.");
+    assert_eq!(name.as_deref(), Some("Pricing brief for Ana"));
+
+    let spec = runner.spec(0);
+    for flag in ["-p", "--no-session-persistence", "--strict-mcp-config", "--disable-slash-commands"] {
+        assert!(spec.args.iter().any(|a| a == flag), "{flag}: {:?}", spec.args);
+    }
+    let tools = spec.args.iter().position(|a| a == "--tools").unwrap();
+    assert_eq!(spec.args[tools + 1], "", "no tools at all");
+    assert_eq!(spec.cwd, cwd.path(), "it runs where the vault is not");
+    let sent = String::from_utf8(spec.stdin).unwrap();
+    assert!(sent.contains("Write the pricing brief for Ana.") && sent.contains("at most six words"), "{sent}");
+
+    // Nothing is started for an empty request; a program that fails, or says nothing, leaves the prompt as it is.
+    let idle = FakeRunner::default();
+    assert_eq!(naming::suggest(&idle, &ClaudeSettings::default(), &search, cwd.path(), "   "), None);
+    assert_eq!(idle.spawned(), 0);
+    let failing = FakeRunner::scripted(&["x"], &["not logged in"], 1);
+    assert_eq!(naming::suggest(&failing, &ClaudeSettings::default(), &search, cwd.path(), "Write it."), None);
+    let silent = FakeRunner::scripted(&["   "], &[], 0);
+    assert_eq!(naming::suggest(&silent, &ClaudeSettings::default(), &search, cwd.path(), "Write it."), None);
+    let nowhere = Search { path_var: None, fallback_dirs: vec![], windows: cfg!(windows) };
+    assert_eq!(naming::suggest(&idle, &ClaudeSettings::default(), &nowhere, cwd.path(), "Write it."), None, "no program, no name");
 }
 
 #[test]
@@ -762,8 +855,14 @@ fn the_files_in_the_deliverables_folder_are_listed_without_dotfiles() {
 #[test]
 fn a_baseline_tells_new_and_changed_files_from_untouched_ones_and_remembers_unpublished_edits() {
     let dir = tempdir().unwrap();
+    let (live, versions) = (dir.path().join("deliverables"), dir.path().join("versions"));
+    // A published version goes in the versions folder, beside the deliverables one.
     let put = |name: &str, text: &str| {
-        let file = dir.path().join(name);
+        // A version is in its deliverable's own folder under versions/.
+        let file = match crate::deliverables::in_project(name).strip_prefix("versions/") {
+            Some(in_versions) => versions.join(in_versions),
+            None => live.join(name),
+        };
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(file, text).unwrap();
     };
@@ -777,7 +876,7 @@ fn a_baseline_tells_new_and_changed_files_from_untouched_ones_and_remembers_unpu
     put("stub.md", "# Stub\n");
     put("empty.md", "");
     put(".hidden.md", "x");
-    let baseline = Baseline::capture(dir.path());
+    let baseline = Baseline::capture(&live, &versions);
 
     put("new.md", "x");
     put("reports/q3.md", "x");
@@ -792,7 +891,7 @@ fn a_baseline_tells_new_and_changed_files_from_untouched_ones_and_remembers_unpu
 
     let edited = |path: &str, held: Option<&str>| Change::Edited { path: path.into(), held: held.map(|h| h.as_bytes().to_vec()) };
     assert_eq!(
-        baseline.changes(dir.path()),
+        baseline.changes(&live),
         [
             edited("clean.md", None),
             edited("dirty.md", Some("edited since")),
@@ -804,7 +903,7 @@ fn a_baseline_tells_new_and_changed_files_from_untouched_ones_and_remembers_unpu
         ],
         "a file the run rewrote with the same text isn't a change; a placeholder counts as new; earlier edits are held"
     );
-    assert_eq!(Baseline::capture(dir.path()).changes(dir.path()), Vec::<Change>::new(), "nothing happened since");
+    assert_eq!(Baseline::capture(&live, &versions).changes(&live), Vec::<Change>::new(), "nothing happened since");
 }
 
 // ---- runs: streaming, finishing, failing --------------------------------------------------------------------
@@ -823,12 +922,12 @@ fn output_arrives_while_the_run_is_going_and_the_run_finishes() {
     assert_eq!(midway.run.status, Status::Running, "output is visible while it is still running");
 
     process.stdout(SAID);
-    wait_until("the second output", || rig.snapshot(&run.id).output.contains("→ Write deliverables/summary.md"));
+    wait_until("the second output", || rig.snapshot(&run.id).output.contains("- Write deliverables/summary.md"));
     process.stdout(RESULT_OK);
     process.exit(0);
     let done = rig.wait_for(&run.id, Status::Finished);
 
-    for expected in ["I'll write the summary.", "→ Write deliverables/summary.md", "2 turns", "Refused by the permission mode: Bash curl example.com"] {
+    for expected in ["I'll write the summary.", "- Write deliverables/summary.md", "2 turns", "Refused by the permission mode: Bash curl example.com"] {
         assert!(done.output.contains(expected), "{expected}: {}", done.output);
     }
     // The program reports a dollar figure (RESULT_OK has one); the closing line leaves it out.
@@ -1137,7 +1236,7 @@ fn a_failed_stopped_or_unstartable_run_is_noted_too() {
     let rig = Rig::new();
     let run = rig.start(&f).unwrap();
     rig.runner.handle(0).stdout(SAID);
-    wait_until("the output", || rig.snapshot(&run.id).output.contains("→ Write"));
+    wait_until("the output", || rig.snapshot(&run.id).output.contains("- Write"));
     rig.runs.cancel(&run.id).unwrap();
     rig.wait_for(&run.id, Status::Cancelled);
     let note = lock(&rig.host.records)[0].clone();
@@ -1196,7 +1295,7 @@ fn the_note_says_how_a_run_ended_and_stays_small() {
     stopped.message = Some("Claude Code stopped with exit code 1");
     let note = records::build(&request, &stopped, &Redactor::default());
     assert!(note.body.starts_with("Failed: Claude Code stopped with exit code 1\n"), "{}", note.body);
-    assert!(note.body.contains("- Read `f199.md`\n- …and 50 more\n") && !note.body.contains("f200.md"), "the list is capped");
+    assert!(note.body.contains("- Read `f199.md`\n- ...and 50 more\n") && !note.body.contains("f200.md"), "the list is capped");
     assert_eq!(note.turns, None);
 
     stopped.status = "cancelled";
@@ -1209,16 +1308,15 @@ fn the_note_says_how_a_run_ended_and_stays_small() {
 
     let long = ResultInfo { is_error: false, text: "word ".repeat(10_000), turns: None, denials: vec![] };
     let note = records::build(&request, &facts("finished", Some(&long), &[], &[]), &Redactor::default());
-    assert!(note.body.chars().count() < 20_100 && note.body.trim_end().ends_with('…'), "{} characters", note.body.chars().count());
+    assert!(note.body.chars().count() < 20_100 && note.body.trim_end().ends_with("..."), "{} characters", note.body.chars().count());
 }
 
 #[test]
 fn the_note_names_no_folder_on_this_machine_and_no_secrets() {
     let token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
     let f = Fixture::with_body(&format!("Deploy with {token} please."));
-    let ledger = f.root().join(".ledger");
-    fs::create_dir_all(&ledger).unwrap();
-    fs::write(ledger.join(".env"), "GITHUB_TOKEN=github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz\nLEDGER_ENCRYPTION_KEY=\"zzzzyyyyxxxxwwww\"\n").unwrap();
+    crate::settings::write_secret(&f.root(), "TRELLO_TOKEN", "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz").unwrap();
+    crate::settings::write_secret(&f.root(), "PORTFLOW_SESSION", "zzzzyyyyxxxxwwww").unwrap();
 
     let folder = f.request().cwd.display().to_string();
     let absolute = format!("{folder}{0}deliverables{0}summary.md", std::path::MAIN_SEPARATOR);
@@ -1245,9 +1343,8 @@ fn the_note_names_no_folder_on_this_machine_and_no_secrets() {
 fn secrets_never_reach_the_screen() {
     let token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
     let f = Fixture::with_body(&format!("Deploy with {token} please."));
-    let ledger = f.root().join(".ledger");
-    fs::create_dir_all(&ledger).unwrap();
-    fs::write(ledger.join(".env"), "# secrets\nGITHUB_TOKEN=github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz\nLEDGER_ENCRYPTION_KEY=\"zzzzyyyyxxxxwwww\"\n").unwrap();
+    crate::settings::write_secret(&f.root(), "TRELLO_TOKEN", "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz").unwrap();
+    crate::settings::write_secret(&f.root(), "PORTFLOW_SESSION", "zzzzyyyyxxxxwwww").unwrap();
 
     let leak = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"the key is zzzzyyyyxxxxwwww and Authorization: Bearer abcdefghijklmnopqrstuvwx"}]}}"#;
     let rig = Rig::with(FakeRunner::scripted(
@@ -1276,8 +1373,8 @@ fn a_note_is_a_markdown_file_in_the_thread_that_survives_reading_the_vault_again
 
     let text = fs::read_to_string(note_file(&f, &note.id)).unwrap();
     assert!(text.starts_with("---\n"), "{text}");
+    assert!(!text.contains("\nid:"), "its id is its file's name: {text}");
     for expected in [
-        "id: 1793660376958-4o6j4fvm".to_string(),
         format!("prompt: {}", f.prompt.id),
         "status: finished".to_string(),
         "model: claude-test".to_string(),
@@ -1397,10 +1494,11 @@ fn the_redactor_knows_the_vaults_values_and_the_shapes_of_tokens() {
 }
 
 #[test]
-fn the_redactor_reads_the_vaults_env_file() {
+fn the_redactor_knows_the_vaults_secrets() {
     let dir = tempdir().unwrap();
-    fs::create_dir_all(dir.path().join(".ledger")).unwrap();
-    fs::write(dir.path().join(".ledger").join(".env"), "# comment\nGITHUB_TOKEN=abcd1234efgh5678\nexport OTHER='quoted value 99'\nshort=abc\n").unwrap();
+    let env = crate::settings::secrets_path(dir.path());
+    fs::create_dir_all(env.parent().unwrap()).unwrap();
+    fs::write(&env, "# comment\nTRELLO_TOKEN=abcd1234efgh5678\nexport OTHER='quoted value 99'\nshort=abc\n").unwrap();
     let redactor = Redactor::for_vault(dir.path());
     assert_eq!(redactor.apply("a abcd1234efgh5678 b quoted value 99 c abc d"), "a [redacted] b [redacted] c abc d");
     assert_eq!(Redactor::for_vault(&dir.path().join("nowhere")).apply("fine"), "fine");
@@ -1414,7 +1512,7 @@ fn streaming_json_is_shown_as_what_was_said_and_done() {
     assert_eq!(init, "● Started: claude-test, permission mode acceptEdits\n");
 
     let said = render::render_line(SAID).text;
-    assert_eq!(said, "I'll write the summary.\n→ Write deliverables/summary.md\n");
+    assert_eq!(said, "I'll write the summary.\n- Write deliverables/summary.md\n");
 
     // File contents and command output are not copied into the output; errors are.
     let ok = r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"1","content":"file contents SECRET"}]}}"#;
@@ -1442,9 +1540,9 @@ fn streaming_json_is_shown_as_what_was_said_and_done() {
     assert!(retry.contains("rate_limit") && retry.contains("attempt 2"), "{retry}");
 
     let closing = render::summary(Some(&info), 65);
-    assert!(closing.contains("— 1:05 · 2 turns\n") && closing.contains("Refused by the permission mode: Bash curl example.com"), "{closing}");
+    assert!(closing.contains("- 1:05 | 2 turns\n") && closing.contains("Refused by the permission mode: Bash curl example.com"), "{closing}");
     assert!(!closing.contains('$'), "{closing}");
-    assert_eq!(render::summary(None, 7), "— 0:07\n");
+    assert_eq!(render::summary(None, 7), "- 0:07\n");
 }
 
 // ---- the vault after a run ------------------------------------------------------------------------------
@@ -1462,6 +1560,11 @@ fn deliverables_folder(f: &Fixture) -> PathBuf {
     let dir = f.project_dir().join("deliverables");
     fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+/// Where the published versions are, beside the deliverables folder.
+fn versions_folder(f: &Fixture) -> PathBuf {
+    f.project_dir().join("versions")
 }
 
 /// A deliverable the person wrote and published once, as 0.1.
@@ -1489,10 +1592,10 @@ fn version_posts(f: &Fixture) -> Vec<String> {
 }
 
 #[test]
-fn a_new_file_is_published_as_the_first_version_and_that_version_is_linked() {
+fn a_new_file_is_published_as_the_first_version_and_the_prompt_is_linked_to_the_file() {
     let mut f = Fixture::new();
     let dir = deliverables_folder(&f);
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("summary.md"), "# Summary\n\nAna wants SSO.\n").unwrap();
     fs::write(dir.join("chart.png"), b"\x89PNG").unwrap();
 
@@ -1501,10 +1604,10 @@ fn a_new_file_is_published_as_the_first_version_and_that_version_is_linked() {
     assert_eq!(outcome.linked, ["chart@v0.1.png", "summary@v0.1.md"]);
     assert!(outcome.kept.is_empty());
 
-    assert_eq!(linked_paths(&f), ["chart@v0.1.png", "summary@v0.1.md"], "the versions are linked, not the live files");
+    assert_eq!(linked_paths(&f), ["chart.png", "summary.md"], "the prompt is linked to the deliverables, not to their versions");
     assert!(body_of(&f, "summary@v0.1.md").contains("Ana wants SSO"));
     assert!(body_of(&f, "summary.md").contains("Ana wants SSO"), "the live file stays");
-    assert_eq!(fs::read(dir.join("chart@v0.1.png")).unwrap(), b"\x89PNG", "a file that isn't text is copied");
+    assert_eq!(fs::read(versions_folder(&f).join("chart/chart@v0.1.png")).unwrap(), b"\x89PNG", "a file that isn't text is copied");
 
     // Each version is noted in the thread, and the deliverable knows the prompt that produced it.
     let posts = version_posts(&f);
@@ -1516,16 +1619,16 @@ fn a_new_file_is_published_as_the_first_version_and_that_version_is_linked() {
 
     // Written to the vault's files, so it survives a reload.
     f.core.reload().unwrap();
-    assert_eq!(linked_paths(&f), ["chart@v0.1.png", "summary@v0.1.md"]);
-    assert!(dir.join("summary@v0.1.md").is_file());
+    assert_eq!(linked_paths(&f), ["chart.png", "summary.md"]);
+    assert!(versions_folder(&f).join("summary/summary@v0.1.md").is_file() && !dir.join("summary@v0.1.md").exists(), "a version is kept in versions/");
 }
 
 #[test]
-fn an_edited_file_with_nothing_unpublished_is_published_as_the_next_minor_and_that_is_linked() {
+fn an_edited_file_with_nothing_unpublished_is_published_as_the_next_minor_and_the_prompt_is_linked_to_the_file() {
     let mut f = Fixture::new();
     seed_published(&mut f, "plan.md", "# Plan\n\nfirst text\n");
     let dir = deliverables_folder(&f);
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("plan.md"), "# Plan\n\nsecond text\n").unwrap();
 
     let outcome = after_run(&mut f, &baseline, true);
@@ -1534,17 +1637,17 @@ fn an_edited_file_with_nothing_unpublished_is_published_as_the_next_minor_and_th
     assert!(outcome.kept.is_empty(), "there was nothing to keep");
     assert_eq!(versions(&f, "plan.md"), ["0.1", "0.2"]);
     assert!(body_of(&f, "plan@v0.1.md").contains("first text") && body_of(&f, "plan@v0.2.md").contains("second text"));
-    assert_eq!(linked_paths(&f), ["plan@v0.2.md"]);
+    assert_eq!(linked_paths(&f), ["plan.md"]);
 }
 
 #[test]
-fn an_edited_file_with_unpublished_edits_has_them_published_first_and_only_the_runs_version_is_linked() {
+fn an_edited_file_with_unpublished_edits_has_them_published_first_and_only_the_runs_version_is_reported() {
     let mut f = Fixture::new();
     seed_published(&mut f, "plan.md", "# Plan\n\nfirst text\n");
     let dir = deliverables_folder(&f);
     // The person edited the live file after publishing: no version holds this.
     fs::write(dir.join("plan.md"), "# Plan\n\nthe person's edit\n").unwrap();
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("plan.md"), "# Plan\n\nthe run's edit\n").unwrap();
 
     let outcome = after_run(&mut f, &baseline, true);
@@ -1554,7 +1657,9 @@ fn an_edited_file_with_unpublished_edits_has_them_published_first_and_only_the_r
     assert_eq!(versions(&f, "plan.md"), ["0.1", "0.2", "0.3"]);
     assert!(body_of(&f, "plan@v0.2.md").contains("the person's edit"), "what the file said before the run changed it");
     assert!(body_of(&f, "plan@v0.3.md").contains("the run's edit") && body_of(&f, "plan.md").contains("the run's edit"));
-    assert_eq!(linked_paths(&f), ["plan@v0.3.md"], "the version made to keep the earlier edits is not linked");
+    assert_eq!(linked_paths(&f), ["plan.md"], "the prompt is linked to the file; which version is the run's is in the version's own record");
+    let made: Vec<_> = provenance::resolve(&f.core.conn, &f.project, "plan.md").unwrap().into_iter().filter(|v| v.prompt.is_some()).map(|v| v.version).collect();
+    assert_eq!(made, ["0.3"], "the version records, not the prompt's links, say which version a prompt made");
     assert_eq!(version_posts(&f).len(), 2, "both are noted in the thread");
 
     f.core.reload().unwrap();
@@ -1565,7 +1670,7 @@ fn an_edited_file_with_unpublished_edits_has_them_published_first_and_only_the_r
 fn a_runs_version_is_recorded_as_ai_with_its_prompt_and_run_and_the_note_links_the_prompt() {
     let mut f = Fixture::new();
     let dir = deliverables_folder(&f);
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("summary.md"), "# Summary\n\nAna wants SSO.\n").unwrap();
     fs::write(dir.join("chart.png"), b"\x89PNG").unwrap();
     after_run(&mut f, &baseline, true);
@@ -1593,7 +1698,7 @@ fn edits_kept_before_a_run_are_recorded_as_the_persons_and_not_linked_to_the_pro
     seed_published(&mut f, "plan.md", "# Plan\n\nfirst text\n");
     let dir = deliverables_folder(&f);
     fs::write(dir.join("plan.md"), "# Plan\n\nthe person's edit\n").unwrap();
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("plan.md"), "# Plan\n\nthe run's edit\n").unwrap();
     after_run(&mut f, &baseline, true);
 
@@ -1602,7 +1707,7 @@ fn edits_kept_before_a_run_are_recorded_as_the_persons_and_not_linked_to_the_pro
     assert_eq!((known[1].prompt.as_deref(), known[1].run.as_deref(), known[1].thread.as_deref()), (None, None, Some(f.thread.as_str())));
     assert_eq!(known[2].run.as_deref(), Some("run-1"));
     let notes = version_posts(&f);
-    assert!(notes.iter().any(|n| n == "Version 0.2 of **plan.md** keeps your earlier edits, published just before the prompt **Call summary** ran."), "{notes:?}");
+    assert!(notes.iter().any(|n| n == "Version 0.2 of **plan.md** was published."), "{notes:?}");
     assert!(notes.iter().any(|n| n == "Version 0.3 of **plan.md** was published from the prompt **Call summary**."), "{notes:?}");
 }
 
@@ -1613,7 +1718,7 @@ fn what_a_stopped_run_left_in_the_file_is_kept_as_that_runs_when_the_next_run_st
     let dir = deliverables_folder(&f);
 
     // A run that is stopped halfway: it changed the file, nothing is published, and its note lists the file.
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("plan.md"), "# Plan\n\nhalf of the run's text\n").unwrap();
     after_run(&mut f, &baseline, false);
     let at = ids::now();
@@ -1640,7 +1745,7 @@ fn what_a_stopped_run_left_in_the_file_is_kept_as_that_runs_when_the_next_run_st
     assert_eq!(provenance::stopped_run(&f.core.conn, &f.project, "plan.md").unwrap().map(|r| r.id), Some("run-stopped".to_string()));
 
     // The next run starts with that text in the file and no version holding it.
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("plan.md"), "# Plan\n\nthe next run's text\n").unwrap();
     let outcome = after_run(&mut f, &baseline, true);
     assert_eq!((outcome.kept.as_slice(), outcome.linked.as_slice()), (&["plan@v0.2.md".to_string()][..], &["plan@v0.3.md".to_string()][..]), "{outcome:?}");
@@ -1649,7 +1754,7 @@ fn what_a_stopped_run_left_in_the_file_is_kept_as_that_runs_when_the_next_run_st
     assert_eq!((known[1].author, known[1].run.as_deref(), known[1].prompt.as_deref()), ("ai", Some("run-stopped"), Some(f.prompt.id.as_str())), "not the person's");
     assert_eq!((known[2].author, known[2].run.as_deref()), ("ai", Some("run-1")));
     assert!(
-        version_posts(&f).iter().any(|n| n == "Version 0.2 of **plan.md** keeps what an earlier run of the prompt **Call summary** left in the file, published just before the prompt **Call summary** ran."),
+        version_posts(&f).iter().any(|n| n == "Version 0.2 of **plan.md** was published from the prompt **Call summary**."),
         "{:?}",
         version_posts(&f)
     );
@@ -1662,13 +1767,13 @@ fn a_file_that_was_never_published_has_what_it_said_published_first() {
     let dir = deliverables_folder(&f);
     fs::write(dir.join("draft.md"), "# Draft\n\nnotes the person wrote\n").unwrap();
     f.core.reload().unwrap();
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("draft.md"), "# Draft\n\nthe run's text\n").unwrap();
 
     let outcome = after_run(&mut f, &baseline, true);
     assert_eq!((outcome.kept.as_slice(), outcome.linked.as_slice()), (&["draft@v0.1.md".to_string()][..], &["draft@v0.2.md".to_string()][..]), "{outcome:?}");
     assert!(body_of(&f, "draft@v0.1.md").contains("notes the person wrote") && body_of(&f, "draft@v0.2.md").contains("the run's text"));
-    assert_eq!(linked_paths(&f), ["draft@v0.2.md"]);
+    assert_eq!(linked_paths(&f), ["draft.md"]);
 }
 
 #[test]
@@ -1679,7 +1784,7 @@ fn a_placeholder_counts_as_new_so_no_stub_is_published() {
     prompts::link_deliverable(&f.core.conn, &f.project, &f.thread, &f.prompt.id, "open-hello-world.md").unwrap();
     f.persist();
     let dir = deliverables_folder(&f);
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     fs::write(dir.join("open-hello-world.md"), "# Open hello world\n\nTwo sentences.\n").unwrap();
 
     let outcome = after_run(&mut f, &baseline, true);
@@ -1687,7 +1792,7 @@ fn a_placeholder_counts_as_new_so_no_stub_is_published() {
     assert_eq!(outcome.linked, ["open-hello-world@v0.1.md"]);
     assert_eq!(versions(&f, "open-hello-world.md"), ["0.1"]);
     assert!(body_of(&f, "open-hello-world@v0.1.md").contains("Two sentences."));
-    assert_eq!(linked_paths(&f), ["open-hello-world.md", "open-hello-world@v0.1.md"], "the link the prompt already had stays");
+    assert_eq!(linked_paths(&f), ["open-hello-world.md"], "the link the prompt already had stays, and the version adds none");
 }
 
 #[test]
@@ -1697,7 +1802,7 @@ fn a_run_that_did_not_finish_keeps_unpublished_edits_but_publishes_and_links_not
     seed_published(&mut f, "other.md", "# Other\n\nfirst text\n");
     let dir = deliverables_folder(&f);
     fs::write(dir.join("plan.md"), "# Plan\n\nthe person's edit\n").unwrap();
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
     for name in ["plan.md", "other.md", "new.md"] {
         fs::write(dir.join(name), "# Half\n\nhalf done\n").unwrap();
     }
@@ -1716,7 +1821,7 @@ fn a_deliverable_the_run_did_not_change_publishes_nothing_and_an_untouched_vault
     let mut f = Fixture::new();
     seed_published(&mut f, "plan.md", "# Plan\n\nfirst text\n");
     let dir = deliverables_folder(&f);
-    let baseline = Baseline::capture(&dir);
+    let baseline = Baseline::capture(&dir, &versions_folder(&f));
 
     let quiet = after_run(&mut f, &baseline, true);
     assert!(!quiet.reloaded && quiet.linked.is_empty() && quiet.kept.is_empty() && quiet.error.is_none(), "{quiet:?}");
@@ -1730,16 +1835,16 @@ fn a_deliverable_the_run_did_not_change_publishes_nothing_and_an_untouched_vault
 }
 
 #[test]
-fn a_prompt_that_linked_two_versions_of_a_file_counts_once_for_it() {
+fn a_prompt_that_made_two_versions_of_a_file_is_linked_to_it_once_and_counts_once() {
     let mut f = Fixture::new();
     seed_published(&mut f, "plan.md", "# Plan\n\nfirst text\n");
     let dir = deliverables_folder(&f);
     for text in ["second text", "third text"] {
-        let baseline = Baseline::capture(&dir);
+        let baseline = Baseline::capture(&dir, &versions_folder(&f));
         fs::write(dir.join("plan.md"), format!("# Plan\n\n{text}\n")).unwrap();
         after_run(&mut f, &baseline, true);
     }
-    assert_eq!(linked_paths(&f), ["plan@v0.2.md", "plan@v0.3.md"]);
+    assert_eq!(linked_paths(&f), ["plan.md"], "one link, however many versions the prompt made");
     assert_eq!(deliverables::get(&f.core.conn, &f.project, "plan.md").unwrap().prompts.len(), 1);
     assert_eq!(deliverables::list(&f.core.conn, &f.project).unwrap().iter().find(|d| d.path == "plan.md").unwrap().prompt_count, 1);
 
@@ -1749,7 +1854,7 @@ fn a_prompt_that_linked_two_versions_of_a_file_counts_once_for_it() {
 }
 
 #[test]
-fn a_run_that_creates_a_deliverable_ends_with_its_first_version_linked_to_the_prompt() {
+fn a_run_that_creates_a_deliverable_ends_with_its_first_version_published_and_the_prompt_linked_to_the_deliverable() {
     // The whole path, with the vault as the host: run, write a file as the program would, finish.
     struct VaultHost {
         core: Mutex<Core>,
@@ -1790,7 +1895,7 @@ fn a_run_that_creates_a_deliverable_ends_with_its_first_version_linked_to_the_pr
     assert!(done.output.contains("Published, and linked to the prompt: summary@v0.1.md"), "{}", done.output);
     let core = lock(&host.core);
     let linked = prompts::get(&core.conn, &project, &thread, &prompt_id).unwrap().deliverables;
-    assert_eq!(linked.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(), ["summary@v0.1.md"]);
+    assert_eq!(linked.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(), ["summary.md"], "the prompt is linked to the deliverable, not to its first version");
 
     // And the thread has its note about the run, as a file and on the prompt, by the same id the run had.
     let noted = prompts::get(&core.conn, &project, &thread, &prompt_id).unwrap().runs;
@@ -1854,6 +1959,7 @@ fn helper_spec(role: &str, stdin: &str, cwd: &Path) -> SpawnSpec {
     }
 }
 
+#[cfg_attr(unix, expect(unsafe_code, reason = "the standard library can't ask whether a process exists"))]
 fn alive(pid: u32) -> bool {
     #[cfg(unix)]
     {

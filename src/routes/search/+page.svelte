@@ -16,7 +16,7 @@
 			: `${threadUrl(hit.projectSlug, hit.threadSlug)}?item=${DOM_PREFIX[hit.kind]}-${hit.id}`;
 </script>
 
-<svelte:head><title>Search · Ledger</title></svelte:head>
+<svelte:head><title>Search | Ledger</title></svelte:head>
 
 <div class="header-wrap flat">
 	<div class="header-top">
@@ -24,9 +24,9 @@
 			<h1>Search</h1>
 			<div class="sub">
 				{#if data.q}
-					{plural(data.hits.length, 'result')} for “{data.q}”
+					{plural(data.hits.length, 'result')} for "{data.q}"
 				{:else}
-					Type in the search box on the left.
+					Type in the search box at the top: results show as you type.
 				{/if}
 			</div>
 		</div>
@@ -36,7 +36,7 @@
 <div class="page">
 	<div class="page-inner">
 		{#if data.q && data.hits.length === 0}
-			<div class="empty-state"><h1>Nothing found</h1><p>No post, prompt, feedback or deliverable mentions “{data.q}”.</p></div>
+			<div class="empty-state"><h1>Nothing found</h1><p>No post, prompt, feedback or deliverable mentions "{data.q}".</p></div>
 		{/if}
 		<div class="hit-list">
 			{#each data.hits as hit (hit.kind + hit.projectSlug + hit.id)}

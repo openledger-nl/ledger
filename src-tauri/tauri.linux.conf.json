@@ -2,8 +2,24 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "linux": {
-      "deb": { "desktopTemplate": "linux/ledger.desktop" },
-      "rpm": { "desktopTemplate": "linux/ledger.desktop" }
+      "deb": {
+        "desktopTemplate": "linux/ledger.desktop"
+      },
+      "rpm": {
+        "desktopTemplate": "linux/ledger.desktop"
+      }
     }
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Ledger",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 480,
+        "minHeight": 520,
+        "dragDropEnabled": true
+      }
+    ]
   }
 }

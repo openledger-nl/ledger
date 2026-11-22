@@ -44,7 +44,7 @@ async function catchUp(id: string) {
 function announce(known: TrackedRun | undefined, run: ClaudeRun) {
 	// Only a run seen going and then ending is news: not one that was already over when the window found out.
 	if (known?.run.status !== 'running' || run.status === 'running') return;
-	const title = `“${run.promptTitle || 'prompt'}”`;
+	const title = `"${run.promptTitle || 'prompt'}"`;
 	if (run.status === 'finished') {
 		const added = run.linked.length;
 		toast(`Claude Code finished ${title}${added ? `: ${added} version${added === 1 ? '' : 's'} published and linked to the prompt` : ''}`);
@@ -105,13 +105,13 @@ export async function autoRunNewPrompt(project: string, thread: string, prompt: 
 	}
 	if (!settings.autoRun) return;
 	ensureClaudeRuns();
-	const title = `“${prompt.title || 'prompt'}”`;
+	const title = `"${prompt.title || 'prompt'}"`;
 	try {
 		const shown = await claudeCodeApi.preview(project, thread, prompt.id);
 		trackRun(await claudeCodeApi.start(project, thread, prompt.id, shown.prompt));
 		toast(`Started ${title} in Claude Code`);
 	} catch (e) {
-		toast(`${title} was created, but Claude Code didn’t start: ${e instanceof Error ? e.message : String(e)}`, true);
+		toast(`${title} was created, but Claude Code didn't start: ${e instanceof Error ? e.message : String(e)}`, true);
 	}
 }
 

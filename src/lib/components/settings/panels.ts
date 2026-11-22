@@ -2,40 +2,38 @@
 // and the search looks through all of it, so a new panel is added here once and is found both ways.
 
 import type { Component } from 'svelte';
-import CalendarRange from '@lucide/svelte/icons/calendar-range';
-import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 import Sparkles from '@lucide/svelte/icons/sparkles';
 import Palette from '@lucide/svelte/icons/palette';
 import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 import Wrench from '@lucide/svelte/icons/wrench';
 import Info from '@lucide/svelte/icons/info';
+import Keyboard from '@lucide/svelte/icons/keyboard';
 import ScrollText from '@lucide/svelte/icons/scroll-text';
 import AboutSettings from './AboutSettings.svelte';
 import CaptureSettings from './CaptureSettings.svelte';
 import ClaudeCodeSettings from './ClaudeCodeSettings.svelte';
 import DashboardSettings from './DashboardSettings.svelte';
-import EncryptionSettings from './EncryptionSettings.svelte';
-import GitHubSettings from './GitHubSettings.svelte';
 import LogSettings from './LogSettings.svelte';
 import OrderSettings from './OrderSettings.svelte';
+import PortflowSettings from './PortflowSettings.svelte';
 import ScreenshotSettings from './ScreenshotSettings.svelte';
-import SemesterSettings from './SemesterSettings.svelte';
-import TemplateSettings from './TemplateSettings.svelte';
+import SidebarFoldSettings from './SidebarFoldSettings.svelte';
+import ShortcutSettings from './ShortcutSettings.svelte';
 import ThemeSettings from './ThemeSettings.svelte';
 import TrelloSettings from './TrelloSettings.svelte';
 import UpdateSettings from './UpdateSettings.svelte';
+import VaultEncryption from './VaultEncryption.svelte';
 import VaultSettings from './VaultSettings.svelte';
 import YellSettings from './YellSettings.svelte';
 
-export type GroupId = 'features' | 'semesters' | 'templates' | 'visual' | 'sync' | 'tools' | 'about' | 'logs';
+export type GroupId = 'features' | 'visual' | 'sync' | 'tools' | 'shortcuts' | 'about' | 'logs';
 
 export const groups: { id: GroupId; label: string; icon: Component }[] = [
 	{ id: 'features', label: 'Features', icon: Sparkles },
-	{ id: 'semesters', label: 'Semesters', icon: CalendarRange },
-	{ id: 'templates', label: 'Templates', icon: LayoutTemplate },
 	{ id: 'visual', label: 'Visual', icon: Palette },
-	{ id: 'sync', label: 'Sync & external', icon: RefreshCw },
+	{ id: 'sync', label: 'Vault & external', icon: RefreshCw },
 	{ id: 'tools', label: 'Tools', icon: Wrench },
+	{ id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
 	{ id: 'about', label: 'About', icon: Info },
 	{ id: 'logs', label: 'Logs', icon: ScrollText }
 ];
@@ -53,14 +51,14 @@ export interface Panel {
 
 export const panels: Panel[] = [
 	{ id: 'dashboard', group: 'features', title: 'Contribution graph', keywords: 'dashboard home activity heatmap squares days', component: DashboardSettings },
-	{ id: 'semesters', group: 'semesters', title: 'Semesters', keywords: 'semester sprint sprints vacation holiday break weeks preset nj26 plan calendar half year', component: SemesterSettings },
-	{ id: 'templates', group: 'templates', title: 'Templates', keywords: 'template prompt guiding questions skeleton deliverable shared every project global', component: TemplateSettings },
 	{ id: 'theme', group: 'visual', title: 'Theme', keywords: 'colours colors dark light night appearance look accent', component: ThemeSettings },
+	{ id: 'sidebar', group: 'visual', title: 'Sidebar', keywords: 'sidebar hide fold collapse rail icons narrow half screen window resize minimise minimize', component: SidebarFoldSettings },
 	{ id: 'order', group: 'visual', title: 'Order', keywords: 'sort newest oldest first lists posts threads feedback versions', component: OrderSettings },
-	{ id: 'vault', group: 'sync', title: 'Vault', keywords: 'folder location path obsidian markdown reload disk files switch', component: VaultSettings },
-	{ id: 'github', group: 'sync', title: 'Sync to GitHub', keywords: 'repository repo branch access token private push pull status sync now', component: GitHubSettings },
-	{ id: 'encryption', group: 'sync', title: 'Encryption', keywords: 'encrypt key recovery aes secret import export generate', component: EncryptionSettings },
+	{ id: 'vault', group: 'sync', title: 'Vault', keywords: 'folder location path obsidian markdown reload disk files switch open another vault picker move cloud onedrive google drive dropbox icloud nextcloud backup', component: VaultSettings },
+	{ id: 'encryption', group: 'sync', title: 'Encryption', keywords: 'encrypt encrypted encryption passphrase password recovery key lock unlock keychain copy secret private', component: VaultEncryption },
+	{ id: 'portflow', group: 'sync', title: 'Portflow', keywords: 'portflow fontys portfolio canvas drieam feedback coach teacher learning outcomes evidence collection semester sign in', component: PortflowSettings },
 	{ id: 'trello', group: 'sync', title: 'Sync with Trello', keywords: 'trello cards board tasks stories api key token person', component: TrelloSettings },
+	{ id: 'shortcuts', group: 'shortcuts', title: 'Keyboard shortcuts', keywords: 'keyboard shortcut shortcuts hotkey hotkeys keys bindings command palette ctrl p commands', component: ShortcutSettings },
 	{ id: 'screenshots', group: 'tools', title: 'Screenshots', keywords: 'screenshot hotkey shortcut flameshot capture picture tool command print', component: ScreenshotSettings },
 	{ id: 'claude', group: 'tools', title: 'Claude Code', keywords: 'claude ai prompt run model permission guard rails cli program auto edit plan read', component: ClaudeCodeSettings },
 	{ id: 'about', group: 'about', title: 'About Ledger', keywords: 'about version info project source code releases changelog machine paths config build', component: AboutSettings },

@@ -9,10 +9,11 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use tempfile::tempdir;
 
+use crate::devupdates::{BranchUpdate, BuildState, Commit};
 use crate::settings::{self, UpdateConfig};
 use crate::updates::{
-    Activity, Due, EVERY, FIRST_CHECK, Readiness, RunsChoice, SYNC_WAIT, install_failure, is_major, is_signature_error, key_problem, readiness,
-    simulated_notes, simulated_version, split_notes, update_info, when_due,
+    Activity, Announced, DEV_POLL, Due, EVERY, FIRST_CHECK, InstallStep, Readiness, RunsChoice, SYNC_WAIT, install_failure, is_major, is_signature_error,
+    key_problem, readiness, split_notes, update_info, when_due,
 };
 
 fn idle() -> Activity {
@@ -30,26 +31,9 @@ fn with_nothing_going_on_it_installs_at_once() {
 
 #[test]
 fn a_running_sync_is_always_waited_for() {
-    let github = Activity { github_syncing: true, ..idle() };
-    let Readiness::Wait { waiting_for } = readiness(&github, RunsChoice::Ask) else { panic!("should wait") };
-    assert_eq!(waiting_for, ["the GitHub sync to finish"]);
-
     let trello = Activity { trello_syncing: true, ..idle() };
     let Readiness::Wait { waiting_for } = readiness(&trello, RunsChoice::Stop) else { panic!("should wait") };
     assert_eq!(waiting_for, ["the Trello sync to finish"]);
-
-    let both = Activity { github_syncing: true, trello_syncing: true, ..idle() };
-    let Readiness::Wait { waiting_for } = readiness(&both, RunsChoice::Wait) else { panic!("should wait") };
-    assert_eq!(waiting_for.len(), 2);
-}
-
-#[test]
-fn changes_not_yet_pushed_dont_hold_it_up_but_are_mentioned() {
-    // They are in the vault's files already, and the sync Ledger starts with pushes them.
-    let pending = Activity { github_pending: true, ..idle() };
-    let Readiness::Ready { notes } = readiness(&pending, RunsChoice::Ask) else { panic!("should be ready") };
-    assert_eq!(notes.len(), 1);
-    assert!(notes[0].contains("aren't on GitHub yet"), "{notes:?}");
 }
 
 #[test]
@@ -57,18 +41,18 @@ fn claude_code_runs_are_the_persons_call() {
     let runs = Activity { runs: vec!["Call summary".into(), "Plan".into()], ..idle() };
     // Nobody has said yet: ask, naming the prompts, even while a sync also runs.
     assert_eq!(readiness(&runs, RunsChoice::Ask), Readiness::Ask { runs: vec!["Call summary".into(), "Plan".into()] });
-    let syncing_too = Activity { github_syncing: true, ..runs.clone() };
+    let syncing_too = Activity { trello_syncing: true, ..runs.clone() };
     assert!(matches!(readiness(&syncing_too, RunsChoice::Ask), Readiness::Ask { .. }));
 
     // Wait for them, or for them to stop: either way it waits until they are over.
     let Readiness::Wait { waiting_for } = readiness(&runs, RunsChoice::Wait) else { panic!("should wait") };
-    assert_eq!(waiting_for, ["Claude Code to finish “Call summary” and “Plan”"]);
+    assert_eq!(waiting_for, ["Claude Code to finish \"Call summary\" and \"Plan\""]);
     let Readiness::Wait { waiting_for } = readiness(&runs, RunsChoice::Stop) else { panic!("should wait") };
-    assert_eq!(waiting_for, ["Claude Code to stop “Call summary” and “Plan”"]);
+    assert_eq!(waiting_for, ["Claude Code to stop \"Call summary\" and \"Plan\""]);
 
     let three = Activity { runs: vec!["A".into(), " ".into(), "C".into()], ..idle() };
     let Readiness::Wait { waiting_for } = readiness(&three, RunsChoice::Wait) else { panic!("should wait") };
-    assert_eq!(waiting_for, ["Claude Code to finish “A”, “a prompt” and “C”"]);
+    assert_eq!(waiting_for, ["Claude Code to finish \"A\", \"a prompt\" and \"C\""]);
 }
 
 #[test]
@@ -79,6 +63,40 @@ fn the_answer_reaches_the_window_tagged_by_state() {
     assert_eq!(json(Readiness::Ask { runs: vec!["p".into()] }), serde_json::json!({ "state": "ask", "runs": ["p"] }));
     let choice: RunsChoice = serde_json::from_str("\"stop\"").unwrap();
     assert_eq!(choice, RunsChoice::Stop);
+
+    // What a development build did with the commits is told the same way.
+    let step = InstallStep::Applied { commits: 3, head: "abc1234".into(), restart: true };
+    assert_eq!(
+        serde_json::to_value(step).unwrap(),
+        serde_json::json!({ "state": "applied", "commits": 3, "head": "abc1234", "restart": true })
+    );
+}
+
+#[test]
+fn the_window_is_told_what_kind_of_update_it_is() {
+    let release = Announced::Release(update_info("0.5.0", "0.4.2", None, None));
+    let json = serde_json::to_value(release).unwrap();
+    assert_eq!(json["kind"], "release");
+    assert_eq!(json["version"], "0.5.0");
+
+    let branch = Announced::Branch(BranchUpdate {
+        branch: "main".into(),
+        head: "abc1234".into(),
+        target: "f".repeat(40),
+        behind: 2,
+        commits: vec![Commit { hash: "def5678".into(), subject: "feat(ui): add a thing".into(), breaking: false }],
+        more: 1,
+        generation: 7,
+        restart: true,
+        build: BuildState::Building,
+        error: None,
+        dependencies: false,
+    });
+    let json = serde_json::to_value(branch).unwrap();
+    assert_eq!(json["kind"], "branch");
+    assert_eq!((json["branch"].as_str(), json["behind"].as_u64(), json["more"].as_u64(), json["generation"].as_u64()), (Some("main"), Some(2), Some(1), Some(7)));
+    assert_eq!((json["restart"].as_bool(), json["build"].as_str(), json["dependencies"].as_bool()), (Some(true), Some("building"), Some(false)));
+    assert_eq!(json["commits"][0]["subject"], "feat(ui): add a thing");
 }
 
 // ---- when a check is due -------------------------------------------------------------------------------------
@@ -88,6 +106,8 @@ fn checks_happen_soon_after_starting_then_every_few_hours_and_never_during_a_syn
     assert!(FIRST_CHECK.as_secs() < 60);
     assert!((2 * 3600..=12 * 3600).contains(&EVERY.as_secs()), "every few hours, not {EVERY:?}");
     assert!(SYNC_WAIT < EVERY);
+    // A development build reads its runner's state file (a small local file) often, so a change shows within moments.
+    assert!(DEV_POLL.as_secs() <= 2 && !DEV_POLL.is_zero());
 
     assert_eq!(when_due(true, false), Due::Check);
     assert_eq!(when_due(true, true), Due::AfterSync);
@@ -144,7 +164,7 @@ fn the_breaking_changes_are_taken_apart_from_the_other_notes() {
 
 #[test]
 fn the_notice_gets_the_notes_as_safe_html_with_the_breaking_changes_apart() {
-    let info = update_info("v1.0.0", "0.4.2", Some("2026-11-03T10:00:00Z"), Some(NOTES), false);
+    let info = update_info("v1.0.0", "0.4.2", Some("2026-11-03T10:00:00Z"), Some(NOTES));
     assert_eq!((info.version.as_str(), info.current_version.as_str()), ("1.0.0", "0.4.2"));
     assert!(info.major);
     assert_eq!(info.date.as_deref(), Some("2026-11-03T10:00:00Z"));
@@ -154,22 +174,10 @@ fn the_notice_gets_the_notes_as_safe_html_with_the_breaking_changes_apart() {
     assert!(info.notes_html.contains("<h3>Features</h3>"));
 
     // A minor release without notes, and notes that try to inject markup.
-    let plain = update_info("0.5.0", "0.4.2", Some(" "), None, false);
+    let plain = update_info("0.5.0", "0.4.2", Some(" "), None);
     assert!(!plain.major && plain.breaking_html.is_none() && plain.notes_html.is_empty() && plain.date.is_none());
-    let hostile = update_info("0.5.0", "0.4.2", None, Some("<script>alert(1)</script>\n\n[x](javascript:alert(1))"), false);
+    let hostile = update_info("0.5.0", "0.4.2", None, Some("<script>alert(1)</script>\n\n[x](javascript:alert(1))"));
     assert!(!hostile.notes_html.contains("<script>") && !hostile.notes_html.contains("javascript:"), "{}", hostile.notes_html);
-}
-
-#[test]
-fn a_development_build_pretends_a_minor_or_a_major_release() {
-    assert_eq!(simulated_version("0.4.0", false), "0.5.0");
-    assert_eq!(simulated_version("0.4.7", true), "1.0.0");
-    assert_eq!(simulated_version("v2.3.1-beta", false), "2.4.0");
-
-    let minor = update_info(&simulated_version("0.4.0", false), "0.4.0", None, Some(&simulated_notes(false)), true);
-    assert!(minor.simulated && !minor.major && minor.breaking_html.is_none());
-    let major = update_info(&simulated_version("0.4.0", true), "0.4.0", None, Some(&simulated_notes(true)), true);
-    assert!(major.major && major.breaking_html.is_some());
 }
 
 // ---- the key, and the config that ships ------------------------------------------------------------------------

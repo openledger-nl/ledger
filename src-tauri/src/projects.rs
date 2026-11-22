@@ -99,6 +99,7 @@ pub fn get(conn: &Connection, slug: &str) -> Result<ProjectView> {
         readme,
         thread_count: count("SELECT COUNT(*) FROM threads WHERE project_slug = ?1")?,
         deliverable_count: deliverables::count_live(conn, slug)?,
+        attachment_count: count("SELECT COUNT(*) FROM uploads WHERE project_slug = ?1")?,
         story_count: count("SELECT COUNT(*) FROM user_stories WHERE project_slug = ?1")?,
         task_count: count("SELECT COUNT(*) FROM tasks WHERE project_slug = ?1")?,
         open_task_count: backlog_done,

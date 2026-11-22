@@ -1,0 +1,9 @@
+// The TypeScript settings that are coming: `pnpm run check:warn` (scripts/check-warn.mjs) checks the code against them
+// and counts what they find, without failing. Once a count reaches 0 the setting moves to tsconfig.json.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // `list[i]` and `record[key]` may be undefined: say what happens then instead of assuming it never is.
+    "noUncheckedIndexedAccess": true
+  }
+}

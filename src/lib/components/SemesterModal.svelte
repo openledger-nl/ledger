@@ -16,8 +16,17 @@
 	// vacations and how many weeks of work each sprint is (the semester's length unless a sprint has its own), so
 	// they always fit. Only their names and goals are written by hand.
 
-	/** `semester` is null when making one; `existing` gives a new one a sensible first guess, unless a `preset` says what to start from. */
-	let { semester, existing, preset, onclose }: { semester: Semester | null; existing: Semester[]; preset?: SemesterDraft; onclose: () => void } = $props();
+	/**
+	 * `semester` is null when making one; `existing` gives a new one a sensible first guess, unless a `preset` says what
+	 * to start from. With `template`, it makes or changes a semester template (shared/templates/semesters) instead.
+	 */
+	let {
+		semester,
+		existing,
+		preset,
+		template = false,
+		onclose
+	}: { semester: Semester | null; existing: Semester[]; preset?: SemesterDraft; template?: boolean; onclose: () => void } = $props();
 
 	/** The form's starting values, read once (the modal is mounted fresh each time); edits stay local until Save. */
 	function opening() {
@@ -92,27 +101,33 @@
 	async function save() {
 		saving = true;
 		const draft = { name, start, end, sprintWeeks: weeks, notes, sprints, vacations };
-		const saved = await attempt(() => (semester ? api.updateSemester(semester.id, draft) : api.createSemester(draft)));
+		const saved = await attempt(() =>
+			template ? api.saveSemesterTemplate(semester?.id ?? null, draft) : semester ? api.updateSemester(semester.id, draft) : api.createSemester(draft)
+		);
 		saving = false;
 		if (!saved) return;
-		toast(semester ? 'Semester saved' : `${saved.name} added, with ${saved.sprints.length} sprints`);
+		toast(semester ? (template ? 'Template saved' : 'Semester saved') : `${saved.name} added, with ${saved.sprints.length} sprints`);
 		await refresh();
 		onclose();
 	}
 
 	async function remove() {
 		if (!semester) return;
-		const ok = await confirmDialog({ title: `Delete “${semester.name}”?`, message: 'Its sprints and vacations go with it. Nothing you made in it is touched.', confirmLabel: 'Delete semester', danger: true });
-		if (!ok || (await attempt(() => api.deleteSemester(semester.id))) === undefined) return;
+		const ok = await confirmDialog(
+			template
+				? { title: `Delete the template "${semester.name}"?`, message: 'Semesters made from it stay as they are.', confirmLabel: 'Delete template', danger: true }
+				: { title: `Delete "${semester.name}"?`, message: 'Its sprints and vacations go with it. Nothing you made in it is touched.', confirmLabel: 'Delete semester', danger: true }
+		);
+		if (!ok || (await attempt(() => (template ? api.deleteSemesterTemplate(semester.id) : api.deleteSemester(semester.id)))) === undefined) return;
 		await refresh();
 		onclose();
 	}
 </script>
 
-<Modal title={semester ? 'Edit semester' : 'New semester'} wide {onclose}>
+<Modal title={`${semester ? 'Edit' : 'New'} semester${template ? ' template' : ''}`} wide {onclose}>
 	<label class="field">
 		Name
-		<input bind:value={name} placeholder="e.g. Semester 1 · 2026–2027" />
+		<input bind:value={name} placeholder="e.g. Semester 1 | 2026-2027" />
 	</label>
 
 	<div class="sem-dates">
@@ -184,8 +199,8 @@
 					</div>
 					<span class="sprint-span">
 						{spanLabel(s.start, s.end)}
-						{#if worked !== length(s.start, s.end)}<span class="vac-note"> · incl. vacation</span>{/if}
-						{#if isLast && worked !== lengthOf(i) * 7}<span class="vac-note"> · {worked} days of work</span>{/if}
+						{#if worked !== length(s.start, s.end)}<span class="vac-note"> | incl. vacation</span>{/if}
+						{#if isLast && worked !== lengthOf(i) * 7}<span class="vac-note"> | {worked} days of work</span>{/if}
 					</span>
 					<input class="sprint-goal" bind:value={() => goals[i] ?? '', (v) => (goals[i] = v)} aria-label="Goal of sprint {i + 1}" placeholder="Goal (optional)" />
 				</div>
@@ -195,7 +210,7 @@
 
 	<label class="field">
 		Notes
-		<textarea bind:value={notes} rows="2" placeholder="Exam weeks, deadlines, what this half is about…"></textarea>
+		<textarea bind:value={notes} rows="2" placeholder="Exam weeks, deadlines, what this half is about"></textarea>
 	</label>
 
 	{#snippet footer()}
@@ -203,6 +218,6 @@
 		<span class="spacer-h"></span>
 		{#if problem}<span class="hint error-text">{problem}</span>{/if}
 		<button class="btn ghost" onclick={onclose}>Cancel</button>
-		<button class="btn primary" onclick={save} disabled={saving || !!problem}>{semester ? 'Save' : 'Add semester'}</button>
+		<button class="btn primary" onclick={save} disabled={saving || !!problem}>{semester ? 'Save' : template ? 'Add template' : 'Add semester'}</button>
 	{/snippet}
 </Modal>

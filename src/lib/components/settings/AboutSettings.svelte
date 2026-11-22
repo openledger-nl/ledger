@@ -29,8 +29,8 @@
 	</div>
 	<p class="sub" style="margin:0">
 		Keep your thoughts separate from the artifacts you use to prove what you did. Write in <b>threads</b>, ask for <b>deliverables</b> and give feedback
-		on them, and plan the work on a <b>board</b>, all inside <b>projects</b>. Everything is plain markdown in a folder you own, optionally mirrored to a
-		private GitHub repository. AI can read your thoughts but never writes them.
+		on them, and plan the work on a <b>board</b>, all inside <b>projects</b>. Everything is in a folder you own, which your cloud storage keeps in sync
+		and backs up. AI can read your thoughts but never writes them.
 	</p>
 	<div class="row-end" style="justify-content:flex-start">
 		{#each links as l (l.href)}
@@ -42,7 +42,7 @@
 		<h3 style="font-size:14px">This machine</h3>
 		<div class="kv">
 			<dt>Build</dt>
-			<dd>Ledger {settings.version}{#if about} · Tauri {about.tauriVersion} · {about.os} {about.arch}{/if}</dd>
+			<dd>Ledger {settings.version}{#if about} | Tauri {about.tauriVersion} | {about.os} {about.arch}{/if}</dd>
 			<dt>Vault</dt>
 			<dd class="mono">{settings.vaultPath}</dd>
 			<dt>Settings</dt>

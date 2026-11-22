@@ -18,8 +18,8 @@ function load(): Order {
 
 /**
  * Newest first by default. It decides the posts of a thread (notes, prompts, feedback and uploads together), the
- * threads in the sidebar and on a project's page, the feedback and the versions of a deliverable, and the
- * "Produced by" window beside it.
+ * threads in the sidebar and on a project's page, the feedback and the versions of a deliverable, the "Produced by"
+ * window beside it, and a project's attachments.
  */
 export const listOrder = $state<{ order: Order }>({ order: load() });
 

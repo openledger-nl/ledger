@@ -1,0 +1,6 @@
+{
+  "path": ["src", "src-tauri/src"],
+  "format": ["rust", "typescript", "javascript", "svelte"],
+  "ignore": ["**/stories/**", "**/tests/**", "**/tests*.rs", "**/*.test.*", "**/*.spec.*"],
+  "reporters": ["console"]
+}

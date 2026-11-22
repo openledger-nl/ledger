@@ -4,7 +4,7 @@
   "version": "0.8.0",
   "identifier": "nl.openledger.ledger",
   "build": {
-    "beforeDevCommand": "pnpm run dev",
+    "beforeDevCommand": "pnpm run dev:web",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm run build",
     "frontendDist": "../build"

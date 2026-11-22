@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { api } from '$lib/api';
-	import { mimeOf } from '$lib/actions';
+	import { shownMimeOf } from '$lib/actions';
 
 	/** An image from a project's folder, read through the backend (the webview can't open vault files itself). */
 	let { project, path, alt = '', cls = 'file-thumb' }: { project: string; path: string; alt?: string; cls?: string } = $props();
@@ -20,10 +20,10 @@
 		let stale = false;
 		src = null;
 		failed = false;
-		api.readProjectFile(p, f)
+		api.readProjectImage(p, f)
 			.then((bytes) => {
 				if (stale) return;
-				url = URL.createObjectURL(new Blob([bytes], { type: mimeOf(f) }));
+				url = URL.createObjectURL(new Blob([bytes], { type: shownMimeOf(f) }));
 				src = url;
 			})
 			.catch(() => {

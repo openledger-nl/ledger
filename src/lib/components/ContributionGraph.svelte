@@ -1,8 +1,7 @@
 <script lang="ts">
-	import Wrench from '@lucide/svelte/icons/wrench';
 	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
-	import { dayKey, LOCALE, plural } from '$lib/format';
-	import { nearestSemester, parseDay } from '$lib/semesters';
+	import { dayKey, LOCALE, numericDay, plural, weekday } from '$lib/format';
+	import { nearestSemester, parseDay, toDay } from '$lib/semesters';
 	import type { ActivityEvent, ActivityKind, ProjectSummary, Semester } from '$lib/types';
 
 	// A stretch of days, a square each, shaded by how much was made that day: like GitHub's contribution graph.
@@ -38,8 +37,9 @@
 	const keyOf = (d: Date) => dayKey(d.toISOString());
 	const today = addDays(new Date(), 0);
 	const monthFormat = new Intl.DateTimeFormat(LOCALE, { month: 'short' });
-	const longDate = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-	const shortDate = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' });
+	// Days are written the one way the app writes them: "Wednesday 4-11-2026", "4-11-2026" (format.ts).
+	const longDate = { format: (d: Date) => `${weekday(toDay(d))} ${numericDay(toDay(d))}` };
+	const shortDate = { format: (d: Date) => numericDay(toDay(d)) };
 
 	type Day = { date: Date; key: string; kinds: Partial<Record<ActivityKind, number>>; total: number; level: number; today: boolean; future: boolean };
 
@@ -164,7 +164,7 @@
 				const n = d.kinds[k] as number;
 				return `${n} ${KIND[k][n === 1 ? 0 : 1]}`;
 			})
-			.join(' · ');
+			.join(' | ');
 
 	// The hover card: placed over the hovered day, inside the graph's box.
 	let box: HTMLElement | undefined = $state();
@@ -201,12 +201,11 @@
 	<div class="header-top">
 		<h2>
 			{#if range}{total.toLocaleString(LOCALE)} {total === 1 ? 'contribution' : 'contributions'}
-				{periodLabel}{:else}Contributions{/if}{#if project}<span class="contrib-in"> · {projects.find((p) => p.slug === project)?.name}</span>{/if}
+				{periodLabel}{:else}Contributions{/if}{#if project}<span class="contrib-in"> | {projects.find((p) => p.slug === project)?.name}</span>{/if}
 		</h2>
 		<div class="contrib-filters">
 			<Dropdown bind:value={project} options={projectOptions} label="Project" align="end" />
 			<Dropdown bind:value={period} options={periodOptions} label="Period" align="end" />
-			<a class="btn small" href="/settings/semesters" title="Set up the semesters this graph follows"><Wrench size={14} />Semesters</a>
 		</div>
 	</div>
 
@@ -214,7 +213,7 @@
 		<div class="contrib-empty">
 			<b>No semester set up yet</b>
 			<p class="sub">Set one up to follow it here, day by day, or pick a year above.</p>
-			<a class="btn primary small" href="/settings/semesters">Set up a semester</a>
+			<a class="btn primary small" href="/semesters">Set up a semester</a>
 		</div>
 	{:else}
 		<div class="contrib-scroll" bind:this={scroller}>
@@ -269,7 +268,7 @@
 	{#if tip}
 		<div class="contrib-tip" style="left: {tip.x}px; top: {tip.y}px" role="tooltip">
 			{#if tip.day.future}
-				<b>Still to come</b> · {longDate.format(tip.day.date)}
+				<b>Still to come</b> | {longDate.format(tip.day.date)}
 			{:else}
 				<b>{tip.day.total ? plural(tip.day.total, 'contribution') : tip.day.today ? 'No contributions yet' : 'No contributions'}</b>
 				{tip.day.today ? 'today,' : 'on'} {longDate.format(tip.day.date)}

@@ -49,7 +49,7 @@
 	<h2>Screenshots</h2>
 	<p class="sub" style="margin:0">
 		Press the shortcut anywhere to take a screenshot. Ledger then comes forward with it, ready to attach to the thread you have open (or one you
-		pick), and saves it in that project’s attachments folder.
+		pick), and saves it in that project's attachments folder.
 	</p>
 	<div class="form-row">
 		<div class="field grow">
@@ -94,14 +94,14 @@
 			<summary><ChevronRight size={14} class="disclosure" />Setting up Flameshot</summary>
 			{#if screenshot.platform === 'linux'}
 				<ol>
-					<li>Install it: <code>sudo apt install flameshot</code>, your distribution’s package manager, or flameshot.org.</li>
+					<li>Install it: <code>sudo apt install flameshot</code>, your distribution's package manager, or flameshot.org.</li>
 					<li>Click <b>Use Flameshot</b> (it fills in <code>flameshot gui --raw</code>) and <b>Save</b>.</li>
 					<li>Press the shortcut above. Flameshot opens: drag out an area, draw on it, and press <b>Enter</b>. Esc cancels.</li>
 					<li>
-						Took one with Flameshot’s own key? In Flameshot’s editor press <b>Ctrl+O</b> (Open with) and choose <b>Ledger</b>. That works when Ledger is
+						Took one with Flameshot's own key? In Flameshot's editor press <b>Ctrl+O</b> (Open with) and choose <b>Ledger</b>. That works when Ledger is
 						installed from its .deb or .rpm package.
 					</li>
-					<li>Flameshot usually has the Print key. Keep Ledger’s shortcut on a different key.</li>
+					<li>Flameshot usually has the Print key. Keep Ledger's shortcut on a different key.</li>
 				</ol>
 			{:else if screenshot.platform === 'windows'}
 				<ol>
@@ -109,16 +109,16 @@
 					<li>Click <b>Use Flameshot</b> and <b>Save</b>. Installed somewhere else? Change the path in the command.</li>
 					<li>Press the shortcut above. Flameshot opens: drag out an area, draw on it, and press <b>Ctrl+S</b>. Esc cancels.</li>
 					<li>
-						Took one with Flameshot’s own key? In Flameshot’s editor press <b>Ctrl+O</b> (Open with), choose <b>More apps</b> → <b>Look for another
-						app on this PC</b> and pick <code>Ledger.exe</code>. Ledger doesn’t register itself for pictures on Windows, so it never takes over
+						Took one with Flameshot's own key? In Flameshot's editor press <b>Ctrl+O</b> (Open with), choose <b>More apps</b> > <b>Look for another
+						app on this PC</b> and pick <code>Ledger.exe</code>. Ledger doesn't register itself for pictures on Windows, so it never takes over
 						your picture viewer.
 					</li>
-					<li>Flameshot usually has the Print key. Keep Ledger’s shortcut on a different key.</li>
+					<li>Flameshot usually has the Print key. Keep Ledger's shortcut on a different key.</li>
 				</ol>
 			{:else}
 				<ol>
 					<li>
-						No install needed: <b>Use macOS Screenshot</b> runs the system’s own picker (Space switches to a window, Esc cancels). No drawing,
+						No install needed: <b>Use macOS Screenshot</b> runs the system's own picker (Space switches to a window, Esc cancels). No drawing,
 						and macOS may ask once to let Ledger record the screen.
 					</li>
 					<li>
@@ -126,7 +126,7 @@
 						Screen Recording permission, then click <b>Use Flameshot</b> and <b>Save</b>.
 					</li>
 					<li>Press the shortcut above, drag out an area, draw on it, and press <b>Cmd+S</b>. Esc cancels.</li>
-					<li>Any PNG can also be sent to Ledger from Finder: right-click → Open With → Ledger.</li>
+					<li>Any PNG can also be sent to Ledger from Finder: right-click > Open With > Ledger.</li>
 				</ol>
 			{/if}
 		</details>

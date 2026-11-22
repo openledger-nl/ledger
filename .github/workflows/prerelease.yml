@@ -1,0 +1,151 @@
+# A pre-release to try before it ships: push any branch to `alpha` (`git push -f origin HEAD:alpha`) and this builds
+# the next version as vX.Y.Z-alpha.N (N is this workflow's run number) on Windows, macOS and Linux and publishes it as
+# a GitHub pre-release, with the same signed installers and latest.json as a release.
+#
+# Unlike release.yml it changes nothing in the repository: the version is written in each runner only, CHANGELOG.md is
+# left alone, and the only thing pushed is the vX.Y.Z-alpha.N tag that publishing the pre-release creates
+# (scripts/release.mjs ignores such tags). Installed copies never offer an alpha: they ask for
+# releases/latest/download/latest.json, and "latest" skips pre-releases and drafts. An alpha you install yourself is
+# offered the real X.Y.Z once it is out.
+name: Pre-release
+
+on:
+  push:
+    branches: [alpha]
+
+concurrency:
+  group: prerelease
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.version.outputs.released }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      release_id: ${{ steps.draft.outputs.id }}
+      notes: ${{ steps.draft.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the whole history and its tags, to find the last release
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Work out the version
+        id: version
+        run: node scripts/release.mjs --write --pre "alpha.${{ github.run_number }}"
+
+      # The build jobs take these instead of working the version out again.
+      - name: Keep the version files
+        if: steps.version.outputs.released == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: version
+          path: |
+            package.json
+            src-tauri/tauri.conf.json
+            src-tauri/Cargo.toml
+            src-tauri/Cargo.lock
+          retention-days: 1
+
+      # A draft until every platform is built; publishing it creates the tag on this commit.
+      - name: Create the pre-release as a draft
+        id: draft
+        if: steps.version.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" -f name="Ledger $TAG" \
+            -F body=@.release-notes.md -F draft=true -F prerelease=true --jq .id)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          {
+            echo 'notes<<LEDGER_RELEASE_NOTES_END'
+            cat .release-notes.md
+            echo 'LEDGER_RELEASE_NOTES_END'
+          } >> "$GITHUB_OUTPUT"
+
+  # The same builds as release.yml's; keep the two in step.
+  build:
+    name: Build (${{ matrix.name }})
+    needs: prepare
+    if: needs.prepare.outputs.released == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            runner: windows-latest
+            args: --bundles nsis
+          - name: macOS
+            runner: macos-latest
+            args: --target universal-apple-darwin
+          - name: Linux
+            runner: ubuntu-22.04
+            args: ''
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Take the pre-release version
+        uses: actions/download-artifact@v8
+        with:
+          name: version
+
+      - name: Libraries Tauri needs on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev xdg-utils
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build, sign and upload to the draft pre-release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        with:
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseDraft: true
+          prerelease: true
+          releaseBody: ${{ needs.prepare.outputs.notes }}
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          retryAttempts: 1
+          args: --config src-tauri/tauri.release.conf.json ${{ matrix.args }}
+
+  publish:
+    name: Publish the pre-release
+    needs: [prepare, build]
+    if: needs.prepare.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish as a pre-release, never as latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+        run: gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false -F prerelease=true -f make_latest=false --silent

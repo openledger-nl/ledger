@@ -11,8 +11,11 @@
 // Commits that aren't conventional don't count; with none that do, there is no release. What counts is defined in
 // scripts/conventional.mjs, which the pull request title check (scripts/pr-title.mjs) uses too.
 //
-// usage: node scripts/release.mjs            show the next version and its notes, change nothing
-//        node scripts/release.mjs --write    write them (what CI does)
+// usage: node scripts/release.mjs                          show the next version and its notes, change nothing
+//        node scripts/release.mjs --write                  write them (what CI does)
+//        node scripts/release.mjs --write --pre alpha.7    a pre-release of the next version (1.0.0-alpha.7) for
+//                                                          .github/workflows/prerelease.yml: the version files only,
+//                                                          CHANGELOG.md stays as it is
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import { BREAKING_FOOTER, RELEASE_SCOPE, parseHeader } from './conventional.mjs';
@@ -21,11 +24,19 @@ const RANK = { patch: 1, minor: 2, major: 3 };
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 const write = process.argv.includes('--write');
+const preIndex = process.argv.indexOf('--pre');
+const pre = preIndex === -1 ? '' : (process.argv[preIndex + 1] ?? '');
+if (preIndex !== -1 && !/^[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$/.test(pre)) {
+	console.error(`--pre needs a pre-release name such as alpha.7, not "${pre}"`);
+	process.exit(1);
+}
 
 // ---- where we start from
 let lastTag = '';
 try {
-	lastTag = git('describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*.[0-9]*.[0-9]*');
+	// Pre-release tags (v1.0.0-alpha.7) are left out: they aren't releases, and once their branch is merged they would
+	// otherwise be the last tag main can reach.
+	lastTag = git('describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*.[0-9]*.[0-9]*', '--exclude', '*-*');
 } catch {
 	// No release yet: every commit counts, from the version the files hold now.
 }
@@ -68,8 +79,9 @@ if (!bump) {
 
 // ---- the next version
 const [major, minor, patch] = current.split('.').map(Number);
-const next =
+const release =
 	bump === 'major' ? `${major + 1}.0.0` : bump === 'minor' ? `${major}.${minor + 1}.0` : `${major}.${minor}.${patch + 1}`;
+const next = pre ? `${release}-${pre}` : release;
 
 // ---- release notes, grouped
 const repo = process.env.GITHUB_REPOSITORY;
@@ -103,8 +115,10 @@ replaceOnce('src-tauri/tauri.conf.json', /("version":\s*")[^"]+(")/, `$1${next}$
 replaceOnce('src-tauri/Cargo.toml', /(\[package\][^[]*?\nversion\s*=\s*")[^"]+(")/, `$1${next}$2`);
 replaceOnce('src-tauri/Cargo.lock', /(\[\[package\]\]\nname = "ledger"\nversion = ")[^"]+(")/, `$1${next}$2`);
 
-const changelog = fs.existsSync('CHANGELOG.md') ? fs.readFileSync('CHANGELOG.md', 'utf8').replace(/^# Changelog\n+/, '') : '';
-fs.writeFileSync('CHANGELOG.md', `# Changelog\n\n## ${next} (${date})\n\n${notes}\n\n${changelog}`.trimEnd() + '\n');
+if (!pre) {
+	const changelog = fs.existsSync('CHANGELOG.md') ? fs.readFileSync('CHANGELOG.md', 'utf8').replace(/^# Changelog\n+/, '') : '';
+	fs.writeFileSync('CHANGELOG.md', `# Changelog\n\n## ${next} (${date})\n\n${notes}\n\n${changelog}`.trimEnd() + '\n');
+}
 fs.writeFileSync('.release-notes.md', `${notes}\n`);
 
 output({ released: 'true', version: next, tag: `v${next}` });

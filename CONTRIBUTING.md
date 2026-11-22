@@ -15,15 +15,50 @@ You need:
 
 ```bash
 pnpm install
-pnpm run tauri dev   # the app, with hot reload
+pnpm run dev         # the app, with hot reload (the same as pnpm run tauri dev)
+pnpm run dev:app     # the app, with every change held until you choose Update in it
 ```
+
+While the app runs from either, its front end also works in an ordinary browser at http://127.0.0.1:1420, handy for
+the browser's developer tools. The tab has no backend of its own: each call goes to Ledger's window, which runs it
+(`src/lib/browserRelay.ts`, `scripts/browser-relay.mjs`), so the window has to stay open. `pnpm run dev:web` starts the
+dev server alone, which is what `tauri dev` runs first.
+
+`pnpm storybook` (http://localhost:6006) shows every UI component and the main pages on sample data, without the app.
+A new component gets its stories in the same change: `src/stories/<area>/<Component>.stories.svelte`, with the sample
+data in `src/stories/fixtures.ts` and any backend call it makes answered in `src/stories/backend.ts`.
 
 ## Before you push
 
 ```bash
-pnpm run check   # Svelte + TypeScript
-pnpm test        # Rust tests
+pnpm run check   # Svelte + TypeScript (a warning fails too), the UI text check, and the coming checks
+pnpm test        # Rust lints (cargo clippy) and tests
 ```
+
+The Rust code may not use `unsafe`, `.unwrap()` or `.expect()`: `src-tauri/Cargo.toml`'s `[lints]` makes each one an
+error. The release build aborts on a panic, so a failed `.unwrap()` closes Ledger in the middle of someone's work:
+return an error, or recover (a poisoned lock: `.unwrap_or_else(PoisonError::into_inner)`). Tests may unwrap. Where one
+really can't be avoided, `#[expect(clippy::expect_used, reason = "...")]` says why; an `allow` or `expect` without a
+reason fails too. Clippy's other suggestions only warn.
+
+### Coming checks
+
+Some checks start as warnings: `pnpm run check` ends with what they find (`pnpm run check:warn` runs only them), and
+nothing fails on them yet. Once the existing cases are fixed, each one becomes an error. Don't add new cases:
+
+- **Unchecked indexes.** With `noUncheckedIndexedAccess` (`tsconfig.strict.json`), `list[i]` and `record[key]` may be
+  `undefined`, and TypeScript makes you say what happens then. `pnpm run check:warn --list` names every place.
+- **Duplicate code.** [jscpd](https://github.com/kucherenko/jscpd) (`.jscpd.json`) finds the same block of code twice
+  in the app (not in tests or stories). The copies already there are in `.jscpd-baseline.json`, so only new ones are
+  named, and on a pull request they show on their lines. Use the code that is there instead of copying it. After
+  removing copies, `pnpm run check:warn --update-baseline` writes the shorter list; never update it to hide a new copy.
+
+UI text uses plain punctuation: `-` or `|` instead of a dash or a middle dot, three dots `...` instead of the ellipsis
+character (and none on a button or menu item), straight quotes, and words ("to") or `>` for a path through menus instead
+of an arrow. `pnpm run check` runs `scripts/check-ui-text.mjs`, which looks at the text a person can read (Svelte
+templates, string literals in TypeScript and Rust, not comments) and names each character it finds with what to use
+instead. A literal that needs one of them to work, such as a parser that recognises curly quotes in someone else's text,
+gets `ui-text: allow` and the reason in a comment on its line or the line before.
 
 CI runs both on every pull request, with the commits check below, and a pull request is merged only when they pass.
 On your first pull request here, the checks wait until a maintainer lets them run.
@@ -92,10 +127,10 @@ repo (`build: move to Node 26`).
 
 | Area | Scopes |
 |---|---|
-| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `dashboard` (the home page and its contribution graph) |
+| The main features | `projects`, `threads`, `prompts`, `feedback`, `deliverables`, `uploads`, `planning` (user stories, the board, semesters and sprints), `templates`, `search`, `links` (`[[links]]` between threads, deliverables and feedback, written in any markdown), `dashboard` (the home page and its contribution graph), `onboarding` (the setup guide a new client gets on the home page), `people` (who is in a project: its coach, teammates and stakeholders), `clients` (the organisations work projects are done for, in `shared/clients`), `meetings` (meeting notes: one note a day in `meetings/`) |
 | Data and sync | `vault`, `sync`, `crypto`, `settings` |
-| Integrations | `screenshots`, `trello`, `claude` (runs with Claude Code) |
-| Across the app | `ui` (shared components, layout, icons), `brand` (logo, tokens, colours), `logs` (the error log, debug captures, reporting a problem) |
+| Integrations | `screenshots`, `trello`, `portflow` (the Fontys portfolio: feedback, evidence, learning outcomes), `claude` (runs with Claude Code) |
+| Across the app | `ui` (shared components, layout, icons), `brand` (logo, tokens, colours), `updates` (installing new releases from inside the app, and a development build taking in what changes in its checkout), `logs` (the error log, debug captures, reporting a problem) |
 | Reserved | `release`: only CI's own `chore(release)` commits; never use it yourself |
 
 - Name the scope after what the user sees, not the file: a fix in `syncer.rs` is `fix(sync)`.

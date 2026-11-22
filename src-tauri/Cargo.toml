@@ -14,6 +14,21 @@ edition = "2024"
 name = "ledger_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# Checks on Ledger's own code that fail the build (`cargo clippy`, run by `pnpm test` and CI). Much of this code is
+# written by agents: these are the mistakes a check catches every time and a review can miss.
+# * unsafe_code: memory safety the compiler can't check.
+# * unwrap_used, expect_used: the release build aborts on a panic (`panic = "abort"` below), so a failed `.unwrap()`
+#   closes Ledger at once, in the middle of your work. Return an error, or recover. Tests may unwrap (clippy.toml).
+# * allow_attributes_without_reason: where one of these really can't be avoided, an `#[expect(..., reason = "...")]`
+#   says why. Without a reason it fails too, so a check can't be silenced without saying so.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+allow_attributes_without_reason = "deny"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -27,8 +42,6 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 pulldown-cmark = { version = "0.13.6", default-features = false, features = ["html"] }
 serde_yaml_ng = "0.10.0"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-sha1 = "0.11.0"
-ignore = "0.4.34"
 tauri-plugin-dialog = "2.8.4"
 base64 = "0.23.1"
 tauri-plugin-global-shortcut = "2.4.1"
@@ -37,8 +50,96 @@ aes-gcm = { version = "0.11.1", features = ["zeroize"] }
 flate2 = "1.1.10"
 sha2 = "0.11.1"
 zeroize = "1.9.1"
+hmac = "0.13"
+# Making an encrypted vault's passphrase into the key that seals its key (`vault_crypto.rs`).
+argon2 = "0.5"
 # Installing new releases from inside the app (`updates.rs`). Registered in release builds only, see `lib.rs`.
 tauri-plugin-updater = "2"
+# JPEG XL pictures, decoded for display (`images.rs`): the web view on Linux has no JPEG XL decoder.
+jxl-oxide = { version = "0.12.6", features = ["image"] }
+typst = "0.15.1"
+typst-pdf = "0.15.1"
+typst-layout = "0.15.1"
+similar = { version = "2", features = ["inline"] }
+# Watching the vault's folder for what the cloud storage brings in from other machines (`watcher.rs`).
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+# The Fontys password for signing in to Portflow by itself (`portflow_login.rs`), in the system's keychain: the Secret
+# Service on Linux, the Keychain on macOS, the Credential Manager on Windows.
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+
+# The picture decoders are optimised in the development build too (`tauri dev`): unoptimised, decoding one JPEG XL
+# picture takes seconds (`images.rs`). Only these crates; the rest of the build stays as fast to compile as it was.
+[profile.dev.package."jxl-oxide"]
+opt-level = 3
+
+[profile.dev.package."jxl-oxide-common"]
+opt-level = 3
+
+[profile.dev.package."jxl-bitstream"]
+opt-level = 3
+
+[profile.dev.package."jxl-coding"]
+opt-level = 3
+
+[profile.dev.package."jxl-color"]
+opt-level = 3
+
+[profile.dev.package."jxl-frame"]
+opt-level = 3
+
+[profile.dev.package."jxl-grid"]
+opt-level = 3
+
+[profile.dev.package."jxl-image"]
+opt-level = 3
+
+[profile.dev.package."jxl-jbr"]
+opt-level = 3
+
+[profile.dev.package."jxl-modular"]
+opt-level = 3
+
+[profile.dev.package."jxl-render"]
+opt-level = 3
+
+[profile.dev.package."jxl-threadpool"]
+opt-level = 3
+
+[profile.dev.package."jxl-vardct"]
+opt-level = 3
+
+[profile.dev.package."brotli-decompressor"]
+opt-level = 3
+
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
+
+[profile.dev.package.flate2]
+opt-level = 3
+
+[profile.dev.package."miniz_oxide"]
+opt-level = 3
+
+[profile.dev.package.crc32fast]
+opt-level = 3
+
+[profile.dev.package.adler2]
+opt-level = 3
+
+[profile.dev.package."simd-adler32"]
+opt-level = 3
+
+[profile.dev.package.moxcms]
+opt-level = 3
+
+[profile.dev.package.pxfm]
+opt-level = 3
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

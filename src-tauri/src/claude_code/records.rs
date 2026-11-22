@@ -34,8 +34,8 @@ pub struct RunRecord {
     pub finished_at: String,
     pub seconds: u64,
     pub turns: Option<u64>,
-    /// The deliverables the run produced, relative to the project's `deliverables/` folder: the versions that were
-    /// linked to the prompt, or when none were, the files it changed.
+    /// The deliverables the run produced, named relative to the project's `deliverables/` folder: the versions that were
+    /// linked to the prompt (whose files are under `versions/`), or when none were, the files it changed.
     pub files: Vec<String>,
     pub body: String,
 }
@@ -114,7 +114,7 @@ fn body(cwd: &str, facts: &RunFacts) -> String {
             out.push('\n');
         }
         if facts.steps.len() > MAX_STEPS {
-            out.push_str(&format!("- …and {} more\n", facts.steps.len() - MAX_STEPS));
+            out.push_str(&format!("- ...and {} more\n", facts.steps.len() - MAX_STEPS));
         }
         for denied in denials.iter().take(10) {
             out.push_str(&format!("- Refused by the permission mode: `{}`\n", without_folder(denied, cwd).replace('`', "'")));
@@ -164,8 +164,8 @@ fn shorten(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_string();
     }
-    let cut: String = text.chars().take(max).collect();
-    format!("{}…", cut.trim_end())
+    let cut: String = text.chars().take(max.saturating_sub(3)).collect(); // room for the three dots
+    format!("{}...", cut.trim_end())
 }
 
 // ---- the database -----------------------------------------------------------------------------------

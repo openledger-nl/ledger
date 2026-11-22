@@ -2,7 +2,11 @@
 	import { onMount, untrack } from 'svelte';
 	import { EditorState, type Extension } from '@codemirror/state';
 	import { EditorView } from '@codemirror/view';
-	import { markdownEditor, setSourceMode } from '$lib/markdownEditor';
+	import type { Mark } from '$lib/anchors';
+	import type { EvidenceMention, LinkTarget } from '$lib/types';
+	import { projectLinks } from '$lib/links.svelte';
+	import { changeRect, changeTracking, revealChange, revertChange, showChanges, type ChangeView } from '$lib/editorChanges';
+	import { markdownEditor, refreshLinks, revealMark, setSourceMode, showMarks, type MentionOption } from '$lib/markdownEditor';
 	import { imageLoader, type ImageBase } from '$lib/vaultImages';
 
 	/**
@@ -24,7 +28,15 @@
 		submitOnEnter = false,
 		onsubmit,
 		oncancel,
-		oninput
+		oninput,
+		marks,
+		onmark,
+		mentions,
+		people,
+		linkTargets,
+		linkHome = null,
+		changes,
+		onchangeclick
 	}: {
 		value?: string;
 		placeholder?: string;
@@ -45,7 +57,27 @@
 		/** Escape. */
 		oncancel?: () => void;
 		oninput?: () => void;
+		/** Passages to light up (feedback on a selection), found again by their words as the text changes. */
+		marks?: Mark[];
+		/** A click on one of them. */
+		onmark?: (id: string) => void;
+		/** What typing `@` offers: a Portflow reading guide's evidence items. */
+		mentions?: EvidenceMention[];
+		/** Or the people `@` offers (a meeting's), each written as a link to them (`[[people/frank]]`). */
+		people?: MentionOption[];
+		/** What [[links]] point at here, instead of the project the window is in: a meeting's. */
+		linkTargets?: LinkTarget[];
+		/** The project those links are written in (a meeting's only project); null for none. */
+		linkHome?: string | null;
+		/** The changes since a version, in the margin (and in the text with `inline`); see editorChanges.ts. */
+		changes?: ChangeView | null;
+		/** A click on a change's bar or mark. Given, the editor has a margin for the changes. */
+		onchangeclick?: (id: string, rect: DOMRect) => void;
 	} = $props();
+
+	// [[links]] are read from the project the window is in, or from `linkHome` among `linkTargets` when given (none
+	// outside a project otherwise).
+	const links = projectLinks(() => (linkTargets ? { targets: linkTargets, home: linkHome } : undefined));
 
 	let host: HTMLDivElement;
 	let view: EditorView | undefined;
@@ -57,7 +89,7 @@
 	onMount(() => {
 		held = value;
 		const pictures = imageLoader(() => images);
-		extensions = markdownEditor({
+		const editor = markdownEditor({
 			placeholder,
 			label,
 			spellcheck,
@@ -71,6 +103,10 @@
 				oncancel();
 				return true;
 			},
+			markClicked: (id) => onmark?.(id),
+			links: { index: () => links.index, open: (target) => links.open(target) },
+			mentions: () =>
+				people ?? (mentions ?? []).map((m) => ({ id: `evidence-${m.portflowId}`, label: m.name, detail: m.deliverable ? 'Deliverable' : (m.threadTitle ?? 'Not in Ledger yet') })),
 			changed: (update) => {
 				if (!update.docChanged) return;
 				held = update.state.doc.toString();
@@ -78,7 +114,10 @@
 				oninput?.();
 			}
 		});
+		extensions = onchangeclick ? [editor, changeTracking((id, rect) => onchangeclick?.(id, rect))] : editor;
 		view = new EditorView({ parent: host, state: EditorState.create({ doc: value, extensions }) });
+		pushMarks(marks ?? []);
+		pushChanges(untrack(() => changes));
 		if (autofocus || focusWhenReady) focus(autofocus);
 		return () => {
 			view?.destroy();
@@ -95,12 +134,58 @@
 		const head = Math.min(view.state.selection.main.head, next.length);
 		view.setState(EditorState.create({ doc: next, selection: { anchor: head }, extensions }));
 		setSourceMode(view, untrack(() => source));
+		pushMarks(untrack(() => marks) ?? []);
+		pushChanges(untrack(() => changes));
+	});
+
+	$effect(() => pushChanges(changes));
+
+	function pushChanges(next: ChangeView | null | undefined) {
+		if (view && onchangeclick) showChanges(view, next ?? { data: null, inline: false, focus: null });
+	}
+
+	/** Undoes one change: puts back what the version said there. */
+	export function revert(id: string): boolean {
+		return view ? revertChange(view, id) : false;
+	}
+
+	/** Scrolls a change into view, and says where it then is on the screen. */
+	export function showChange(id: string): DOMRect | null {
+		if (!view) return null;
+		revealChange(view, id);
+		return changeRect(view, id);
+	}
+
+	/** Where a change is on the screen. */
+	export function rectOf(id: string): DOMRect | null {
+		return view ? changeRect(view, id) : null;
+	}
+
+	$effect(() => pushMarks(marks ?? []));
+
+	// The things links point at changed (something was made, renamed or deleted): they are looked at again.
+	$effect(() => {
+		void links.index;
+		if (view) refreshLinks(view);
 	});
 
 	$effect(() => {
 		const next = source;
 		if (view) setSourceMode(view, next);
 	});
+
+	let lit = false;
+	/** Hands the passages to the editor; an editor that has never had any isn't bothered. */
+	function pushMarks(next: Mark[]) {
+		if (!view || (!next.length && !lit)) return;
+		lit = next.length > 0;
+		showMarks(view, next);
+	}
+
+	/** Scrolls the passage of mark `id` into view; false when it is not in the text. */
+	export function reveal(id: string): boolean {
+		return view ? revealMark(view, id) : false;
+	}
 
 	/** Focuses the editor, now or as soon as it exists; `atEnd` puts the cursor after the text. */
 	export function focus(atEnd = false) {

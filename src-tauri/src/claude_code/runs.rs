@@ -26,7 +26,7 @@ use super::render::{self, ResultInfo, Step};
 use super::runner::{self, Exit, Process, Runner, SpawnSpec};
 use super::versions::{Baseline, Change};
 use crate::error::{Error, Result};
-use crate::{deliverables, ids, settings};
+use crate::ids;
 
 /// How many runs may be going at once.
 pub const MAX_CONCURRENT: usize = 3;
@@ -253,7 +253,7 @@ impl Sink {
             String::new()
         } else if state.output.len() + text.len() > MAX_OUTPUT_BYTES {
             state.truncated = true;
-            "… The output is cut here.\n".to_string()
+            "... The output is cut here.\n".to_string()
         } else {
             text
         };
@@ -326,7 +326,6 @@ impl Runs {
             return Err(restarting());
         }
         let program = cli::resolve(&ctx.settings.cli_path, search)?;
-        let _ = settings::ensure_gitignore(&ctx.root);
         let guard = if ctx.settings.confine { Some(write_guard(&ctx)?) } else { None };
         let spec = SpawnSpec {
             env: child_env(&program),
@@ -337,7 +336,7 @@ impl Runs {
         };
 
         // How the deliverables stand before the run, to tell afterwards what it changed and what to publish.
-        let baseline = Baseline::capture(&deliverables::deliverables_dir(&ctx.root, &request.project));
+        let baseline = Baseline::capture(&request.cwd.join("deliverables"), &request.cwd.join("versions"));
 
         let run = Arc::new(Run::new(&request));
         request.run_id = run.id.clone();
@@ -581,10 +580,10 @@ fn spawn_failure(e: &io::Error, spec: &SpawnSpec) -> String {
 
 /// The last step: bring the vault up to date with what the run wrote (publishing and linking the deliverables), and
 /// only then say the run is over, so that the screen, refreshing on that news, sees the new files.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "the run and how it ended: a struct for one call would only name them again")]
 fn finish(inner: &Inner, sink: &Sink, request: &RunRequest, ctx: &RunContext, baseline: &Baseline, status: Status, message: Option<String>, code: Option<i32>) {
     let run = &sink.run;
-    let changes: Vec<Change> = baseline.changes(&deliverables::deliverables_dir(&ctx.root, &request.project));
+    let changes: Vec<Change> = baseline.changes(&request.cwd.join("deliverables"));
     let vault = inner.host.vault_after_run(request, &changes, status == Status::Finished);
     if let Some(error) = &vault.error {
         sink.push(&format!("✗ After the run: {error}\n"));

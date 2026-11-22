@@ -1,9 +1,10 @@
 //! Running a prompt with Claude Code: one click in the app starts the `claude` command-line program,
 //! non-interactively, in the prompt's project folder, and the deliverable it writes lands where the app expects it.
 //!
-//! * `config`: the settings (program path, permission mode, model, guard rails), in `.ledger/claude-code.json`.
+//! * `config`: the settings (program path, permission mode, model, guard rails), in `claude-code.json` for this machine.
 //! * `cli`: finding the program, the command line, the guard rails' settings file.
 //! * `prompt`: what is sent, and checking that the prompt and its project are there.
+//! * `naming`: asking for a short name for a new prompt, from what it asks.
 //! * `runner`: the traits that start a process, and the real implementation (no shell, no console window on
 //!   Windows, the whole process tree stopped on cancel).
 //! * `runs`: the runs themselves, with their output, cancel, and tidying the vault afterwards.
@@ -17,6 +18,7 @@
 pub mod cli;
 pub mod config;
 pub mod finish;
+pub mod naming;
 pub mod prompt;
 pub mod records;
 pub mod redact;
@@ -58,11 +60,14 @@ impl Host for TauriHost {
         let state = self.app.state::<App>();
         let outcome = {
             let mut core = state.lock();
+            // In an encrypted vault the run wrote into a plain copy of the project: that is taken in first.
+            if let Err(e) = core.vault.store().take_back() {
+                crate::applog::error("claude", format!("What the run wrote couldn't all be taken into the vault: {e}"));
+            }
             finish::refresh_vault(&mut core, request, changes, link)
         };
         if outcome.reloaded || !outcome.linked.is_empty() || !outcome.kept.is_empty() {
-            // What the run wrote is part of the vault now, and goes to GitHub like anything else; the window refreshes.
-            state.syncer.dirty();
+            // What the run wrote is part of the vault now: the window refreshes.
             let _ = self.app.emit("vault-changed", ());
         }
         outcome
@@ -74,8 +79,7 @@ impl Host for TauriHost {
             let mut core = state.lock();
             finish::keep_record(&mut core, record).map_err(|e| e.to_string())?;
         }
-        // The note is part of the vault now: it goes to GitHub like anything else, and the window refreshes.
-        state.syncer.dirty();
+        // The note is part of the vault now: the window refreshes.
         let _ = self.app.emit("vault-changed", ());
         Ok(())
     }
@@ -142,6 +146,8 @@ pub struct ClaudeSettingsView {
     pub confine: bool,
     /// A prompt that is created starts running at once.
     pub auto_run: bool,
+    /// A new prompt is named by Claude Code from what it asks.
+    pub name_prompts: bool,
     /// The program that would be run, when it can be found.
     pub resolved_path: Option<String>,
     /// Why it can't be found, in words for the screen.
@@ -162,6 +168,7 @@ fn settings_view(root: &Path) -> ClaudeSettingsView {
         model: settings.model,
         confine: settings.confine,
         auto_run: settings.auto_run,
+        name_prompts: settings.name_prompts,
         resolved_path,
         problem,
         settings_file: config::settings_path(root).display().to_string(),
@@ -182,9 +189,10 @@ pub fn save_claude_code_settings(
     model: String,
     confine: bool,
     auto_run: bool,
+    name_prompts: bool,
 ) -> Result<ClaudeSettingsView> {
     let root = vault_root(&app);
-    config::save(&root, &ClaudeSettings::validated(&cli_path, &permission_mode, &model, confine, auto_run)?)?;
+    config::save(&root, &ClaudeSettings::validated(&cli_path, &permission_mode, &model, confine, auto_run, name_prompts)?)?;
     Ok(settings_view(&root))
 }
 
@@ -231,6 +239,29 @@ pub async fn check_claude_code(app: State<'_, App>, cli_path: String) -> Result<
         .map_err(|e| Error::invalid(format!("The check stopped unexpectedly: {e}")))
 }
 
+// ---- naming a prompt --------------------------------------------------------------------------------
+
+/// Asks Claude Code, once and in the background, to name a prompt that has just been made from what it asks (when that is
+/// turned on and the program is there). The name replaces the one made from the start of its text, and the window is told.
+pub fn name_prompt_later(app: &AppHandle, project: &str, thread: &str, id: &str) {
+    let (app, project, thread, id) = (app.clone(), project.to_string(), thread.to_string(), id.to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<App>();
+        let Ok((root, request)) = state.read(|conn, root| Ok((root.to_path_buf(), crate::prompts::request_text(&crate::prompts::get(conn, &project, &thread, &id)?)))) else {
+            return;
+        };
+        let settings = config::load(&root);
+        if !settings.name_prompts {
+            return;
+        }
+        // Not in the vault: the request is all it gets to see.
+        let Some(name) = naming::suggest(&OsRunner, &settings, &Search::host(), &std::env::temp_dir(), &request) else { return };
+        if state.mutate(|conn, _| crate::prompts::set_title(conn, &project, &thread, &id, &name)).is_ok() {
+            let _ = app.emit("vault-changed", ());
+        }
+    });
+}
+
 // ---- running a prompt -------------------------------------------------------------------------------
 
 /// Everything the confirmation shows before a run starts.
@@ -256,10 +287,12 @@ fn prepare_request(app: &AppHandle, project: &str, thread: &str, id: &str) -> Re
     state.read(|conn, root| Ok((root.to_path_buf(), prompt::prepare(conn, root, project, thread, id)?)))
 }
 
+/// `model`: the model chosen in the confirmation for this run, in place of the one in Settings ("" is Claude Code's own
+/// default); left out, the one in Settings.
 #[tauri::command]
-pub fn claude_code_preview(app: AppHandle, project: String, thread: String, id: String) -> Result<RunPreview> {
+pub fn claude_code_preview(app: AppHandle, project: String, thread: String, id: String, model: Option<String>) -> Result<RunPreview> {
     let (root, request) = prepare_request(&app, &project, &thread, &id)?;
-    let settings = config::load(&root);
+    let settings = config::load(&root).for_run(model.as_deref())?;
     let guard_file = config::guard_path(&root);
     let (program, problem) = match cli::resolve(&settings.cli_path, &Search::host()) {
         Ok(program) => (program, None),
@@ -278,11 +311,12 @@ pub fn claude_code_preview(app: AppHandle, project: String, thread: String, id: 
 }
 
 /// Starts the run. `confirmed` is the text the person was shown: if the prompt has changed since, nothing starts.
+/// `model` as for the preview: the one chosen for this run, or left out for the one in Settings.
 #[tauri::command]
-pub fn claude_code_start(app: AppHandle, project: String, thread: String, id: String, confirmed: String) -> Result<RunView> {
+pub fn claude_code_start(app: AppHandle, project: String, thread: String, id: String, confirmed: String, model: Option<String>) -> Result<RunView> {
     let (root, request) = prepare_request(&app, &project, &thread, &id)?;
     prompt::ensure_confirmed(&request, &confirmed)?;
-    let settings = config::load(&root);
+    let settings = config::load(&root).for_run(model.as_deref())?;
     manager(&app).start(request, RunContext { root, settings }, &Search::host())
 }
 

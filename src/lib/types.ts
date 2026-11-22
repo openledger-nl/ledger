@@ -41,6 +41,8 @@ export interface ProjectView {
 	readmeHtml: string;
 	threadCount: number;
 	deliverableCount: number;
+	/** Files uploaded in its threads, screenshots included. */
+	attachmentCount: number;
 	storyCount: number;
 	taskCount: number;
 	openTaskCount: number;
@@ -61,11 +63,18 @@ export interface Post {
 	updatedAt: string;
 	body: string;
 	html: string;
+	/** What the post is; null until you say. */
+	kind: PostKind | null;
+	/** How sure you are of it; set by hand only. */
+	labels: EpistemicLabel[];
 }
 
 export interface PromptDeliverable {
+	/** The live path: a prompt belongs to the deliverable, not to one of its versions. */
 	path: string;
 	exists: boolean;
+	/** The versions published so far, oldest first. */
+	versions: string[];
 }
 
 export interface Prompt {
@@ -74,13 +83,36 @@ export interface Prompt {
 	title: string;
 	templateId: string | null;
 	templateName: string | null;
+	/** What is filled in for the person, from a template or from feedback; they can edit it. */
+	base: string;
+	baseHtml: string;
+	/** What the person adds, in their own words. */
 	body: string;
 	html: string;
 	createdAt: string;
 	updatedAt: string;
 	deliverables: PromptDeliverable[];
+	/** The pieces of feedback (ids) it was written to resolve. */
+	feedback: string[];
 	/** The times it was run with Claude Code, newest first. */
 	runs: ClaudeRunRecord[];
+}
+
+/** What a new prompt is made of. It has no title: Claude Code names it from what it asks. */
+export interface NewPromptInput {
+	/** Filled in from the template or the feedback (`suggestPromptBase`), edited or not. */
+	base: string;
+	/** What the person adds. */
+	body: string;
+	templateId: string | null;
+	/** An existing deliverable the prompt asks changes to. */
+	deliverable: string | null;
+	/** The name of a new deliverable to start for it; null leaves the naming to whatever produces it. */
+	newDeliverable: string | null;
+	/** The pieces of feedback (ids) it is meant to resolve. */
+	feedback: string[];
+	/** The template's guiding questions as answered in the dialog; a blank answer is a question skipped. */
+	answers?: { question: string; answer: string }[];
 }
 
 /** What the New prompt dialog starts from when it is opened for something other than a blank prompt. */
@@ -89,6 +121,8 @@ export interface PromptDraft {
 	body: string;
 	/** An existing deliverable the prompt asks for changes to, by its live path; null leaves the choice at "a new deliverable". */
 	deliverable: string | null;
+	/** The pieces of feedback (ids) the prompt is written to resolve. */
+	feedback?: string[];
 	/** Said at the top of the dialog: where the draft came from. */
 	note: string;
 }
@@ -103,6 +137,41 @@ export interface Feedback {
 	html: string;
 	createdAt: string;
 	updatedAt: string;
+	/** The passage it is about, as plain text, with the words just before and after it (see anchors.ts); null when it is
+	 *  about the whole document. */
+	quote: string | null;
+	quotePrefix: string | null;
+	quoteSuffix: string | null;
+	/** The version it was given on: the one it names, or for feedback on the live file the first version published after it
+	 *  was written (what that version froze); null while none has been published since. */
+	givenOn: string | null;
+	/** Who gave it; with their Portflow id and role when they are someone in Portflow. */
+	from: string | null;
+	fromUser: number | null;
+	fromRole: string | null;
+	/** How it was given: "in person", "meeting", "portflow", "email", "phone" or "other". */
+	given: string | null;
+	/** Your own note (for yourself or for Claude), or feedback from someone else. */
+	kind: FeedbackKind;
+	/** The user story it is about, by id; the day ("2026-11-09") of the meeting note it was written down in. */
+	story: string | null;
+	daily: string | null;
+	/** Set on feedback pulled from Portflow: it can't be edited in Ledger. */
+	portflowComment: number | null;
+	/** The feedback this answers (a reply in Portflow). */
+	replyTo: string | null;
+	commentType: string | null;
+	/** The evidence item (its slug) and the version it is on. */
+	evidence: string | null;
+	evidenceVersion: number | null;
+}
+
+/** Who gave a piece of feedback, as typed or picked. */
+export interface FeedbackFrom {
+	name: string | null;
+	portflowUser: number | null;
+	role: string | null;
+	given: string | null;
 }
 
 export interface Upload {
@@ -164,6 +233,12 @@ export interface Semester {
 	updatedAt: string;
 }
 
+/**
+ * A semester template (semester_templates.rs), in `shared/templates/semesters/<id>.md`: a semester a new one can start
+ * from, such as NJ26, the one a new vault starts with. Its id is its file's name.
+ */
+export type SemesterTemplate = Semester;
+
 /** What creating or changing a semester takes. Without sprints, they are cut from the start. */
 export interface SemesterDraft {
 	name: string;
@@ -205,6 +280,14 @@ export interface DeliverableSummary {
 	openFeedback: number;
 	/** The AI-use label of the newest version that has one. */
 	mmm: MmmLevel | null;
+	/** When the newest published version was made. */
+	latestAt: string | null;
+	/** The newest version of its evidence item that is in Portflow (Portflow on only), and when it was delivered there. */
+	delivered: { number: number; at: string } | null;
+	/** The Portflow evidence item this deliverable is (its name), when it is one: it is shown by that name. */
+	evidence: string | null;
+	/** The item's other files (base paths, in a folder beside it), folded into it rather than listed on their own. */
+	attachments: string[];
 }
 
 export interface DeliverablePrompt {
@@ -230,6 +313,10 @@ export interface Deliverable {
 	editable: boolean;
 	prompts: DeliverablePrompt[];
 	feedback: Feedback[];
+	/** The Portflow evidence item this deliverable is (its name), when it is one: it is shown by that name. */
+	evidence: string | null;
+	/** The item's other files (base paths, in a folder beside it), folded into it rather than listed on their own. */
+	attachments: string[];
 }
 
 // ---- how versions came to be ------------------------------------------------------------------------
@@ -273,7 +360,7 @@ export interface ProvenanceVersion {
 	size: number;
 	sizeChange: number | null;
 	sha256: string | null;
-	/** The id of the record file in the vault (`versions/<id>.md`), when there is one. */
+	/** The version's manifest, by its path in the project's folder (`versions/plan/plan@v0.1.manifest.md`), when it has one. */
 	record: string | null;
 	/** The "version published" note, in its thread. */
 	post: { threadSlug: string; id: string } | null;
@@ -303,6 +390,13 @@ export interface StoppedRun {
 	finishedAt: string;
 }
 
+/** What the live file holds that no version does: the version it follows, when it last changed. */
+export interface ProvenanceDraft {
+	since: string | null;
+	modified: string;
+	stoppedRun: StoppedRun | null;
+}
+
 export interface Provenance {
 	groups: ProvenanceGroup[];
 	summary: {
@@ -314,13 +408,102 @@ export interface Provenance {
 		label: { level: MmmLevel; version: string } | null;
 	};
 	/** The live file when it holds something no version does. */
-	draft: { since: string | null; modified: string; stoppedRun: StoppedRun | null } | null;
+	draft: ProvenanceDraft | null;
 	/** Where a publish goes when the person does not say. */
 	defaultThread: string | null;
 	stoppedRun: StoppedRun | null;
 	historyHasAi: boolean;
 	/** The label of the newest labelled version: where the next one starts from. */
 	suggestedLabel: MmmLevel | null;
+}
+
+// ---- what changed, and who wrote what (history.rs) ----------------------------------------------------
+
+/** Where words came from: a version (or the live file, `version` null) and who made it. */
+export interface HistorySource {
+	version: string | null;
+	by: 'ai' | 'human' | 'unknown';
+	/** "Claude Code", "AI, as declared", "You", "Origin not recorded". */
+	who: string;
+	at: string;
+	prompt: string | null;
+}
+
+export interface HistoryBlock {
+	state: 'same' | 'added' | 'removed' | 'changed' | 'moved' | 'movedAway';
+	html: string;
+	/** The source (an index into `sources`) most of its words come from. */
+	by: number | null;
+}
+
+export interface HistoryShare {
+	source: number;
+	words: number;
+}
+
+export interface HistoryLine {
+	tag: 'same' | 'add' | 'del';
+	old: number | null;
+	new: number | null;
+	parts: { text: string; emph: boolean }[];
+	by: number | null;
+}
+
+export interface HistoryHunk {
+	oldStart: number;
+	newStart: number;
+	lines: HistoryLine[];
+}
+
+/** A deliverable from one version (or the live file) to another. */
+export interface Comparison {
+	from: string | null;
+	to: string | null;
+	sources: HistorySource[];
+	blocks: HistoryBlock[];
+	hunks: HistoryHunk[];
+	wordsAdded: number;
+	wordsRemoved: number;
+	moved: number;
+	changed: number;
+	addedBy: HistoryShare[];
+}
+
+/** A change in the text being typed, since a version, positioned as the editor counts (UTF-16). */
+export interface LiveChange {
+	/** The same for the same change while the text around it changes. */
+	id: string;
+	kind: 'added' | 'changed' | 'removed' | 'moved';
+	/** The block it is in now; for "removed", `from === to` where the block was. */
+	from: number;
+	to: number;
+	/** Who made most of it (an index into `sources`); null when it only took words out. */
+	by: number | null;
+	/** What the block said before. */
+	old: string;
+	inserts: { from: number; to: number; by: number }[];
+	deletes: { at: number; text: string; block: boolean }[];
+	/** The edits that put back what was there, in the coordinates of the text now. */
+	revert: { from: number; to: number; insert: string }[];
+	wordsAdded: number;
+	wordsRemoved: number;
+}
+
+export interface LiveChanges {
+	/** The version compared with; null before the first one. */
+	against: string | null;
+	/** The versions, and last the text being typed. */
+	sources: HistorySource[];
+	changes: LiveChange[];
+}
+
+/** Who wrote what is in a deliverable; with a focus, what became of that version's words. */
+export interface Authorship {
+	at: string | null;
+	sources: HistorySource[];
+	blocks: HistoryBlock[];
+	words: HistoryShare[];
+	trace: { source: number; wrote: number; kept: number; removedBy: HistoryShare[] } | null;
 }
 
 /** What the person says about a version when publishing it. `thread`: null picks the default, "" files it in no thread. */
@@ -352,11 +535,36 @@ export interface Template {
 	questions: string[];
 	/** The skeleton of the deliverable. */
 	body: string;
+	/** The kinds of project it is offered in; empty for every kind. */
+	kinds: ProjectKind[];
+	/** Who its deliverables are written for: told to Claude, and noted in the deliverable. */
+	readers: TemplateReader[];
+	/** The readers are a visible line in a new deliverable, not only a `%%` note. */
+	readersShown: boolean;
 	createdAt: string;
 	updatedAt: string;
 	/** A vault-wide template the project has replaced with its own. */
 	overridden: boolean;
 }
+
+/** Someone a template's deliverable is written for: a preset's id (`client`, `me`, `people`, …) or your own words. */
+export interface TemplateReader {
+	who: string;
+	/** What they need from it, beyond what the preset says. */
+	needs: string;
+	/** What must be kept from them. */
+	keepFrom: string;
+}
+
+/** A reader a template can name by a word, with what Claude is told about them. */
+export interface ReaderPreset {
+	id: string;
+	name: string;
+	hint: string;
+}
+
+/** What a template says, as the editor saves it. */
+export type TemplateDraft = Pick<Template, 'name' | 'trigger' | 'questions' | 'body' | 'kinds' | 'readers' | 'readersShown'>;
 
 // ---- stories, tasks, the board ----------------------------------------------------------------------
 
@@ -419,55 +627,27 @@ export interface SearchHit {
 	snippet: string;
 }
 
-// ---- settings, sync, screenshots --------------------------------------------------------------------
+// ---- settings, screenshots ----------------------------------------------------------------------------
 
-export interface SyncStatus {
-	configured: boolean;
-	repo: string | null;
-	branch: string | null;
-	state: 'disabled' | 'idle' | 'syncing' | 'error';
-	/** Changes made here that have not been pushed yet. */
-	pending: boolean;
-	/** Whether syncs encrypt what they upload (the setting as it stood when the last sync started). */
-	encrypted: boolean;
-	lastSyncAt: string | null;
-	lastError: string | null;
-	summary: string | null;
+/** A conflict copy: two machines changed the same file before the cloud carried one change to the other, and both
+ *  were kept, the second beside the first under another name. */
+export interface ConflictView {
+	copy: string;
+	original: string;
+	/** Both are text, so they can be shown side by side. */
+	text: boolean;
+	copyText: string | null;
+	originalText: string | null;
+	copyModified: string | null;
+	originalModified: string | null;
 }
 
-/** What GitHub holds of the vault as of the last sync that finished, counted without asking GitHub. */
-export interface SyncOverview {
-	/** The commit both sides last agreed on. */
-	head: string | null;
-	files: number;
-	deliverables: number;
-	attachments: number;
-	/** Everything else: threads, posts, stories, templates, semesters … */
-	notes: number;
-	/** The key the files on GitHub are encrypted with (two hex digits), once they all are. */
-	key: string | null;
-}
+/** What a folded sidebar becomes: an icon rail (the default) or nothing. */
+export type SidebarFold = 'rail' | 'hide';
 
-export interface SyncSettings {
-	repo: string;
-	branch: string;
-	/** The token itself never reaches the screen. */
-	hasToken: boolean;
-	tokenHint: string;
-	configured: boolean;
-}
-
-export interface EncryptionStatus {
-	/** Whether what is synced is encrypted. */
-	enabled: boolean;
-	/** The key lives in the vault's .ledger/.env; the screen only learns whether it is there. */
-	hasKey: boolean;
-	/** The key's one-byte label as two hex digits, to tell keys apart between machines. */
-	keyId: string | null;
-	/** Why the key can't be read, if it can't (a damaged line in .ledger/.env, an unreadable file). */
-	problem: string | null;
-	/** This vault already synced the configured repository and branch without encryption: that branch can't become an encrypted one. */
-	needsFreshTarget: boolean;
+/** The shell's layout, from this machine's settings for the vault (outside the vault: each machine has its own). */
+export interface LayoutSettings {
+	sidebarFold: SidebarFold;
 }
 
 export interface ScreenshotSettings {
@@ -498,13 +678,63 @@ export interface Settings {
 	vaultPath: string;
 	/** Fixed by the LEDGER_VAULT environment variable. */
 	vaultLocked: boolean;
+	/** Where this machine's settings for the vault are kept. */
 	settingsFile: string;
-	secretsFile: string;
 	version: string;
-	sync: SyncSettings;
-	status: SyncStatus;
 	screenshot: ScreenshotSettings;
-	encryption: EncryptionStatus;
+}
+
+/** The guide on the home page for a new client (see onboarding.rs). */
+export interface VaultEntry {
+	path: string;
+	/** The folder's name, which is what the picker calls the vault. */
+	name: string;
+	/** The folder is still there. */
+	exists: boolean;
+	/** It is the vault that is open. */
+	open: boolean;
+	/** Why it can't be opened (a vault from Ledger 0.x, say); null when it can. */
+	refused: string | null;
+	/** Its files are encrypted. */
+	encrypted: boolean;
+	/** Encrypted, and this computer doesn't have its key: opening it takes the passphrase or the recovery key. */
+	needsKey: boolean;
+}
+
+/** A vault just made, with its recovery key when it is encrypted (shown once). */
+export interface CreatedVault {
+	vaults: Vaults;
+	recovery: string | null;
+}
+
+/** Whether the open vault is encrypted, and whether this computer's keychain keeps its key. Never the key. */
+export interface EncryptionView {
+	encrypted: boolean;
+	keyId: string | null;
+	kept: boolean;
+}
+
+export interface Vaults {
+	/** A vault is open; before the first one the app shows the vault picker. */
+	open: boolean;
+	/** Fixed by the LEDGER_VAULT environment variable. */
+	locked: boolean;
+	/** The open vault first, then the others opened on this machine, the latest first. */
+	vaults: VaultEntry[];
+	/** Where a new vault goes unless another folder is picked. */
+	suggestedParent: string | null;
+}
+
+/** What Ledger is used for first: the kind of the first project. Only study works in semesters. */
+export type Purpose = 'study' | 'work' | 'hobby';
+
+export interface OnboardingStatus {
+	/** The guide is on the home page. */
+	active: boolean;
+	/** The steps that were put off: only "semester" can be. */
+	skipped: string[];
+	/** Not asked yet: the guide asks first. */
+	purpose: Purpose | null;
 }
 
 /** A dragged rectangle, in the capture's own pixels. */
@@ -567,6 +797,8 @@ export interface ClaudeCodeSettings {
 	confine: boolean;
 	/** A prompt that is created starts running at once, without the confirmation. */
 	autoRun: boolean;
+	/** A new prompt is named by Claude Code from what it asks. */
+	namePrompts: boolean;
 	/** The program that would be run, when it can be found. */
 	resolvedPath: string | null;
 	/** Why it can't be found. */
@@ -728,6 +960,7 @@ export interface TrelloView {
 	unlinked: TrelloUnlinkedItem[];
 	status: TrelloStatus;
 	settingsFile: string;
+	/** Where the key and token are kept: the system keychain, or the file used where there is none. */
 	secretsFile: string;
 }
 
@@ -751,6 +984,7 @@ export interface TrelloMapping {
 
 /** A release newer than this one, as the notice shows it. */
 export interface UpdateInfo {
+	kind: 'release';
 	version: string;
 	currentVersion: string;
 	/** When it was published (ISO), if the release says. */
@@ -761,20 +995,55 @@ export interface UpdateInfo {
 	notesHtml: string;
 	/** The "Breaking changes" section, rendered, shown apart. */
 	breakingHtml: string | null;
-	/** A development build's pretend update: installing it installs nothing. */
-	simulated: boolean;
 }
+
+/** One of the commits a development build's branch gained since the running build. */
+export interface BranchCommit {
+	hash: string;
+	subject: string;
+	/** The first line marks it as breaking (`feat!:`). */
+	breaking: boolean;
+}
+
+/** What a development build's runner (`pnpm run dev:app`) holds back, and the commits that came with it (see devupdates.rs). */
+export interface BranchUpdate {
+	kind: 'branch';
+	/** The branch the checkout is on, or `HEAD` when it is on a commit. */
+	branch: string;
+	/** The commit the running build was made from (short), and the one the checkout is at now (full). */
+	head: string;
+	target: string;
+	/** Commits the branch gained since; the newest are listed, `more` is how many are left out. */
+	behind: number;
+	commits: BranchCommit[];
+	more: number;
+	/** Which change this is: the same one is announced once, and *Not now* holds until another comes. */
+	generation: number;
+	/** Updating restarts the app (the Rust side or the packages changed); otherwise only the window reloads. */
+	restart: boolean;
+	/** The new Rust build: none needed, being built, ready, or failing. */
+	build: 'none' | 'building' | 'ready' | 'failed';
+	/** The first error of a build that failed. */
+	error: string | null;
+	/** `package.json` or `pnpm-lock.yaml` changed: the packages are installed when you update. */
+	dependencies: boolean;
+}
+
+/** What there is to install: a release, or new commits on a development build's branch. */
+export type Announced = UpdateInfo | BranchUpdate;
 
 /** Settings → About. */
 export interface UpdateView {
 	currentVersion: string;
 	/** Look by itself shortly after starting and every few hours. */
 	automatic: boolean;
-	/** Why this build doesn't look for updates (a development build, or no updater key yet). */
+	/** Why this build can't look for anything newer (a debug build `pnpm run dev:app` didn't start, or no updater key yet). */
 	unavailable: string | null;
-	/** A development build, which can simulate an update. */
+	/** A development build, which hears of the changes in its checkout instead of the releases. */
 	devBuild: boolean;
-	available: UpdateInfo | null;
+	/** The branch its checkout is on, once a look has found it. */
+	following: string | null;
+	available: Announced | null;
 	/** When a check last worked (ISO). */
 	checkedAt: string | null;
 	/** Where the choice is kept: the app's config, on this machine only. */
@@ -782,18 +1051,21 @@ export interface UpdateView {
 }
 
 export interface UpdateCheck {
-	available: UpdateInfo | null;
+	available: Announced | null;
 	message: string;
 }
 
 /** What to do about Claude Code runs that a restart would stop: ask, wait for them, or stop them. */
 export type RunsChoice = 'ask' | 'wait' | 'stop';
 
-/** Where installing got to when it couldn't restart (yet). A real install that goes through ends in a restart. */
+/**
+ * Where installing got to when it couldn't restart (yet). A release that installs ends in a restart; a development build
+ * ends in `applied`: it restarts into the new build when `restart` says so, or the window reloads.
+ */
 export type InstallStep =
 	| { state: 'wait'; waitingFor: string[] }
 	| { state: 'ask'; runs: string[] }
-	| { state: 'simulated'; version: string };
+	| { state: 'applied'; commits: number; head: string; restart: boolean };
 
 /** The `update-progress` event. */
 export interface UpdateProgress {
@@ -833,4 +1105,537 @@ export interface CaptureStatus {
 	active: boolean;
 	startedAt: string | null;
 	events: number;
+}
+
+/** Something a `[[link]]` in a project's markdown can point at (see links.ts for how a typed target is matched to one). */
+export interface LinkTarget {
+	/** `meeting`: a day's meeting notes; `person`: someone in shared/people. */
+	kind: 'thread' | 'deliverable' | 'feedback' | 'meeting' | 'person';
+	/** The project it is in, by slug; empty for a meeting day and a person, which belong to the vault. */
+	project: string;
+	/** The thread's slug, the deliverable's live path, the feedback's id, the day of the meeting notes, the person's id. */
+	id: string;
+	/** A thread's title, a deliverable's file name, the start of what a piece of feedback says, the day's meetings, a
+	 *  person's name. */
+	title: string;
+	/** Where it is: a deliverable's folder, the file a piece of feedback is on, the day of the meeting notes, a person's
+	 *  organisation. */
+	detail: string;
+	/** For a deliverable and for feedback, the path that opens it (the live file or a version); empty for a thread. */
+	open: string;
+}
+
+// ---- Portflow (feat/portflow-integration) ---------------------------------------------------------------
+
+export interface PortflowReport {
+	outcomes: number;
+	people: number;
+	collections: number;
+	evidence: number;
+	newVersions: number;
+	/** Files of those versions that are only in Portflow (uploaded there; not copied). */
+	inPortflowOnly: number;
+	newFeedback: number;
+	unplaced: number;
+	filesTouched: number;
+	notes: string[];
+}
+
+export interface PortflowStatus {
+	state: 'off' | 'signed-out' | 'idle' | 'syncing' | 'error';
+	signedIn: boolean;
+	expiresAt: number | null;
+	lastSyncAt: string | null;
+	lastError: string | null;
+	summary: string | null;
+	report: PortflowReport | null;
+}
+
+export interface PortflowLink {
+	project: string;
+	projectName: string;
+	semester: string;
+	semesterName: string | null;
+	collection: number;
+	collectionName: string | null;
+}
+
+export interface PortflowView {
+	enabled: boolean;
+	launchUrl: string;
+	defaultLaunchUrl: string;
+	write: boolean;
+	/** Each kind of write and whether it is on; `available` says whether this version can make it at all. */
+	writes: { id: string; label: string; on: boolean; available: boolean }[];
+	writesAvailable: boolean;
+	portfolio: { id: number; userId: number; userName: string } | null;
+	status: PortflowStatus;
+	links: PortflowLink[];
+	outcomes: number;
+	people: number;
+	unplaced: number;
+	/** The Fontys username Ledger signs in with by itself (its password is in the system keychain), or null. */
+	savedLogin: string | null;
+}
+
+export interface PortflowCollectionChoice {
+	id: number;
+	name: string;
+	subtitle: string;
+	section: string;
+	evidenceCount: number;
+	linkedProject: string | null;
+	linkedSemester: string | null;
+}
+
+export interface EvidenceRef {
+	project: string;
+	projectName: string;
+	slug: string;
+	name: string;
+	thread: string | null;
+}
+
+export interface PortflowPerson {
+	id: number;
+	name: string;
+	role: string;
+	shared: string;
+	until: string | null;
+	active: boolean;
+}
+
+export interface OutcomeRef {
+	id: number;
+	name: string;
+}
+
+export interface PortflowCollection {
+	semester: string;
+	semesterName: string | null;
+	collection: number;
+	name: string;
+	subtitle: string;
+	section: string;
+	color: string;
+	outcomes: OutcomeRef[];
+}
+
+export interface EvidenceVersion {
+	number: number;
+	portflowVersion: number | null;
+	kind: string;
+	createdAt: string;
+	descriptionHtml: string;
+	/** `path`: the Ledger deliverable, when the version came from Ledger; otherwise it is opened in Portflow. */
+	files: { name: string; path: string | null }[];
+	inLedger: boolean;
+	portflowUrl: string | null;
+}
+
+/** An evidence description in the shape teachers expect: What? / Goal? / Why it contributes? (markdown each). */
+export interface EvidenceParts {
+	what: string;
+	goal: string;
+	why: string;
+}
+
+export interface Evidence {
+	project: string;
+	slug: string;
+	name: string;
+	thread: string | null;
+	threadTitle: string | null;
+	portflowId: number | null;
+	kind: string;
+	/** The description as Ledger keeps it (markdown), and its three parts when it has the shape teachers expect. */
+	description: string;
+	descriptionParts: EvidenceParts | null;
+	descriptionHtml: string;
+	files: { path: string; name: string; exists: boolean }[];
+	outcomes: OutcomeRef[];
+	versions: EvidenceVersion[];
+	feedbackCount: number;
+	openFeedback: number;
+	/** Its page in Portflow (the latest version). */
+	portflowUrl: string | null;
+}
+
+export interface ProjectPortflow {
+	collections: PortflowCollection[];
+	evidence: Evidence[];
+	/** The collection the reading guide goes to (the one for the current semester); null when none is linked. */
+	guideCollection: number | null;
+	/** Whether the guide is written to that collection's description (Settings → Portflow, off by default). */
+	guideWrite: boolean;
+	/** The project's evidence items: what the reading guide can mention (`@Analysis`), and where a mention leads. */
+	mentions: EvidenceMention[];
+}
+
+/** An evidence item as a reading guide mentions it: written `[@Name](portflow:evidence-<portflowId>)`. */
+export interface EvidenceMention {
+	portflowId: number;
+	name: string;
+	/** The Ledger thread it is placed in, if any. */
+	thread: string | null;
+	threadTitle: string | null;
+	/** The deliverable it is in Ledger (its live file), once its files are downloaded: a mention leads there first. */
+	deliverable: string | null;
+}
+
+export interface PortflowFeedback {
+	project: string;
+	projectName: string;
+	thread: string;
+	id: string;
+	from: string | null;
+	fromRole: string | null;
+	evidence: string | null;
+	evidenceName: string | null;
+	createdAt: string;
+	excerpt: string;
+}
+
+export interface PortflowImported {
+	project: string;
+	projectName: string;
+	evidence: number;
+	threads: number;
+}
+
+// ---- Portflow: semesters, sections and Epsilon+, the competence matrix (see portflow_epsilon.rs) ------
+
+/** A section of the Portflow portfolio: one semester. */
+export interface PortflowSection {
+	id: number;
+	name: string;
+	template: string;
+	importedAt: string | null;
+	/** The Ledger semester it is. */
+	semester: string | null;
+	semesterName: string | null;
+}
+
+export interface EpsilonSemester {
+	id: string;
+	name: string;
+	start: string;
+	end: string;
+	section: number | null;
+	sectionName: string | null;
+	current: boolean;
+}
+
+/** One sub-goal: one level of an activity in a layer ("Analysis-U2"), or of a goal like PS ("PS-2"). */
+export interface EpsilonLevel {
+	id: number;
+	name: string;
+	level: number;
+	evidenceCount: number;
+	evidence: EvidenceRef[];
+	feedbackCount: number;
+	descriptionHtml: string;
+	/** The same, as markdown: what a thread or deliverable started from this level quotes. */
+	description: string;
+}
+
+export interface EpsilonCell {
+	/** U, S, O, H or I. */
+	layer: string;
+	/** The goal that is this cell's activity. */
+	outcome: number;
+	evidenceCount: number;
+	feedbackCount: number;
+	/** The highest level that has evidence. */
+	level: number | null;
+	levels: EpsilonLevel[];
+	/** The level aimed for (its row's), and whether evidence reaches it. */
+	target: number | null;
+	reached: boolean;
+}
+
+export interface EpsilonSkill {
+	outcome: number;
+	/** What intended development calls it: its nickname, or its name ("PS"). */
+	key: string;
+	name: string;
+	nickname: string;
+	evidenceCount: number;
+	level: number | null;
+	levels: EpsilonLevel[];
+	target: number | null;
+	reached: boolean;
+}
+
+/** A semester's intended development: a level per layer (a whole row) and per level-only goal, and its overview. */
+export interface EpsilonGoals {
+	layers: Record<string, number>;
+	goals: Record<string, number>;
+	/** The learning plan, an evidence item: "<project>/<evidence slug>". */
+	learningPlan: string | null;
+	studyGuide: string | null;
+}
+
+export interface EpsilonPlan {
+	project: string;
+	projectName: string;
+	evidence: string;
+	name: string;
+	thread: string | null;
+	version: number | null;
+	deliveredAt: string | null;
+}
+
+export interface EvidenceChoice {
+	id: string;
+	name: string;
+	projectName: string;
+}
+
+export interface EpsilonView {
+	semesters: EpsilonSemester[];
+	semester: string | null;
+	section: number | null;
+	sectionName: string | null;
+	goalSet: string;
+	/** False when the semester has no section yet: then the newest goal set is shown. */
+	scoped: boolean;
+	columns: { outcome: number; name: string }[];
+	rows: { layer: string; name: string; target: number | null }[];
+	cells: EpsilonCell[];
+	skills: EpsilonSkill[];
+	maxLevel: number;
+	evidenceCount: number;
+	cellsWithEvidence: number;
+	cellsTotal: number;
+	goals: EpsilonGoals;
+	targetsTotal: number;
+	targetsReached: number;
+	plan: EpsilonPlan | null;
+	/** The projects linked to a collection in this semester. */
+	linkedProjects: string[];
+}
+
+// ---- v1 ---------------------------------------------------------------------------------------------
+// What the v1 vault adds (Requirements 0.27; the LoFi wireframes in Penpot): a project's kind, goal, end and people,
+// a post's kind and labels, meeting notes as daily notes, feedback from the inbox, a deliverable's number and goal.
+// camelCase on the wire like the rest.
+
+/** Every project is one of three kinds, in the same vault and the same layout; the study parts are optional extras. */
+export type ProjectKind = 'study' | 'work' | 'hobby';
+
+/** The facts in a project's `00 Overview.md` frontmatter that 0.8 doesn't have. */
+export interface ProjectMeta {
+	slug: string;
+	kind: ProjectKind;
+	/** The most important thing a project has: asked first, shown on every project screen, fed to every deliverable. */
+	goal: string;
+	/** "semester" ends with the semester it runs in; otherwise a day of your own (ISO), or null for no end. */
+	end: 'semester' | string | null;
+	/** The semester a study project runs in, by its id in shared/semesters (nj26-semester-4-2). */
+	semester: string | null;
+	/** The label you mean the work to get; offered when publishing, and compared with what you publish. */
+	intendedMmm: MmmLevel | null;
+	/** Study projects have one; optional for the others. */
+	mainQuestion: string | null;
+	/** A work project's client, by its id in shared/clients. */
+	client: string | null;
+	/** That client's name; filled in by Ledger. */
+	clientName?: string | null;
+	/** Shown in the overview's tag, `project/<tag>`, which daily notes and feedback use. */
+	tag: string;
+}
+
+/** What a post is; set by you, shown on it, filtered on. Prompts and runs are posts too, but 0.8 keeps them apart. */
+export type PostKind = 'thought' | 'devlog' | 'research' | 'reflection';
+
+/** How sure you are of a post; set by hand only, never by Ledger. */
+export type EpistemicLabel = 'fact' | 'to-check' | 'assumption';
+
+/** A post's kind and labels, by post id. */
+export interface PostMeta {
+	postId: string;
+	kind: PostKind;
+	labels: EpistemicLabel[];
+}
+
+/** A person is a tag for now (`expert/sander`, `client/police/ries`): role first, then who. */
+export type PersonTag = string;
+
+/** One meeting in a daily note: a `## 10:00 Title #project/x` heading, a `With:` line of people, then your notes. */
+export interface MeetingSection {
+	/** "10:00", or null when the heading has no time. */
+	time: string | null;
+	title: string;
+	/** Project tags (`thrym-player`), on the heading: the meeting belongs to each of these projects. */
+	projects: string[];
+	/** Who was there, by their id in shared/people (`frank`): the `With:` line links to them (`[[people/frank]]`). */
+	people: string[];
+	/** Your notes, as you wrote them: no template, no required parts. */
+	body: string;
+}
+
+/**
+ * A daily note, `meetings/<year>/<month>/<day>.md`: one per day, made in Ledger or Obsidian, holding that day's meetings, each under its
+ * own heading. Its frontmatter (`date`, `tags`, `meetings`) holds each meeting's time and projects and gathers their
+ * project tags; who was there is linked, so their file in shared/people lists the day among its backlinks in Obsidian.
+ */
+export interface DailyNote {
+	/** ISO day; also the file's name, so a day has one note. */
+	date: string;
+	/** `daily-<date>`, for the app: the file holds no id. */
+	id: string;
+	meetings: MeetingSection[];
+	updatedAt: string;
+}
+
+/** Your own note (for yourself or for Claude), or feedback from someone else. */
+export type FeedbackKind = 'own' | 'someone';
+
+export type FeedbackRole = 'coach' | 'expert' | 'teammate' | 'stakeholder' | 'colleague' | 'other';
+
+/** Someone who is part of a project (its coach, a teammate, the client), listed in its project.md. */
+/** How a project's exported PDFs look and who they name (branding.rs), kept in its project.md. */
+export interface Branding {
+	author: string | null;
+	/** `#rrggbb`; null for the PDF layout's own colour. */
+	accent: string | null;
+	ownName: string | null;
+	/** The logo's path in the project's folder (`branding/own.png`). */
+	ownLogo: string | null;
+	/** null: the project's client. */
+	clientName: string | null;
+	clientLogo: string | null;
+	/** Whether the cover shows the version's AI-use (MMM) label; null for the default: only in a study project. */
+	showLabel: boolean | null;
+}
+
+export type BrandingSide = 'own' | 'client';
+
+/** Whose PDF layout: a project's own, the vault's, or Ledger's (pdf/mod.rs). */
+export type PdfLayoutScope = 'project' | 'vault' | 'ledger';
+
+/** Which layout a project's PDFs are set in, and where the layouts of one's own are (vault-relative paths). */
+export interface PdfLayoutView {
+	used: PdfLayoutScope;
+	project: string | null;
+	vault: string | null;
+}
+
+/** Someone the vault knows (people.rs), in `shared/people/<id>.md`: one person in every project they are part of, and
+ *  shown only in the projects they are attached to. */
+export interface Person {
+	/** Their name as a slug when they were added; it stays when they are renamed. */
+	id: string;
+	name: string;
+	email: string;
+	organisation: string;
+	/** Their Portflow id, when they are someone in Portflow. */
+	portflowUser: number | null;
+	notes: string;
+	/** The projects they are part of, with their role in each. */
+	projects: { project: string; projectName: string; role: FeedbackRole }[];
+	/** `people/<id>`, as meetings and feedback tag them. */
+	tag: PersonTag;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type PersonDraft = Pick<Person, 'name' | 'email' | 'organisation' | 'portflowUser' | 'notes'>;
+
+/** A client the vault knows (clients.rs), in `shared/clients/<id>.md`: an organisation work projects are done for. */
+export interface Client {
+	/** Its name as a slug when it was added; it stays when it is renamed. */
+	id: string;
+	name: string;
+	website: string;
+	notes: string;
+	/** The projects done for it. */
+	projects: { project: string; projectName: string }[];
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type ClientDraft = Pick<Client, 'name' | 'website' | 'notes'>;
+
+/** Someone of the vault as part of one project, with their role there; listed in the project's project.md. */
+export interface ProjectPerson {
+	project: string;
+	/** Their id in the vault. */
+	person: string;
+	role: FeedbackRole;
+	/** Their name and Portflow id, from the vault. */
+	name: string;
+	portflowUser: number | null;
+	/** `people/<id>` (`people/frank-de-vries`), as meetings and feedback tag them. */
+	tag: PersonTag;
+}
+
+/** A piece of feedback in the inbox: with its project, the title of the thread it is kept in, and its story's summary. */
+export interface InboxFeedback extends Feedback {
+	project: string;
+	projectName: string;
+	threadTitle: string;
+	storyTitle: string | null;
+}
+
+/** Feedback written down from the inbox. It lands on a deliverable (or a version), a user story, or the project as a
+ *  whole, and is kept in a thread: the one named, or else the project's most recent one (or a new one, "Feedback"). */
+export interface FeedbackRecord {
+	project: string;
+	thread: string | null;
+	/** A live path, or a published version ("plan@v1.0.md"). */
+	deliverable: string | null;
+	story: string | null;
+	kind: FeedbackKind;
+	from: FeedbackFrom;
+	daily: string | null;
+	body: string;
+	/** When it was given, ISO 8601. */
+	at: string | null;
+}
+
+/** A deliverable's v1 facts: its number, its goal and its own label (Man-Made switches AI writing off for it). */
+/** A deliverable's evidence description (What? / Goal? / Why it contributes?), kept in Ledger for when it is handed in.
+ *  Empty when it has none; a Portflow evidence item has its own (`Evidence.description`). */
+export interface DeliverableDescription {
+	project: string;
+	path: string;
+	description: string;
+	descriptionHtml: string;
+	descriptionParts: EvidenceParts | null;
+}
+
+export interface DeliverableMeta {
+	project: string;
+	/** The live path, as 0.8 names it. */
+	path: string;
+	/** `01`, `02`: given in the order they are made, kept on rename, never renumbered. */
+	number: number;
+	goal: string;
+	mmm: MmmLevel | null;
+	/** The question it answers: "main" or a sub-question's text. */
+	answers: string | null;
+	template: string | null;
+}
+
+export interface DeliverableDraft {
+	name: string;
+	goal: string;
+	template: string | null;
+	answers: string | null;
+	mmm: MmmLevel | null;
+	/** Who writes the first draft: you, or Claude Code from a prompt (off by default; never for Man-Made). */
+	firstDraft: 'me' | 'claude';
+}
+
+/** Publishing a version with another label than the project's intended one: your answer is kept with the version. */
+export interface LabelConfirmation {
+	project: string;
+	path: string;
+	version: string;
+	intended: MmmLevel;
+	chosen: MmmLevel;
+	reason: string;
+	at: string;
 }

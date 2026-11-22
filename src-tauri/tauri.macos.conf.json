@@ -3,11 +3,25 @@
   "bundle": {
     "fileAssociations": [
       {
-        "ext": ["png"],
+        "ext": [
+          "png"
+        ],
         "name": "PNG image",
         "mimeType": "image/png",
         "role": "Viewer",
         "rank": "Alternate"
+      }
+    ]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Ledger",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 480,
+        "minHeight": 520,
+        "dragDropEnabled": true
       }
     ]
   }

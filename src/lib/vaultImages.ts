@@ -2,7 +2,7 @@
 // webview can't open itself: they are read through the backend, as FileImage does, and shown from blob URLs. Web
 // pictures (http, https) are shown as they are. Used by the rendered page (Markdown.svelte) and the editor.
 
-import { mimeOf } from '$lib/actions';
+import { shownMimeOf } from '$lib/actions';
 import { api } from '$lib/api';
 
 /** Where a markdown file's pictures are looked for: its project, and its folder in that project. */
@@ -55,8 +55,8 @@ export function imageLoader(base: () => ImageBase | undefined): { load: ImageLoa
 		const key = `${at.project}/${path}`;
 		let url = cache.get(key);
 		if (!url) {
-			url = api.readProjectFile(at.project, path).then(
-				(bytes) => (disposed ? null : URL.createObjectURL(new Blob([bytes], { type: mimeOf(path) }))),
+			url = api.readProjectImage(at.project, path).then(
+				(bytes) => (disposed ? null : URL.createObjectURL(new Blob([bytes], { type: shownMimeOf(path) }))),
 				() => {
 					cache.delete(key); // not there (yet): try again next time
 					return null;

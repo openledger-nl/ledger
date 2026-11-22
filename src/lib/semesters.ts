@@ -1,8 +1,8 @@
 // Calendar days and the sprints of a semester, for the screens. A calendar day is "2026-09-01" (how it is stored)
-// and is shown the European way, "01-09-2026" or "1 Sep 2026". The sprint plan mirrors the backend's
+// and is shown the European way, "1-9-2026" (see format.ts). The sprint plan mirrors the backend's
 // (src-tauri/src/semesters.rs), so the editor can show it while you type.
 
-import { LOCALE } from './format';
+import { numericDay, todayKey } from './format';
 import type { Semester, SemesterDraft, Sprint, Vacation } from './types';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -20,12 +20,12 @@ export const toDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-$
 
 export const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 
-export const today = () => toDay(new Date());
+/** Today in Amsterdam (format.ts), "2026-11-09". */
+export const today = () => todayKey();
 
-/** "2026-09-01" → "01-09-2026". */
+/** "2026-09-01" → "1-9-2026". */
 export function european(day: string): string {
-	const d = parseDay(day);
-	return d ? `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}` : day;
+	return parseDay(day) ? numericDay(day) : day;
 }
 
 /** What someone typed — "1-9-2026", "01/09/2026", "1.9.26" — → "2026-09-01"; null when it isn't a day. */
@@ -37,18 +37,12 @@ export function parseEuropean(text: string): string | null {
 	return parseDay(day) ? day : null;
 }
 
-const shortFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' });
-const fullFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' });
+/** "1-9-2026". */
+export const dayLabel = (day: string) => european(day);
 
-/** "1 Sep 2026". */
-export const dayLabel = (day: string) => (parseDay(day) ? fullFormat.format(parseDay(day) as Date) : day);
-
-/** "1 Sep – 21 Sep 2026", or with both years when they differ. */
+/** "1-9-2026 – 21-9-2026". */
 export function spanLabel(start: string, end: string): string {
-	const a = parseDay(start);
-	const b = parseDay(end);
-	if (!a || !b) return `${start} – ${end}`;
-	return a.getFullYear() === b.getFullYear() ? `${shortFormat.format(a)} – ${fullFormat.format(b)}` : `${fullFormat.format(a)} – ${fullFormat.format(b)}`;
+	return `${european(start)} - ${european(end)}`;
 }
 
 /** Days from `start` to `end`, both counted. */
@@ -122,10 +116,10 @@ export function suggestDraft(existing: Semester[]): SemesterDraft {
 	}
 	const s = parseDay(start) as Date;
 	const firstHalf = s.getMonth() >= 6;
-	const schoolYear = firstHalf ? `${s.getFullYear()}–${s.getFullYear() + 1}` : `${s.getFullYear() - 1}–${s.getFullYear()}`;
+	const schoolYear = firstHalf ? `${s.getFullYear()}-${s.getFullYear() + 1}` : `${s.getFullYear() - 1}-${s.getFullYear()}`;
 	const end = firstHalf ? `${s.getFullYear() + 1}-01-31` : `${s.getFullYear()}-07-31`;
 	return {
-		name: `Semester ${firstHalf ? 1 : 2} · ${schoolYear}`,
+		name: `Semester ${firstHalf ? 1 : 2} | ${schoolYear}`,
 		start,
 		end: parseDay(end) && end > start ? end : halfYearFrom(start),
 		sprintWeeks: 3,
@@ -135,21 +129,17 @@ export function suggestDraft(existing: Semester[]): SemesterDraft {
 	};
 }
 
-/**
- * NJ26, the autumn semester of 2026, as its calendar has it: a kick-off week, a shorter sprint 0, five sprints of three
- * weeks, a week off in autumn and two at Christmas. It ends with the last sprint: the weeks after it (the end talks
- * and the graduation conference) are events, not sprints. The name keeps its X for whoever adds it to fill in.
- */
-export function nj26Draft(): SemesterDraft {
-	const start = '2026-08-31';
-	const end = '2027-01-24';
-	const vacations: Vacation[] = [
-		{ name: 'Autumn break', start: '2026-10-19', end: '2026-10-25' },
-		{ name: 'Christmas break', start: '2026-12-21', end: '2027-01-03' }
-	];
-	const plan: [name: string, weeks: number][] = [['Kick-off', 1], ['Sprint 0', 2], ['Sprint 1', 3], ['Sprint 2', 3], ['Sprint 3', 3], ['Sprint 4', 3], ['Sprint 5', 3]];
-	const sprints = planSprints(start, end, (i) => plan[i]?.[1] ?? 3, vacations).map((s, i) => ({ ...s, name: plan[i]?.[0] ?? s.name }));
-	return { name: 'NJ26 - Semester X', start, end, sprintWeeks: 3, notes: '', sprints, vacations };
+/** A semester, or a semester template, as the draft of a new one: its days, vacations and sprints, under its name. */
+export function draftOf(s: Semester): SemesterDraft {
+	return {
+		name: s.name,
+		start: s.start,
+		end: s.end,
+		sprintWeeks: s.sprintWeeks,
+		notes: s.notes,
+		sprints: s.sprints.map((x) => ({ ...x })),
+		vacations: s.vacations.map((x) => ({ ...x }))
+	};
 }
 
 export type Phase = 'current' | 'upcoming' | 'past';

@@ -1,6 +1,7 @@
 //! The settings for running prompts with Claude Code: where the program is, how much it may do, which model.
 //!
-//! They live in `<vault>/.ledger/claude-code.json`, next to the vault's other local settings: the folder is
+//! They live in `claude-code.json` in the vault's folder for this machine (see `settings::local_dir`), next to its
+//! other settings: the folder is
 //! gitignored and ignored by the sync, so none of this leaves the machine. (What a run did is not a setting: it is
 //! kept in the thread, see `records`.) A missing, old or damaged file loads as
 //! the defaults, field by field, so a setting this version doesn't know about never breaks the screen.
@@ -11,7 +12,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
-use crate::settings::{self, LEDGER_DIR};
+use crate::settings;
 
 pub const SETTINGS_FILE: &str = "claude-code.json";
 pub const GUARD_FILE: &str = "claude-guard.json";
@@ -58,40 +59,48 @@ pub struct ClaudeSettings {
     /// A model name or alias for `--model`; empty means whatever the CLI defaults to.
     pub model: String,
     /// Extra guard rails (on by default): the run ignores the project folder's own Claude settings and is told not
-    /// to read or write outside the project folder or touch `.ledger/` and `.env` files. Needs a recent Claude Code.
+    /// to read or write outside the project folder or touch Ledger's own folder for the vault and `.env` files. Needs a
+    /// recent Claude Code.
     pub confine: bool,
     /// Off by default: a prompt that is created starts running at once, without the confirmation that shows what will
     /// be sent. The window does the starting (it is the one that sees a prompt being created); this is only the choice.
     pub auto_run: bool,
+    /// On by default: a new prompt is named by Claude Code from what it asks (see `naming`), which sends the text of the
+    /// request to it. Off, a prompt is called by the start of its text.
+    pub name_prompts: bool,
 }
 
 impl Default for ClaudeSettings {
     fn default() -> Self {
-        ClaudeSettings { cli_path: String::new(), permission_mode: PermissionMode::default(), model: String::new(), confine: true, auto_run: false }
+        ClaudeSettings { cli_path: String::new(), permission_mode: PermissionMode::default(), model: String::new(), confine: true, auto_run: false, name_prompts: true }
     }
 }
 
 pub fn settings_path(root: &Path) -> PathBuf {
-    root.join(LEDGER_DIR).join(SETTINGS_FILE)
+    settings::local_dir(root).join(SETTINGS_FILE)
 }
 
 /// The settings file handed to each run for the guard rails, rewritten before every run.
 pub fn guard_path(root: &Path) -> PathBuf {
-    root.join(LEDGER_DIR).join(GUARD_FILE)
+    settings::local_dir(root).join(GUARD_FILE)
 }
 
 impl ClaudeSettings {
     /// What the user typed, checked. The path may be pasted with its quotes; the model has to look like a model name,
     /// since it ends up in the command line.
-    pub fn validated(cli_path: &str, permission_mode: &str, model: &str, confine: bool, auto_run: bool) -> Result<ClaudeSettings> {
+    pub fn validated(cli_path: &str, permission_mode: &str, model: &str, confine: bool, auto_run: bool, name_prompts: bool) -> Result<ClaudeSettings> {
         let mode = PermissionMode::parse(permission_mode).ok_or_else(|| Error::invalid("Choose one of the permission modes offered"))?;
-        let model = model.trim();
-        if !model.is_empty() && !valid_model(model) {
-            return Err(Error::invalid(
-                "That doesn't look like a model name. Use letters, digits and . _ : - / [ ] only, for example sonnet, opus or claude-sonnet-4-5",
-            ));
+        let model = checked_model(model)?;
+        Ok(ClaudeSettings { cli_path: clean_path(cli_path)?, permission_mode: mode, model, confine, auto_run, name_prompts })
+    }
+
+    /// These settings for one run: with the model chosen in the run's confirmation in place of the one in Settings,
+    /// when one was chosen there ("" is Claude Code's own default). `None` keeps the one in Settings.
+    pub fn for_run(self, model: Option<&str>) -> Result<ClaudeSettings> {
+        match model {
+            None => Ok(self),
+            Some(model) => Ok(ClaudeSettings { model: checked_model(model)?, ..self }),
         }
-        Ok(ClaudeSettings { cli_path: clean_path(cli_path)?, permission_mode: mode, model: model.to_string(), confine, auto_run })
     }
 
     fn to_json(&self) -> Value {
@@ -101,8 +110,20 @@ impl ClaudeSettings {
             "model": self.model,
             "confine": self.confine,
             "autoRun": self.auto_run,
+            "namePrompts": self.name_prompts,
         })
     }
+}
+
+/// A model name as typed, trimmed; refused when it doesn't look like one, since it ends up in the command line.
+fn checked_model(model: &str) -> Result<String> {
+    let model = model.trim();
+    if !model.is_empty() && !valid_model(model) {
+        return Err(Error::invalid(
+            "That doesn't look like a model name. Use letters, digits and . _ : - / [ ] only, for example sonnet, opus or claude-sonnet-4-5",
+        ));
+    }
+    Ok(model.to_string())
 }
 
 /// A model name as the CLI takes it: an alias (`sonnet`, `opus[1m]`) or a full id. Starting with a letter or digit
@@ -140,6 +161,7 @@ pub fn load(root: &Path) -> ClaudeSettings {
         model: text("model").map(str::trim).filter(|m| valid_model(m)).map(str::to_string).unwrap_or(defaults.model),
         confine: value.get("confine").and_then(Value::as_bool).unwrap_or(defaults.confine),
         auto_run: value.get("autoRun").and_then(Value::as_bool).unwrap_or(defaults.auto_run),
+        name_prompts: value.get("namePrompts").and_then(Value::as_bool).unwrap_or(defaults.name_prompts),
     }
 }
 
@@ -149,6 +171,5 @@ pub fn save(root: &Path, settings: &ClaudeSettings) -> Result<()> {
         fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
     }
     let text = serde_json::to_string_pretty(&settings.to_json()).unwrap_or_default();
-    fs::write(&file, text).map_err(|e| Error::io(&file, e))?;
-    settings::ensure_gitignore(root)
+    fs::write(&file, text).map_err(|e| Error::io(&file, e))
 }

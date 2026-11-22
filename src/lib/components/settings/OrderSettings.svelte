@@ -25,8 +25,8 @@
 		</div>
 		<span class="hint">
 			It applies to the posts in a thread (its notes, prompts, feedback and uploads, read together; newest first opens at the top, oldest first at the
-			bottom), the threads in the sidebar and on a project’s page (by latest activity), the feedback on a deliverable, a deliverable’s versions, and its
-			“Produced by” window, where the threads and what happened in each turn over together.
+			bottom), the threads in the sidebar and on a project's page (by latest activity), the feedback on a deliverable, a deliverable's versions, and its
+			"Produced by" window, where the threads and what happened in each turn over together.
 		</span>
 	</div>
 </div>

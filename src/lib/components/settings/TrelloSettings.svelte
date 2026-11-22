@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { listen } from '@tauri-apps/api/event';
 	import { openUrl } from '@tauri-apps/plugin-opener';
+	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import Switch from '$lib/components/Switch.svelte';
 	import { trelloApi as api } from '$lib/api';
 	import { ago, dateTime } from '$lib/format';
@@ -30,6 +31,12 @@
 	let pickBoard = $state('');
 	let people = $state<TrelloMember[]>([]);
 	let pickPerson = $state('');
+
+	const boardOptions = $derived<DropdownOption[]>((boards ?? []).map((b) => ({ value: b.id, label: b.name })));
+	const personOptions = $derived<DropdownOption[]>([
+		{ value: '', label: pickBoard ? 'Choose a person' : 'Choose a board first' },
+		...people.map((m) => ({ value: m.id, label: `${m.fullName || m.username}${m.fullName && m.username ? ` (@${m.username})` : ''}` }))
+	]);
 
 	/** Per linked project: its columns and the lists they use. */
 	let mappings = $state<Record<string, TrelloMapping>>({});
@@ -185,29 +192,24 @@
 
 	// ---- projects and columns ------------------------------------------------------------------
 
-	async function linkProject(slug: string, board: string, select: HTMLSelectElement) {
+	// The dropdown shows the board the project has, so a cancelled or failed change needs no undoing here.
+	async function linkProject(slug: string, board: string) {
 		const project = view?.projects.find((p) => p.slug === slug);
 		const before = project?.board ?? '';
 		if (before && before !== board) {
 			const ok = await confirmDialog({
 				title: board ? 'Use another board?' : 'Stop syncing this project?',
 				message:
-					'Items already synced with the old board stop syncing: their cards aren’t on the new board. They stay here, marked as no longer linked, and nothing is deleted on Trello.',
+					'Items already synced with the old board stop syncing: their cards aren\'t on the new board. They stay here, marked as no longer linked, and nothing is deleted on Trello.',
 				confirmLabel: board ? 'Use this board' : 'Stop syncing',
 				danger: true
 			});
-			if (!ok) {
-				select.value = before;
-				return;
-			}
+			if (!ok) return;
 		}
 		busy = 'link:' + slug;
 		const saved = await attempt(() => api.trelloLinkProject(slug, board || null));
 		busy = null;
-		if (!saved) {
-			select.value = before;
-			return;
-		}
+		if (!saved) return;
 		view = saved;
 		await loadMappings();
 	}
@@ -236,7 +238,7 @@
 
 	const stateText = $derived.by(() => {
 		if (!status?.configured) return 'Not syncing';
-		if (status.state === 'syncing') return 'Syncing…';
+		if (status.state === 'syncing') return 'Syncing...';
 		if (status.state === 'error') return 'Last sync failed';
 		return status.pending ? 'Changes waiting to be looked at' : 'Up to date';
 	});
@@ -251,7 +253,7 @@
 	</div>
 	<p class="sub" style="margin:0">
 		Keep tasks and user stories in step with the Trello cards of <strong>one person</strong>. Cards that person is a member of come in as tasks (or as
-		user stories, when they carry the “User story” label), and a task or story made here becomes a card on Trello with that person assigned. Cards of
+		user stories, when they carry the "User story" label), and a task or story made here becomes a card on Trello with that person assigned. Cards of
 		anyone else are never read or changed. Only projects you link to a board are synced.
 	</p>
 
@@ -268,7 +270,7 @@
 					bind:this={keyInput}
 					type="password"
 					bind:value={apiKey}
-					placeholder={view.hasKey ? `Saved ${view.keyHint} — leave blank to keep it` : 'Your Trello API key'}
+					placeholder={view.hasKey ? `Saved ${view.keyHint} - leave blank to keep it` : 'Your Trello API key'}
 					spellcheck="false"
 					autocomplete="off"
 				/>
@@ -278,7 +280,7 @@
 				<input
 					type="password"
 					bind:value={token}
-					placeholder={view.hasToken ? `Saved ${view.tokenHint} — leave blank to keep it` : 'Your Trello token'}
+					placeholder={view.hasToken ? `Saved ${view.tokenHint} - leave blank to keep it` : 'Your Trello token'}
 					spellcheck="false"
 					autocomplete="off"
 				/>
@@ -291,10 +293,10 @@
 				onclick={(e) => {
 					e.preventDefault();
 					openUrl(e.currentTarget.href).catch(() => {});
-				}}>Trello’s Power-Ups admin</a
-			>: create a Power-Up (any name), open its API key page and copy the key, then choose “Generate a Token” there and allow read and write access. Ledger
-			sends them in an <code>Authorization</code> header, never in a web address, and keeps them in this vault’s <code>.ledger/.env</code>: on this machine
-			only, never uploaded, and never shown here again beyond their last four characters.
+				}}>Trello's Power-Ups admin</a
+			>: create a Power-Up (any name), open its API key page and copy the key, then choose "Generate a Token" there and allow read and write access. Ledger
+			sends them in an <code>Authorization</code> header, never in a web address, and keeps them in the system's keychain: on this machine only, never in
+			the vault, and never shown here again beyond their last four characters.
 		</div>
 
 		{#if result}
@@ -326,24 +328,24 @@
 						</dd>
 					</div>
 					<div class="row-end" style="justify-content:flex-start">
-						<button class="btn small" onclick={startChanging} disabled={busy !== null}>Choose someone else…</button>
+						<button class="btn small" onclick={startChanging} disabled={busy !== null}>Choose someone else</button>
 					</div>
 				{:else}
 					<div class="form-row">
-						<label class="field grow">
+						<div class="field grow">
 							Board to pick from
-							<select value={pickBoard} onchange={(e) => chooseBoard(e.currentTarget.value)} disabled={boards === null}>
-								<option value="">{boards === null ? 'Loading boards…' : 'Choose a board…'}</option>
-								{#each boards ?? [] as b (b.id)}<option value={b.id}>{b.name}</option>{/each}
-							</select>
-						</label>
-						<label class="field grow">
+							<Dropdown
+								bind:value={() => pickBoard, (v) => v !== pickBoard && chooseBoard(v)}
+								options={[{ value: '', label: boards === null ? 'Loading boards...' : 'Choose a board' }, ...boardOptions]}
+								disabled={boards === null}
+								label="Board to pick from"
+								full
+							/>
+						</div>
+						<div class="field grow">
 							Person
-							<select bind:value={pickPerson} disabled={people.length === 0}>
-								<option value="">{pickBoard ? 'Choose a person…' : 'Choose a board first'}</option>
-								{#each people as m (m.id)}<option value={m.id}>{m.fullName || m.username}{m.fullName && m.username ? ` (@${m.username})` : ''}</option>{/each}
-							</select>
-						</label>
+							<Dropdown bind:value={pickPerson} options={personOptions} disabled={people.length === 0} label="Person" full />
+						</div>
 					</div>
 					{#if boardsError}
 						<div class="notice bad">{boardsError}</div>
@@ -374,15 +376,17 @@
 					{#each view.projects as p (p.slug)}
 						<div class="field">
 							{p.name}
-							<select
-								value={p.board ?? ''}
-								onchange={(e) => linkProject(p.slug, e.currentTarget.value, e.currentTarget)}
+							<Dropdown
+								bind:value={() => p.board ?? '', (v) => v !== (p.board ?? '') && linkProject(p.slug, v)}
+								options={[
+									{ value: '', label: 'Not synced' },
+									...boardOptions,
+									...(p.board && !(boards ?? []).some((b) => b.id === p.board) ? [{ value: p.board, label: p.boardName ?? p.board }] : [])
+								]}
 								disabled={busy !== null || boards === null}
-							>
-								<option value="">Not synced</option>
-								{#each boards ?? [] as b (b.id)}<option value={b.id}>{b.name}</option>{/each}
-								{#if p.board && !(boards ?? []).some((b) => b.id === p.board)}<option value={p.board}>{p.boardName}</option>{/if}
-							</select>
+								label="Trello board for {p.name}"
+								full
+							/>
 						</div>
 						{#if p.board && mappings[p.slug]}
 							{@const mapping = mappings[p.slug]}
@@ -390,25 +394,30 @@
 								{#each mapping.columns as c (c.id)}
 									<dt>{c.name}</dt>
 									<dd>
-										<select value={c.choice} onchange={(e) => chooseList(p.slug, c.id, e.currentTarget.value)} disabled={busy !== null}>
-											<option value="auto">{c.choice === 'auto' && c.listName ? `List “${c.listName}” (same name)` : 'The list with the same name'}</option>
-											<option value="none">Don’t sync this column</option>
-											{#each mapping.lists as l (l.id)}<option value={l.id}>List “{l.name}”</option>{/each}
-										</select>
-										{#if !c.listId}<span class="hint">no list: its tasks aren’t synced</span>{/if}
+										<Dropdown
+											bind:value={() => c.choice, (v) => v !== c.choice && chooseList(p.slug, c.id, v)}
+											options={[
+												{ value: 'auto', label: c.choice === 'auto' && c.listName ? `List "${c.listName}" (same name)` : 'The list with the same name' },
+												{ value: 'none', label: 'Don\'t sync this column' },
+												...mapping.lists.map((l) => ({ value: l.id, label: `List "${l.name}"` }))
+											]}
+											disabled={busy !== null}
+											label="Trello list for {c.name}"
+										/>
+										{#if !c.listId}<span class="hint">no list: its tasks aren't synced</span>{/if}
 									</dd>
 								{/each}
 							</div>
 							{#if mapping.unusedLists.length > 0}
 								<div class="hint" style="padding-left:12px">
-									Cards in {mapping.unusedLists.map((n) => `“${n}”`).join(', ')} aren’t added, because no column uses that list.
+									Cards in {mapping.unusedLists.map((n) => `"${n}"`).join(', ')} aren't added, because no column uses that list.
 								</div>
 							{/if}
 						{/if}
 					{/each}
 					<div class="hint">
-						A column takes the Trello list with the same name (ignoring capitals) unless you choose another. A task whose column has no list isn’t put on
-						Trello, and a card whose list has no column isn’t added here; both are counted below. A project’s user stories go in the list of its backlog
+						A column takes the Trello list with the same name (ignoring capitals) unless you choose another. A task whose column has no list isn't put on
+						Trello, and a card whose list has no column isn't added here; both are counted below. A project's user stories go in the list of its backlog
 						column when they are made. One board serves one project.
 					</div>
 				</div>
@@ -424,15 +433,15 @@
 					</dd>
 					{#if status?.lastSyncAt}
 						<dt>Last sync</dt>
-						<dd title={dateTime(status.lastSyncAt)}>{ago(status.lastSyncAt)}{status.summary ? ` — ${status.summary}` : ''}</dd>
+						<dd title={dateTime(status.lastSyncAt)}>{ago(status.lastSyncAt)}{status.summary ? ` - ${status.summary}` : ''}</dd>
 					{/if}
 					{#if status?.report}
 						<dt>Counts</dt>
 						<dd>
-							cards created {status.report.cardsCreated}, updated {status.report.cardsUpdated} · items added {status.report.itemsCreated}, updated
+							cards created {status.report.cardsCreated}, updated {status.report.cardsUpdated} | items added {status.report.itemsCreated}, updated
 							{status.report.itemsUpdated}{#if status.report.conflicts > 0}
-								· conflicts {status.report.conflicts}{/if}{#if status.report.unmatched > 0}
-								· left out {status.report.unmatched}{/if}
+								| conflicts {status.report.conflicts}{/if}{#if status.report.unmatched > 0}
+								| left out {status.report.unmatched}{/if}
 						</dd>
 					{/if}
 					{#if status?.lastError}
@@ -462,13 +471,13 @@
 				<div class="sync-detail">
 					<h3 style="font-size:14px">No longer synced</h3>
 					<div class="hint">
-						These items stopped syncing because their card was archived, deleted, moved to another board, or is no longer the person’s. They are still here, untouched.
+						These items stopped syncing because their card was archived, deleted, moved to another board, or is no longer the person's. They are still here, untouched.
 					</div>
 					{#each view.unlinked as item (item.project + '/' + item.kind + '/' + item.id)}
 						<div class="kv" style="grid-template-columns: 1fr auto">
 							<div>
 								<strong>{item.title}</strong>
-								<span class="hint">· {item.kind === 'story' ? 'user story' : 'task'} in {item.projectName}</span>
+								<span class="hint">| {item.kind === 'story' ? 'user story' : 'task'} in {item.projectName}</span>
 								<div class="hint">{item.reason}</div>
 							</div>
 							<button class="btn small" onclick={() => relink(item.kind, item.project, item.id)}>Make a new card</button>
@@ -480,17 +489,17 @@
 			<div class="hint">
 				Nothing is ever deleted on Trello, and deleting or archiving on one side never deletes on the other: an item whose card is gone stays here and stops
 				syncing, and a card whose item you delete stays on Trello. When both sides change the same text, the newer edit wins and the other is kept in the
-				vault’s <code>.ledger/conflicts</code> folder. Ledger looks at Trello every few minutes and shortly after you make changes. Trello allows about 100
+				conflicts folder of this machine's settings for the vault. Ledger looks at Trello every few minutes and shortly after you make changes. Trello allows about 100
 				requests per 10 seconds per token; Ledger stays well under that and waits when Trello asks it to.
 			</div>
 			<div class="hint">
-				Every card Ledger writes ends with a short “Synced with Ledger” note. A card with that note is never added from Trello (it reaches your other machines
-				through the vault), so an item you deleted stays deleted and two machines never add the same item twice. Take the note off a card’s description to
-				bring it in anyway. A user story’s description on Trello reads <code>**As a** … / **I want to** … / **Such that** …</code>, then
+				Every card Ledger writes ends with a short "Synced with Ledger" note. A card with that note is never added from Trello (it reaches your other machines
+				through the vault), so an item you deleted stays deleted and two machines never add the same item twice. Take the note off a card's description to
+				bring it in anyway. A user story's description on Trello reads <code>**As a** ... / **I want to** ... / **Such that** ...</code>, then
 				<code>**Acceptance criteria**</code> as a checklist, then <code>**Notes**</code>; you can edit it there.
 			</div>
 		{/if}
 	{:else if !loadError}
-		<div class="hint">Loading…</div>
+		<div class="hint">Loading...</div>
 	{/if}
 </div>

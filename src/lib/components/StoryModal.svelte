@@ -3,6 +3,7 @@
 	import { api } from '$lib/api';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import type { Criterion, Story, ThreadSummary } from '$lib/types';
+	import Dropdown from './Dropdown.svelte';
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	import Modal from './Modal.svelte';
 
@@ -107,9 +108,9 @@
 	</div>
 
 	<div class="form-row">
-		<label class="field grow">As a…<input bind:value={role} placeholder="role" /></label>
-		<label class="field grow">I want to…<input bind:value={want} placeholder="goal" /></label>
-		<label class="field grow">Such that…<input bind:value={reason} placeholder="reason" /></label>
+		<label class="field grow">As a...<input bind:value={role} placeholder="role" /></label>
+		<label class="field grow">I want to...<input bind:value={want} placeholder="goal" /></label>
+		<label class="field grow">Such that...<input bind:value={reason} placeholder="reason" /></label>
 	</div>
 
 	<div class="field">
@@ -118,7 +119,7 @@
 	</div>
 
 	<div class="field">
-		<span>Acceptance criteria{criteria.length ? ` · ${doneCount}/${criteria.length} met` : ''}</span>
+		<span>Acceptance criteria{criteria.length ? ` | ${doneCount}/${criteria.length} met` : ''}</span>
 		<div class="q-list">
 			{#each criteria as c, i (i)}
 				<div class="crit-row" class:done={c.done}>
@@ -151,18 +152,18 @@
 				<span class="chip">{titleOf(slug)}<button class="x" aria-label="Unlink {titleOf(slug)}" onclick={() => (threadSlugs = threadSlugs.filter((s) => s !== slug))}><X size={12} /></button></span>
 			{/each}
 			{#if unlinked.length}
-				<select
-					style="width:auto;min-width:0;padding:4px 8px;font-size:12px"
-					aria-label="Link a thread"
-					onchange={(e) => {
-						const slug = e.currentTarget.value;
-						if (slug) threadSlugs.push(slug);
-						e.currentTarget.value = '';
-					}}
-				>
-					<option value="">+ Link a thread…</option>
-					{#each unlinked as t (t.slug)}<option value={t.slug}>{t.title}</option>{/each}
-				</select>
+				<!-- An action, not a setting: it always shows the prompt, and picking a thread links it. -->
+				<Dropdown
+					bind:value={
+						() => '',
+						(slug) => {
+							if (slug) threadSlugs.push(slug);
+						}
+					}
+					options={unlinked.map((t) => ({ value: t.slug, label: t.title }))}
+					label="Link a thread"
+					placeholder="+ Link a thread"
+				/>
 			{:else if !threadSlugs.length}
 				<span class="hint">No threads yet</span>
 			{/if}

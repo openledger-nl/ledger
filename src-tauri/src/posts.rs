@@ -6,7 +6,21 @@ use crate::models::PostView;
 use crate::{ids, markdown, prompts, threads};
 
 const COLUMNS: &str =
-    "id, parent_id, guiding_question, version_published, deliverable_path, deliverable_version, prompt_id, created_at, updated_at, body";
+    "id, parent_id, guiding_question, version_published, deliverable_path, deliverable_version, prompt_id, created_at, updated_at, body, kind, labels";
+
+pub const KINDS: [&str; 4] = ["thought", "devlog", "research", "reflection"];
+pub const LABELS: [&str; 3] = ["fact", "to-check", "assumption"];
+
+/// The labels as stored: the known ones, each once, in their own order.
+pub fn clean_labels<S: AsRef<str>>(labels: &[S]) -> Vec<String> {
+    LABELS.iter().filter(|l| labels.iter().any(|x| x.as_ref().trim().eq_ignore_ascii_case(l))).map(|l| l.to_string()).collect()
+}
+
+/// A kind as stored, or `None` for text that is no kind.
+pub fn clean_kind(kind: &str) -> Option<String> {
+    let kind = kind.trim().to_lowercase();
+    KINDS.contains(&kind.as_str()).then_some(kind)
+}
 
 #[derive(Debug, Default)]
 pub struct AddOptions {
@@ -35,11 +49,39 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<PostView> {
         updated_at: r.get(8)?,
         html: markdown::render(&body),
         body,
+        kind: r.get(10)?,
+        labels: r.get::<_, String>(11)?.split(',').filter(|l| !l.is_empty()).map(str::to_string).collect(),
     })
 }
 
-/// Names the prompt a note points at, when it still exists.
+/// Says what a post is and how sure you are of it. A kind or label that isn't one of Ledger's is refused.
+pub fn set_meta(conn: &Connection, project: &str, thread: &str, id: &str, kind: Option<&str>, labels: &[String]) -> Result<PostView> {
+    get(conn, project, thread, id)?;
+    let kind = match kind.map(str::trim).filter(|k| !k.is_empty()) {
+        Some(k) => Some(clean_kind(k).ok_or_else(|| Error::invalid("A post is a thought, devlog, research or reflection"))?),
+        None => None,
+    };
+    let cleaned = clean_labels(labels);
+    if labels.iter().any(|l| !l.trim().is_empty() && !LABELS.iter().any(|x| x.eq_ignore_ascii_case(l.trim()))) {
+        return Err(Error::invalid("A post's labels are Fact, To check and Assumption"));
+    }
+    conn.execute(
+        "UPDATE posts SET kind = ?4, labels = ?5 WHERE project_slug = ?1 AND thread_slug = ?2 AND id = ?3",
+        params![project, thread, id, kind, cleaned.join(",")],
+    )?;
+    get(conn, project, thread, id)
+}
+
+/// Names the prompt a note points at, when it still exists. A "version published" note says what its version's record
+/// says (its file holds only a link to the manifest).
 fn complete(conn: &Connection, project: &str, mut post: PostView) -> Result<PostView> {
+    if post.version_published
+        && post.body.is_empty()
+        && let (Some(path), Some(version)) = (&post.deliverable_path, &post.deliverable_version)
+    {
+        post.body = crate::provenance::announcement(conn, project, path, version)?;
+        post.html = markdown::render(&post.body);
+    }
     if let Some(id) = &post.prompt_id {
         if let Some((thread, title)) = prompts::locate(conn, project, id)? {
             post.prompt_thread = Some(thread);
@@ -71,9 +113,10 @@ fn get(conn: &Connection, project: &str, thread: &str, id: &str) -> Result<PostV
     complete(conn, project, post)
 }
 
+/// A "version published" note has no body of its own: what it says comes from the version's record.
 pub fn add(conn: &Connection, project: &str, thread: &str, body: &str, options: AddOptions) -> Result<PostView> {
     let body = body.trim();
-    if body.is_empty() {
+    if body.is_empty() && !options.version_published {
         return Err(Error::invalid("Post body is required"));
     }
     threads::require(conn, project, thread)?;

@@ -2,9 +2,9 @@
 //! says they used elsewhere), the thread it is filed under, the prompt and run behind it, and the AI-use label
 //! (MMM, https://mmmlabel.tech) declared for the product at that version.
 //!
-//! A version is a bare file in `deliverables/` and must stay one (its bytes are compared with the live file, and
-//! anything next to it would show up as a deliverable), so this lives in a record of its own: `versions/<id>.md` in the
-//! project, one per published version. A version published before records existed has none; what can be proven from
+//! A version is a bare file in `versions/` (as "<name>@v1.0.<ext>", see [`deliverables`]) and must stay one (its bytes
+//! are compared with the live file), so this lives in a record of its own beside it: `versions/<id>.md` in the project,
+//! one per published version. A version published before records existed has none; what can be proven from
 //! the runs and the "version published" notes is worked out when it is shown ([`resolve`]), and nothing is written for
 //! it until the person marks it.
 //!
@@ -21,7 +21,7 @@ use crate::db::{query_all, query_opt};
 use crate::deliverables::{self, split_version};
 use crate::error::{Error, Result};
 use crate::models::{PublishChoices, VersionUpdate};
-use crate::{ids, prompts, threads};
+use crate::{prompts, threads};
 
 pub const AI: &str = "ai";
 pub const HUMAN: &str = "human";
@@ -50,20 +50,8 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 
 // ---- what is recorded when a version is published ---------------------------------------------------
 
-/// What caused a version, which decides how the note in the thread reads.
-#[derive(Debug, Clone)]
-pub enum Cause {
-    /// Published from the page.
-    Manual,
-    /// A Claude Code run published what it wrote.
-    Run,
-    /// Edits that no version held, published just before the prompt `running` (its id) was run.
-    Held { running: String },
-}
-
 #[derive(Debug, Clone)]
 pub struct Origin {
-    pub cause: Cause,
     /// Where the note goes and the panel files the version; `None` records it without a thread.
     pub thread: Option<String>,
     pub ai: bool,
@@ -78,7 +66,6 @@ impl Origin {
     /// A Claude Code run published what it wrote in `thread`.
     pub fn run(thread: &str, prompt: &str, run: Option<&str>) -> Origin {
         Origin {
-            cause: Cause::Run,
             thread: Some(thread.to_string()),
             ai: true,
             prompt: Some(prompt.to_string()),
@@ -88,11 +75,9 @@ impl Origin {
         }
     }
 
-    /// The person's own edits, kept before the run of `running`; or, when `stopped` is the run that left them in the
-    /// file, that run's.
-    pub fn held(thread: &str, running: &str, stopped: Option<&StoppedRun>) -> Origin {
+    /// The person's own edits, kept before a run; or, when `stopped` is the run that left them in the file, that run's.
+    pub fn held(thread: &str, stopped: Option<&StoppedRun>) -> Origin {
         Origin {
-            cause: Cause::Held { running: running.to_string() },
             thread: Some(thread.to_string()),
             ai: stopped.is_some(),
             prompt: stopped.map(|s| s.prompt_id.clone()),
@@ -133,7 +118,6 @@ pub fn manual_origin(conn: &Connection, project: &str, base: &str, choices: &Pub
     // A prompt or a run only explains a change that AI made.
     let ai = choices.ai || run.is_some();
     Ok(Origin {
-        cause: Cause::Manual,
         thread,
         ai,
         prompt: prompt.filter(|_| ai),
@@ -148,55 +132,76 @@ fn plain(text: &str) -> String {
     text.chars().filter(|c| !matches!(c, '*' | '`' | '[' | ']')).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The sentence the thread's "version published" note says.
-pub fn announcement(conn: &Connection, project: &str, name: &str, version: &str, origin: &Origin) -> Result<String> {
-    let title = |id: &Option<String>| -> Result<Option<String>> {
-        match id {
-            Some(id) => Ok(prompts::display_title_of(conn, project, id)?.map(|t| plain(&t))),
-            None => Ok(None),
-        }
-    };
-    let mut text = match &origin.cause {
-        Cause::Run => match title(&origin.prompt)? {
-            Some(prompt) => format!("Version {version} of **{name}** was published from the prompt **{prompt}**."),
+/// The sentence the thread's "version published" note says, made from the version's record each time it is shown (the
+/// note's file holds only a link to the manifest, see [`note_link`]).
+pub fn announcement(conn: &Connection, project: &str, base: &str, version: &str) -> Result<String> {
+    let name = plain(deliverables::file_name(base));
+    let record = query_opt(
+        conn,
+        "SELECT prompt_id, run_id, author, note FROM version_records WHERE project_slug = ?1 AND deliverable_path = ?2 AND version = ?3",
+        [project, base, version],
+        |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?)),
+    )?;
+    let Some((prompt, run, author, note)) = record else { return Ok(format!("Version {version} of **{name}** was published.")) };
+    let mut text = match &prompt {
+        Some(id) => match prompts::display_title_of(conn, project, id)? {
+            Some(title) => format!("Version {version} of **{name}** was published from the prompt **{}**.", plain(&title)),
             None => format!("Version {version} of **{name}** was published from a prompt."),
         },
-        Cause::Held { running } => {
-            let running = title(&Some(running.clone()))?.map_or_else(|| "a prompt".to_string(), |t| format!("the prompt **{t}**"));
-            match (origin.ai, title(&origin.prompt)?) {
-                (true, Some(earlier)) => format!(
-                    "Version {version} of **{name}** keeps what an earlier run of the prompt **{earlier}** left in the file, published just before {running} ran."
-                ),
-                (true, None) => format!("Version {version} of **{name}** keeps what an earlier run left in the file, published just before {running} ran."),
-                (false, _) => format!("Version {version} of **{name}** keeps your earlier edits, published just before {running} ran."),
-            }
-        }
-        Cause::Manual => match title(&origin.prompt)? {
-            Some(prompt) => format!("Version {version} of **{name}** was published from the prompt **{prompt}**."),
-            None => format!("Version {version} of **{name}** was just published."),
-        },
+        None => format!("Version {version} of **{name}** was published."),
     };
-    if origin.ai && matches!(origin.cause, Cause::Manual) {
+    // A run says what it did itself; AI used elsewhere is said here.
+    if author == AI && run.is_none() {
         text.push_str(" It was made with generative AI.");
     }
     // A changelog is what a person wrote about the change, so the thread quotes it as theirs. A run writes none.
-    let changelog = origin.note.trim();
+    let changelog = note.trim();
     if !changelog.is_empty() {
-        text.push_str(&format!("
-
-from changelog: {changelog}"));
+        text.push_str(&format!("\n\nfrom changelog: {changelog}"));
     }
     Ok(text)
+}
+
+/// What the file of a thread's "version published" note holds: a link to the version's manifest (`manifest`, its path
+/// in the project) and nothing else, so nothing it says can drift from the record. The note is in
+/// `threads/<thread>/posts/`, three folders below the project; the link reads as the version's file name.
+pub fn note_link(manifest: &str, version_file: &str) -> String {
+    let label: String = version_file.chars().filter(|c| !matches!(c, '[' | ']')).collect();
+    format!("[{label}](../../../{})", encode_path(manifest))
+}
+
+/// The manifest a "version published" note links to, as a path in its project (`versions/plan/plan@v0.1.manifest.md`);
+/// `None` for a post that says anything else.
+pub fn note_manifest(body: &str) -> Option<String> {
+    let rest = body.trim().strip_prefix('[')?;
+    let (label, rest) = rest.split_once("](")?;
+    let target = rest.strip_suffix(')')?;
+    if label.contains(['[', ']', '\n']) || target.contains(['(', ')', ' ', '\n']) {
+        return None;
+    }
+    let path = crate::commands::percent_decode(target.strip_prefix("../../../")?)?;
+    (path.starts_with("versions/") && path.ends_with(".manifest.md") && !path.contains("..")).then_some(path)
+}
+
+/// A path as a markdown link holds it: what would end or break the link written as `%XX`.
+fn encode_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for c in path.chars() {
+        match c {
+            ' ' | '%' | '(' | ')' | '[' | ']' | '<' | '>' | '#' | '?' => out.push_str(&format!("%{:02X}", c as u32)),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// Writes the record of a version that has just been published.
 pub fn insert_record(conn: &Connection, project: &str, base: &str, version: &str, origin: &Origin, sha256: &str, at: &str) -> Result<()> {
     conn.execute(
         "INSERT OR REPLACE INTO version_records
-            (id, project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            (project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
-            ids::new_id(),
             project,
             base,
             version,
@@ -254,7 +259,6 @@ pub struct Resolved {
 }
 
 struct Stored {
-    id: String,
     thread: Option<String>,
     prompt: Option<String>,
     run: Option<String>,
@@ -276,28 +280,29 @@ pub fn resolve(conn: &Connection, project: &str, base: &str) -> Result<Vec<Resol
     let mut stored: HashMap<String, Stored> = HashMap::new();
     for (version, s) in query_all(
         conn,
-        "SELECT version, id, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at
+        "SELECT version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at
          FROM version_records WHERE project_slug = ?1 AND deliverable_path = ?2 ORDER BY created_at, rowid",
         [project, base],
         |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 Stored {
-                    id: r.get(1)?,
-                    thread: r.get(2)?,
-                    prompt: r.get(3)?,
-                    run: r.get(4)?,
-                    author: author_of(&r.get::<_, String>(5)?),
-                    mmm: r.get::<_, Option<String>>(6)?.and_then(|m| level(&m).map(str::to_string)),
-                    sha256: r.get(7)?,
-                    note: r.get(8)?,
-                    created_at: r.get(9)?,
+                    thread: r.get(1)?,
+                    prompt: r.get(2)?,
+                    run: r.get(3)?,
+                    author: author_of(&r.get::<_, String>(4)?),
+                    mmm: r.get::<_, Option<String>>(5)?.and_then(|m| level(&m).map(str::to_string)),
+                    sha256: r.get(6)?,
+                    note: r.get(7)?,
+                    created_at: r.get(8)?,
                 },
             ))
         },
     )? {
         stored.entry(version).or_insert(s);
     }
+    // The project's deliverables that have manifests, to name this one's by (see `deliverables::manifest_in_project`).
+    let recorded: Vec<String> = query_all(conn, "SELECT DISTINCT deliverable_path FROM version_records WHERE project_slug = ?1", [project], |r| r.get(0))?;
 
     // The note that announced each version: the first one wins.
     let mut notes: HashMap<String, (String, String, String)> = HashMap::new();
@@ -352,7 +357,7 @@ pub fn resolve(conn: &Connection, project: &str, base: &str) -> Result<Vec<Resol
                 mmm: s.mmm,
                 note: s.note,
                 sha256: s.sha256.or_else(|| body.as_deref().map(|b| sha256_hex(b.as_bytes()))),
-                record: Some(s.id),
+                record: Some(deliverables::manifest_in_project(base, &version, recorded.iter().map(String::as_str))),
                 post,
                 size,
             },
@@ -452,9 +457,9 @@ pub fn update_record(conn: &Connection, project: &str, base: &str, version: &str
     if current.record.is_none() {
         conn.execute(
             "INSERT INTO version_records
-                (id, project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, '', ?10)",
-            params![ids::new_id(), project, base, version, current.thread, current.prompt, current.run, current.author, current.sha256, current.at],
+                (project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, '', ?9)",
+            params![project, base, version, current.thread, current.prompt, current.run, current.author, current.sha256, current.at],
         )?;
     }
     if let Some(author) = author {
@@ -517,7 +522,7 @@ pub struct NoteRef {
 #[serde(rename_all = "camelCase")]
 pub struct VersionEntry {
     pub version: String,
-    /// The snapshot, relative to the deliverables folder.
+    /// The snapshot, named relative to the deliverables folder (its file is at that place under `versions/`).
     pub path: String,
     pub at: String,
     /// "ai", "human" or "unknown".
@@ -530,7 +535,8 @@ pub struct VersionEntry {
     /// Against the version before it.
     pub size_change: Option<i64>,
     pub sha256: Option<String>,
-    /// The record's file in the vault (`versions/<id>.md`), when there is one.
+    /// The version's manifest, by its path in the project's folder (`versions/plan/plan@v0.1.manifest.md`), when it has
+    /// one.
     pub record: Option<String>,
     pub post: Option<NoteRef>,
 }
@@ -638,9 +644,9 @@ pub struct Provenance {
 
 fn excerpt(text: &str) -> String {
     let line = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
-    let mut out: String = line.chars().take(140).collect();
+    let mut out: String = line.chars().take(137).collect(); // at most 140 with the three dots
     if line.chars().count() > 140 {
-        out = format!("{}…", out.trim_end());
+        out = format!("{}...", out.trim_end());
     }
     out
 }
@@ -654,7 +660,7 @@ pub fn for_deliverable(conn: &Connection, project: &str, base: &str) -> Result<P
             .into_iter()
             .collect();
 
-    // Prompts: the ones linked to the file or to one of its versions, and the ones the records name.
+    // Prompts: the ones linked to the file, and the ones the records name.
     let mut prompt_rows: BTreeMap<String, (String, String, String)> = BTreeMap::new(); // id -> thread, title, created_at
     for (id, thread, title, body, created_at, path) in query_all(
         conn,
@@ -663,7 +669,7 @@ pub fn for_deliverable(conn: &Connection, project: &str, base: &str) -> Result<P
         [project],
         |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?)),
     )? {
-        if split_version(&path).0 == base {
+        if path == base {
             prompt_rows.entry(id).or_insert((thread, prompts::display_title(&title, &body), created_at));
         }
     }
@@ -853,4 +859,20 @@ fn draft_of(conn: &Connection, project: &str, base: &str, resolved: &[Resolved])
         _ => live_size != size || live_modified > modified,
     };
     Ok(changed.then(|| (Some(newest.version.clone()), live_modified)))
+}
+
+/// A version published with another label than the project's intended one: the intended label and your reason (maybe
+/// none) are kept with the version's record, so it shows that the difference was seen and chosen.
+pub fn confirm_label(conn: &Connection, project: &str, path: &str, version: &str, intended: &str, reason: &str) -> Result<()> {
+    let intended = level(intended).ok_or_else(|| Error::invalid("That isn't one of the five AI-use labels"))?;
+    let base = crate::deliverables::split_version(path).0;
+    let reason = reason.trim();
+    let changed = conn.execute(
+        "UPDATE version_records SET intended_mmm = ?4, label_reason = ?5 WHERE project_slug = ?1 AND deliverable_path = ?2 AND version = ?3",
+        params![project, base, version, intended, (!reason.is_empty()).then_some(reason)],
+    )?;
+    if changed == 0 {
+        return Err(Error::not_found("Version not found"));
+    }
+    Ok(())
 }
