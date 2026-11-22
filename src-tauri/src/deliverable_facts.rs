@@ -239,12 +239,15 @@ pub fn import(conn: &Connection, project: &str, meta: &Mapping) -> Result<()> {
     Ok(())
 }
 
+/// The project's live deliverables, by path (no versions).
+fn live_paths(conn: &Connection, project: &str) -> Result<Vec<String>> {
+    let paths: Vec<String> = query_all(conn, "SELECT path FROM deliverables WHERE project_slug = ?1", [project], |r| r.get(0))?;
+    Ok(paths.into_iter().filter(|p| deliverables::split_version(p).1.is_none()).collect())
+}
+
 /// The project's evidence descriptions, one file each beside its deliverable.
 pub fn export_descriptions(conn: &Connection, project: &str, files: &mut std::collections::BTreeMap<String, String>) -> Result<()> {
-    let live: Vec<String> = query_all(conn, "SELECT path FROM deliverables WHERE project_slug = ?1", [project], |r| r.get::<_, String>(0))?
-        .into_iter()
-        .filter(|p| deliverables::split_version(p).1.is_none())
-        .collect();
+    let live = live_paths(conn, project)?;
     for (path, text) in query_all(conn, "SELECT path, description FROM deliverable_descriptions WHERE project_slug = ?1", [project], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
     })? {
@@ -264,10 +267,7 @@ pub fn import_description(conn: &Connection, project: &str, rel: &str, meta: &Ma
     let (dir, name) = rel.rsplit_once('/').map_or(("", rel), |(d, n)| (d, n));
     let in_dir = |file: &str| if dir.is_empty() { file.to_string() } else { format!("{dir}/{file}") };
     let named = name.get(..name.len().saturating_sub(".desc.md".len())).unwrap_or_default();
-    let live: Vec<String> = query_all(conn, "SELECT path FROM deliverables WHERE project_slug = ?1", [project], |r| r.get::<_, String>(0))?
-        .into_iter()
-        .filter(|p| deliverables::split_version(p).1.is_none())
-        .collect();
+    let live = live_paths(conn, project)?;
     let path = match meta.text("deliverable") {
         Some(file) => Some(in_dir(file.trim())),
         None => {
@@ -286,10 +286,7 @@ pub fn import_description(conn: &Connection, project: &str, rel: &str, meta: &Ma
 /// Once the project's files are in: facts whose file is gone follow a file renamed outside Ledger when its new name
 /// starts with the same number and it has no facts of its own.
 pub fn reattach(conn: &Connection, project: &str) -> Result<()> {
-    let live: Vec<String> = query_all(conn, "SELECT path FROM deliverables WHERE project_slug = ?1", [project], |r| r.get::<_, String>(0))?
-        .into_iter()
-        .filter(|p| deliverables::split_version(p).1.is_none())
-        .collect();
+    let live = live_paths(conn, project)?;
     for fact in query_all(conn, &format!("SELECT {COLUMNS} FROM deliverable_facts WHERE project_slug = ?1"), [project], from_row)? {
         if live.contains(&fact.path) {
             continue;
