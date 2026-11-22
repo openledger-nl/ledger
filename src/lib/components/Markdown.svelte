@@ -50,8 +50,8 @@
 
 	// ---- [[links]] -------------------------------------------------------------------------------
 	// The backend leaves `[[target]]` as <a class="wikilink" data-wikilink="target"> with no address. What the target is
-	// (a thread, a deliverable, a piece of feedback) is looked up here, in the same list the editor completes from; one
-	// that is nothing is drawn faint, as in Obsidian.
+	// (a thread, a deliverable, a piece of feedback, a meeting day, a person) is looked up here, in the same list the
+	// editor completes from; one that is nothing is drawn faint, as in Obsidian.
 
 	const links = projectLinks();
 
@@ -64,7 +64,7 @@
 			a.classList.toggle('unresolved', !target);
 			if (!target) {
 				a.removeAttribute('href');
-				a.title = index ? `Nothing in this project is called "${name}"` : 'Links work inside a project';
+				a.title = index ? `Nothing is called "${name}"` : 'Links work inside a project';
 				continue;
 			}
 			a.href = linkUrl(target);
@@ -75,9 +75,12 @@
 						? 'Thread'
 						: target.kind === 'meeting'
 							? `Meeting notes of ${target.id}`
-							: `Deliverable ${target.id}`;
-			// Feedback has no name to type: without words of its own, the link says what the feedback says.
-			if (target.kind === 'feedback' && !a.dataset.alias) a.textContent = target.title;
+							: target.kind === 'person'
+								? `${target.title}${target.detail ? `, ${target.detail}` : ''}`
+								: `Deliverable ${target.id}${target.project !== links.project ? ` in ${target.project}` : ''}`;
+			// Feedback has no name to type, and a person is written by id: without words of their own, the link says what
+			// the feedback says, or the person's name.
+			if ((target.kind === 'feedback' || target.kind === 'person') && !a.dataset.alias) a.textContent = target.title;
 		}
 	});
 

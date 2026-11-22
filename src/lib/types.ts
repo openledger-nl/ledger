@@ -1109,15 +1109,17 @@ export interface CaptureStatus {
 
 /** Something a `[[link]]` in a project's markdown can point at (see links.ts for how a typed target is matched to one). */
 export interface LinkTarget {
-	/** `meeting`: a day's meeting notes. */
-	kind: 'thread' | 'deliverable' | 'feedback' | 'meeting';
-	/** The project it is in, by slug. */
+	/** `meeting`: a day's meeting notes; `person`: someone in shared/people. */
+	kind: 'thread' | 'deliverable' | 'feedback' | 'meeting' | 'person';
+	/** The project it is in, by slug; empty for a meeting day and a person, which belong to the vault. */
 	project: string;
-	/** The thread's slug, the deliverable's live path, the feedback's id, or the day of the meeting notes. */
+	/** The thread's slug, the deliverable's live path, the feedback's id, the day of the meeting notes, the person's id. */
 	id: string;
-	/** A thread's title, a deliverable's file name, the start of what a piece of feedback says, the day's meetings. */
+	/** A thread's title, a deliverable's file name, the start of what a piece of feedback says, the day's meetings, a
+	 *  person's name. */
 	title: string;
-	/** Where it is: a deliverable's folder, the file a piece of feedback is on, the day of the meeting notes. */
+	/** Where it is: a deliverable's folder, the file a piece of feedback is on, the day of the meeting notes, a person's
+	 *  organisation. */
 	detail: string;
 	/** For a deliverable and for feedback, the path that opens it (the live file or a version); empty for a thread. */
 	open: string;

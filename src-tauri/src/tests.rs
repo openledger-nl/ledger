@@ -1073,14 +1073,13 @@ fn markdown_marks_wiki_links_for_the_page_to_resolve() {
 }
 
 #[test]
-fn links_list_what_a_project_can_point_at() {
+fn links_list_what_the_vault_can_point_at() {
     let c = conn();
     let (p, t) = setup(&c);
     let brief = deliverables::create(&c, &p, "Pricing brief", "# Pricing brief\n").unwrap();
     let note = feedback::add(&c, &p, &t, &brief.path, "## Too long\n\nCut the intro.", None).unwrap();
     let long = feedback::add(&c, &p, &t, &brief.path, &"word ".repeat(40), None).unwrap();
     feedback::set_status(&c, &p, &t, &long.id, "resolved").unwrap();
-    // Nothing of another project is on offer.
     let (other, other_thread) = {
         let o = projects::create(&c, "Other").unwrap().slug;
         let ot = threads::create(&c, &o, "Elsewhere").unwrap().slug;
@@ -1089,8 +1088,8 @@ fn links_list_what_a_project_can_point_at() {
     let theirs = deliverables::create(&c, &other, "Theirs", "").unwrap();
     feedback::add(&c, &other, &other_thread, &theirs.path, "not yours", None).unwrap();
 
-    let found = links::list(&c, &p).unwrap();
-    let summary: Vec<_> = found.iter().map(|l| (l.kind.as_str(), l.id.as_str(), l.title.as_str(), l.detail.as_str(), l.open.as_str())).collect();
+    let found = links::list(&c).unwrap();
+    let summary: Vec<_> = found.iter().filter(|l| l.project == p).map(|l| (l.kind.as_str(), l.id.as_str(), l.title.as_str(), l.detail.as_str(), l.open.as_str())).collect();
     assert_eq!(summary.len(), 4, "{summary:?}");
     assert_eq!(summary[0], ("thread", t.as_str(), "Calls", "", ""));
     assert_eq!(summary[1], ("deliverable", "pricing-brief.md", "pricing-brief.md", "", "pricing-brief.md"));
@@ -1099,18 +1098,19 @@ fn links_list_what_a_project_can_point_at() {
     assert_eq!(summary[2].2.chars().count(), 60, "{}", summary[2].2);
     assert!(summary[2].2.starts_with("word word") && summary[2].2.ends_with("..."), "{}", summary[2].2);
     assert_eq!(summary[3], ("feedback", note.id.as_str(), "Too long", "on pricing-brief.md", "pricing-brief.md"));
-    assert!(found.iter().all(|l| l.project == p), "each says its project");
+    // Every project's things are there, each with its project, for links that name another project.
+    assert!(found.iter().any(|l| l.project == other && l.kind == "deliverable"));
 
-    // A day with a meeting of the project is a target too, by its date, called by the project's meetings that day.
+    // A day with meetings is a target too, once, by its date, called by its meetings; and so is everyone in the vault.
     let meeting = |title: &str, projects: &[&str]| crate::daily::MeetingSection { title: title.into(), projects: projects.iter().map(|p| p.to_string()).collect(), ..Default::default() };
     let draft = crate::daily::DailyDraft { date: "2026-11-22".into(), meetings: vec![meeting("Coach", &[&p]), meeting("Lunch", &[]), meeting("Review", &[&p, &other])] };
     crate::daily::save(&c, &draft).unwrap();
-    let found = links::list(&c, &p).unwrap();
-    let day = found.last().unwrap();
-    assert_eq!((day.kind.as_str(), day.id.as_str(), day.title.as_str(), day.detail.as_str()), ("meeting", "2026-11-22", "Coach | Review", "2026-11-22"));
-    // The meeting notes link to every project's targets, each with its project.
-    let everything = links::list_vault(&c).unwrap();
-    assert!(everything.iter().any(|l| l.project == other && l.kind == "deliverable") && everything.iter().any(|l| l.project == p && l.kind == "meeting"));
+    let frank = crate::people::create(&c, &crate::people::PersonDraft { name: "Frank de Vries".into(), organisation: "Fontys".into(), ..Default::default() }).unwrap();
+    let found = links::list(&c).unwrap();
+    let days: Vec<_> = found.iter().filter(|l| l.kind == "meeting").map(|l| (l.id.as_str(), l.title.as_str(), l.project.as_str())).collect();
+    assert_eq!(days, [("2026-11-22", "Coach | Lunch | Review", "")]);
+    let person = found.last().unwrap();
+    assert_eq!((person.kind.as_str(), person.id.as_str(), person.title.as_str(), person.detail.as_str(), person.project.as_str()), ("person", frank.id.as_str(), "Frank de Vries", "Fontys", ""));
 }
 
 #[test]

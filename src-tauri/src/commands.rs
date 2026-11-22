@@ -26,16 +26,10 @@ pub fn render_markdown(body: String) -> String {
     markdown::render(&body)
 }
 
-/// What a `[[link]]` in this project's markdown can point at.
+/// What a `[[link]]` can point at: every project's threads, deliverables and feedback, the meeting days and the people.
 #[tauri::command]
-pub fn list_links(app: State<App>, project: String) -> Result<Vec<LinkTarget>> {
-    app.read(|c, _| links::list(c, &project))
-}
-
-/// What the meeting notes can link to: every project's threads, deliverables, feedback and meeting days.
-#[tauri::command]
-pub fn list_vault_links(app: State<App>) -> Result<Vec<LinkTarget>> {
-    app.read(|c, _| links::list_vault(c))
+pub fn list_links(app: State<App>) -> Result<Vec<LinkTarget>> {
+    app.read(|c, _| links::list(c))
 }
 
 #[tauri::command]

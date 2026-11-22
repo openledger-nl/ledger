@@ -199,7 +199,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::render_markdown,
             commands::list_links,
-            commands::list_vault_links,
             commands::search,
             commands::list_activity,
             commands::list_semesters,

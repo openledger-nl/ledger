@@ -6,7 +6,7 @@ import type { LayoutLoad } from './$types';
 export const load: LayoutLoad = async ({ params }) => {
 	const [project, links, meta, people, semesters] = await Promise.all([
 		api.getProject(params.project),
-		api.listLinks(params.project),
+		api.listLinks(),
 		// Its kind, goal, end and intended label, and its people, from its project.md; the semesters for its end.
 		api.getProjectMeta(params.project),
 		api.listProjectPeople(params.project),

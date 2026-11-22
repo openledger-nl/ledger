@@ -588,8 +588,9 @@ const comments = StateField.define<{ focused: boolean; decorations: DecorationSe
 // As in Obsidian: `[[Thread]]` and `[[report|the report]]` read as links in both modes. In live preview the brackets (and
 // the target in front of the words shown instead) fade away except where the cursor is; a link that points at nothing is
 // drawn faint and dashed. Ctrl/⌘+click follows one, like a link to the web. Typing `[[` closes the brackets and offers the
-// project's threads, deliverables and feedback. What the targets are is up to whoever hosts the editor (`LinkSupport`);
-// the rules for matching them are in links.ts.
+// project's threads, deliverables and feedback, the meeting days and the people, and another project's once its name is
+// typed. What the targets are is up to whoever hosts the editor (`LinkSupport`); the rules for matching them are in
+// links.ts.
 
 export interface LinkSupport {
 	/** What links can point at right now, or null where there is nothing (outside a project). Asked for each time. */
@@ -635,7 +636,7 @@ function wikiDecorations(view: EditorView): DecorationSet {
 			const words = m[2]?.trim();
 			const missing = !!index && !index.resolve(target);
 			const attributes: Record<string, string> = { 'data-wikilink': target };
-			if (index) attributes.title = missing ? `Nothing in this project is called "${target}"` : 'Ctrl+click to open';
+			if (index) attributes.title = missing ? `Nothing is called "${target}"` : 'Ctrl+click to open';
 			const mark = Decoration.mark({ class: missing ? 'cm-md-wikilink unresolved' : 'cm-md-wikilink', attributes });
 			if (preview && !ranges.some((r) => r.from <= stop && r.to >= at)) {
 				// Only the words that are shown remain: the target alone, or what comes after the bar.

@@ -35,15 +35,13 @@
 		peopleOptions: TagOption[];
 		/** The projects' people: the meeting's own come first, and make up "Whole team". */
 		people?: ProjectPerson[];
-		/** What [[links]] can point at, in every project (list_vault_links). */
+		/** What [[links]] can point at (list_links). */
 		links?: LinkTarget[];
 	} = $props();
 
-	/** What a meeting's [[links]] point at: the threads, deliverables, feedback and meeting days of its projects, or of
-	 *  every project while it has none. */
-	function linksFor(m: MeetingSection): LinkTarget[] {
-		return m.projects.length ? links.filter((t) => m.projects.includes(t.project)) : links;
-	}
+	/** The project a meeting's [[links]] are written in: its only one. With several or none, a link to a project's
+	 *  thread or deliverable names the project (`[[thrym-player/pricing-brief]]`). */
+	const homeOf = (m: MeetingSection) => (m.projects.length === 1 ? (m.projects[0] ?? null) : null);
 
 	/** Who can be picked for a meeting: the people of its projects first, then everyone else in the index. */
 	function peopleFor(m: MeetingSection): TagOption[] {
@@ -185,7 +183,8 @@
 					label="Notes"
 					placeholder="What was said, decided, to do... Type @ to mention someone, [[ to link a document."
 					people={mentionsFor(m)}
-					linkTargets={linksFor(m)}
+					linkTargets={links}
+					linkHome={homeOf(m)}
 				/>
 			</article>
 		{:else}
