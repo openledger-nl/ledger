@@ -299,11 +299,9 @@ fn folded(listing: &BTreeMap<String, Fingerprint>) -> BTreeMap<String, Fingerpri
     listing.iter().map(|(path, fp)| (fold(path), *fp)).collect()
 }
 
-/// When a conflict copy was made, as its name says it: `2026-11-20 101500`.
+/// When a conflict copy was made, as its name says it: `2026-11-20 101500`, by the clock of this computer.
 fn conflict_stamp() -> String {
-    let now = ids::now();
-    let (day, time) = now.split_once('T').unwrap_or((&now, ""));
-    format!("{day} {}", time.chars().filter(char::is_ascii_digit).take(6).collect::<String>())
+    chrono::Local::now().format("%Y-%m-%d %H%M%S").to_string()
 }
 
 fn hash(text: &str) -> u64 {
