@@ -317,7 +317,7 @@ pub const PRESETS: [Preset; 7] = [
     Preset {
         id: "people",
         name: "The project's people",
-        hint: "whoever the project lists as its coach, teammates and client",
+        hint: "whoever the project lists as its coach, teammates and stakeholders",
     },
     Preset {
         id: "client",
@@ -351,7 +351,7 @@ fn role_preset(role: &str) -> Option<&'static Preset> {
     match role {
         "coach" | "expert" => preset("coach"),
         "teammate" | "colleague" => preset("team"),
-        "client" => preset("client"),
+        "stakeholder" => preset("client"),
         _ => None,
     }
 }

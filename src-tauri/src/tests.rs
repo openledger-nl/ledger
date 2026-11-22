@@ -223,6 +223,10 @@ fn a_templates_readers_are_noted_in_its_deliverable_and_told_in_its_prompt() {
     let frank = crate::people::create(&c, &crate::people::PersonDraft { name: "Frank".into(), ..Default::default() }).unwrap();
     project_facts::save_people(&c, &p, &[ProjectPerson { person: frank.id, role: "coach".into(), ..Default::default() }]).unwrap();
     assert!(templates::skeleton(&c, &p, &memo).unwrap().starts_with("%% Readers: Frank (coach: judges the work"));
+    // A stakeholder reads as the client does.
+    let sanne = crate::people::create(&c, &crate::people::PersonDraft { name: "Sanne".into(), ..Default::default() }).unwrap();
+    project_facts::save_people(&c, &p, &[ProjectPerson { person: sanne.id, role: "stakeholder".into(), ..Default::default() }]).unwrap();
+    assert!(templates::skeleton(&c, &p, &memo).unwrap().starts_with("%% Readers: Sanne (stakeholder: not technical"));
 
     // A new deliverable for a prompt from the template starts with the note.
     let prompt = prompts::create(&c, &p, &t, &NewPrompt { body: "Write it".into(), template_id: Some("plan".into()), new_deliverable: Some("plan".into()), ..Default::default() }).unwrap();
