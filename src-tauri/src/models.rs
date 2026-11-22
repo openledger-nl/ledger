@@ -494,7 +494,7 @@ pub struct SemesterView {
 
 /// What the caller supplies to create or change a semester. Without sprints, they are cut from the start in
 /// stretches of `sprint_weeks` weeks of work, around the vacations.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SemesterDraft {
     pub name: String,

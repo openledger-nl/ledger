@@ -33,6 +33,7 @@ mod prompts;
 mod provenance;
 mod screenshot;
 mod search;
+mod semester_templates;
 mod semesters;
 mod settings;
 mod state;
@@ -214,6 +215,9 @@ pub fn run() {
             commands::save_project_meta,
             commands::list_project_people,
             commands::list_people,
+            commands::list_semester_templates,
+            commands::save_semester_template,
+            commands::delete_semester_template,
             commands::list_clients,
             commands::create_client,
             commands::update_client,

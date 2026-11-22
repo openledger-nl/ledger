@@ -32,6 +32,7 @@ import type {
 	Prompt,
 	Provenance,
 	Semester,
+	SemesterTemplate,
 	Settings,
 	Story,
 	Task,
@@ -553,6 +554,31 @@ export const semester: Semester = {
 		{ name: 'Sprint 4', start: '2026-11-09', end: '2026-11-27', goal: 'Test with the client.' }
 	],
 	vacations: [{ name: 'Herfstvakantie', start: '2026-10-31', end: '2026-11-08' }],
+	createdAt: at(1),
+	updatedAt: at(1)
+};
+
+/** NJ26, the semester template a new vault starts with. */
+export const semesterTemplate: SemesterTemplate = {
+	id: 'nj26',
+	name: 'NJ26 - Semester X',
+	start: '2026-08-31',
+	end: '2027-01-24',
+	sprintWeeks: 3,
+	notes: '',
+	sprints: [
+		{ name: 'Kick-off', start: '2026-08-31', end: '2026-09-06', goal: '' },
+		{ name: 'Sprint 0', start: '2026-09-07', end: '2026-09-20', goal: '' },
+		{ name: 'Sprint 1', start: '2026-09-21', end: '2026-10-11', goal: '' },
+		{ name: 'Sprint 2', start: '2026-10-12', end: '2026-11-08', goal: '' },
+		{ name: 'Sprint 3', start: '2026-11-09', end: '2026-11-29', goal: '' },
+		{ name: 'Sprint 4', start: '2026-11-30', end: '2026-12-20', goal: '' },
+		{ name: 'Sprint 5', start: '2027-01-04', end: '2027-01-24', goal: '' }
+	],
+	vacations: [
+		{ name: 'Autumn break', start: '2026-10-19', end: '2026-10-25' },
+		{ name: 'Christmas break', start: '2026-12-21', end: '2027-01-03' }
+	],
 	createdAt: at(1),
 	updatedAt: at(1)
 };

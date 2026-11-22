@@ -233,6 +233,12 @@ export interface Semester {
 	updatedAt: string;
 }
 
+/**
+ * A semester template (semester_templates.rs), in `shared/templates/semesters/<id>.md`: a semester a new one can start
+ * from, such as NJ26, the one a new vault starts with. Its id is its file's name.
+ */
+export type SemesterTemplate = Semester;
+
 /** What creating or changing a semester takes. Without sprints, they are cut from the start. */
 export interface SemesterDraft {
 	name: string;

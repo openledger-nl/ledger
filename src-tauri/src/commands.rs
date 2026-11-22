@@ -163,6 +163,23 @@ pub fn list_project_meta(app: State<App>) -> Result<Vec<ProjectMeta>> {
     app.read(|c, _| project_facts::list(c))
 }
 
+/// The semester templates a new semester can start from, the earliest first.
+#[tauri::command]
+pub fn list_semester_templates(app: State<App>) -> Result<Vec<crate::semester_templates::SemesterTemplate>> {
+    app.read(|c, _| crate::semester_templates::list(c))
+}
+
+/// Saves a semester template: a new one without an `id`.
+#[tauri::command]
+pub fn save_semester_template(app: State<App>, id: Option<String>, draft: SemesterDraft) -> Result<crate::semester_templates::SemesterTemplate> {
+    app.mutate(|c, _| crate::semester_templates::save(c, id.as_deref(), &draft))
+}
+
+#[tauri::command]
+pub fn delete_semester_template(app: State<App>, id: String) -> Result<()> {
+    app.mutate(|c, _| crate::semester_templates::delete(c, &id))
+}
+
 /// Every client the vault knows, with its projects.
 #[tauri::command]
 pub fn list_clients(app: State<App>) -> Result<Vec<crate::clients::Client>> {

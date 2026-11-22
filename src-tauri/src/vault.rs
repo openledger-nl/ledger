@@ -4,6 +4,7 @@
 //! ```text
 //! shared/templates/prompts/<id>.md               a vault-wide template
 //! shared/templates/pdf/layout.typ                the vault's own PDF layout, with the files it uses beside it
+//! shared/templates/semesters/<id>.md            a semester a new one can start from (see `semester_templates`)
 //! shared/semesters/<id>.md                       a semester and its sprints, and the Portflow section it is
 //! shared/people/<id>.md                          someone the vault knows (see `people`), attached to projects in project.md
 //! shared/clients/<id>.md                         a client work projects are done for (see `clients`)
@@ -53,7 +54,6 @@ use serde_yaml_ng::{Mapping, Value};
 use crate::db::{self, query_all};
 use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
-use crate::models::{SemesterDraft, Sprint, Vacation};
 use crate::conflicts::Conflict;
 use crate::store::{self, Fingerprint, Store};
 use crate::{board, deliverables, ids, marker, posts, projects, provenance, semesters, templates};
@@ -345,6 +345,9 @@ pub fn export(conn: &Connection) -> Result<BTreeMap<String, String>> {
     for client in crate::clients::list(conn)? {
         files.insert(crate::clients::file(&client.id), crate::clients::render(&client));
     }
+    for template in crate::semester_templates::list(conn)? {
+        files.insert(crate::semester_templates::file(&template.id), crate::semester_templates::render(&template));
+    }
     export_stories_and_tasks(conn, &mut files)?;
     export_deliverables(conn, &mut files)?;
     export_version_records(conn, &mut files)?;
@@ -584,38 +587,7 @@ fn export_semesters(conn: &Connection, files: &mut BTreeMap<String, String>) -> 
     let mut sections: HashMap<String, i64> =
         query_all(conn, "SELECT semester_id, section_id FROM semester_sections", [], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?.into_iter().collect();
     for semester in semesters::list(conn)? {
-        let mut meta = Mapping::new();
-        frontmatter::set(&mut meta, "name", semester.name);
-        frontmatter::set(&mut meta, "start", semester.start);
-        frontmatter::set(&mut meta, "end", semester.end);
-        frontmatter::set(&mut meta, "sprintWeeks", semester.sprint_weeks);
-        let sprints: Vec<Value> = semester
-            .sprints
-            .into_iter()
-            .map(|s| {
-                let mut item = Mapping::new();
-                frontmatter::set(&mut item, "name", s.name);
-                frontmatter::set(&mut item, "start", s.start);
-                frontmatter::set(&mut item, "end", s.end);
-                frontmatter::set_opt(&mut item, "goal", Some(&s.goal));
-                Value::Mapping(item)
-            })
-            .collect();
-        frontmatter::set(&mut meta, "sprints", Value::Sequence(sprints));
-        let vacations: Vec<Value> = semester
-            .vacations
-            .into_iter()
-            .map(|v| {
-                let mut item = Mapping::new();
-                frontmatter::set(&mut item, "name", v.name);
-                frontmatter::set(&mut item, "start", v.start);
-                frontmatter::set(&mut item, "end", v.end);
-                Value::Mapping(item)
-            })
-            .collect();
-        if !vacations.is_empty() {
-            frontmatter::set(&mut meta, "vacations", Value::Sequence(vacations));
-        }
+        let mut meta = semesters::file_meta(&semesters::draft_of(&semester));
         if let Some(section) = sections.remove(&semester.id) {
             frontmatter::set(&mut meta, "portflowSection", Value::Number(section.into()));
         }
@@ -778,6 +750,7 @@ fn import(conn: &Connection, root: &Path, store: &Store, listing: &BTreeMap<Stri
 
     import_templates(&tx, &source, "")?;
     import_semesters(&tx, &source)?;
+    import_semester_templates(&tx, &source)?;
     import_people(&tx, &source)?;
     import_clients(&tx, &source)?;
     import_daily(&tx, &source)?;
@@ -806,6 +779,16 @@ fn import_people(conn: &Connection, source: &Source) -> Result<()> {
         let rel = crate::people::file(&id);
         let Some((meta, notes)) = source.parsed(&rel) else { continue };
         crate::people::import(conn, &id, &meta, &notes, &source.stamp(&rel))?;
+    }
+    Ok(())
+}
+
+/// The semester templates: every `shared/templates/semesters/<id>.md`.
+fn import_semester_templates(conn: &Connection, source: &Source) -> Result<()> {
+    for id in source.stems(crate::semester_templates::FOLDER) {
+        let rel = crate::semester_templates::file(&id);
+        let Some((meta, notes)) = source.parsed(&rel) else { continue };
+        crate::semester_templates::import(conn, &id, &meta, &notes, &source.stamp(&rel))?;
     }
     Ok(())
 }
@@ -930,47 +913,8 @@ fn import_semesters(conn: &Connection, source: &Source) -> Result<()> {
     for id in source.stems(SEMESTERS) {
         let rel = semester_file(&id);
         let Some((meta, notes)) = source.parsed(&rel) else { continue };
-        let sprints = meta
-            .maps("sprints")
-            .into_iter()
-            .map(|item| Sprint {
-                name: item.text("name").unwrap_or_default(),
-                start: item.text("start").unwrap_or_default(),
-                end: item.text("end").unwrap_or_default(),
-                goal: item.text("goal").unwrap_or_default(),
-            })
-            .collect();
-        let vacations = meta
-            .maps("vacations")
-            .into_iter()
-            .map(|item| Vacation {
-                name: item.text("name").unwrap_or_default(),
-                start: item.text("start").unwrap_or_default(),
-                end: item.text("end").unwrap_or_default(),
-            })
-            .collect();
-        let draft = SemesterDraft {
-            name: meta.text("name").unwrap_or_else(|| id.clone()),
-            start: meta.text("start").unwrap_or_default(),
-            end: meta.text("end").unwrap_or_default(),
-            sprint_weeks: meta.text("sprintWeeks").and_then(|w| w.parse().ok()).unwrap_or(0),
-            notes,
-            sprints,
-            vacations,
-        };
-        let checked = match semesters::check(&draft) {
-            Ok(checked) => checked,
-            // Sprints that don't fit are cut again; vacations that don't fit are dropped, and the sprints with them.
-            Err(_) => match semesters::check(&SemesterDraft { sprints: vec![], ..draft.clone() }) {
-                Ok(checked) => checked,
-                Err(_) => match semesters::check(&SemesterDraft { sprints: vec![], vacations: vec![], ..draft }) {
-                    Ok(checked) => checked,
-                    Err(_) => continue,
-                },
-            },
-        };
-        let created_at = meta.text("createdAt").unwrap_or_else(|| source.stamp(&rel));
-        let updated_at = meta.text("updatedAt").unwrap_or_else(|| created_at.clone());
+        let Some(checked) = semesters::check_leniently(semesters::draft_from(&meta, &notes, &id)) else { continue };
+        let (created_at, updated_at) = meta.stamps(&source.stamp(&rel));
         semesters::insert(conn, &id, &checked, &created_at, &updated_at)?;
         let section = meta.text("portflowSection").and_then(|s| s.trim().parse::<i64>().ok());
         if let Some(section) = section {

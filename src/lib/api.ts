@@ -25,6 +25,7 @@ import type {
 	ProjectPerson,
 	Semester,
 	SemesterDraft,
+	SemesterTemplate,
 	Board,
 	Bump,
 	Authorship,
@@ -116,6 +117,11 @@ export const api = {
 	createSemester: (draft: SemesterDraft) => call<Semester>('create_semester', { draft }),
 	updateSemester: (id: string, draft: SemesterDraft) => call<Semester>('update_semester', { id, draft }),
 	deleteSemester: (id: string) => call<void>('delete_semester', { id }),
+	/** What a new semester can start from (shared/templates/semesters), the earliest first. */
+	listSemesterTemplates: () => call<SemesterTemplate[]>('list_semester_templates'),
+	/** A new template without an `id`; otherwise a change to that one. */
+	saveSemesterTemplate: (id: string | null, draft: SemesterDraft) => call<SemesterTemplate>('save_semester_template', { id, draft }),
+	deleteSemesterTemplate: (id: string) => call<void>('delete_semester_template', { id }),
 
 	// projects
 	listProjects: () => call<ProjectSummary[]>('list_projects'),

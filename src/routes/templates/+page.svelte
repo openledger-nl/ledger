@@ -1,7 +1,8 @@
 <script lang="ts">
-	// The templates every project shares, kept in shared/templates/prompts/, one file each; a project can replace any of
-	// them with its own on its Templates tab. A new vault starts with one, a project plan, which is the vault's to
-	// change or delete.
+	// The templates every project shares, one file each: the ones deliverables start from (shared/templates/prompts/),
+	// which a project can replace with its own on its Templates tab, and the ones semesters start from
+	// (shared/templates/semesters/). A new vault starts with a project plan and NJ26, the vault's to change or delete.
+	import SemesterTemplatesPanel from '$lib/components/SemesterTemplatesPanel.svelte';
 	import TemplatesPanel from '$lib/components/TemplatesPanel.svelte';
 	import type { PageData } from './$types';
 
@@ -13,5 +14,6 @@
 <div class="page">
 	<div class="page-inner">
 		<TemplatesPanel scope="" templates={data.templates} />
+		<SemesterTemplatesPanel templates={data.semesterTemplates} />
 	</div>
 </div>

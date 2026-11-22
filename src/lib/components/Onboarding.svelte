@@ -18,10 +18,10 @@
 	import Rocket from '@lucide/svelte/icons/rocket';
 	import { api } from '$lib/api';
 	import { deliverableUrl } from '$lib/actions';
-	import { nj26Draft } from '$lib/semesters';
+	import { draftOf } from '$lib/semesters';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import type { Component } from 'svelte';
-	import type { OnboardingStatus, ProjectSummary, Purpose, Semester, SemesterDraft, Settings } from '$lib/types';
+	import type { OnboardingStatus, ProjectSummary, Purpose, Semester, SemesterDraft, SemesterTemplate, Settings } from '$lib/types';
 	import OnboardingImport from './OnboardingImport.svelte';
 	import SemesterModal from './SemesterModal.svelte';
 
@@ -64,6 +64,9 @@
 	/** A skipped step that is being done after all, or what Ledger is for, being changed. */
 	let revisiting = $state<StepId | null>(null);
 	let editor = $state<{ preset?: SemesterDraft } | undefined>(undefined);
+	// What a semester can start from: NJ26 in a new vault.
+	let semesterTemplates = $state<SemesterTemplate[]>([]);
+	api.listSemesterTemplates().then((t) => (semesterTemplates = t), () => {});
 	let busy = $state(false);
 
 	// The first thread: in a project that exists, or one made with it.
@@ -270,10 +273,12 @@
 								{:else if step.id === 'semester'}
 									<p>
 										A semester gives the dashboard its calendar: the weeks, the vacations and the sprints that your work is counted in.
-										Start from the NJ26 preset, or lay out your own.
+										Start from a semester template, or lay out your own.
 									</p>
 									<div class="onb-actions">
-										<button class="btn primary" onclick={() => (editor = { preset: nj26Draft() })}>Use the NJ26 preset</button>
+										{#each semesterTemplates as t (t.id)}
+											<button class="btn primary" onclick={() => (editor = { preset: draftOf(t) })}>Start from {t.name}</button>
+										{/each}
 										<button class="btn" onclick={() => (editor = {})}>Create my own</button>
 										<button class="btn ghost" onclick={() => skip('semester')}>Skip for now</button>
 									</div>

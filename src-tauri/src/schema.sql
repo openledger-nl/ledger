@@ -404,6 +404,15 @@ CREATE TABLE sprints (
     PRIMARY KEY (semester_id, position)
 );
 
+-- Semester templates (see semester_templates.rs): what a new semester can start from, such as NJ26. Kept as
+-- shared/templates/semesters/<id>.md, in the form of a semester's file. draft: the semester it makes, as JSON.
+CREATE TABLE semester_templates (
+    id         TEXT PRIMARY KEY,
+    draft      TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 -- Days off within a semester, in order and not overlapping. Sprints are counted in days of work, around them.
 CREATE TABLE vacations (
     semester_id TEXT NOT NULL REFERENCES semesters(id) ON DELETE CASCADE,

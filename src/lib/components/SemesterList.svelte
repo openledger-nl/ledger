@@ -6,16 +6,27 @@
 	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import SemesterModal from '$lib/components/SemesterModal.svelte';
 	import SprintTimeline from '$lib/components/SprintTimeline.svelte';
-	import { portflowApi } from '$lib/api';
+	import { api, portflowApi } from '$lib/api';
 	import { portflow } from '$lib/portflow.svelte';
-	import { attempt } from '$lib/ui.svelte';
-	import { currentSprint, length, nj26Draft, phaseOf, spanLabel, today, workDays } from '$lib/semesters';
-	import type { PortflowSection, Semester, SemesterDraft } from '$lib/types';
+	import { attempt, refresh, toast } from '$lib/ui.svelte';
+	import { currentSprint, draftOf, length, phaseOf, spanLabel, today, workDays } from '$lib/semesters';
+	import type { PortflowSection, Semester, SemesterDraft, SemesterTemplate } from '$lib/types';
 
-	// The semesters the dashboard's contribution graph follows: a list, and a + that adds one from a preset or from scratch.
-	// The page (/semesters) loads them, so they stay current when one is saved.
+	// The semesters the dashboard's contribution graph follows: a list, and a + that adds one from a semester template
+	// (shared/templates/semesters) or from scratch. The page (/semesters) loads both, so they stay current when one is
+	// saved.
 
-	let { semesters }: { semesters: Semester[] } = $props();
+	let { semesters, templates }: { semesters: Semester[]; templates: SemesterTemplate[] } = $props();
+
+	const about = (t: SemesterTemplate) => `${spanLabel(t.start, t.end)} | ${t.sprints.length} sprints`;
+
+	/** Keeps a semester's days, vacations and sprints as a template, to start the next one from. */
+	async function saveAsTemplate(s: Semester) {
+		const saved = await attempt(() => api.saveSemesterTemplate(null, draftOf(s)));
+		if (!saved) return;
+		toast(`${saved.name} is a semester template now (Shared, Templates)`);
+		await refresh();
+	}
 
 	// Which Portflow section (a semester in the portfolio) each semester is: only while Portflow is on.
 	let sections = $state<PortflowSection[]>([]);
@@ -98,10 +109,12 @@
 		</button>
 		{#if adding}
 			<div class="dd-menu end" role="menu" aria-label="Add a semester">
-				<button type="button" class="dd-option menu-item" role="menuitem" onclick={() => add(nj26Draft())}>
-					<span class="menu-title">Add preset NJ26</span>
-					<span class="menu-sub">Autumn 2026: kick-off, sprint 0, five sprints, three weeks off</span>
-				</button>
+				{#each templates as t (t.id)}
+					<button type="button" class="dd-option menu-item" role="menuitem" onclick={() => add(draftOf(t))}>
+						<span class="menu-title">From {t.name}</span>
+						<span class="menu-sub">{about(t)}</span>
+					</button>
+				{/each}
 				<button type="button" class="dd-option menu-item" role="menuitem" onclick={() => add()}>
 					<span class="menu-title">New semester</span>
 					<span class="menu-sub">Your own days, vacations and sprints</span>
@@ -124,12 +137,14 @@
 			<span class="sem-empty-ico"><CalendarRange size={28} /></span>
 			<h3>No semester set up yet</h3>
 			<p class="sub">
-				Start from the NJ26 preset, or give a semester a first and a last day (half a year) and Ledger cuts it into sprints. Name them, set a
-				goal for each, or move their dates. The dashboard's contribution graph then follows the semester, day by day.
+				{templates.length ? 'Start from a semester template, or give' : 'Give'} a semester a first and a last day (half a year) and Ledger cuts it into
+				sprints. Name them, set a goal for each, or move their dates. The dashboard's contribution graph then follows the semester, day by day.
 			</p>
 			<div class="sem-empty-actions">
-				<button class="btn primary" onclick={() => add(nj26Draft())}><Plus size={16} />Add preset NJ26</button>
-				<button class="btn" onclick={() => add()}>New semester</button>
+				{#each templates as t, i (t.id)}
+					<button class="btn" class:primary={i === 0} onclick={() => add(draftOf(t))} title={about(t)}><Plus size={16} />From {t.name}</button>
+				{/each}
+				<button class="btn" class:primary={!templates.length} onclick={() => add()}>New semester</button>
 			</div>
 		</div>
 	{/if}
@@ -148,7 +163,10 @@
 						<h3>{s.name}</h3>
 						<span class="badge" class:accent={phase === 'current'}>{PHASE[phase]}</span>
 					</div>
-					<button class="btn small" onclick={() => (editor = { semester: s })}>Edit</button>
+					<div class="row-end">
+						<button class="btn small ghost" onclick={() => saveAsTemplate(s)} title="Start the next semester from its days, vacations and sprints">Save as template</button>
+						<button class="btn small" onclick={() => (editor = { semester: s })}>Edit</button>
+					</div>
 				</div>
 				<div class="sem-meta">
 					<span>{spanLabel(s.start, s.end)}</span>

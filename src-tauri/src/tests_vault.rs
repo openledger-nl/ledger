@@ -13,7 +13,7 @@ use crate::posts::AddOptions;
 use crate::provenance::{self, Origin};
 use crate::settings;
 use crate::vault::{self, Vault};
-use crate::{board, db, deliverables, feedback, posts, projects, prompts, semesters, stories, templates, threads, uploads};
+use crate::{board, db, deliverables, feedback, posts, projects, prompts, semester_templates, semesters, stories, templates, threads, uploads};
 
 fn write(root: &Path, rel: &str, text: &str) {
     let file = root.join(rel);
@@ -242,6 +242,43 @@ fn a_templates_kinds_and_readers_are_kept_in_its_frontmatter() {
     let (_, reloaded) = open(root);
     let brief = templates::get(&reloaded, "", "brief").unwrap();
     assert_eq!((brief.kinds.clone(), brief.readers.clone(), brief.readers_shown), (draft.kinds.clone(), templates::get(&conn, "", "brief").unwrap().readers, true));
+}
+
+#[test]
+fn a_semester_template_is_a_file_a_semester_starts_from() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    assert!(semester_templates::list(&conn).unwrap().is_empty());
+    semester_templates::seed(&conn).unwrap();
+    vault.persist(&conn).unwrap();
+    let file = read(root, "shared/templates/semesters/nj26.md");
+    assert!(file.contains("name: NJ26 - Semester X") && file.contains("name: Kick-off") && file.contains("name: Autumn break"), "{file}");
+
+    let (mut again, reloaded) = open(root);
+    let nj26 = semester_templates::get(&reloaded, "nj26").unwrap();
+    assert_eq!(nj26.draft, semester_templates::nj26());
+    // Its sprints are as Ledger cuts them: each its own weeks of work, the clock stopped in the vacations.
+    let day = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+    let off: Vec<_> = nj26.draft.vacations.iter().map(|v| (day(&v.start), day(&v.end))).collect();
+    for (sprint, weeks) in nj26.draft.sprints.iter().zip([1, 2, 3, 3, 3, 3, 3]) {
+        let cut = &semesters::plan(day(&sprint.start), day(&nj26.draft.end), weeks, &off)[0];
+        assert_eq!((&cut.start, &cut.end), (&sprint.start, &sprint.end), "{}", sprint.name);
+    }
+
+    // A semester made from it is the vault's own; the template stays, and may overlap it.
+    let semester = semesters::create(&reloaded, &SemesterDraft { name: "NJ26 - Semester 3".into(), ..nj26.draft.clone() }).unwrap();
+    assert_eq!(semester.sprints, nj26.draft.sprints);
+    // Changed, added and deleted like any template.
+    let renamed = semester_templates::save(&reloaded, Some("nj26"), &SemesterDraft { name: "NJ26".into(), ..nj26.draft.clone() }).unwrap();
+    assert_eq!((renamed.id.as_str(), renamed.draft.name.as_str()), ("nj26", "NJ26"));
+    let spring = SemesterDraft { name: "Spring 2027".into(), start: "2027-02-01".into(), end: "2027-07-11".into(), sprint_weeks: 3, ..Default::default() };
+    let own = semester_templates::save(&reloaded, None, &spring).unwrap();
+    assert!(own.id == "spring-2027" && !own.draft.sprints.is_empty(), "its sprints are cut as a semester's are");
+    semester_templates::delete(&reloaded, "nj26").unwrap();
+    again.persist(&reloaded).unwrap();
+    assert!(!root.join("shared/templates/semesters/nj26.md").exists());
+    assert!(root.join("shared/templates/semesters/spring-2027.md").exists());
 }
 
 #[test]
