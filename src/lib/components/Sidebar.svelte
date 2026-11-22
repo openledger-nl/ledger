@@ -70,11 +70,11 @@
 		remember();
 	}
 
-	/** Choosing a project unfolds it and goes to its page. Choosing the one that is already unfolded folds it instead and
-	 *  goes nowhere: what is open stays open, be it the project's page, a thread or a deliverable. */
+	/** Choosing a project always goes to its page, and unfolds it. Only on that page already does choosing it fold it
+	 *  (or unfold it again). The arrow before it folds and unfolds it anywhere. */
 	function choose(e: MouseEvent, slug: string) {
 		const plain = e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey;
-		if (open === slug && plain) {
+		if (path === projectUrl(slug) && plain) {
 			e.preventDefault();
 			toggle(slug);
 		} else {
