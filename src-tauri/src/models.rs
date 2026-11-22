@@ -524,13 +524,17 @@ pub struct ActivityEvent {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkTarget {
-    /// "thread", "deliverable" or "feedback".
+    /// "thread", "deliverable", "feedback" or "meeting" (a day's meeting notes).
     pub kind: String,
-    /// The thread's slug, the deliverable's live path, or the feedback's id.
+    /// The project it is in, by slug.
+    pub project: String,
+    /// The thread's slug, the deliverable's live path, the feedback's id, or the day of the meeting notes.
     pub id: String,
-    /// What it is called: a thread's title, a deliverable's file name, the start of what a piece of feedback says.
+    /// What it is called: a thread's title, a deliverable's file name, the start of what a piece of feedback says, the
+    /// titles of the project's meetings that day.
     pub title: String,
-    /// Where it is, which tells same-named things apart: a deliverable's folder, the file a piece of feedback is on.
+    /// Where it is, which tells same-named things apart: a deliverable's folder, the file a piece of feedback is on, the
+    /// day of the meeting notes.
     pub detail: String,
     /// For a deliverable and for feedback, the path that opens it: the live file, a version, or (when the live file is
     /// gone) the newest version. Empty for a thread.

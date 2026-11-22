@@ -1099,6 +1099,18 @@ fn links_list_what_a_project_can_point_at() {
     assert_eq!(summary[2].2.chars().count(), 60, "{}", summary[2].2);
     assert!(summary[2].2.starts_with("word word") && summary[2].2.ends_with("..."), "{}", summary[2].2);
     assert_eq!(summary[3], ("feedback", note.id.as_str(), "Too long", "on pricing-brief.md", "pricing-brief.md"));
+    assert!(found.iter().all(|l| l.project == p), "each says its project");
+
+    // A day with a meeting of the project is a target too, by its date, called by the project's meetings that day.
+    let meeting = |title: &str, projects: &[&str]| crate::daily::MeetingSection { title: title.into(), projects: projects.iter().map(|p| p.to_string()).collect(), ..Default::default() };
+    let draft = crate::daily::DailyDraft { date: "2026-11-22".into(), id: None, meetings: vec![meeting("Coach", &[&p]), meeting("Lunch", &[]), meeting("Review", &[&p, &other])] };
+    crate::daily::save(&c, &draft).unwrap();
+    let found = links::list(&c, &p).unwrap();
+    let day = found.last().unwrap();
+    assert_eq!((day.kind.as_str(), day.id.as_str(), day.title.as_str(), day.detail.as_str()), ("meeting", "2026-11-22", "Coach | Review", "2026-11-22"));
+    // The meeting notes link to every project's targets, each with its project.
+    let everything = links::list_vault(&c).unwrap();
+    assert!(everything.iter().any(|l| l.project == other && l.kind == "deliverable") && everything.iter().any(|l| l.project == p && l.kind == "meeting"));
 }
 
 #[test]

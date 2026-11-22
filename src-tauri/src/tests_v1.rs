@@ -637,8 +637,13 @@ fn a_days_meetings_are_kept_in_its_daily_note_and_load_back() {
     assert_eq!(meta.text("type").as_deref(), Some("daily"));
     assert_eq!(meta.text("date").as_deref(), Some("2026-11-09"));
     assert_eq!(meta.list("tags"), vec!["project/thrym-player", "project/bakery", "coach/frank", "teammate/sam"]);
-    assert!(text.contains("## 09:00 Coach meeting #project/thrym-player\nWith: #coach/frank #teammate/sam\n\nSplit the plan."), "{text}");
-    assert!(text.contains("## Stand-up #project/thrym-player #project/bakery\nWith: #teammate/sam"), "{text}");
+    // Each meeting's time and projects are in the frontmatter; its heading is its title.
+    let listed = meta.maps("meetings");
+    assert_eq!((listed[0].text("title").as_deref(), listed[0].text("time").as_deref(), listed[0].list("projects")), (Some("Coach meeting"), Some("09:00"), vec!["thrym-player".to_string()]));
+    assert_eq!((listed[1].text("title").as_deref(), listed[1].text("time"), listed[1].list("projects")), (Some("Stand-up"), None, vec!["thrym-player".to_string(), "bakery".to_string()]));
+    assert!(text.contains("time: 09:00"), "{text}");
+    assert!(text.contains("## Coach meeting\nWith: #coach/frank #teammate/sam\n\nSplit the plan."), "{text}");
+    assert!(text.contains("## Stand-up\nWith: #teammate/sam"), "{text}");
 
     let (mut again, conn) = open(root);
     let back = daily::get(&conn, "2026-11-09").unwrap().unwrap();
@@ -651,22 +656,25 @@ fn a_days_meetings_are_kept_in_its_daily_note_and_load_back() {
 fn an_obsidian_daily_note_without_frontmatter_reads_in_and_keeps_its_own_text() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    write(root, "meetings/2026/11/2026-11-10.md", "Rainy day.\n\n## 14:00 Client call #project/bakery #extra\nwith: #client/ries\nThey like it.\n### Next\nShip it.\n");
+    write(root, "meetings/2026/11/2026-11-10.md", "Rainy day.\n\n## Client call\nwith: #client/ries\nThey like it.\n### Next\nShip it.\n");
     write(root, "meetings/2026/11/2026-11-11.md", "---\ntags: [journal, coach/old]\nmood: good\n---\n\nJust a journal entry.\n");
     write(root, "meetings/notes about days.md", "Not a day.\n");
     let (mut vault, conn) = open(root);
     let note = daily::get(&conn, "2026-11-10").unwrap().unwrap();
-    assert_eq!(note.meetings, vec![meeting("14:00", "Client call", &["bakery"], &["client/ries"], "They like it.\n### Next\nShip it.")]);
+    assert_eq!(note.meetings, vec![meeting("", "Client call", &[], &["client/ries"], "They like it.\n### Next\nShip it.")]);
     assert_eq!(daily::get(&conn, "2026-11-11").unwrap().unwrap().meetings, vec![]);
 
     // Saving the day again keeps the text before the meetings; emptying a journal day keeps its own text and keys.
     let mut changed = note.meetings.clone();
     changed[0].body = "They love it.".into();
+    changed[0].time = Some("14:00".into());
+    changed[0].projects = vec!["bakery".into()];
     daily::save(&conn, &DailyDraft { date: "2026-11-10".into(), id: None, meetings: changed }).unwrap();
     daily::save(&conn, &DailyDraft { date: "2026-11-11".into(), id: None, meetings: vec![] }).unwrap();
     vault.persist(&conn).unwrap();
     let ten = read(root, "meetings/2026/11/2026-11-10.md");
-    assert!(ten.contains("Rainy day.\n\n## 14:00 Client call #project/bakery\nWith: #client/ries\n\nThey love it."), "{ten}");
+    assert!(ten.contains("Rainy day.\n\n## Client call\nWith: #client/ries\n\nThey love it."), "{ten}");
+    assert!(ten.contains("meetings:\n- title: Client call\n  time: 14:00\n  projects:\n  - bakery\n"), "{ten}");
     // Nothing about the journal day changed, so its file stays as it was written by hand.
     assert_eq!(read(root, "meetings/2026/11/2026-11-11.md"), "---\ntags: [journal, coach/old]\nmood: good\n---\n\nJust a journal entry.\n");
     // Once it gets a meeting it is written by Ledger: its own text, keys and plain tags stay, an old person tag goes.
@@ -676,6 +684,29 @@ fn an_obsidian_daily_note_without_frontmatter_reads_in_and_keeps_its_own_text() 
     assert!(eleven.contains("mood: good") && eleven.contains("Just a journal entry.\n\n## Walk") && eleven.contains("- journal"), "{eleven}");
     assert!(!eleven.contains("coach/old"), "{eleven}");
     assert_eq!(read(root, "meetings/notes about days.md"), "Not a day.\n", "a file that isn't a day is left alone");
+}
+
+#[test]
+fn a_meetings_time_and_projects_are_found_by_its_heading() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    // Two stand-ups go with their entries in order; a heading the frontmatter doesn't list has no time or project, and
+    // an entry without a heading is nothing. Tags in a heading are words of its title.
+    write(
+        root,
+        "meetings/2026/11/2026-11-12.md",
+        "---\nmeetings:\n- title: Stand-up\n  time: '9:00'\n  projects: [bakery]\n- title: Gone\n  time: '11:00'\n- title: stand-up\n  time: '16:00'\n  projects: thrym-player\n---\n\n## Stand-up\n\n## Lunch #food\n\n## Stand-up\nWith: #people/sam\n",
+    );
+    let (_vault, conn) = open(root);
+    let note = daily::get(&conn, "2026-11-12").unwrap().unwrap();
+    assert_eq!(
+        note.meetings,
+        vec![
+            meeting("09:00", "Stand-up", &["bakery"], &[], ""),
+            meeting("", "Lunch #food", &[], &[], ""),
+            meeting("16:00", "Stand-up", &["thrym-player"], &["people/sam"], ""),
+        ]
+    );
 }
 
 #[test]

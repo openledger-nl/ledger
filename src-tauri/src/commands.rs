@@ -32,6 +32,12 @@ pub fn list_links(app: State<App>, project: String) -> Result<Vec<LinkTarget>> {
     app.read(|c, _| links::list(c, &project))
 }
 
+/// What the meeting notes can link to: every project's threads, deliverables, feedback and meeting days.
+#[tauri::command]
+pub fn list_vault_links(app: State<App>) -> Result<Vec<LinkTarget>> {
+    app.read(|c, _| links::list_vault(c))
+}
+
 #[tauri::command]
 pub fn search(app: State<App>, query: String) -> Result<Vec<SearchHit>> {
     app.read(|c, _| search::search(c, &query))

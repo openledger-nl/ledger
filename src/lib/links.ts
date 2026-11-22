@@ -1,11 +1,13 @@
 // [[links]]: what a typed target points at, and what to offer while one is being typed. The rules live here and nowhere
 // else, so the editor (its live preview, its Ctrl/⌘+click, its completion) and the rendered page agree. The list of
-// things a link can point at comes from the backend (`list_links`, links.rs): the project's threads, deliverables and
-// feedback. Plain TypeScript, with nothing of the app in it.
+// things a link can point at comes from the backend (`list_links`, links.rs): the project's threads, deliverables,
+// feedback and meeting days (a meeting's notes get those of its projects, `list_vault_links`). Plain TypeScript, with
+// nothing of the app in it.
 //
 //   [[Pricing model]]            a thread, by its title (or its slug)
 //   [[pricing-brief]]            a deliverable, by file name; `[[plans/pricing-brief.md]]` by path
 //   [[feedback:1730…-ab12cd34]]  a piece of feedback, by id
+//   [[2026-11-22]]               a day's meeting notes, by its date (as Obsidian links a daily note)
 //   [[target|words to show]]     any of them, shown as other words
 //   [[thread:Name]]              the kind spelled out, for when a thread and a deliverable have the same name
 
@@ -13,7 +15,7 @@ import type { LinkTarget } from './types';
 
 export type LinkKind = LinkTarget['kind'];
 
-const KINDS: LinkKind[] = ['thread', 'deliverable', 'feedback'];
+const KINDS: LinkKind[] = ['thread', 'deliverable', 'feedback', 'meeting'];
 
 /** A link in the text as the editor reads it: `[[target]]` or `[[target|shown]]` (a pipe may be escaped, in a table cell). */
 export const WIKI_LINK = /\[\[([^[\]|\n\\]+)(?:\\?\|([^[\]\n]*))?\]\]/g;
@@ -50,7 +52,7 @@ export interface Suggestion {
 
 export class LinkIndex {
 	private readonly names = new Map<string, LinkTarget>();
-	private readonly byKind: Record<LinkKind, Map<string, LinkTarget>> = { thread: new Map(), deliverable: new Map(), feedback: new Map() };
+	private readonly byKind: Record<LinkKind, Map<string, LinkTarget>> = { thread: new Map(), deliverable: new Map(), feedback: new Map(), meeting: new Map() };
 
 	constructor(readonly targets: LinkTarget[]) {
 		for (const target of targets) {
@@ -69,6 +71,7 @@ export class LinkIndex {
 			case 'deliverable':
 				return [fold(t.id), fold(withoutExtension(t.id)), fold(fileName(t.id)), fold(withoutExtension(fileName(t.id)))];
 			case 'feedback':
+			case 'meeting':
 				return [fold(t.id)];
 		}
 	}
@@ -97,7 +100,9 @@ export class LinkIndex {
 				? [t.title, t.id]
 				: t.kind === 'deliverable'
 					? [withoutExtension(fileName(t.id)), fileName(t.id), withoutExtension(t.id), t.id]
-					: [];
+					: t.kind === 'meeting'
+						? [t.id]
+						: [];
 		for (const name of candidates) if (usable(name) && this.resolve(name) === t) return name.trim();
 		if (t.kind === 'feedback') return `feedback:${t.id}`;
 		return `${t.kind}:${t.id}`;
@@ -112,7 +117,7 @@ export class LinkIndex {
 
 		let chosen: LinkTarget[];
 		if (!needle) {
-			const taken: Record<LinkKind, number> = { thread: 0, deliverable: 0, feedback: 0 };
+			const taken: Record<LinkKind, number> = { thread: 0, deliverable: 0, feedback: 0, meeting: 0 };
 			chosen = pool.filter((t) => taken[t.kind]++ < 10);
 		} else {
 			chosen = pool
@@ -130,6 +135,7 @@ export class LinkIndex {
 			// Feedback has no name of its own: the link says what it says.
 			return { target: t, insert: `${name}|${shown(t.title)}`, label: t.title, detail: `feedback ${t.detail}` };
 		}
+		if (t.kind === 'meeting') return { target: t, insert: name, label: t.id, detail: t.title ? `meeting notes: ${t.title}` : 'meeting notes' };
 		const kind = t.kind === 'thread' ? 'thread' : 'deliverable';
 		return { target: t, insert: name, label: t.title, detail: t.detail && t.kind === 'deliverable' ? `${kind} in ${t.detail}` : kind };
 	}
@@ -142,7 +148,7 @@ export class LinkIndex {
 		if (own.startsWith(needle)) return 1;
 		if (own.split(/[\s\-_./]+/).some((word) => word.startsWith(needle))) return 2;
 		if (own.includes(needle)) return 3;
-		if (t.kind === 'deliverable' && where.includes(needle)) return 4;
+		if ((t.kind === 'deliverable' || t.kind === 'meeting') && where.includes(needle)) return 4;
 		if (t.kind === 'feedback' && where.includes(needle)) return 5;
 		return subsequence(own, needle) ? 6 : Infinity;
 	}
