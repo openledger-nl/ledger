@@ -7,6 +7,7 @@ import Palette from '@lucide/svelte/icons/palette';
 import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 import Wrench from '@lucide/svelte/icons/wrench';
 import Info from '@lucide/svelte/icons/info';
+import Keyboard from '@lucide/svelte/icons/keyboard';
 import ScrollText from '@lucide/svelte/icons/scroll-text';
 import AboutSettings from './AboutSettings.svelte';
 import CaptureSettings from './CaptureSettings.svelte';
@@ -25,13 +26,14 @@ import VaultEncryption from './VaultEncryption.svelte';
 import VaultSettings from './VaultSettings.svelte';
 import YellSettings from './YellSettings.svelte';
 
-export type GroupId = 'features' | 'visual' | 'sync' | 'tools' | 'about' | 'logs';
+export type GroupId = 'features' | 'visual' | 'sync' | 'tools' | 'shortcuts' | 'about' | 'logs';
 
 export const groups: { id: GroupId; label: string; icon: Component }[] = [
 	{ id: 'features', label: 'Features', icon: Sparkles },
 	{ id: 'visual', label: 'Visual', icon: Palette },
 	{ id: 'sync', label: 'Vault & external', icon: RefreshCw },
 	{ id: 'tools', label: 'Tools', icon: Wrench },
+	{ id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
 	{ id: 'about', label: 'About', icon: Info },
 	{ id: 'logs', label: 'Logs', icon: ScrollText }
 ];
@@ -56,7 +58,7 @@ export const panels: Panel[] = [
 	{ id: 'encryption', group: 'sync', title: 'Encryption', keywords: 'encrypt encrypted encryption passphrase password recovery key lock unlock keychain copy secret private', component: VaultEncryption },
 	{ id: 'portflow', group: 'sync', title: 'Portflow', keywords: 'portflow fontys portfolio canvas drieam feedback coach teacher learning outcomes evidence collection semester sign in', component: PortflowSettings },
 	{ id: 'trello', group: 'sync', title: 'Sync with Trello', keywords: 'trello cards board tasks stories api key token person', component: TrelloSettings },
-	{ id: 'shortcuts', group: 'tools', title: 'Keyboard shortcuts', keywords: 'keyboard shortcut shortcuts hotkey hotkeys keys bindings command palette ctrl p commands', component: ShortcutSettings },
+	{ id: 'shortcuts', group: 'shortcuts', title: 'Keyboard shortcuts', keywords: 'keyboard shortcut shortcuts hotkey hotkeys keys bindings command palette ctrl p commands', component: ShortcutSettings },
 	{ id: 'screenshots', group: 'tools', title: 'Screenshots', keywords: 'screenshot hotkey shortcut flameshot capture picture tool command print', component: ScreenshotSettings },
 	{ id: 'claude', group: 'tools', title: 'Claude Code', keywords: 'claude ai prompt run model permission guard rails cli program auto edit plan read', component: ClaudeCodeSettings },
 	{ id: 'about', group: 'about', title: 'About Ledger', keywords: 'about version info project source code releases changelog machine paths config build', component: AboutSettings },

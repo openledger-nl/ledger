@@ -118,7 +118,7 @@
 
 	function changeShortcuts() {
 		close(false);
-		void goto('/settings/tools#shortcuts');
+		void goto('/settings/shortcuts');
 	}
 </script>
 

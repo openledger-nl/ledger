@@ -108,7 +108,8 @@ export function commands(): Command[] {
 	);
 	if (portflow.enabled) list.push({ id: 'go.epsilon', title: 'Epsilon+', group: 'Go to', keywords: 'portflow learning outcomes epsilon', run: go('/epsilon') });
 	list.push({ id: 'go.search', title: 'Search page', group: 'Go to', run: go('/search') });
-	for (const g of groups) {
+	// The Shortcuts tab is "Keyboard shortcuts", below.
+	for (const g of groups.filter((g) => g.id !== 'shortcuts')) {
 		list.push({ id: `go.settings.${g.id}`, title: `Settings: ${g.label}`, group: 'Go to', keywords: 'settings preferences', run: go(`/settings/${g.id}`) });
 	}
 
@@ -136,7 +137,7 @@ export function commands(): Command[] {
 		{ id: 'screenshot', title: 'Take a screenshot', group: 'App', keywords: 'capture picture', run: () => attempt(api.takeScreenshot) },
 		{ id: 'vault.switch', title: 'Switch vault', group: 'App', keywords: 'open another vault folder', run: openVaultPicker },
 		{ id: 'debug.capture', title: 'Start or stop a debug capture', group: 'App', keywords: 'record log report bug', defaultKey: 'CommandOrControl+Alt+Shift+D', run: handled('debug.capture') },
-		{ id: 'go.settings.shortcuts', title: 'Keyboard shortcuts', group: 'App', keywords: 'hotkeys keys bindings settings', run: go('/settings/tools#shortcuts') }
+		{ id: 'go.settings.shortcuts', title: 'Keyboard shortcuts', group: 'App', keywords: 'hotkeys keys bindings settings', run: go('/settings/shortcuts') }
 	);
 	for (const t of themes) list.push({ id: `theme.${t.id}`, title: `Theme: ${t.name}`, group: 'Theme', keywords: 'colours colors look', run: () => setTheme(t.id) });
 
