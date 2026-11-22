@@ -58,7 +58,7 @@
 				<span class="badge">{kindName(meta.kind)}</span>
 				<span title={end ? dayLabel(end) : ''}>{daysLeftText(left)}{#if end} | ends {dayLabel(end)}{/if}</span>
 				{#if meta.intendedMmm}<span class="pj-intended">Intended <MmmBadge level={meta.intendedMmm} /></span>{/if}
-				{#if meta.client}<span>Client: {meta.client}</span>{/if}
+				{#if meta.client}<span>Client: <a href="/clients?client={encodeURIComponent(meta.client)}">{meta.clientName ?? meta.client}</a></span>{/if}
 				{#if meta.mainQuestion}<span class="pj-mq" title={meta.mainQuestion}>Main question: {meta.mainQuestion}</span>{/if}
 			</div>
 		{/if}

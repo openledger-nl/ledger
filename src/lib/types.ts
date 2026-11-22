@@ -1431,8 +1431,10 @@ export interface ProjectMeta {
 	intendedMmm: MmmLevel | null;
 	/** Study projects have one; optional for the others. */
 	mainQuestion: string | null;
-	/** A company project's client (a company file in Companies/ is roadmap). */
+	/** A work project's client, by its id in shared/clients. */
 	client: string | null;
+	/** That client's name; filled in by Ledger. */
+	clientName?: string | null;
 	/** Shown in the overview's tag, `project/<tag>`, which daily notes and feedback use. */
 	tag: string;
 }
@@ -1532,6 +1534,21 @@ export interface Person {
 }
 
 export type PersonDraft = Pick<Person, 'name' | 'email' | 'organisation' | 'portflowUser' | 'notes'>;
+
+/** A client the vault knows (clients.rs), in `shared/clients/<id>.md`: an organisation work projects are done for. */
+export interface Client {
+	/** Its name as a slug when it was added; it stays when it is renamed. */
+	id: string;
+	name: string;
+	website: string;
+	notes: string;
+	/** The projects done for it. */
+	projects: { project: string; projectName: string }[];
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type ClientDraft = Pick<Client, 'name' | 'website' | 'notes'>;
 
 /** Someone of the vault as part of one project, with their role there; listed in the project's project.md. */
 export interface ProjectPerson {

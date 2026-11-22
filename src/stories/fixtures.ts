@@ -22,6 +22,7 @@ import type {
 	Post,
 	PostMeta,
 	ProjectMeta,
+	Client,
 	ConflictView,
 	Person,
 	ProjectPerson,
@@ -668,6 +669,21 @@ export const anchor: Anchor = { text: 'corrode far less than resistive ones', pr
 export const marks: Mark[] = [{ id: 'f-3', anchor, tone: 'open' }];
 
 export const noop = () => {};
+
+// ---- clients ----------------------------------------------------------------------------------------------
+
+/** The clients of the sample vault. */
+export const clients: Client[] = [
+	{
+		id: 'kwekerij-van-dam',
+		name: 'Kwekerij Van Dam',
+		website: 'https://kwekerijvandam.nl',
+		notes: 'Family business, three greenhouses.',
+		projects: [],
+		createdAt: at(1, '09:00'),
+		updatedAt: at(1, '09:00')
+	}
+];
 
 // ---- conflict copies ------------------------------------------------------------------------------------
 

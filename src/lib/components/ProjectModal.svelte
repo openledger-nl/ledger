@@ -8,7 +8,7 @@
 	import { currentSemester, dayLabel, nearestSemester, today, workDays } from '$lib/semesters';
 	import { attempt, refresh, toast } from '$lib/ui.svelte';
 	import { daysLeft, daysLeftText, endDay, PROJECT_KINDS, ROLES } from '$lib/v1';
-	import type { FeedbackRole, MmmLevel, Person, ProjectKind, ProjectMeta, Semester } from '$lib/types';
+	import type { Client, FeedbackRole, MmmLevel, Person, ProjectKind, ProjectMeta, Semester } from '$lib/types';
 	import { personNamed, withPerson, type Attached } from '$lib/people';
 	import X from '@lucide/svelte/icons/x';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
@@ -37,10 +37,22 @@
 	let endDate = $state(m?.end && m.end !== 'semester' ? m.end : '');
 	let intended = $state<MmmLevel | ''>(m?.intendedMmm ?? '');
 	let mainQuestion = $state(m?.mainQuestion ?? '');
-	let client = $state(m?.client ?? '');
+	// A work project's client: one of the vault's clients, by name; someone new is added to the vault on saving.
+	// svelte-ignore state_referenced_locally
+	let client = $state(m?.clientName ?? '');
+	let clients = $state<Client[]>([]);
+	api.listClients().then((list) => (clients = list), () => {});
+	const clientListId = `project-clients-${Math.random().toString(36).slice(2)}`;
+	/** The client's id: the one called `client`, or a new one made now. Null without a name. */
+	async function clientId(): Promise<string | null> {
+		const name = client.trim();
+		if (kind !== 'work' || !name) return null;
+		const known = clients.find((c) => c.name.trim().toLowerCase() === name.toLowerCase());
+		return known?.id ?? (await api.createClient({ name, website: '', notes: '' })).id;
+	}
 	let busy = $state(false);
 
-	// Its people: the coach, the teammates, the client, from the people of the vault (someone new is added to it on
+	// Its people: the coach, the teammates, the stakeholders, from the people of the vault (someone new is added to it on
 	// saving). Kept with the project whether or not it has a goal yet.
 	type Listed = { person: string | null; name: string; role: FeedbackRole };
 	let people = $state<Listed[]>([]);
@@ -86,7 +98,7 @@
 		semester: kind === 'study' ? (semester?.name ?? null) : null,
 		intendedMmm: intended || null,
 		mainQuestion: mainQuestion.trim() || null,
-		client: kind === 'work' ? client.trim() || null : null
+		client: null
 	});
 	const end = $derived(endDay({ ...meta, slug: '', tag: '' }, semesters));
 	const left = $derived(daysLeft(end));
@@ -106,7 +118,7 @@
 		}
 		if (slug) {
 			const s = slug;
-			await attempt(() => api.saveProjectMeta({ ...meta, slug: s, tag: s }));
+			await attempt(async () => api.saveProjectMeta({ ...meta, client: await clientId(), slug: s, tag: s }));
 			await attempt(async () => api.saveProjectPeople(s, await attached()));
 		}
 		busy = false;
@@ -186,7 +198,13 @@
 	{:else if kind === 'work'}
 		<label class="field">
 			<span>Client (optional)</span>
-			<input bind:value={client} placeholder="e.g. Bakkerij De Korenaar" />
+			<input bind:value={client} list={clients.length ? clientListId : undefined} placeholder="e.g. Bakkerij De Korenaar" autocomplete="off" />
+			{#if clients.length}
+				<datalist id={clientListId}>
+					{#each clients as c (c.id)}<option value={c.name}>In the vault</option>{/each}
+				</datalist>
+			{/if}
+			<span class="hint">One of the clients of your vault (under Shared, Clients); a new name is added to it.</span>
 		</label>
 	{/if}
 
@@ -220,7 +238,7 @@
 			<Dropdown bind:value={() => newRole, (v) => (newRole = v as FeedbackRole)} options={roleOptions} label="Their role" />
 			<button class="btn small" onclick={addPerson} disabled={!newName.trim()}><UserPlus size={14} />Add</button>
 		</div>
-		<span class="hint">Your coach, teammates and client, from the people of your vault (someone new is added to it): offered when you note feedback or who was in a meeting, where "Whole team" adds every teammate at once.</span>
+		<span class="hint">Your coach, teammates and stakeholders, from the people of your vault (someone new is added to it): offered when you note feedback or who was in a meeting, where "Whole team" adds every teammate at once.</span>
 	</div>
 
 	{#snippet footer()}

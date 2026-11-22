@@ -201,6 +201,45 @@ fn people_who_arent_in_the_vault_or_have_no_role_are_refused_and_read_leniently(
     assert!(project_facts::save_people(&conn, "synth", &[attached("bo", "wizard")]).is_err());
 }
 
+// ---- clients ------------------------------------------------------------------------------------------
+
+#[test]
+fn a_work_projects_client_is_a_client_of_the_vault_named_by_its_id() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let korenaar = crate::clients::create(&conn, &crate::clients::ClientDraft { name: "Bakkerij De Korenaar".into(), website: "https://korenaar.nl".into(), notes: "Since 1950.".into() }).unwrap();
+    assert_eq!(korenaar.id, "bakkerij-de-korenaar");
+    let slug = projects::create(&conn, "Rota app").unwrap().slug;
+    let work = ProjectMeta { kind: "work".into(), goal: "A rota on phones.".into(), client: Some(korenaar.id.clone()), ..Default::default() };
+    let saved = project_facts::save(&conn, &slug, &work).unwrap();
+    assert_eq!((saved.client.as_deref(), saved.client_name.as_deref()), (Some("bakkerij-de-korenaar"), Some("Bakkerij De Korenaar")));
+    assert!(project_facts::save(&conn, &slug, &ProjectMeta { client: Some("nobody".into()), ..work.clone() }).is_err(), "only a client of the vault");
+    vault.persist(&conn).unwrap();
+
+    assert!(read(root, &format!("projects/{slug}/project.md")).contains("client: bakkerij-de-korenaar"));
+    let file = read(root, "shared/clients/bakkerij-de-korenaar.md");
+    assert!(file.contains("name: Bakkerij De Korenaar") && file.contains("website: https://korenaar.nl") && file.ends_with("Since 1950.\n"), "{file}");
+
+    let (mut vault, again) = open(root);
+    assert_eq!(crate::clients::get(&again, "bakkerij-de-korenaar").unwrap().projects.len(), 1);
+    // Taken out of the vault, the project keeps going without a client.
+    crate::clients::delete(&again, "bakkerij-de-korenaar").unwrap();
+    vault.persist(&again).unwrap();
+    assert_eq!(project_facts::get(&again, &slug).unwrap().unwrap().client, None);
+    assert!(!root.join("shared/clients/bakkerij-de-korenaar.md").exists());
+    assert!(!read(root, &format!("projects/{slug}/project.md")).contains("client:"));
+}
+
+#[test]
+fn a_client_that_isnt_in_the_vault_is_read_as_none() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/rota/project.md", "---\nname: Rota\nkind: work\ngoal: Shifts.\nclient: gone\n---\n");
+    let (_vault, conn) = open(root);
+    assert_eq!(project_facts::get(&conn, "rota").unwrap().unwrap().client, None);
+}
+
 // ---- a post's kind and labels ---------------------------------------------------------------------------
 
 #[test]

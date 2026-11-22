@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Building2 from '@lucide/svelte/icons/building-2';
 	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -202,6 +203,7 @@
 	<nav class="space-list" aria-label="Shared">
 		<a class="nav-item" class:active={on('/semesters')} href="/semesters"><span class="nav-ico"><CalendarRange size={16} /></span>Semesters</a>
 		<a class="nav-item" class:active={on('/people')} href="/people"><span class="nav-ico"><Users size={16} /></span>People</a>
+		<a class="nav-item" class:active={on('/clients')} href="/clients"><span class="nav-ico"><Building2 size={16} /></span>Clients</a>
 	</nav>
 
 	<div class="spacer"></div>

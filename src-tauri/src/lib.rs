@@ -3,6 +3,7 @@ mod applog;
 mod board;
 mod branding;
 mod claude_code;
+mod clients;
 mod commands;
 mod conflicts;
 mod crypto;
@@ -213,6 +214,10 @@ pub fn run() {
             commands::save_project_meta,
             commands::list_project_people,
             commands::list_people,
+            commands::list_clients,
+            commands::create_client,
+            commands::update_client,
+            commands::delete_client,
             commands::get_person,
             commands::create_person,
             commands::update_person,

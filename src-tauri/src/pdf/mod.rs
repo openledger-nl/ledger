@@ -174,7 +174,7 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
     let facts = project_facts::get(conn, project)?;
     let kind = facts.as_ref().map(|f| f.kind.clone()).unwrap_or_default();
     let intended_mmm = facts.as_ref().and_then(|f| f.intended_mmm.clone());
-    let client_name = brand.client_name.clone().or_else(|| facts.and_then(|f| f.client)).or_else(|| {
+    let client_name = brand.client_name.clone().or_else(|| facts.and_then(|f| f.client_name)).or_else(|| {
         project_facts::people(conn, Some(project)).ok()?.into_iter().find(|p| p.role == "stakeholder").map(|p| p.name)
     });
 

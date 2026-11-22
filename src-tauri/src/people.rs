@@ -141,13 +141,7 @@ fn clean(draft: &PersonDraft) -> Result<PersonDraft> {
 /// A new person. Their id is their name as a slug, with a number after it when that is taken.
 pub fn create(conn: &Connection, draft: &PersonDraft) -> Result<Person> {
     let draft = clean(draft)?;
-    let base = ids::slugify_as(&draft.name, "someone");
-    let mut id = base.clone();
-    let mut n = 2;
-    while exists(conn, &id)? {
-        id = format!("{base}-{n}");
-        n += 1;
-    }
+    let id = ids::numbered(&ids::slugify_as(&draft.name, "someone"), |id| exists(conn, id))?;
     let now = ids::now();
     insert(conn, &id, &draft, &now, &now)?;
     get(conn, &id)
@@ -204,13 +198,12 @@ pub fn render(person: &Person) -> String {
 /// notes.
 pub fn import(conn: &Connection, id: &str, meta: &Mapping, notes: &str, stamp: &str) -> Result<()> {
     let draft = PersonDraft {
-        name: meta.text("name").map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| id.to_string()),
+        name: meta.name_or(id),
         email: meta.text("email").unwrap_or_default(),
         organisation: meta.text("organisation").unwrap_or_default(),
         portflow_user: meta.text("portflowUser").and_then(|u| u.trim().parse().ok()),
         notes: notes.trim_end().to_string(),
     };
-    let created_at = meta.text("createdAt").unwrap_or_else(|| stamp.to_string());
-    let updated_at = meta.text("updatedAt").unwrap_or_else(|| created_at.clone());
+    let (created_at, updated_at) = meta.stamps(stamp);
     insert(conn, id, &draft, &created_at, &updated_at)
 }

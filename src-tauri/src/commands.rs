@@ -163,6 +163,28 @@ pub fn list_project_meta(app: State<App>) -> Result<Vec<ProjectMeta>> {
     app.read(|c, _| project_facts::list(c))
 }
 
+/// Every client the vault knows, with its projects.
+#[tauri::command]
+pub fn list_clients(app: State<App>) -> Result<Vec<crate::clients::Client>> {
+    app.read(|c, _| crate::clients::list(c))
+}
+
+#[tauri::command]
+pub fn create_client(app: State<App>, draft: crate::clients::ClientDraft) -> Result<crate::clients::Client> {
+    app.mutate(|c, _| crate::clients::create(c, &draft))
+}
+
+#[tauri::command]
+pub fn update_client(app: State<App>, id: String, draft: crate::clients::ClientDraft) -> Result<crate::clients::Client> {
+    app.mutate(|c, _| crate::clients::update(c, &id, &draft))
+}
+
+/// Takes a client out of the vault; its projects keep going without one.
+#[tauri::command]
+pub fn delete_client(app: State<App>, id: String) -> Result<()> {
+    app.mutate(|c, _| crate::clients::delete(c, &id))
+}
+
 /// Everyone the vault knows, with the projects each is part of.
 #[tauri::command]
 pub fn list_people(app: State<App>) -> Result<Vec<crate::people::Person>> {

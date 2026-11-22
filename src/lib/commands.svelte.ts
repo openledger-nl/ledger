@@ -102,7 +102,8 @@ export function commands(): Command[] {
 		{ id: 'go.meetings', title: 'Meeting notes', group: 'Go to', keywords: 'daily', run: go('/meetings') },
 		{ id: 'go.feedback', title: 'Feedback', group: 'Go to', keywords: 'inbox', run: go('/feedback') },
 		{ id: 'go.semesters', title: 'Semesters', group: 'Go to', keywords: 'shared sprints vacation half year calendar nj26', run: go('/semesters') },
-		{ id: 'go.people', title: 'People', group: 'Go to', keywords: 'shared coach teammates client contacts', run: go('/people') }
+		{ id: 'go.people', title: 'People', group: 'Go to', keywords: 'shared coach teammates stakeholders contacts', run: go('/people') },
+		{ id: 'go.clients', title: 'Clients', group: 'Go to', keywords: 'shared companies organisations customers work', run: go('/clients') }
 	);
 	if (portflow.enabled) list.push({ id: 'go.epsilon', title: 'Epsilon+', group: 'Go to', keywords: 'portflow learning outcomes epsilon', run: go('/epsilon') });
 	list.push({ id: 'go.search', title: 'Search page', group: 'Go to', run: go('/search') });

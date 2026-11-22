@@ -6,6 +6,7 @@
 //! shared/templates/pdf/layout.typ                the vault's own PDF layout, with the files it uses beside it
 //! shared/semesters/<id>.md                       a semester and its sprints, and the Portflow section it is
 //! shared/people/<id>.md                          someone the vault knows (see `people`), attached to projects in project.md
+//! shared/clients/<id>.md                         a client work projects are done for (see `clients`)
 //! shared/portflow/outcomes/<id>-<slug>.md,       learning outcomes, people and sections, mirrored from Portflow
 //!   people.md, sections.md
 //! projects/<project>/project.md                  a project: name, board columns, its kind, goal and end
@@ -340,6 +341,9 @@ pub fn export(conn: &Connection) -> Result<BTreeMap<String, String>> {
     export_semesters(conn, &mut files)?;
     for person in crate::people::list(conn)? {
         files.insert(crate::people::file(&person.id), crate::people::render(&person));
+    }
+    for client in crate::clients::list(conn)? {
+        files.insert(crate::clients::file(&client.id), crate::clients::render(&client));
     }
     export_stories_and_tasks(conn, &mut files)?;
     export_deliverables(conn, &mut files)?;
@@ -777,6 +781,7 @@ fn import(conn: &Connection, root: &Path, store: &Store, listing: &BTreeMap<Stri
     templates::add_builtins(&tx)?;
     import_semesters(&tx, &source)?;
     import_people(&tx, &source)?;
+    import_clients(&tx, &source)?;
     import_daily(&tx, &source)?;
     let projects = import_projects(&tx, &source)?;
     for project in &projects {
@@ -803,6 +808,16 @@ fn import_people(conn: &Connection, source: &Source) -> Result<()> {
         let rel = crate::people::file(&id);
         let Some((meta, notes)) = source.parsed(&rel) else { continue };
         crate::people::import(conn, &id, &meta, &notes, &source.stamp(&rel))?;
+    }
+    Ok(())
+}
+
+/// The vault's clients: every `shared/clients/<id>.md`.
+fn import_clients(conn: &Connection, source: &Source) -> Result<()> {
+    for id in source.stems(crate::clients::FOLDER) {
+        let rel = crate::clients::file(&id);
+        let Some((meta, notes)) = source.parsed(&rel) else { continue };
+        crate::clients::import(conn, &id, &meta, &notes, &source.stamp(&rel))?;
     }
     Ok(())
 }
