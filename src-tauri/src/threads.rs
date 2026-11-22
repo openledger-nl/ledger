@@ -92,9 +92,12 @@ pub fn rename(conn: &Connection, project: &str, slug: &str, title: &str) -> Resu
     if title.is_empty() {
         return Err(Error::invalid("Title is required"));
     }
+    // Links written with the old title are written with the new one.
+    let before = crate::links::list(conn)?;
     if conn.execute("UPDATE threads SET title = ?3 WHERE project_slug = ?1 AND slug = ?2", params![project, slug, title])? == 0 {
         return Err(Error::not_found("Thread not found"));
     }
+    crate::links::follow_rename(conn, &before, "thread", project, slug, slug)?;
     summary(conn, project, slug)
 }
 

@@ -1,6 +1,7 @@
 // [[links]]: what a typed target points at, and what to offer while one is being typed. The rules live here, so the
-// editor (its live preview, its Ctrl/⌘+click, its completion) and the rendered page agree. The list of things a link
-// can point at comes from the backend (`list_links`, links.rs): every project's threads, deliverables and feedback, the days of the
+// editor (its live preview, its Ctrl/⌘+click, its completion) and the rendered page agree; links.rs follows the same
+// rules to keep links working when a thread or deliverable is renamed. The list of things a link can point at comes
+// from the backend (`list_links`, links.rs): every project's threads, deliverables and feedback, the days of the
 // meeting notes and the vault's people. Plain TypeScript, with nothing of the app in it.
 //
 // A link is read from where it is written: its own project (the project of the page, or a meeting's only project).

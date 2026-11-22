@@ -1114,6 +1114,30 @@ fn links_list_what_the_vault_can_point_at() {
 }
 
 #[test]
+fn links_follow_a_renamed_thread_or_deliverable() {
+    let dir = tempdir().unwrap();
+    let c = conn();
+    let (p, t) = setup(&c);
+    deliverables::create(&c, &p, "Plan", "# Plan").unwrap();
+    let pricing = threads::create(&c, &p, "Pricing model").unwrap().slug;
+    let other = projects::create(&c, "Other").unwrap().slug;
+    let elsewhere = threads::create(&c, &other, "Elsewhere").unwrap().slug;
+    posts::add(&c, &p, &t, "See [[plan]], [[plan#Goal]], [[Pricing model|the model]] and [[pricing-model]].", AddOptions::default()).unwrap();
+    posts::add(&c, &other, &elsewhere, &format!("Theirs: [[{p}/plan]]. Ours: [[plan]]."), AddOptions::default()).unwrap();
+    let meeting = crate::daily::MeetingSection { title: "Coach".into(), projects: vec![p.clone()], body: "Went through [[plan]].".into(), ..Default::default() };
+    crate::daily::save(&c, &crate::daily::DailyDraft { date: "2026-11-22".into(), meetings: vec![meeting] }).unwrap();
+
+    deliverables::rename(&c, dir.path(), &p, "plan.md", "Budget").unwrap();
+    threads::rename(&c, &p, &pricing, "Prices").unwrap();
+
+    let body = |project: &str, thread: &str| posts::list(&c, project, thread).unwrap().remove(0).body;
+    // The words shown are kept; a thread's slug stays, so a link by its slug still works as it is.
+    assert_eq!(body(&p, &t), "See [[Budget]], [[Budget#Goal]], [[Prices|the model]] and [[pricing-model]].");
+    assert_eq!(body(&other, &elsewhere), format!("Theirs: [[{p}/Budget]]. Ours: [[plan]]."), "another project names this one; its own plan is no one's");
+    assert_eq!(crate::daily::get(&c, "2026-11-22").unwrap().unwrap().meetings[0].body, "Went through [[Budget]].", "a meeting of the project");
+}
+
+#[test]
 fn renaming_a_deliverable_keeps_its_extension_versions_and_feedback() {
     let dir = tempdir().unwrap();
     let c = conn();
