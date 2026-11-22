@@ -353,10 +353,6 @@ pub struct TemplateView {
     pub readers: Vec<TemplateReader>,
     /// The readers are a visible line in a new deliverable, not only a `%%` note.
     pub readers_shown: bool,
-    /// One the app ships, as shipped (not a file in the vault until it is changed).
-    pub builtin: bool,
-    /// The vault's own version of one the app ships: deleting it brings the shipped one back.
-    pub customised_builtin: bool,
     pub created_at: String,
     pub updated_at: String,
     /// A vault-wide template that the project has replaced with one of its own of the same id.

@@ -535,10 +535,6 @@ export interface Template {
 	readers: TemplateReader[];
 	/** The readers are a visible line in a new deliverable, not only a `%%` note. */
 	readersShown: boolean;
-	/** One Ledger ships, as shipped: not a file in the vault until it is changed, and it can't be deleted. */
-	builtin: boolean;
-	/** The vault's own version of one Ledger ships: deleting it brings the shipped one back. */
-	customisedBuiltin: boolean;
 	createdAt: string;
 	updatedAt: string;
 	/** A vault-wide template the project has replaced with its own. */

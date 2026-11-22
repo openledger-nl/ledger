@@ -245,30 +245,29 @@ fn a_templates_kinds_and_readers_are_kept_in_its_frontmatter() {
 }
 
 #[test]
-fn the_shipped_project_plan_is_offered_until_the_vault_has_its_own() {
+fn the_project_plan_a_vault_starts_with_is_a_template_like_any_other() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let (mut vault, conn) = open(root);
-    let plan = templates::get(&conn, "", templates::BUILTIN_PLAN).unwrap();
-    assert!(plan.builtin && !plan.customised_builtin && plan.name == "Project plan" && plan.kinds.is_empty());
-    vault.persist(&conn).unwrap();
-    assert!(!root.join("shared/templates/prompts/project-plan.md").exists(), "the shipped template is not a file of the vault");
-    assert!(templates::delete(&conn, "", templates::BUILTIN_PLAN).is_err(), "and it can't be deleted");
-    assert_eq!(templates::create(&conn, "", &TemplateDraft::basic("Project plan", "", &[], "")).unwrap().id, "project-plan-2", "its id stays free");
+    assert!(templates::list(&conn, "").unwrap().is_empty(), "a vault has only the templates it has files for");
 
-    // Changed, it is the vault's own, and stays so.
-    let mine = templates::update(&conn, "", "project-plan", &TemplateDraft { body: "# My plan\n".into(), ..templates::draft_of(&plan) }).unwrap();
-    assert!(!mine.builtin && mine.customised_builtin);
+    templates::seed(&conn).unwrap();
     vault.persist(&conn).unwrap();
-    assert!(read(root, "shared/templates/prompts/project-plan.md").contains("# My plan"));
+    let file = read(root, "shared/templates/prompts/project-plan.md");
+    assert!(file.contains("name: Project plan") && file.contains("## Goal"), "{file}");
     let (mut again, reloaded) = open(root);
-    assert_eq!(templates::get(&reloaded, "", "project-plan").unwrap().body, "# My plan");
+    let plan = templates::get(&reloaded, "", "project-plan").unwrap();
+    assert!(plan.name == "Project plan" && plan.kinds.is_empty() && plan.questions.len() == 3);
 
-    // Deleting the vault's copy brings the shipped one back.
+    // Changed, it stays changed; deleted, it is gone, and stays gone.
+    templates::update(&reloaded, "", "project-plan", &TemplateDraft { body: "# My plan\n".into(), ..templates::draft_of(&plan) }).unwrap();
+    again.persist(&reloaded).unwrap();
+    assert!(read(root, "shared/templates/prompts/project-plan.md").contains("# My plan"));
     templates::delete(&reloaded, "", "project-plan").unwrap();
-    assert!(templates::get(&reloaded, "", "project-plan").unwrap().builtin);
     again.persist(&reloaded).unwrap();
     assert!(!root.join("shared/templates/prompts/project-plan.md").exists());
+    let (_, last) = open(root);
+    assert!(templates::list(&last, "").unwrap().is_empty());
 }
 
 #[test]

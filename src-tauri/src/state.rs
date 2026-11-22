@@ -104,9 +104,10 @@ impl Core {
         Ok(())
     }
 
-    /// Makes a new, empty vault: a folder called `name` in `parent`, and switches to it. A folder of that name may be
-    /// there already, but only when it is empty, so nothing that is there is ever taken over by mistake. With a
-    /// passphrase the vault is encrypted (see `vault_crypto`), and its recovery key is returned, to be shown once.
+    /// Makes a new vault: a folder called `name` in `parent`, and switches to it. A folder of that name may be there
+    /// already, but only when it is empty, so nothing that is there is ever taken over by mistake. With a passphrase
+    /// the vault is encrypted (see `vault_crypto`), and its recovery key is returned, to be shown once. It starts with
+    /// one template, a project plan (see `templates::starter`), which is the vault's to change or delete.
     pub fn create_vault(&mut self, parent: &Path, name: &str, passphrase: Option<&str>) -> Result<(PathBuf, Option<Zeroizing<String>>)> {
         let path = new_vault_folder(parent, name)?;
         let recovery = match passphrase {
@@ -120,6 +121,8 @@ impl Core {
             None => None,
         };
         self.set_vault(&path, false)?;
+        crate::templates::seed(&self.conn)?;
+        self.vault.persist(&self.conn)?;
         Ok((path, recovery))
     }
 

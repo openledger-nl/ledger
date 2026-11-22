@@ -62,7 +62,6 @@
 						<b>{t.name}</b>
 						<span>{summary(t)}</span>
 					</div>
-					{#if t.builtin}<span class="badge" title="Comes with Ledger; changing it makes it your vault's own">built in</span>{/if}
 					<button class="btn small" onclick={() => (editing = t)}>Edit</button>
 				</div>
 			{/each}

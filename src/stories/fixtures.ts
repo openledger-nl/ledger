@@ -612,8 +612,6 @@ export const template: Template = {
 		{ who: 'me', needs: '', keepFrom: '' }
 	],
 	readersShown: false,
-	builtin: false,
-	customisedBuiltin: false,
 	createdAt: at(1),
 	updatedAt: at(1),
 	overridden: false
