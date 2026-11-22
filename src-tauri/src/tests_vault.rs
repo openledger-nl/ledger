@@ -187,7 +187,7 @@ fn the_vault_has_the_agreed_folder_structure() {
         record.contains("deliverable: call-summary.md") && record.contains("version: '1.0'") && record.contains("thread: alpha-the-first") && record.contains("by: human") && record.contains("sha256: "),
         "{record}"
     );
-    assert!(!record.contains("prompt:") && !record.contains("run:") && !record.contains("mmm:"), "what isn't known is left out: {record}");
+    assert!(!record.contains("prompt:") && !record.contains("run:") && !record.contains("aiUse:"), "what isn't known is left out: {record}");
 
     assert!(!record.contains("id:"), "a manifest is known by its name, not an id: {record}");
     assert!(!root.join(format!("{project}/history")).exists(), "the history is in the versions, not in notes of its own");
@@ -768,7 +768,7 @@ fn version_records_and_the_prompt_a_note_names_survive_a_reload() {
             && record.contains(&format!("prompt: {}", prompt.id))
             && record.contains("run: run-x")
             && record.contains("by: ai")
-            && record.contains("mmm: piggybacker")
+            && record.contains("aiUse: piggybacker")
             && record.contains("thread: call")
             && record.ends_with("First draft by the run.\n"),
         "{record}"
@@ -822,8 +822,8 @@ fn hand_written_version_records_are_read_leniently() {
     }
     // A manifest says which version it is of, whatever its name. Upper case and strangers are read as what they mean;
     // an unknown level or author is ignored, not an error.
-    write(root, &format!("{project}/versions/plan/a.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.1'\nby: AI\nmmm: Cyborg\nthread: call\ncreatedAt: 2026-01-01T00:00:00.000Z\nsomething: else\n---\n\nA note.\n");
-    write(root, &format!("{project}/versions/plan/b.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.2'\nby: robot\nmmm: nonsense\n---\n");
+    write(root, &format!("{project}/versions/plan/a.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.1'\nby: AI\naiUse: Cyborg\nthread: call\ncreatedAt: 2026-01-01T00:00:00.000Z\nsomething: else\n---\n\nA note.\n");
+    write(root, &format!("{project}/versions/plan/b.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.2'\nby: robot\naiUse: nonsense\n---\n");
     // Not loaded: a version that is not there, one that names no deliverable, a second record of the same version.
     write(root, &format!("{project}/versions/plan/c.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.9'\nby: human\n---\n");
     write(root, &format!("{project}/versions/plan/d.manifest.md"), "---\nversion: '0.1'\nby: human\n---\n");

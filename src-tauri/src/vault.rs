@@ -687,10 +687,10 @@ fn export_version_records(conn: &Connection, files: &mut BTreeMap<String, String
         frontmatter::set_opt(&mut meta, "prompt", prompt.as_deref());
         frontmatter::set_opt(&mut meta, "run", run.as_deref());
         frontmatter::set_opt(&mut meta, "by", Some(author));
-        frontmatter::set_opt(&mut meta, "mmm", mmm.as_deref());
+        frontmatter::set_opt(&mut meta, "aiUse", mmm.as_deref());
         frontmatter::set_opt(&mut meta, "sha256", sha256.as_deref());
         if let Some(intended) = intended {
-            frontmatter::set(&mut meta, "intendedMmm", intended.clone());
+            frontmatter::set(&mut meta, "intendedAiUse", intended.clone());
             frontmatter::set_opt(&mut meta, "labelReason", reason.as_deref());
         }
         frontmatter::set(&mut meta, "createdAt", created_at.clone());
@@ -1237,11 +1237,11 @@ fn import_version_records(conn: &Connection, source: &Source, project: &str) -> 
                 meta.text("prompt"),
                 meta.text("run"),
                 provenance::author_of(&meta.text("by").unwrap_or_default()),
-                meta.text("mmm").and_then(|m| provenance::level(&m).map(str::to_string)),
+                meta.text("aiUse").and_then(|m| provenance::level(&m).map(str::to_string)),
                 meta.text("sha256"),
                 note,
                 created_at,
-                meta.text("intendedMmm").and_then(|m| provenance::level(&m).map(str::to_string)),
+                meta.text("intendedAiUse").and_then(|m| provenance::level(&m).map(str::to_string)),
                 meta.text("labelReason"),
             ],
         )?;

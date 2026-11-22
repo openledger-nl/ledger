@@ -72,7 +72,7 @@ fn a_projects_facts_are_kept_in_its_project_file_and_load_back() {
     let meta = frontmatter::parse(&text).unwrap().meta;
     assert_eq!(meta.text("kind").as_deref(), Some("study"));
     assert_eq!(meta.text("end").as_deref(), Some("semester"));
-    assert_eq!(meta.text("intendedMmm").as_deref(), Some("cyborg"));
+    assert_eq!(meta.text("intendedAiUse").as_deref(), Some("cyborg"));
     assert_eq!(meta.text("mainQuestion").as_deref(), Some("How can staff swap shifts?"));
     assert!(meta.get("client").is_none(), "{text}");
 
@@ -100,7 +100,7 @@ fn hand_written_facts_are_read_leniently() {
     write(
         root,
         "projects/synth/project.md",
-        "---\nname: Synth build\nkind: Hobby\ngoal: A working synth.\nend: someday\nintendedMmm: robot\n---\n",
+        "---\nname: Synth build\nkind: Hobby\ngoal: A working synth.\nend: someday\nintendedAiUse: robot\n---\n",
     );
     write(root, "projects/bare/project.md", "---\nname: Bare\nkind: work\n---\n");
     let (_vault, conn) = open(root);
@@ -427,7 +427,7 @@ fn hand_written_deliverable_facts_are_read_leniently() {
     write(
         root,
         "projects/acme/project.md",
-        "---\nname: Acme\ndeliverables:\n- path: 03 Brief.md\n  goal: A brief.\n  mmm: robot\n- goal: No path.\n- path: Loose.md\n  goal: Loose.\n---\n",
+        "---\nname: Acme\ndeliverables:\n- path: 03 Brief.md\n  goal: A brief.\n  aiUse: robot\n- goal: No path.\n- path: Loose.md\n  goal: Loose.\n---\n",
     );
     write(root, "projects/acme/deliverables/03 Brief.md", "# Brief\n");
     write(root, "projects/acme/deliverables/Loose.md", "# Loose\n");
@@ -458,7 +458,7 @@ fn a_version_published_with_another_label_keeps_the_intended_one_and_why() {
     let manifest = root.join(format!("projects/{project}/{}", deliverables::manifest_in_project(&plan, &version, [])));
     let text = fs::read_to_string(&manifest).unwrap();
     let meta = frontmatter::parse(&text).unwrap().meta;
-    assert_eq!(meta.text("intendedMmm").as_deref(), Some("man-made"));
+    assert_eq!(meta.text("intendedAiUse").as_deref(), Some("man-made"));
     assert_eq!(meta.text("labelReason").as_deref(), Some("I wrote it myself."));
 
     // It loads back, and is written again the same.
