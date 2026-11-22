@@ -1,5 +1,5 @@
 <script lang="ts">
-	// "What the labels mean": opens https://mmmlabel.tech in the system browser.
+	// What the AI-use labels mean: opens https://mmmlabel.tech in the system browser, from the name of a label's field.
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { MMM_SITE } from '$lib/mmm';
 

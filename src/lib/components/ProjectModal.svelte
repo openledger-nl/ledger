@@ -1,6 +1,6 @@
 <script lang="ts">
-	// Starting a project means choosing a goal and an end; everything else hangs from it. Also used to set the kind,
-	// goal and end of a project made before v1. Wireframe B1; requirements: Projects.
+	// Starting a project means choosing a goal and an end; everything else hangs from it. The same window edits a
+	// project: its name, kind, goal and end, label and people. Wireframe B1; requirements: Projects.
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { projectUrl } from '$lib/actions';
@@ -15,6 +15,7 @@
 	import Dropdown from './Dropdown.svelte';
 	import DateInput from './DateInput.svelte';
 	import Modal from './Modal.svelte';
+	import MmmLink from './MmmLink.svelte';
 	import MmmPicker from './MmmPicker.svelte';
 
 	let {
@@ -140,7 +141,7 @@
 	}
 </script>
 
-<Modal title={project ? 'Goal, kind and end' : 'New project'} wide {onclose}>
+<Modal title={project ? 'Edit project' : 'New project'} wide {onclose}>
 	<label class="field">
 		<span>Name</span>
 		<input bind:value={name} placeholder="e.g. Thrym Player" data-autofocus={project ? undefined : ''} />
@@ -153,7 +154,7 @@
 				<button class:on={kind === k.kind} aria-pressed={kind === k.kind} onclick={() => (kind = k.kind)}>{k.name}</button>
 			{/each}
 		</div>
-		<span class="hint">{PROJECT_KINDS.find((k) => k.kind === kind)?.hint} A group project is a study project in your own vault.</span>
+		<span class="hint">{PROJECT_KINDS.find((k) => k.kind === kind)?.hint}</span>
 	</div>
 
 	<label class="field">
@@ -168,7 +169,7 @@
 			{#if kind === 'study'}
 				<label class="check">
 					<input type="radio" bind:group={endMode} value="semester" disabled={!semester} />
-					{#if semester}End of the semester ({semester.name}, {dayLabel(semester.end)}){:else}End of the semester (set a semester up in Settings first){/if}
+					{#if semester}End of the semester ({semester.name}, {dayLabel(semester.end)}){:else}End of the semester (set one up under Shared, Semesters first){/if}
 				</label>
 			{/if}
 			<div class="pm-own">
@@ -185,7 +186,7 @@
 	</div>
 
 	<div class="field">
-		<span>Intended AI-use label (optional)</span>
+		<span>Intended AI-use label - <MmmLink /> (optional)</span>
 		<MmmPicker bind:value={intended} label="Intended AI-use label" />
 		<span class="hint">
 			{#if intended === 'man-made'}

@@ -85,12 +85,6 @@ export function newDeliverableFlow(project: string) {
 	projectDialogs.deliverable = { project };
 }
 
-export async function renameProjectFlow(slug: string, current: string) {
-	const name = await promptDialog({ title: 'Rename project', label: 'Name', initial: current, confirmLabel: 'Rename' });
-	if (!name || name === current) return;
-	if (await attempt(() => api.renameProject(slug, name))) await refresh();
-}
-
 export async function deleteProjectFlow(slug: string, name: string) {
 	const ok = await confirmDialog({
 		title: `Delete "${name}"?`,

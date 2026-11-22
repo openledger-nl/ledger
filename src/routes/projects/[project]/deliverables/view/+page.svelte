@@ -31,6 +31,7 @@
 	import { sha256Hex } from '$lib/hash';
 	import { dateTime } from '$lib/format';
 	import { MMM, mmmInfo } from '$lib/mmm';
+	import MmmLink from '$lib/components/MmmLink.svelte';
 	import MmmPicker from '$lib/components/MmmPicker.svelte';
 	import { dirOf } from '$lib/vaultImages';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
@@ -755,7 +756,7 @@
 			</div>
 		{/if}
 		<div class="field">
-			<span>AI-use label for the result {labelRequired ? '' : '(optional)'}{#if labelRequired}<span class="req">required in a study project</span>{/if}</span>
+			<span>AI-use label for the result - <MmmLink /> {labelRequired ? '' : '(optional)'}{#if labelRequired}<span class="req">required in a study project</span>{/if}</span>
 			<MmmPicker bind:value={level} label="AI-use label for the result" empty="Not labelled" />
 			{#if level}
 				<span class="hint">{MMM.find((m) => m.level === level)?.meaning}</span>

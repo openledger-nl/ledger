@@ -1,9 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Target from '@lucide/svelte/icons/target';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Users from '@lucide/svelte/icons/users';
-	import { deleteProjectFlow, projectUrl, renameProjectFlow } from '$lib/actions';
+	import { deleteProjectFlow, projectUrl } from '$lib/actions';
+	import Menu from '$lib/components/Menu.svelte';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
 	import { projectDialogs } from '$lib/dialogs.svelte';
 	import { dayLabel } from '$lib/semesters';
@@ -47,9 +50,16 @@
 				{#if project.description}<div class="sub">{project.description}</div>{/if}
 			</div>
 			<div class="header-actions">
-				<button class="btn small ghost" onclick={editMeta}>{meta ? 'Goal & end' : 'Set goal & end'}</button>
-				<button class="btn small ghost" onclick={() => renameProjectFlow(project.slug, project.name)}>Rename</button>
-				<button class="btn small ghost danger" onclick={() => deleteProjectFlow(project.slug, project.name)}>Delete</button>
+				<button class="btn small ghost" onclick={editMeta}>Edit</button>
+				<Menu
+					class="btn small ghost more"
+					label="More about this project"
+					items={[{ id: 'delete', label: 'Delete project', icon: Trash2, danger: true }]}
+					onpick={() => deleteProjectFlow(project.slug, project.name)}
+					align="end"
+				>
+					<Ellipsis size={16} />
+				</Menu>
 			</div>
 		</div>
 		{#if meta}
