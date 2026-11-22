@@ -47,6 +47,10 @@ pub enum Found {
     New,
     /// A vault from Ledger 0.x: refused, and left as it is.
     Legacy,
+    /// A vault of today's layout (it has `shared/`) without its marker: the marker hasn't synced here yet, or was
+    /// lost. Refused rather than made a new vault, which would give it another id (and so lose this machine's settings
+    /// for it).
+    Unmarked,
     /// A vault in a format a newer Ledger wrote.
     Newer(u32),
     /// A marker that can't be read.
@@ -65,6 +69,7 @@ pub fn inspect(root: &Path) -> Found {
             Ok(marker) => Found::Damaged(format!("{} names format {} and id {:?}, which this Ledger doesn't read", file.display(), marker.ledger, marker.id)),
             Err(e) => Found::Damaged(format!("{}: {e}", file.display())),
         },
+        Err(_) if root.join(crate::vault::SHARED).is_dir() => Found::Unmarked,
         Err(_) if LEGACY_SIGNS.iter().any(|name| root.join(name).exists()) => Found::Legacy,
         Err(_) => Found::New,
     }
@@ -76,6 +81,10 @@ pub fn refusal(root: &Path, found: &Found) -> Option<Error> {
         Found::Vault(_) | Found::New => None,
         Found::Legacy => Some(Error::invalid(format!(
             "{} holds a vault from Ledger 0.x. Ledger 1.0 can't open it and doesn't change it: create a new vault, in a folder your cloud storage keeps in sync.",
+            root.display()
+        ))),
+        Found::Unmarked => Some(Error::invalid(format!(
+            "{} holds a Ledger vault without its {FILE}, the file that says it is one. If the folder is still syncing to this computer, wait for it to finish; otherwise put {FILE} back from your cloud storage's version history or recycle bin.",
             root.display()
         ))),
         Found::Newer(format) => Some(Error::invalid(format!(

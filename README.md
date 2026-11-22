@@ -87,7 +87,10 @@ Files Ledger doesn't know about are left alone, so the vault can hold other note
 An encrypted vault holds `ledger.json` and a `data/` folder of sealed files only; see below.
 
 **Ledger 1.0 makes a clean start**: it opens only folders with a `ledger.json` of a format it reads. A vault made by
-Ledger 0.x (no marker, a `projects/` or `.ledger/` folder) is refused and left as it is: make a new vault. When the
+Ledger 0.x (no marker, a `projects/` or `.ledger/` folder) is refused and left as it is: make a new vault. A vault of
+today's that has lost its `ledger.json` (it has a `shared/` folder), or whose `ledger.json` hasn't synced to this
+computer yet, is refused too, and the picker says so: wait for the sync, or put the file back from the cloud's version
+history. Ledger doesn't make it a new one, which would give it another id. When the
 format changes later, `ledger.json` says which one a vault is in, and a step that runs once brings it up to date.
 
 ### Choosing where the vault lives
