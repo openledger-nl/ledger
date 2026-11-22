@@ -347,16 +347,12 @@ pub struct TemplateView {
     pub questions: Vec<String>,
     /// The skeleton of the deliverable.
     pub body: String,
-    /// The kinds of project it is offered in (study, hobby, company); empty for every kind.
+    /// The kinds of project it is offered in (study, work, hobby); empty for every kind.
     pub kinds: Vec<String>,
     /// Who its deliverables are written for: told to Claude, and noted in the deliverable.
     pub readers: Vec<TemplateReader>,
     /// The readers are a visible line in a new deliverable, not only a `%%` note.
     pub readers_shown: bool,
-    /// One the app ships, as shipped (not a file in the vault until it is changed).
-    pub builtin: bool,
-    /// The vault's own version of one the app ships: deleting it brings the shipped one back.
-    pub customised_builtin: bool,
     pub created_at: String,
     pub updated_at: String,
     /// A vault-wide template that the project has replaced with one of its own of the same id.
@@ -498,7 +494,7 @@ pub struct SemesterView {
 
 /// What the caller supplies to create or change a semester. Without sprints, they are cut from the start in
 /// stretches of `sprint_weeks` weeks of work, around the vacations.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SemesterDraft {
     pub name: String,

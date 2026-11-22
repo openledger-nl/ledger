@@ -75,6 +75,16 @@ fn scalar(value: &Value) -> Option<String> {
 pub trait MetaExt {
     /// A scalar as text; empty text counts as absent.
     fn text(&self, key: &str) -> Option<String>;
+    /// The `name`, trimmed; `fallback` when there is none.
+    fn name_or(&self, fallback: &str) -> String {
+        self.text("name").map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| fallback.to_string())
+    }
+    /// `createdAt` and `updatedAt`: the file's `stamp` when it has no `createdAt`, that when it has no `updatedAt`.
+    fn stamps(&self, stamp: &str) -> (String, String) {
+        let created_at = self.text("createdAt").unwrap_or_else(|| stamp.to_string());
+        let updated_at = self.text("updatedAt").unwrap_or_else(|| created_at.clone());
+        (created_at, updated_at)
+    }
     fn flag(&self, key: &str) -> bool;
     /// A list of scalars; a single scalar reads as a list of one.
     fn list(&self, key: &str) -> Vec<String>;

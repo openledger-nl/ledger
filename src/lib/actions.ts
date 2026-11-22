@@ -85,12 +85,6 @@ export function newDeliverableFlow(project: string) {
 	projectDialogs.deliverable = { project };
 }
 
-export async function renameProjectFlow(slug: string, current: string) {
-	const name = await promptDialog({ title: 'Rename project', label: 'Name', initial: current, confirmLabel: 'Rename' });
-	if (!name || name === current) return;
-	if (await attempt(() => api.renameProject(slug, name))) await refresh();
-}
-
 export async function deleteProjectFlow(slug: string, name: string) {
 	const ok = await confirmDialog({
 		title: `Delete "${name}"?`,
@@ -141,10 +135,17 @@ export function promptName(prompt: Pick<Prompt, 'title' | 'base' | 'body'>): str
 export const isVersionPath = (path: string) => /^.+@v\d+\.\d+(\.[^.]*)?$/.test(baseName(path));
 
 /**
- * Where a project's deliverable lives relative to the project's folder (what file commands take): the live file under
- * `deliverables/`, a published version at the same place under `versions/`.
+ * Where a project's deliverable lives relative to the project's folder (what file commands take), as the backend puts it
+ * (`deliverables::in_project`): the live file under `deliverables/`, a published version under `versions/`, in a folder
+ * of its deliverable's own named after it ("reports/plan@v1.2.md" is `versions/reports/plan/plan@v1.2.md`).
  */
-export const deliverableFile = (path: string) => `${isVersionPath(path) ? 'versions' : 'deliverables'}/${path}`;
+export function deliverableFile(path: string): string {
+	if (!isVersionPath(path)) return `deliverables/${path}`;
+	const name = baseName(path);
+	const live = name.replace(/@v\d+\.\d+(?=(\.[^.]*)?$)/, '');
+	const dot = live.lastIndexOf('.');
+	return `versions/${path.slice(0, path.length - name.length)}${dot > 0 ? live.slice(0, dot) : live}/${name}`;
+}
 
 export function mimeOf(name: string): string {
 	const ext = name.split('.').pop()?.toLowerCase() ?? '';

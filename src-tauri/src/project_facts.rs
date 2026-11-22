@@ -2,13 +2,13 @@
 //! Kept in the frontmatter of the project's `project.md`:
 //!
 //! ```text
-//! kind: study                  study, hobby or company
+//! kind: study                  study, work or hobby
 //! goal: Give the bakery a rota tool their staff can use on a phone.
 //! end: semester                semester, a calendar day (2027-01-31), or left out for no end
 //! semester: NJ26               the semester a study project runs in
 //! intendedMmm: cyborg          the label the work is meant to get
 //! mainQuestion: How can …?     a study project's main question
-//! client: Bakery Bos           a company project's client
+//! client: bakery-bos           a work project's client, by its id (see `clients`)
 //! ```
 //!
 //! A project without a kind and a goal has no facts yet: the screens then ask for them.
@@ -36,8 +36,8 @@ use crate::error::{Error, Result};
 use crate::frontmatter::{self, MetaExt};
 use crate::{ids, projects, provenance};
 
-pub const KINDS: [&str; 3] = ["study", "hobby", "company"];
-pub const ROLES: [&str; 6] = ["coach", "expert", "teammate", "client", "colleague", "other"];
+pub const KINDS: [&str; 3] = ["study", "work", "hobby"];
+pub const ROLES: [&str; 6] = ["coach", "expert", "teammate", "stakeholder", "colleague", "other"];
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -50,12 +50,15 @@ pub struct ProjectMeta {
     pub semester: Option<String>,
     pub intended_mmm: Option<String>,
     pub main_question: Option<String>,
+    /// A work project's client, by its id (see `clients`).
     pub client: Option<String>,
+    /// That client's name (filled in by Ledger).
+    pub client_name: Option<String>,
     /// How daily notes and feedback tag the project: `project/<tag>`. Its slug.
     pub tag: String,
 }
 
-const COLUMNS: &str = "slug, kind, goal, project_end, semester, intended_mmm, main_question, client";
+const COLUMNS: &str = "slug, kind, goal, project_end, semester, intended_mmm, main_question, client, (SELECT name FROM clients c WHERE c.id = projects.client)";
 
 fn from_row(r: &rusqlite::Row) -> rusqlite::Result<Option<ProjectMeta>> {
     let slug: String = r.get(0)?;
@@ -72,6 +75,7 @@ fn from_row(r: &rusqlite::Row) -> rusqlite::Result<Option<ProjectMeta>> {
         intended_mmm: r.get(5)?,
         main_question: r.get(6)?,
         client: r.get(7)?,
+        client_name: r.get(8)?,
     }))
 }
 
@@ -95,7 +99,7 @@ fn trimmed(text: &Option<String>) -> Option<String> {
 fn clean(meta: &ProjectMeta) -> Result<ProjectMeta> {
     let kind = meta.kind.trim();
     if !KINDS.contains(&kind) {
-        return Err(Error::invalid("A project is a study, hobby or company project"));
+        return Err(Error::invalid("A project is a study, work or hobby project"));
     }
     let goal = meta.goal.trim();
     if goal.is_empty() {
@@ -123,6 +127,7 @@ fn clean(meta: &ProjectMeta) -> Result<ProjectMeta> {
         intended_mmm: intended,
         main_question: trimmed(&meta.main_question),
         client: trimmed(&meta.client),
+        client_name: None,
         tag: meta.slug.clone(),
     })
 }
@@ -131,6 +136,11 @@ fn clean(meta: &ProjectMeta) -> Result<ProjectMeta> {
 pub fn save(conn: &Connection, slug: &str, meta: &ProjectMeta) -> Result<ProjectMeta> {
     projects::require(conn, slug)?;
     let m = clean(&ProjectMeta { slug: slug.to_string(), ..meta.clone() })?;
+    if let Some(client) = &m.client
+        && !crate::clients::exists(conn, client)?
+    {
+        return Err(Error::invalid(format!("There is no client {client} in this vault: add it under Clients first")));
+    }
     conn.execute(
         "UPDATE projects SET kind = ?2, goal = ?3, project_end = ?4, semester = ?5, intended_mmm = ?6, main_question = ?7, client = ?8,
                              updated_at = ?9 WHERE slug = ?1",
@@ -163,9 +173,14 @@ pub fn import(conn: &Connection, slug: &str, meta: &Mapping) -> Result<()> {
     let (Some(kind), Some(goal)) = (kind, goal) else { return Ok(()) };
     let end = meta.text("end").map(|e| e.trim().to_lowercase()).filter(|e| e == "semester" || crate::dates::is_day(e));
     let intended = meta.text("intendedMmm").and_then(|l| provenance::level(l.trim()).map(str::to_string));
+    // A client that isn't in the vault (any more) is no client.
+    let client = match meta.text("client").map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
+        Some(id) if crate::clients::exists(conn, &id)? => Some(id),
+        _ => None,
+    };
     conn.execute(
         "UPDATE projects SET kind = ?2, goal = ?3, project_end = ?4, semester = ?5, intended_mmm = ?6, main_question = ?7, client = ?8 WHERE slug = ?1",
-        params![slug, kind, goal, end, meta.text("semester"), intended, meta.text("mainQuestion"), meta.text("client")],
+        params![slug, kind, goal, end, meta.text("semester"), intended, meta.text("mainQuestion"), client],
     )?;
     Ok(())
 }
@@ -180,7 +195,7 @@ pub struct ProjectPerson {
     pub project: String,
     /// Their id in the vault (see `people`).
     pub person: String,
-    /// coach, expert, teammate, client, colleague or other: their role in this project.
+    /// coach, expert, teammate, stakeholder, colleague or other: their role in this project.
     pub role: String,
     /// Their name, from the vault (filled in by Ledger).
     pub name: String,
@@ -219,7 +234,7 @@ pub fn save_people(conn: &Connection, slug: &str, people: &[ProjectPerson]) -> R
         }
         let role = p.role.trim().to_lowercase();
         if !ROLES.contains(&role.as_str()) {
-            return Err(Error::invalid("A person is a coach, expert, teammate, client, colleague or other"));
+            return Err(Error::invalid("A person is a coach, expert, teammate, stakeholder, colleague or other"));
         }
         if !cleaned.iter().any(|(other, _)| other == id) {
             cleaned.push((id.to_string(), role));

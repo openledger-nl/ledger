@@ -1,5 +1,5 @@
 //! The guide a new client gets on the home page: bring in a vault that exists, or set one up step by step (what Ledger
-//! is for, a semester when it is for school, a first thread, a first deliverable).
+//! is for, a semester when it is for study, a first thread, a first deliverable).
 //!
 //! Whether the guide shows is a fact about this machine's copy of Ledger, not about a vault, so it is kept in
 //! `config.json` with the vault's location (see `settings`). What each step needs is read from the vault by the page,
@@ -31,13 +31,14 @@ pub enum Stage {
     Done,
 }
 
-/// What Ledger is used for. Only school works in semesters, so only school is asked for one.
+/// What Ledger is used for first: the kind of the first project. Only study works in semesters, so only study is
+/// asked for one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Purpose {
+    Study,
     Work,
     Hobby,
-    School,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]

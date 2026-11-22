@@ -3,6 +3,8 @@
 	// is folded, and between 720 and 1199 px (Ledger snapped to half the screen, next to Canvas or Portflow). The main
 	// pages as icons, each project as its initial, Portflow's dot and the vault switch; hovering or focusing an item shows its name.
 	// Wireframes A6 and A7.
+	import Building2 from '@lucide/svelte/icons/building-2';
+	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import House from '@lucide/svelte/icons/house';
 	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
@@ -53,6 +55,8 @@
 		<a class="rail-item" class:active={on('/meetings')} href="/meetings" data-tip="Meeting notes" aria-label="Meeting notes"><NotebookPen size={18} /></a>
 		<a class="rail-item" class:active={on('/semesters')} href="/semesters" data-tip="Semesters (shared)" aria-label="Semesters"><CalendarRange size={18} /></a>
 		<a class="rail-item" class:active={on('/people')} href="/people" data-tip="People (shared)" aria-label="People"><Users size={18} /></a>
+		<a class="rail-item" class:active={on('/clients')} href="/clients" data-tip="Clients (shared)" aria-label="Clients"><Building2 size={18} /></a>
+		<a class="rail-item" class:active={on('/templates')} href="/templates" data-tip="Templates (shared)" aria-label="Templates"><LayoutTemplate size={18} /></a>
 		<a class="rail-item" class:active={on('/settings')} href="/settings" data-tip="Settings" aria-label="Settings"><Settings size={18} /></a>
 	</nav>
 

@@ -86,22 +86,12 @@
 
 	async function remove() {
 		if (!template) return;
-		const reset = template.customisedBuiltin;
-		const ok = await confirmDialog(
-			reset
-				? {
-						title: `Go back to Ledger's "${template.name}"?`,
-						message: 'Your changes to it are deleted, and the template is again as Ledger ships it.',
-						confirmLabel: 'Reset template',
-						danger: true
-					}
-				: {
-						title: `Delete "${template.name}"?`,
-						message: `Prompts already started from it keep the answers they were given.${scope ? ' If a shared template has the same name, this project uses that one again.' : ''}`,
-						confirmLabel: 'Delete template',
-						danger: true
-					}
-		);
+		const ok = await confirmDialog({
+			title: `Delete "${template.name}"?`,
+			message: `Prompts already started from it keep the answers they were given.${scope ? ' If a shared template has the same name, this project uses that one again.' : ''}`,
+			confirmLabel: 'Delete template',
+			danger: true
+		});
 		if (!ok) return;
 		if ((await attempt(() => api.deleteTemplate(scope, template.id))) !== undefined) {
 			await refresh();
@@ -111,9 +101,6 @@
 </script>
 
 <Modal title={template ? `Edit ${template.name}` : scope ? 'New project template' : 'New template'} wide {onclose}>
-	{#if template?.builtin}
-		<p class="hint" style="margin:0">This template comes with Ledger. Saving a change makes it your vault's own; you can always reset it.</p>
-	{/if}
 	<label class="field">
 		Name
 		<input bind:value={name} placeholder="e.g. Interview summary" />
@@ -225,8 +212,8 @@
 	</div>
 
 	{#snippet footer()}
-		{#if template && !template.builtin}
-			<button class="btn ghost danger" onclick={remove}>{template.customisedBuiltin ? 'Reset to Ledger\'s' : 'Delete'}</button>
+		{#if template}
+			<button class="btn ghost danger" onclick={remove}>Delete</button>
 		{/if}
 		<span class="spacer-h"></span>
 		<button class="btn ghost" onclick={onclose}>Cancel</button>

@@ -1,12 +1,10 @@
 //! What changed between the versions of a deliverable, who wrote what is in it, and the history notes in the vault.
 
-use std::fs;
 
 use rusqlite::Connection;
 use tempfile::tempdir;
 
 use crate::models::{Bump, PublishChoices};
-use crate::vault::{self, Vault};
 use crate::{db, deliverables, history, projects, prompts, threads};
 
 /// A project with "plan.md": v0.1 typed by you, v0.2 written with AI from a prompt, and a live file you edited since.
@@ -75,41 +73,6 @@ fn who_wrote_what_and_where_the_ai_s_words_went() {
     let marked: Vec<_> = traced.blocks.iter().filter(|b| b.html.contains("dv-by")).collect();
     assert_eq!(marked.len(), 2);
     assert!(history::authors(&c, &p, "plan.md", "0.1", Some("0.2")).is_err(), "v0.2 came after v0.1");
-}
-
-#[test]
-fn each_version_gets_a_note_in_the_history_folder_that_obsidian_can_read() {
-    let (c, p) = setup();
-    let files = vault::export(&c).unwrap();
-    let first = &files[&format!("projects/{p}/history/plan/v0.1.md")];
-    assert!(first.contains("madeBy: You") && first.contains("The first version, 9 words: [plan@v0.1.md](../../versions/plan@v0.1.md)"), "{first}");
-    let second = &files[&format!("projects/{p}/history/plan/v0.2.md")];
-    assert!(second.contains("by: ai\nmadeBy: AI, as declared\n") && second.contains("prompt: Write the risks"), "{second}");
-    assert!(second.contains("> +10 words, -0 words since [v0.1](v0.1.md)."), "{second}");
-    assert!(second.contains("## What changed\n\n## ==Risks==\n\n==The deadline is tight and the budget is small.==\n"), "{second}");
-    // The live file is no version: it has no note.
-    assert_eq!(files.keys().filter(|k| k.contains("/history/")).count(), 2);
-}
-
-#[test]
-fn history_notes_are_written_but_never_read_back() {
-    let dir = tempdir().unwrap();
-    let root = dir.path();
-    let mut vault = Vault::open(root.to_path_buf()).unwrap();
-    let c = vault.load().unwrap();
-    let p = projects::create(&c, "Acme").unwrap().slug;
-    deliverables::create(&c, &p, "Plan", "# Plan\n\nOne.\n").unwrap();
-    deliverables::publish_with(&c, root, &p, "plan.md", Bump::Minor, None, &PublishChoices::default()).unwrap();
-    vault.persist(&c).unwrap();
-    let note = root.join(format!("projects/{p}/history/plan/v0.1.md"));
-    assert!(note.exists());
-
-    // Reloaded, the vault is what it was; a note that was deleted by hand is written again.
-    fs::remove_file(&note).unwrap();
-    let c = vault.load().unwrap();
-    assert!(note.exists());
-    assert_eq!(deliverables::list(&c, &p).unwrap().len(), 1);
-    assert_eq!(threads::list(&c, &p).unwrap().len(), 0);
 }
 
 /// `text` with `edits` made, positions in UTF-16 as the editor counts.

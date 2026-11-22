@@ -6,8 +6,8 @@ import { parseDay, today } from './semesters';
 
 export const PROJECT_KINDS: { kind: ProjectKind; name: string; hint: string }[] = [
 	{ kind: 'study', name: 'Study', hint: 'A personal or group project in Open Learning: semesters, sprints and Portflow when switched on.' },
-	{ kind: 'hobby', name: 'Hobby', hint: 'Something of your own: no study fields, an end date only if you want one.' },
-	{ kind: 'company', name: 'Company', hint: 'Work for a client or your own business: client feedback, agreements, versions.' }
+	{ kind: 'work', name: 'Work', hint: 'Work for a client, your employer or your own business: client feedback, agreements, versions.' },
+	{ kind: 'hobby', name: 'Hobby', hint: 'Something of your own: no study fields, an end date only if you want one.' }
 ];
 export const kindName = (kind: ProjectKind) => PROJECT_KINDS.find((k) => k.kind === kind)?.name ?? kind;
 
@@ -31,7 +31,7 @@ export const ROLES: { role: FeedbackRole; name: string }[] = [
 	{ role: 'coach', name: 'Coach' },
 	{ role: 'expert', name: 'Expert' },
 	{ role: 'teammate', name: 'Teammate' },
-	{ role: 'client', name: 'Client' },
+	{ role: 'stakeholder', name: 'Stakeholder' },
 	{ role: 'colleague', name: 'Colleague' },
 	{ role: 'other', name: 'Someone else' }
 ];

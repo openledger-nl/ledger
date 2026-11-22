@@ -215,7 +215,7 @@
 								<dt>Published</dt>
 								<dd>{dateTime(e.at)}</dd>
 								<dt>Record</dt>
-								<dd class="mono">{e.record ? `versions/${e.record}.md` : 'none, this version is older than records'}</dd>
+								<dd class="mono">{e.record ?? 'none, this version is older than records'}</dd>
 								{#if e.post}
 									<dt>Note</dt>
 									<dd><a href="{threadUrl(project, e.post.threadSlug)}?item=p-{e.post.id}">in its thread</a></dd>

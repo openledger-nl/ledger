@@ -177,7 +177,7 @@ fn a_vault_wide_template_is_offered_only_in_the_kinds_of_project_it_is_for() {
     let (p, _) = setup(&c);
     let study = TemplateDraft { kinds: vec!["study".into(), "bogus".into()], ..TemplateDraft::basic("Reflection", "", &[], "") };
     templates::create(&c, "", &study).unwrap();
-    let every = TemplateDraft { kinds: vec!["company".into(), "hobby".into(), "study".into()], ..TemplateDraft::basic("Memo", "", &[], "") };
+    let every = TemplateDraft { kinds: vec!["work".into(), "hobby".into(), "study".into()], ..TemplateDraft::basic("Memo", "", &[], "") };
     assert!(templates::create(&c, "", &every).unwrap().kinds.is_empty(), "all kinds is the same as every kind");
     assert_eq!(templates::get(&c, "", "reflection").unwrap().kinds, ["study"], "unknown kinds are dropped");
 
@@ -223,6 +223,10 @@ fn a_templates_readers_are_noted_in_its_deliverable_and_told_in_its_prompt() {
     let frank = crate::people::create(&c, &crate::people::PersonDraft { name: "Frank".into(), ..Default::default() }).unwrap();
     project_facts::save_people(&c, &p, &[ProjectPerson { person: frank.id, role: "coach".into(), ..Default::default() }]).unwrap();
     assert!(templates::skeleton(&c, &p, &memo).unwrap().starts_with("%% Readers: Frank (coach: judges the work"));
+    // A stakeholder reads as the client does.
+    let sanne = crate::people::create(&c, &crate::people::PersonDraft { name: "Sanne".into(), ..Default::default() }).unwrap();
+    project_facts::save_people(&c, &p, &[ProjectPerson { person: sanne.id, role: "stakeholder".into(), ..Default::default() }]).unwrap();
+    assert!(templates::skeleton(&c, &p, &memo).unwrap().starts_with("%% Readers: Sanne (stakeholder: not technical"));
 
     // A new deliverable for a prompt from the template starts with the note.
     let prompt = prompts::create(&c, &p, &t, &NewPrompt { body: "Write it".into(), template_id: Some("plan".into()), new_deliverable: Some("plan".into()), ..Default::default() }).unwrap();
@@ -444,12 +448,12 @@ fn files_that_are_not_markdown_are_copied_and_removed_on_disk() {
 
     deliverables::publish(&c, dir.path(), &p, "chart.png", Bump::Minor, None).unwrap();
     let versions = deliverables::versions_dir(dir.path(), &p);
-    assert_eq!(fs::read(versions.join("chart@v0.1.png")).unwrap(), [1, 2, 3], "the published copy is kept in versions/");
+    assert_eq!(fs::read(versions.join("chart/chart@v0.1.png")).unwrap(), [1, 2, 3], "the published copy is kept in versions/, in a folder of its own");
     assert!(!folder.join("chart@v0.1.png").exists(), "not beside the live file");
 
     // Deleting the current file removes it from disk; the published copy stays and still lists the deliverable.
     deliverables::delete(&c, dir.path(), &p, "chart.png").unwrap();
-    assert!(!folder.join("chart.png").exists() && versions.join("chart@v0.1.png").exists());
+    assert!(!folder.join("chart.png").exists() && versions.join("chart/chart@v0.1.png").exists());
     let listed = deliverables::list(&c, &p).unwrap();
     assert_eq!((listed[0].path.as_str(), listed[0].exists, listed[0].versions.clone()), ("chart.png", false, vec!["0.1".to_string()]));
     assert_eq!(message(deliverables::delete(&c, dir.path(), &p, "chart@v0.1.png").unwrap_err()), "Published versions are kept");
@@ -622,7 +626,7 @@ fn feedback_goes_into_a_prompts_base_with_the_version_it_was_given_on() {
     let spec = BaseSpec { template_id: None, feedback: vec![early.id.clone(), late.id.clone()] };
     let base = prompts::suggest_base(&c, &p, &spec).unwrap();
     assert!(base.starts_with("Please resolve the following feedback on plan.md."), "{base}");
-    assert!(base.contains("### On v1.0 (versions/plan@v1.0.md), from the thread \"Calls\"\n\n> Plan\n\nTighten this."), "{base}");
+    assert!(base.contains("### On v1.0 (versions/plan/plan@v1.0.md), from the thread \"Calls\"\n\n> Plan\n\nTighten this."), "{base}");
     assert!(base.contains("### On the live file (deliverables/plan.md), as it stands, from the thread \"Calls\"\n\nAdd owners."), "{base}");
     assert_eq!(prompts::suggest_base(&c, &p, &BaseSpec::default()).unwrap(), "", "nothing to fill it in from");
 

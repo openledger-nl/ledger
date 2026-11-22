@@ -85,7 +85,7 @@
 					class="btn"
 					onclick={() => (editing = true)}
 					disabled={!view.semester}
-					title={view.semester ? 'What you aim for this semester' : 'Add a semester covering today first (Settings > Semesters)'}
+					title={view.semester ? 'What you aim for this semester' : 'Add a semester covering today first (Shared, Semesters)'}
 				>
 					<Crosshair size={15} />Intended development
 				</button>

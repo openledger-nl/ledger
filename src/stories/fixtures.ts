@@ -22,6 +22,7 @@ import type {
 	Post,
 	PostMeta,
 	ProjectMeta,
+	Client,
 	ConflictView,
 	Person,
 	ProjectPerson,
@@ -31,6 +32,7 @@ import type {
 	Prompt,
 	Provenance,
 	Semester,
+	SemesterTemplate,
 	Settings,
 	Story,
 	Task,
@@ -127,7 +129,7 @@ export const people: ProjectPerson[] = [
 	{ project: PROJECT, person: 'frank-de-vries', name: 'Frank de Vries', role: 'coach', portflowUser: 101, tag: 'people/frank-de-vries' },
 	{ project: PROJECT, person: 'sanne-jansen', name: 'Sanne Jansen', role: 'expert', portflowUser: 102, tag: 'people/sanne-jansen' },
 	{ project: PROJECT, person: 'sam-bakker', name: 'Sam Bakker', role: 'teammate', portflowUser: null, tag: 'people/sam-bakker' },
-	{ project: PROJECT, person: 'ries-van-dam', name: 'Ries van Dam', role: 'client', portflowUser: null, tag: 'people/ries-van-dam' }
+	{ project: PROJECT, person: 'ries-van-dam', name: 'Ries van Dam', role: 'stakeholder', portflowUser: null, tag: 'people/ries-van-dam' }
 ];
 
 export const projectOptions = projects.map((p) => ({ value: p.slug, label: p.name }));
@@ -137,7 +139,7 @@ export const vaultPeople: Person[] = [
 		id: p.person,
 		name: p.name,
 		email: '',
-		organisation: p.role === 'client' ? 'Kwekerij Van Dam' : p.role === 'teammate' ? '' : 'Fontys ICT',
+		organisation: p.role === 'stakeholder' ? 'Kwekerij Van Dam' : p.role === 'teammate' ? '' : 'Fontys ICT',
 		portflowUser: p.portflowUser,
 		notes: '',
 		projects: [{ project: PROJECT, projectName: 'Smart Greenhouse', role: p.role }],
@@ -556,6 +558,31 @@ export const semester: Semester = {
 	updatedAt: at(1)
 };
 
+/** NJ26, the semester template a new vault starts with. */
+export const semesterTemplate: SemesterTemplate = {
+	id: 'nj26',
+	name: 'NJ26 - Semester X',
+	start: '2026-08-31',
+	end: '2027-01-24',
+	sprintWeeks: 3,
+	notes: '',
+	sprints: [
+		{ name: 'Kick-off', start: '2026-08-31', end: '2026-09-06', goal: '' },
+		{ name: 'Sprint 0', start: '2026-09-07', end: '2026-09-20', goal: '' },
+		{ name: 'Sprint 1', start: '2026-09-21', end: '2026-10-11', goal: '' },
+		{ name: 'Sprint 2', start: '2026-10-12', end: '2026-11-08', goal: '' },
+		{ name: 'Sprint 3', start: '2026-11-09', end: '2026-11-29', goal: '' },
+		{ name: 'Sprint 4', start: '2026-11-30', end: '2026-12-20', goal: '' },
+		{ name: 'Sprint 5', start: '2027-01-04', end: '2027-01-24', goal: '' }
+	],
+	vacations: [
+		{ name: 'Autumn break', start: '2026-10-19', end: '2026-10-25' },
+		{ name: 'Christmas break', start: '2026-12-21', end: '2027-01-03' }
+	],
+	createdAt: at(1),
+	updatedAt: at(1)
+};
+
 export const story: Story = {
 	projectSlug: PROJECT,
 	id: 'st-1',
@@ -611,8 +638,6 @@ export const template: Template = {
 		{ who: 'me', needs: '', keepFrom: '' }
 	],
 	readersShown: false,
-	builtin: false,
-	customisedBuiltin: false,
 	createdAt: at(1),
 	updatedAt: at(1),
 	overridden: false
@@ -644,7 +669,7 @@ export const activity: ActivityEvent[] = Array.from({ length: 60 }, (_, i) => ({
 	at: new Date(Date.UTC(2026, 8, 1 + Math.floor(i * 1.3))).toISOString()
 }));
 
-export const onboarding: OnboardingStatus = { active: true, skipped: [], purpose: 'school' };
+export const onboarding: OnboardingStatus = { active: true, skipped: [], purpose: 'study' };
 
 export const settings: Settings = {
 	vaultPath: '/home/student/Documents/Ledger',
@@ -668,6 +693,21 @@ export const anchor: Anchor = { text: 'corrode far less than resistive ones', pr
 export const marks: Mark[] = [{ id: 'f-3', anchor, tone: 'open' }];
 
 export const noop = () => {};
+
+// ---- clients ----------------------------------------------------------------------------------------------
+
+/** The clients of the sample vault. */
+export const clients: Client[] = [
+	{
+		id: 'kwekerij-van-dam',
+		name: 'Kwekerij Van Dam',
+		website: 'https://kwekerijvandam.nl',
+		notes: 'Family business, three greenhouses.',
+		projects: [],
+		createdAt: at(1, '09:00'),
+		updatedAt: at(1, '09:00')
+	}
+];
 
 // ---- conflict copies ------------------------------------------------------------------------------------
 

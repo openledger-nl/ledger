@@ -163,6 +163,45 @@ pub fn list_project_meta(app: State<App>) -> Result<Vec<ProjectMeta>> {
     app.read(|c, _| project_facts::list(c))
 }
 
+/// The semester templates a new semester can start from, the earliest first.
+#[tauri::command]
+pub fn list_semester_templates(app: State<App>) -> Result<Vec<crate::semester_templates::SemesterTemplate>> {
+    app.read(|c, _| crate::semester_templates::list(c))
+}
+
+/// Saves a semester template: a new one without an `id`.
+#[tauri::command]
+pub fn save_semester_template(app: State<App>, id: Option<String>, draft: SemesterDraft) -> Result<crate::semester_templates::SemesterTemplate> {
+    app.mutate(|c, _| crate::semester_templates::save(c, id.as_deref(), &draft))
+}
+
+#[tauri::command]
+pub fn delete_semester_template(app: State<App>, id: String) -> Result<()> {
+    app.mutate(|c, _| crate::semester_templates::delete(c, &id))
+}
+
+/// Every client the vault knows, with its projects.
+#[tauri::command]
+pub fn list_clients(app: State<App>) -> Result<Vec<crate::clients::Client>> {
+    app.read(|c, _| crate::clients::list(c))
+}
+
+#[tauri::command]
+pub fn create_client(app: State<App>, draft: crate::clients::ClientDraft) -> Result<crate::clients::Client> {
+    app.mutate(|c, _| crate::clients::create(c, &draft))
+}
+
+#[tauri::command]
+pub fn update_client(app: State<App>, id: String, draft: crate::clients::ClientDraft) -> Result<crate::clients::Client> {
+    app.mutate(|c, _| crate::clients::update(c, &id, &draft))
+}
+
+/// Takes a client out of the vault; its projects keep going without one.
+#[tauri::command]
+pub fn delete_client(app: State<App>, id: String) -> Result<()> {
+    app.mutate(|c, _| crate::clients::delete(c, &id))
+}
+
 /// Everyone the vault knows, with the projects each is part of.
 #[tauri::command]
 pub fn list_people(app: State<App>) -> Result<Vec<crate::people::Person>> {

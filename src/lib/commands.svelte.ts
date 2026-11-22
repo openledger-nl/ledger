@@ -102,11 +102,14 @@ export function commands(): Command[] {
 		{ id: 'go.meetings', title: 'Meeting notes', group: 'Go to', keywords: 'daily', run: go('/meetings') },
 		{ id: 'go.feedback', title: 'Feedback', group: 'Go to', keywords: 'inbox', run: go('/feedback') },
 		{ id: 'go.semesters', title: 'Semesters', group: 'Go to', keywords: 'shared sprints vacation half year calendar nj26', run: go('/semesters') },
-		{ id: 'go.people', title: 'People', group: 'Go to', keywords: 'shared coach teammates client contacts', run: go('/people') }
+		{ id: 'go.people', title: 'People', group: 'Go to', keywords: 'shared coach teammates stakeholders contacts', run: go('/people') },
+		{ id: 'go.clients', title: 'Clients', group: 'Go to', keywords: 'shared companies organisations customers work', run: go('/clients') },
+		{ id: 'go.templates', title: 'Templates', group: 'Go to', keywords: 'shared template prompt guiding questions skeleton deliverable project plan', run: go('/templates') }
 	);
 	if (portflow.enabled) list.push({ id: 'go.epsilon', title: 'Epsilon+', group: 'Go to', keywords: 'portflow learning outcomes epsilon', run: go('/epsilon') });
 	list.push({ id: 'go.search', title: 'Search page', group: 'Go to', run: go('/search') });
-	for (const g of groups) {
+	// The Shortcuts tab is "Keyboard shortcuts", below.
+	for (const g of groups.filter((g) => g.id !== 'shortcuts')) {
 		list.push({ id: `go.settings.${g.id}`, title: `Settings: ${g.label}`, group: 'Go to', keywords: 'settings preferences', run: go(`/settings/${g.id}`) });
 	}
 
@@ -134,7 +137,7 @@ export function commands(): Command[] {
 		{ id: 'screenshot', title: 'Take a screenshot', group: 'App', keywords: 'capture picture', run: () => attempt(api.takeScreenshot) },
 		{ id: 'vault.switch', title: 'Switch vault', group: 'App', keywords: 'open another vault folder', run: openVaultPicker },
 		{ id: 'debug.capture', title: 'Start or stop a debug capture', group: 'App', keywords: 'record log report bug', defaultKey: 'CommandOrControl+Alt+Shift+D', run: handled('debug.capture') },
-		{ id: 'go.settings.shortcuts', title: 'Keyboard shortcuts', group: 'App', keywords: 'hotkeys keys bindings settings', run: go('/settings/tools#shortcuts') }
+		{ id: 'go.settings.shortcuts', title: 'Keyboard shortcuts', group: 'App', keywords: 'hotkeys keys bindings settings', run: go('/settings/shortcuts') }
 	);
 	for (const t of themes) list.push({ id: `theme.${t.id}`, title: `Theme: ${t.name}`, group: 'Theme', keywords: 'colours colors look', run: () => setTheme(t.id) });
 

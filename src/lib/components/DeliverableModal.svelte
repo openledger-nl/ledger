@@ -13,6 +13,7 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import CircleHelp from '@lucide/svelte/icons/circle-help';
 	import Modal from './Modal.svelte';
+	import MmmLink from './MmmLink.svelte';
 	import MmmPicker from './MmmPicker.svelte';
 
 	let {
@@ -141,7 +142,7 @@
 			<Dropdown bind:value={answer} options={answerOptions} label="The question it answers" full />
 		</div>
 		<div class="field grow">
-			<span>Its AI-use label</span>
+			<span>Its AI-use label - <MmmLink /></span>
 			<MmmPicker bind:value={mmm} label="Its AI-use label" />
 		</div>
 	</div>

@@ -1,4 +1,4 @@
-//! How a project's exported PDFs look and who they name: your name, your own side (your school or company) with its
+//! How a project's exported PDFs look and who they name: your name, your own side (your school or employer) with its
 //! logo, the client with theirs, and one accent colour. Kept in the frontmatter of the project's `project.md`:
 //!
 //! ```text

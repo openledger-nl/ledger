@@ -27,7 +27,13 @@ fn without_a_vault_nothing_is_written_until_one_is_made() {
     assert_eq!(settings::local_dir(&path), config.path().join("vaults").join(core.vault.id()));
     settings::update_settings(&path, |s| s.screenshot_hotkey = Some("Alt+F9".into())).unwrap();
     assert!(config.path().join("vaults").join(core.vault.id()).join("settings.json").exists());
-    assert_eq!(fs::read_dir(&path).unwrap().count(), 1, "only the marker is in the new vault");
+    let mut made: Vec<String> = fs::read_dir(&path).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    made.sort();
+    assert_eq!(made, ["ledger.json", "shared"], "only the marker and the templates it starts with are in the new vault");
+    // It starts with a project plan and NJ26: templates of its own, to change or delete.
+    assert!(path.join("shared/templates/prompts/project-plan.md").exists());
+    assert!(path.join("shared/templates/semesters/nj26.md").exists(), "and the semester NJ26 to start one from");
+    assert_eq!(crate::templates::list(&core.conn, "").unwrap().iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["project-plan"]);
     let saved = settings::load_config(config.path());
     assert_eq!(saved.vault_path.as_deref(), Some(&*path.display().to_string()));
     assert_eq!(saved.recent_vaults, vec![path.display().to_string()]);

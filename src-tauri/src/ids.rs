@@ -14,6 +14,17 @@ pub fn slugify(input: &str) -> String {
     slugify_as(input, "thread")
 }
 
+/// `base`, or `base-2`, `base-3`, ... : the first that isn't `taken`.
+pub fn numbered<E>(base: &str, taken: impl Fn(&str) -> Result<bool, E>) -> Result<String, E> {
+    let mut id = base.to_string();
+    let mut n = 2;
+    while taken(&id)? {
+        id = format!("{base}-{n}");
+        n += 1;
+    }
+    Ok(id)
+}
+
 /// Like [`slugify`], with a different fallback for names that have no letters or digits in them.
 pub fn slugify_as(input: &str, fallback: &str) -> String {
     let mut slug = String::new();

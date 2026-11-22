@@ -12,6 +12,6 @@
 
 <div class="page">
 	<div class="page-inner">
-		<SemesterList semesters={data.semesters} />
+		<SemesterList semesters={data.semesters} templates={data.templates} />
 	</div>
 </div>

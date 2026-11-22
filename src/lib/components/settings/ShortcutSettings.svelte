@@ -1,6 +1,7 @@
 <script lang="ts">
-	// Keyboard shortcuts: a key for any command in the palette, a page included. Click a shortcut and press the new
-	// one; a key another command had moves over. Kept on this machine.
+	// Keyboard shortcuts, on a tab of their own: how they work on top, then every command with its key, as long as the
+	// list is (the page scrolls, not a box in it). A key for any command in the palette, a page included. Click a
+	// shortcut and press the new one; a key another command had moves over. Kept on this machine.
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Search from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
@@ -46,8 +47,12 @@
 		press Enter. Any of them can have a key of its own, kept on this machine. Click a shortcut and press the new one; Esc leaves it
 		as it was.
 	</p>
+	<p class="sub" style="margin:0">
+		A key with Ctrl, Alt or Super works everywhere, also while typing; a plain key (F1 to F12) only when no text field has the focus. The screenshot
+		hotkey works outside Ledger too and is set under Tools, Screenshots.
+	</p>
 	<div class="form-row">
-		<label class="sc-search grow">
+		<label class="sc-search">
 			<Search size={14} />
 			<input type="search" bind:value={query} placeholder="Find a command, project or thread" aria-label="Find a command" spellcheck="false" autocomplete="off" />
 		</label>
@@ -82,14 +87,11 @@
 			<li class="hint">No command matches "{query.trim()}".</li>
 		{/each}
 	</ul>
-	<div class="hint">
-		A key with Ctrl, Alt or Super works everywhere, also while typing; a plain key (F1 to F12) only when no text field has the focus. The screenshot
-		hotkey works outside Ledger too and is set under Screenshots.
-	</div>
 </div>
 
 <style>
 	.sc-search {
+		flex: 1;
 		display: flex;
 		align-items: center;
 		gap: 8px;
@@ -114,8 +116,6 @@
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		max-height: 460px;
-		overflow-y: auto;
 	}
 	.sc-list li {
 		display: flex;

@@ -2,29 +2,29 @@
 	import { defineMeta } from '@storybook/addon-svelte-csf';
 	import PageStory from '../PageStory.svelte';
 	import RootLayout from '../../routes/+layout.svelte';
-	import Page from '../../routes/settings/templates/+page.svelte';
+	import Page from '../../routes/settings/shortcuts/+page.svelte';
 	import Layout0 from '../../routes/settings/+layout.svelte';
 	import { load as load0 } from '../../routes/+layout';
 	import { load as load1 } from '../../routes/settings/+layout';
 
 	const params = {  };
-	const url = '/settings/templates';
+	const url = '/settings/shortcuts';
 
 	const { Story } = defineMeta({
-		title: 'Pages/Settings/Templates',
+		title: 'Pages/Settings/Shortcuts',
 		component: PageStory,
 		parameters: {
 			layout: 'fullscreen',
 			sveltekit_experimental: {
-				state: { page: { params, url: new URL('http://localhost/settings/templates'), route: { id: '/settings/templates' } } },
+				state: { page: { params, url: new URL('http://localhost/settings/shortcuts'), route: { id: '/settings/shortcuts' } } },
 				// The root layout notes each page it arrives at (afterNavigate): here it arrived at this one.
-				navigation: { afterNavigate: { to: { params, url: new URL('http://localhost/settings/templates'), route: { id: '/settings/templates' } } } }
+				navigation: { afterNavigate: { to: { params, url: new URL('http://localhost/settings/shortcuts'), route: { id: '/settings/shortcuts' } } } }
 			}
 		}
 	});
 </script>
 
-<!-- The page at /settings/templates, inside its layouts, with the data its load functions get from the sample backend. -->
+<!-- The page at /settings/shortcuts, inside its layouts, with the data its load functions get from the sample backend. -->
 <Story name="Default" asChild>
 	<PageStory page={Page} layouts={[RootLayout, Layout0]} loads={[load0, load1]} {url} {params} />
 </Story>

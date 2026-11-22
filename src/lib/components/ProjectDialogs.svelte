@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The dialogs opened from anywhere (New project, a project's goal and end, New deliverable); see $lib/dialogs.svelte.
+	// The dialogs opened from anywhere (New project, Edit project, New deliverable); see $lib/dialogs.svelte.
 	import { projectDialogs } from '$lib/dialogs.svelte';
 	import DeliverableModal from './DeliverableModal.svelte';
 	import ProjectModal from './ProjectModal.svelte';

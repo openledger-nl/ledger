@@ -5,6 +5,6 @@
 	let { data }: { data: PageData } = $props();
 </script>
 
-<svelte:head><title>Templates | Settings | Ledger</title></svelte:head>
+<svelte:head><title>Shortcuts | Settings | Ledger</title></svelte:head>
 
-<SettingsGroup group="templates" settings={data.settings} />
+<SettingsGroup group="shortcuts" settings={data.settings} />

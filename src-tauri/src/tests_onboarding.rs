@@ -111,7 +111,7 @@ fn what_ledger_is_for_is_asked_once_per_guide() {
     assert_eq!(onboarding::status(dir.path(), false).unwrap().purpose, None, "a new guide asks first");
     assert_eq!(onboarding::set_purpose(dir.path(), Purpose::Hobby).unwrap().purpose, Some(Purpose::Hobby));
     assert_eq!(onboarding::status(dir.path(), true).unwrap().purpose, Some(Purpose::Hobby));
-    assert_eq!(onboarding::set_purpose(dir.path(), Purpose::School).unwrap().purpose, Some(Purpose::School), "and it can be changed");
+    assert_eq!(onboarding::set_purpose(dir.path(), Purpose::Study).unwrap().purpose, Some(Purpose::Study), "and it can be changed");
     // A new vault may be for something else, so the guide asks again.
     assert_eq!(onboarding::restart(dir.path()).unwrap().purpose, None);
 }

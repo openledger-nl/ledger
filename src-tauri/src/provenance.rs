@@ -21,7 +21,7 @@ use crate::db::{query_all, query_opt};
 use crate::deliverables::{self, split_version};
 use crate::error::{Error, Result};
 use crate::models::{PublishChoices, VersionUpdate};
-use crate::{ids, prompts, threads};
+use crate::{prompts, threads};
 
 pub const AI: &str = "ai";
 pub const HUMAN: &str = "human";
@@ -193,10 +193,9 @@ from changelog: {changelog}"));
 pub fn insert_record(conn: &Connection, project: &str, base: &str, version: &str, origin: &Origin, sha256: &str, at: &str) -> Result<()> {
     conn.execute(
         "INSERT OR REPLACE INTO version_records
-            (id, project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            (project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
-            ids::new_id(),
             project,
             base,
             version,
@@ -254,7 +253,6 @@ pub struct Resolved {
 }
 
 struct Stored {
-    id: String,
     thread: Option<String>,
     prompt: Option<String>,
     run: Option<String>,
@@ -276,28 +274,29 @@ pub fn resolve(conn: &Connection, project: &str, base: &str) -> Result<Vec<Resol
     let mut stored: HashMap<String, Stored> = HashMap::new();
     for (version, s) in query_all(
         conn,
-        "SELECT version, id, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at
+        "SELECT version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at
          FROM version_records WHERE project_slug = ?1 AND deliverable_path = ?2 ORDER BY created_at, rowid",
         [project, base],
         |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 Stored {
-                    id: r.get(1)?,
-                    thread: r.get(2)?,
-                    prompt: r.get(3)?,
-                    run: r.get(4)?,
-                    author: author_of(&r.get::<_, String>(5)?),
-                    mmm: r.get::<_, Option<String>>(6)?.and_then(|m| level(&m).map(str::to_string)),
-                    sha256: r.get(7)?,
-                    note: r.get(8)?,
-                    created_at: r.get(9)?,
+                    thread: r.get(1)?,
+                    prompt: r.get(2)?,
+                    run: r.get(3)?,
+                    author: author_of(&r.get::<_, String>(4)?),
+                    mmm: r.get::<_, Option<String>>(5)?.and_then(|m| level(&m).map(str::to_string)),
+                    sha256: r.get(6)?,
+                    note: r.get(7)?,
+                    created_at: r.get(8)?,
                 },
             ))
         },
     )? {
         stored.entry(version).or_insert(s);
     }
+    // The project's deliverables that have manifests, to name this one's by (see `deliverables::manifest_in_project`).
+    let recorded: Vec<String> = query_all(conn, "SELECT DISTINCT deliverable_path FROM version_records WHERE project_slug = ?1", [project], |r| r.get(0))?;
 
     // The note that announced each version: the first one wins.
     let mut notes: HashMap<String, (String, String, String)> = HashMap::new();
@@ -352,7 +351,7 @@ pub fn resolve(conn: &Connection, project: &str, base: &str) -> Result<Vec<Resol
                 mmm: s.mmm,
                 note: s.note,
                 sha256: s.sha256.or_else(|| body.as_deref().map(|b| sha256_hex(b.as_bytes()))),
-                record: Some(s.id),
+                record: Some(deliverables::manifest_in_project(base, &version, recorded.iter().map(String::as_str))),
                 post,
                 size,
             },
@@ -452,9 +451,9 @@ pub fn update_record(conn: &Connection, project: &str, base: &str, version: &str
     if current.record.is_none() {
         conn.execute(
             "INSERT INTO version_records
-                (id, project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, '', ?10)",
-            params![ids::new_id(), project, base, version, current.thread, current.prompt, current.run, current.author, current.sha256, current.at],
+                (project_slug, deliverable_path, version, thread_slug, prompt_id, run_id, author, mmm, sha256, note, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, '', ?9)",
+            params![project, base, version, current.thread, current.prompt, current.run, current.author, current.sha256, current.at],
         )?;
     }
     if let Some(author) = author {
@@ -530,7 +529,8 @@ pub struct VersionEntry {
     /// Against the version before it.
     pub size_change: Option<i64>,
     pub sha256: Option<String>,
-    /// The record's file in the vault (`versions/<id>.md`), when there is one.
+    /// The version's manifest, by its path in the project's folder (`versions/plan/plan@v0.1.manifest.md`), when it has
+    /// one.
     pub record: Option<String>,
     pub post: Option<NoteRef>,
 }

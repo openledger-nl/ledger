@@ -4,6 +4,7 @@
 	import type { Template } from '$lib/types';
 	import { kindName } from '$lib/v1';
 	import TemplateModal from './TemplateModal.svelte';
+	import TemplateRow from './TemplateRow.svelte';
 
 	/**
 	 * Lists templates and edits them. `scope` is "" for the vault-wide ones, or a project's slug: its own templates
@@ -38,7 +39,7 @@
 
 <div class="panel">
 	<div class="header-top">
-		<h2>{scope ? 'This project\'s templates' : 'Templates'}</h2>
+		<h2>{scope ? 'This project\'s templates' : 'Deliverable templates'}</h2>
 		<button class="btn primary small" onclick={() => (editing = 'new')}>New template</button>
 	</div>
 	{#if !scope}
@@ -57,14 +58,7 @@
 	{:else}
 		<div class="tpl-list">
 			{#each own as t (t.id)}
-				<div class="tpl-row">
-					<div class="name">
-						<b>{t.name}</b>
-						<span>{summary(t)}</span>
-					</div>
-					{#if t.builtin}<span class="badge" title="Comes with Ledger; changing it makes it your vault's own">built in</span>{/if}
-					<button class="btn small" onclick={() => (editing = t)}>Edit</button>
-				</div>
+				<TemplateRow name={t.name} about={summary(t)} onedit={() => (editing = t)} />
 			{/each}
 		</div>
 	{/if}
@@ -74,21 +68,17 @@
 	<div class="panel">
 		<h2>Shared with every project</h2>
 		{#if inherited.length === 0}
-			<div class="hint">There are no shared templates. Add some under Settings > Templates.</div>
+			<div class="hint">There are no shared templates. Add some under Shared, Templates.</div>
 		{:else}
 			<div class="tpl-list">
 				{#each inherited as t (t.id)}
-					<div class="tpl-row">
-						<div class="name">
-							<b>{t.name}</b>
-							<span>{summary(t)}</span>
-						</div>
+					<TemplateRow name={t.name} about={summary(t)}>
 						{#if t.overridden}
 							<span class="badge accent">replaced here</span>
 						{:else}
 							<button class="btn small" onclick={() => override(t)} title="Copy it into this project to change it here">Customise</button>
 						{/if}
-					</div>
+					</TemplateRow>
 				{/each}
 			</div>
 		{/if}

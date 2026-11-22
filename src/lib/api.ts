@@ -15,6 +15,8 @@ import type {
 	EvidenceParts as DescriptionParts,
 	PostKind,
 	EpistemicLabel,
+	Client,
+	ClientDraft,
 	ConflictView,
 	CreatedVault,
 	EncryptionView,
@@ -23,6 +25,7 @@ import type {
 	ProjectPerson,
 	Semester,
 	SemesterDraft,
+	SemesterTemplate,
 	Board,
 	Bump,
 	Authorship,
@@ -114,6 +117,11 @@ export const api = {
 	createSemester: (draft: SemesterDraft) => call<Semester>('create_semester', { draft }),
 	updateSemester: (id: string, draft: SemesterDraft) => call<Semester>('update_semester', { id, draft }),
 	deleteSemester: (id: string) => call<void>('delete_semester', { id }),
+	/** What a new semester can start from (shared/templates/semesters), the earliest first. */
+	listSemesterTemplates: () => call<SemesterTemplate[]>('list_semester_templates'),
+	/** A new template without an `id`; otherwise a change to that one. */
+	saveSemesterTemplate: (id: string | null, draft: SemesterDraft) => call<SemesterTemplate>('save_semester_template', { id, draft }),
+	deleteSemesterTemplate: (id: string) => call<void>('delete_semester_template', { id }),
 
 	// projects
 	listProjects: () => call<ProjectSummary[]>('list_projects'),
@@ -142,6 +150,12 @@ export const api = {
 	nextDeliverableNumber: (project: string) => call<number>('next_deliverable_number', { project }),
 	/** The people of one project (coach, teammates, client…), or of every project with null. */
 	listProjectPeople: (slug: string | null = null) => call<ProjectPerson[]>('list_project_people', { slug }),
+	/** Every client the vault knows, with its projects. */
+	listClients: () => call<Client[]>('list_clients'),
+	createClient: (draft: ClientDraft) => call<Client>('create_client', { draft }),
+	updateClient: (id: string, draft: ClientDraft) => call<Client>('update_client', { id, draft }),
+	/** Takes it out of the vault; its projects keep going without a client. */
+	deleteClient: (id: string) => call<void>('delete_client', { id }),
 	/** Everyone the vault knows, with the projects each is part of. */
 	listPeople: () => call<Person[]>('list_people'),
 	getPerson: (id: string) => call<Person>('get_person', { id }),

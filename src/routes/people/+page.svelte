@@ -10,6 +10,7 @@
 	import { api } from '$lib/api';
 	import { projectUrl } from '$lib/actions';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import { matches } from '$lib/threadSearch.svelte';
 	import { attempt, confirmDialog, refresh, toast } from '$lib/ui.svelte';
 	import type { Person, PersonDraft } from '$lib/types';
 	import { roleName } from '$lib/v1';
@@ -18,13 +19,7 @@
 	let { data }: { data: PageData } = $props();
 
 	let query = $state('');
-	const shown = $derived.by(() => {
-		const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-		return data.people.filter((p) => {
-			const text = [p.name, p.organisation, p.email, ...p.projects.map((a) => a.projectName)].join(' ').toLowerCase();
-			return words.every((w) => text.includes(w));
-		});
-	});
+	const shown = $derived(data.people.filter((p) => matches([p.name, p.organisation, p.email, ...p.projects.map((a) => a.projectName)].join(' '), query)));
 
 	/** The person being edited: their id, or 'new'. */
 	const selected = $derived(data.open);

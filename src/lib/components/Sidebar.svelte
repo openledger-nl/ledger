@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Building2 from '@lucide/svelte/icons/building-2';
+	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -68,11 +70,11 @@
 		remember();
 	}
 
-	/** Choosing a project unfolds it and goes to its page. Choosing the one that is already unfolded folds it instead and
-	 *  goes nowhere: what is open stays open, be it the project's page, a thread or a deliverable. */
+	/** Choosing a project always goes to its page, and unfolds it. Only on that page already does choosing it fold it
+	 *  (or unfold it again). The arrow before it folds and unfolds it anywhere. */
 	function choose(e: MouseEvent, slug: string) {
 		const plain = e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey;
-		if (open === slug && plain) {
+		if (path === projectUrl(slug) && plain) {
 			e.preventDefault();
 			toggle(slug);
 		} else {
@@ -202,6 +204,8 @@
 	<nav class="space-list" aria-label="Shared">
 		<a class="nav-item" class:active={on('/semesters')} href="/semesters"><span class="nav-ico"><CalendarRange size={16} /></span>Semesters</a>
 		<a class="nav-item" class:active={on('/people')} href="/people"><span class="nav-ico"><Users size={16} /></span>People</a>
+		<a class="nav-item" class:active={on('/clients')} href="/clients"><span class="nav-ico"><Building2 size={16} /></span>Clients</a>
+		<a class="nav-item" class:active={on('/templates')} href="/templates"><span class="nav-ico"><LayoutTemplate size={16} /></span>Templates</a>
 	</nav>
 
 	<div class="spacer"></div>

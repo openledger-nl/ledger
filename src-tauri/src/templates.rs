@@ -3,9 +3,9 @@
 //! vault-wide template (`shared/templates/prompts/<id>.md`, scope "") is available in every project of its kinds; a project's own
 //! (`projects/<p>/templates/prompts/<id>.md`) is available there, and replaces a vault-wide one with the same id.
 //!
-//! The app ships one template of its own, a basic project plan (`BUILTIN_PLAN`). It is not a file: it is put in the
-//! database when the vault is read, unless the vault has a template of the same id. Changing it writes it to the
-//! vault, where it is then the vault's own; deleting that copy brings the shipped one back.
+//! A new vault starts with one template, a basic project plan (`starter`), written to
+//! `shared/templates/prompts/project-plan.md` when the vault is made. From then on it is the vault's like any other:
+//! changed, it stays changed, and deleted, it is gone.
 //!
 //! The readers are told to Claude in a prompt's base, and written into a new deliverable as a `%% Readers: … %%` note
 //! (only seen in source mode), with a visible `**Readers:**` line as well when the template says so.
@@ -20,27 +20,22 @@ use crate::frontmatter::{self, MetaExt};
 use crate::models::{TemplateDraft, TemplateReader, TemplateView};
 use crate::{ids, project_facts, projects};
 
-const SELECT: &str = "SELECT scope, id, name, \"trigger\", body, kinds, readers, readers_shown, builtin, created_at, updated_at FROM templates";
+const SELECT: &str = "SELECT scope, id, name, \"trigger\", body, kinds, readers, readers_shown, created_at, updated_at FROM templates";
 
 fn from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<TemplateView> {
     let kinds: String = r.get(5)?;
     let readers: String = r.get(6)?;
-    let id: String = r.get(1)?;
-    let scope: String = r.get(0)?;
-    let builtin: bool = r.get(8)?;
     Ok(TemplateView {
-        customised_builtin: !builtin && scope.is_empty() && builtin_template(&id).is_some(),
-        scope,
-        id,
+        scope: r.get(0)?,
+        id: r.get(1)?,
         name: r.get(2)?,
         trigger: r.get(3)?,
         body: r.get(4)?,
         kinds: kinds.split(',').filter(|k| !k.is_empty()).map(str::to_string).collect(),
         readers: serde_json::from_str(&readers).unwrap_or_default(),
         readers_shown: r.get(7)?,
-        builtin,
-        created_at: r.get(9)?,
-        updated_at: r.get(10)?,
+        created_at: r.get(8)?,
+        updated_at: r.get(9)?,
         questions: vec![],
         overridden: false,
     })
@@ -143,15 +138,15 @@ pub fn create(conn: &Connection, scope: &str, draft: &TemplateDraft) -> Result<T
     }
     let id = unique_id(conn, scope, name)?;
     let tx = conn.unchecked_transaction()?;
-    insert(&tx, scope, &id, &TemplateDraft { name: name.to_string(), ..draft.clone() }, false, &ids::now())?;
+    insert(&tx, scope, &id, &TemplateDraft { name: name.to_string(), ..draft.clone() }, &ids::now())?;
     tx.commit()?;
     get(conn, scope, &id)
 }
 
-fn insert(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft, builtin: bool, at: &str) -> Result<()> {
+fn insert(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft, at: &str) -> Result<()> {
     conn.execute(
-        "INSERT INTO templates (scope, id, name, \"trigger\", body, kinds, readers, readers_shown, builtin, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
+        "INSERT INTO templates (scope, id, name, \"trigger\", body, kinds, readers, readers_shown, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
         params![
             scope,
             id,
@@ -161,7 +156,6 @@ fn insert(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft, built
             clean_kinds(&draft.kinds),
             readers_json(&draft.readers),
             draft.readers_shown,
-            builtin,
             at
         ],
     )?;
@@ -189,12 +183,12 @@ pub fn override_global(conn: &Connection, project: &str, id: &str) -> Result<Tem
         return Err(Error::invalid("This project already has its own version of that template"));
     }
     let tx = conn.unchecked_transaction()?;
-    insert(&tx, project, id, &draft_of(&global), false, &ids::now())?;
+    insert(&tx, project, id, &draft_of(&global), &ids::now())?;
     tx.commit()?;
     get(conn, project, id)
 }
 
-/// Replaces what the template says. The shipped template, changed, becomes the vault's own.
+/// Replaces what the template says.
 pub fn update(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft) -> Result<TemplateView> {
     get(conn, scope, id)?; // not found if it does not exist
     let name = draft.name.trim();
@@ -203,7 +197,7 @@ pub fn update(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft) -
     }
     let tx = conn.unchecked_transaction()?;
     tx.execute(
-        "UPDATE templates SET name = ?3, \"trigger\" = ?4, body = ?5, kinds = ?6, readers = ?7, readers_shown = ?8, builtin = 0, updated_at = ?9
+        "UPDATE templates SET name = ?3, \"trigger\" = ?4, body = ?5, kinds = ?6, readers = ?7, readers_shown = ?8, updated_at = ?9
          WHERE scope = ?1 AND id = ?2",
         params![
             scope,
@@ -222,16 +216,10 @@ pub fn update(conn: &Connection, scope: &str, id: &str, draft: &TemplateDraft) -
     get(conn, scope, id)
 }
 
-/// Prompts that were started from a template keep what they were given, so a template can always be deleted. The
-/// shipped one can't be: deleting the vault's copy of it brings it back as it was shipped.
+/// Prompts that were started from a template keep what they were given, so a template can always be deleted, the
+/// project plan a vault starts with too.
 pub fn delete(conn: &Connection, scope: &str, id: &str) -> Result<()> {
-    if get(conn, scope, id).is_ok_and(|t| t.builtin) {
-        return Err(Error::invalid("This template comes with Ledger and can't be deleted; change it to make it your own"));
-    }
     conn.execute("DELETE FROM templates WHERE scope = ?1 AND id = ?2", [scope, id])?;
-    if scope.is_empty() {
-        add_builtins(conn)?;
-    }
     Ok(())
 }
 
@@ -250,15 +238,7 @@ fn write_questions(conn: &Connection, scope: &str, id: &str, questions: &[String
 
 fn unique_id(conn: &Connection, scope: &str, name: &str) -> Result<String> {
     let base = ids::slugify_as(name, "template");
-    let mut id = base.clone();
-    let mut n = 2;
-    while query_opt(conn, "SELECT 1 FROM templates WHERE scope = ?1 AND id = ?2", [scope, &id], |_| Ok(()))?.is_some()
-        || (scope.is_empty() && builtin_template(&id).is_some())
-    {
-        id = format!("{base}-{n}");
-        n += 1;
-    }
-    Ok(id)
+    ids::numbered(&base, |id| Ok(query_opt(conn, "SELECT 1 FROM templates WHERE scope = ?1 AND id = ?2", [scope, id], |_| Ok(()))?.is_some()))
 }
 
 // ---- in the files -----------------------------------------------------------------------------------
@@ -266,7 +246,7 @@ fn unique_id(conn: &Connection, scope: &str, name: &str) -> Result<String> {
 /// The frontmatter a template keeps its kinds and readers in:
 ///
 /// ```text
-/// kinds: [study, company]          left out for every kind
+/// kinds: [study, work]             left out for every kind
 /// readers:
 /// - who: client                    a preset, or someone in your own words
 ///   needs: reads the summary first
@@ -337,7 +317,7 @@ pub const PRESETS: [Preset; 7] = [
     Preset {
         id: "people",
         name: "The project's people",
-        hint: "whoever the project lists as its coach, teammates and client",
+        hint: "whoever the project lists as its coach, teammates and stakeholders",
     },
     Preset {
         id: "client",
@@ -371,7 +351,7 @@ fn role_preset(role: &str) -> Option<&'static Preset> {
     match role {
         "coach" | "expert" => preset("coach"),
         "teammate" | "colleague" => preset("team"),
-        "client" => preset("client"),
+        "stakeholder" => preset("client"),
         _ => None,
     }
 }
@@ -452,11 +432,7 @@ pub fn skeleton_for(conn: &Connection, project: &str, id: &str) -> Result<String
     skeleton(conn, project, &find(conn, project, id)?)
 }
 
-// ---- the shipped template ---------------------------------------------------------------------------
-
-pub const BUILTIN_PLAN: &str = "project-plan";
-/// When the shipped template counts as made: it has no file to take a date from.
-const BUILTIN_AT: &str = "2026-11-16T00:00:00.000Z";
+// ---- the template a new vault starts with -------------------------------------------------------------
 
 const PLAN_BODY: &str = r#"# Project plan
 
@@ -494,9 +470,9 @@ Example: At the end of January the bakery's twelve staff see their shifts on the
 %% What: how and how often you keep each other informed, and where things are written down. Why: it saves the "I didn't know" at the end. %%
 "#;
 
-/// The template the app ships with this id, if it ships one.
-fn builtin_template(id: &str) -> Option<TemplateDraft> {
-    (id == BUILTIN_PLAN).then(|| TemplateDraft {
+/// The project plan a new vault starts with.
+pub fn starter() -> TemplateDraft {
+    TemplateDraft {
         name: "Project plan".into(),
         trigger: "a project starts, or its goal has just become clear".into(),
         questions: vec![
@@ -511,17 +487,10 @@ fn builtin_template(id: &str) -> Option<TemplateDraft> {
             TemplateReader { who: "me".into(), ..Default::default() },
         ],
         readers_shown: false,
-    })
+    }
 }
 
-/// Puts the shipped templates the vault has no template of its own for in the database.
-pub fn add_builtins(conn: &Connection) -> Result<()> {
-    for id in [BUILTIN_PLAN] {
-        if get(conn, "", id).is_err()
-            && let Some(draft) = builtin_template(id)
-        {
-            insert(conn, "", id, &draft, true, BUILTIN_AT)?;
-        }
-    }
-    Ok(())
+/// Gives a new vault its starter template, as a vault-wide template (`project-plan`).
+pub fn seed(conn: &Connection) -> Result<()> {
+    create(conn, "", &starter()).map(|_| ())
 }

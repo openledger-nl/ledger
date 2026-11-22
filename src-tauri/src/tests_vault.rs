@@ -13,7 +13,7 @@ use crate::posts::AddOptions;
 use crate::provenance::{self, Origin};
 use crate::settings;
 use crate::vault::{self, Vault};
-use crate::{board, db, deliverables, feedback, posts, projects, prompts, semesters, stories, templates, threads, uploads};
+use crate::{board, db, deliverables, feedback, posts, projects, prompts, semester_templates, semesters, stories, templates, threads, uploads};
 
 fn write(root: &Path, rel: &str, text: &str) {
     let file = root.join(rel);
@@ -130,7 +130,7 @@ fn the_vault_has_the_agreed_folder_structure() {
     let thread = format!("{project}/threads/{t}");
 
     // The project: its definition, its reading guide, and the folders hanging off it.
-    assert_eq!(names(root, &project), ["README.md", "attachments", "deliverables", "history", "project.md", "tasks", "templates", "threads", "userstories", "versions"]);
+    assert_eq!(names(root, &project), ["README.md", "attachments", "deliverables", "project.md", "tasks", "templates", "threads", "userstories", "versions"]);
     let definition = read(root, &format!("{project}/project.md"));
     assert!(definition.contains("name: Acme") && definition.contains("- id: backlog") && definition.contains("name: In review"), "{definition}");
     assert_eq!(read(root, &format!("{project}/README.md")), "# Acme\n\nRead the call notes first.\n");
@@ -173,26 +173,24 @@ fn the_vault_has_the_agreed_folder_structure() {
     assert!(manifest.contains("uploadedAt:") && manifest.contains("file: attachments/site plan.png") && manifest.ends_with("The site plan\n"), "{manifest}");
     assert_eq!(fs::read(root.join(&project).join("attachments/site plan.png")).unwrap(), b"\x89PNG....");
 
-    // Deliverables are written verbatim; a published version is tagged @v1.0 and kept in versions/, so deliverables/
-    // holds only the live files.
+    // Deliverables are written verbatim; a published version is tagged @v1.0 and kept in versions/, in a folder of the
+    // deliverable's own, so deliverables/ holds only the live files.
     assert_eq!(names(root, &format!("{project}/deliverables")), ["call-summary.md"]);
     assert_eq!(read(root, &format!("{project}/deliverables/call-summary.md")), "# Call summary\n\nAna wants SSO.\n");
-    assert_eq!(read(root, &format!("{project}/versions/call-summary@v1.0.md")), "# Call summary\n\nAna wants SSO.\n");
+    assert_eq!(names(root, &format!("{project}/versions")), ["call-summary"]);
+    assert_eq!(read(root, &format!("{project}/versions/call-summary/call-summary@v1.0.md")), "# Call summary\n\nAna wants SSO.\n");
 
-    // How the published version came to be: one file for it, beside the version itself.
-    let record_files: Vec<String> = names(root, &format!("{project}/versions")).into_iter().filter(|n| n != "call-summary@v1.0.md").collect();
-    assert_eq!(record_files.len(), 1, "{record_files:?}");
-    let record = read(root, &format!("{project}/versions/{}", record_files[0]));
+    // How the published version came to be: its manifest, beside the version itself, named after it.
+    assert_eq!(names(root, &format!("{project}/versions/call-summary")), ["call-summary@v1.0.manifest.md", "call-summary@v1.0.md"]);
+    let record = read(root, &format!("{project}/versions/call-summary/call-summary@v1.0.manifest.md"));
     assert!(
         record.contains("deliverable: call-summary.md") && record.contains("version: '1.0'") && record.contains("thread: alpha-the-first") && record.contains("by: human") && record.contains("sha256: "),
         "{record}"
     );
     assert!(!record.contains("prompt:") && !record.contains("run:") && !record.contains("mmm:"), "what isn't known is left out: {record}");
 
-    // What changed in each version and who made it, as a note of its own in history/, apart from the versions.
-    assert_eq!(names(root, &format!("{project}/history/call-summary")), ["v1.0.md"]);
-    let note = read(root, &format!("{project}/history/call-summary/v1.0.md"));
-    assert!(note.contains("madeBy: You") && note.contains("# call-summary.md v1.0"), "{note}");
+    assert!(!record.contains("id:"), "a manifest is known by its name, not an id: {record}");
+    assert!(!root.join(format!("{project}/history")).exists(), "the history is in the versions, not in notes of its own");
 
     // Stories and tasks, and the two kinds of template.
     let story = read(root, &format!("{project}/userstories/MM01.md"));
@@ -233,42 +231,78 @@ fn a_templates_kinds_and_readers_are_kept_in_its_frontmatter() {
         TemplateReader { who: "client".into(), needs: "reads the summary first".into(), keep_from: "the rate".into() },
         TemplateReader { who: "me".into(), ..Default::default() },
     ];
-    let draft = TemplateDraft { kinds: vec!["study".into(), "company".into()], readers, readers_shown: true, ..TemplateDraft::basic("Brief", "", &[], "# Brief\n") };
+    let draft = TemplateDraft { kinds: vec!["study".into(), "work".into()], readers, readers_shown: true, ..TemplateDraft::basic("Brief", "", &[], "# Brief\n") };
     templates::create(&conn, "", &draft).unwrap();
     vault.persist(&conn).unwrap();
 
     let text = read(root, "shared/templates/prompts/brief.md");
-    assert!(text.contains("kinds:\n- study\n- company\nreaders:\n- who: client\n  needs: reads the summary first\n  keepFrom: the rate\n- me\nreadersShown: true\n"), "{text}");
+    assert!(text.contains("kinds:\n- study\n- work\nreaders:\n- who: client\n  needs: reads the summary first\n  keepFrom: the rate\n- me\nreadersShown: true\n"), "{text}");
     let (_, reloaded) = open(root);
     let brief = templates::get(&reloaded, "", "brief").unwrap();
     assert_eq!((brief.kinds.clone(), brief.readers.clone(), brief.readers_shown), (draft.kinds.clone(), templates::get(&conn, "", "brief").unwrap().readers, true));
 }
 
 #[test]
-fn the_shipped_project_plan_is_offered_until_the_vault_has_its_own() {
+fn a_semester_template_is_a_file_a_semester_starts_from() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let (mut vault, conn) = open(root);
-    let plan = templates::get(&conn, "", templates::BUILTIN_PLAN).unwrap();
-    assert!(plan.builtin && !plan.customised_builtin && plan.name == "Project plan" && plan.kinds.is_empty());
+    assert!(semester_templates::list(&conn).unwrap().is_empty());
+    semester_templates::seed(&conn).unwrap();
     vault.persist(&conn).unwrap();
-    assert!(!root.join("shared/templates/prompts/project-plan.md").exists(), "the shipped template is not a file of the vault");
-    assert!(templates::delete(&conn, "", templates::BUILTIN_PLAN).is_err(), "and it can't be deleted");
-    assert_eq!(templates::create(&conn, "", &TemplateDraft::basic("Project plan", "", &[], "")).unwrap().id, "project-plan-2", "its id stays free");
+    let file = read(root, "shared/templates/semesters/nj26.md");
+    assert!(file.contains("name: NJ26 - Semester X") && file.contains("name: Kick-off") && file.contains("name: Autumn break"), "{file}");
 
-    // Changed, it is the vault's own, and stays so.
-    let mine = templates::update(&conn, "", "project-plan", &TemplateDraft { body: "# My plan\n".into(), ..templates::draft_of(&plan) }).unwrap();
-    assert!(!mine.builtin && mine.customised_builtin);
-    vault.persist(&conn).unwrap();
-    assert!(read(root, "shared/templates/prompts/project-plan.md").contains("# My plan"));
     let (mut again, reloaded) = open(root);
-    assert_eq!(templates::get(&reloaded, "", "project-plan").unwrap().body, "# My plan");
+    let nj26 = semester_templates::get(&reloaded, "nj26").unwrap();
+    assert_eq!(nj26.draft, semester_templates::nj26());
+    // Its sprints are as Ledger cuts them: each its own weeks of work, the clock stopped in the vacations.
+    let day = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+    let off: Vec<_> = nj26.draft.vacations.iter().map(|v| (day(&v.start), day(&v.end))).collect();
+    for (sprint, weeks) in nj26.draft.sprints.iter().zip([1, 2, 3, 3, 3, 3, 3]) {
+        let cut = &semesters::plan(day(&sprint.start), day(&nj26.draft.end), weeks, &off)[0];
+        assert_eq!((&cut.start, &cut.end), (&sprint.start, &sprint.end), "{}", sprint.name);
+    }
 
-    // Deleting the vault's copy brings the shipped one back.
+    // A semester made from it is the vault's own; the template stays, and may overlap it.
+    let semester = semesters::create(&reloaded, &SemesterDraft { name: "NJ26 - Semester 3".into(), ..nj26.draft.clone() }).unwrap();
+    assert_eq!(semester.sprints, nj26.draft.sprints);
+    // Changed, added and deleted like any template.
+    let renamed = semester_templates::save(&reloaded, Some("nj26"), &SemesterDraft { name: "NJ26".into(), ..nj26.draft.clone() }).unwrap();
+    assert_eq!((renamed.id.as_str(), renamed.draft.name.as_str()), ("nj26", "NJ26"));
+    let spring = SemesterDraft { name: "Spring 2027".into(), start: "2027-02-01".into(), end: "2027-07-11".into(), sprint_weeks: 3, ..Default::default() };
+    let own = semester_templates::save(&reloaded, None, &spring).unwrap();
+    assert!(own.id == "spring-2027" && !own.draft.sprints.is_empty(), "its sprints are cut as a semester's are");
+    semester_templates::delete(&reloaded, "nj26").unwrap();
+    again.persist(&reloaded).unwrap();
+    assert!(!root.join("shared/templates/semesters/nj26.md").exists());
+    assert!(root.join("shared/templates/semesters/spring-2027.md").exists());
+}
+
+#[test]
+fn the_project_plan_a_vault_starts_with_is_a_template_like_any_other() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    assert!(templates::list(&conn, "").unwrap().is_empty(), "a vault has only the templates it has files for");
+
+    templates::seed(&conn).unwrap();
+    vault.persist(&conn).unwrap();
+    let file = read(root, "shared/templates/prompts/project-plan.md");
+    assert!(file.contains("name: Project plan") && file.contains("## Goal"), "{file}");
+    let (mut again, reloaded) = open(root);
+    let plan = templates::get(&reloaded, "", "project-plan").unwrap();
+    assert!(plan.name == "Project plan" && plan.kinds.is_empty() && plan.questions.len() == 3);
+
+    // Changed, it stays changed; deleted, it is gone, and stays gone.
+    templates::update(&reloaded, "", "project-plan", &TemplateDraft { body: "# My plan\n".into(), ..templates::draft_of(&plan) }).unwrap();
+    again.persist(&reloaded).unwrap();
+    assert!(read(root, "shared/templates/prompts/project-plan.md").contains("# My plan"));
     templates::delete(&reloaded, "", "project-plan").unwrap();
-    assert!(templates::get(&reloaded, "", "project-plan").unwrap().builtin);
     again.persist(&reloaded).unwrap();
     assert!(!root.join("shared/templates/prompts/project-plan.md").exists());
+    let (_, last) = open(root);
+    assert!(templates::list(&last, "").unwrap().is_empty());
 }
 
 #[test]
@@ -338,7 +372,7 @@ fn deleting_things_deletes_their_files_and_leaves_no_empty_folders() {
     deliverables::delete(&conn, root, &p, "call-summary.md").unwrap();
     vault.persist(&conn).unwrap();
     assert!(!root.join(format!("projects/{p}/deliverables")).exists());
-    assert!(names(root, &format!("projects/{p}/versions")).contains(&"call-summary@v1.0.md".to_string()));
+    assert!(names(root, &format!("projects/{p}/versions/call-summary")).contains(&"call-summary@v1.0.md".to_string()));
 }
 
 #[test]
@@ -400,6 +434,8 @@ fn a_published_version_that_is_not_markdown_is_watched_in_the_versions_folder() 
     write(root, "projects/acme/versions/sketch.png", "not a version");
     assert!(!vault.changed_on_disk(), "a file in versions/ that is no version isn't the app's");
     write(root, "projects/acme/versions/chart@v0.1.png", "png");
+    assert!(!vault.changed_on_disk(), "nor is a version outside its deliverable's folder");
+    write(root, "projects/acme/versions/chart/chart@v0.1.png", "png");
     assert!(vault.changed_on_disk());
 }
 
@@ -428,7 +464,7 @@ fn a_hand_written_vault_loads_and_is_repaired() {
 
     // Deliverables of every kind, nested ones included; a markdown one keeps its own frontmatter.
     write(root, "projects/ideas/deliverables/x.md", "---\ntitle: X\nauthor: me\n---\n\n# The brief\n");
-    write(root, "projects/ideas/versions/x@v1.0.md", "# The brief, v1\n");
+    write(root, "projects/ideas/versions/x/x@v1.0.md", "# The brief, v1\n");
     write(root, "projects/ideas/deliverables/sub/data.csv", "a,b\n1,2\n");
     write(root, "projects/ideas/deliverables/diagram.png", "not really a png");
 
@@ -726,8 +762,7 @@ fn version_records_and_the_prompt_a_note_names_survive_a_reload() {
     deliverables::publish_run(&conn, root, &p, "plan.md", None, &origin).unwrap();
     vault.persist(&conn).unwrap();
 
-    let record_name = &names(root, &format!("projects/{p}/versions"))[0];
-    let record = read(root, &format!("projects/{p}/versions/{record_name}"));
+    let record = read(root, &format!("projects/{p}/versions/plan/plan@v0.1.manifest.md"));
     assert!(
         record.contains("deliverable: plan.md")
             && record.contains(&format!("prompt: {}", prompt.id))
@@ -751,6 +786,30 @@ fn version_records_and_the_prompt_a_note_names_survive_a_reload() {
 }
 
 #[test]
+fn two_deliverables_of_one_name_keep_their_versions_in_one_folder_with_manifests_named_in_full() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let p = projects::create(&conn, "Acme").unwrap().slug;
+    deliverables::create(&conn, &p, "Plan", "# Plan\n").unwrap();
+    deliverables::publish(&conn, root, &p, "plan.md", Bump::Minor, None).unwrap();
+    vault.persist(&conn).unwrap();
+    assert_eq!(names(root, &format!("projects/{p}/versions/plan")), ["plan@v0.1.manifest.md", "plan@v0.1.md"]);
+
+    // A PDF of it, published too: its versions go in the same folder, and both manifests say whose they are.
+    write(root, &format!("projects/{p}/deliverables/plan.pdf"), "%PDF");
+    let (mut again, reloaded) = open(root);
+    deliverables::publish(&reloaded, root, &p, "plan.pdf", Bump::Minor, None).unwrap();
+    again.persist(&reloaded).unwrap();
+    assert_eq!(names(root, &format!("projects/{p}/versions/plan")), ["plan.md@v0.1.manifest.md", "plan.pdf@v0.1.manifest.md", "plan@v0.1.md", "plan@v0.1.pdf"]);
+    let (_, last) = open(root);
+    for base in ["plan.md", "plan.pdf"] {
+        let known = provenance::resolve(&last, &p, base).unwrap();
+        assert_eq!(known[0].record.as_deref(), Some(format!("versions/plan/{base}@v0.1.manifest.md").as_str()), "{base}");
+    }
+}
+
+#[test]
 fn hand_written_version_records_are_read_leniently() {
     let dir = tempdir().unwrap();
     let root = dir.path();
@@ -759,15 +818,16 @@ fn hand_written_version_records_are_read_leniently() {
     write(root, &format!("{project}/threads/call/thread.md"), "---\ntitle: Call\n---\n");
     write(root, &format!("{project}/deliverables/plan.md"), "# plan.md\n");
     for name in ["plan@v0.1.md", "plan@v0.2.md"] {
-        write(root, &format!("{project}/versions/{name}"), &format!("# {name}\n"));
+        write(root, &format!("{project}/versions/plan/{name}"), &format!("# {name}\n"));
     }
-    // Upper case and strangers are read as what they mean; an unknown level or author is ignored, not an error.
-    write(root, &format!("{project}/versions/a.md"), "---\nid: a\ndeliverable: plan.md\nversion: '0.1'\nby: AI\nmmm: Cyborg\nthread: call\ncreatedAt: 2026-01-01T00:00:00.000Z\nsomething: else\n---\n\nA note.\n");
-    write(root, &format!("{project}/versions/b.md"), "---\nid: b\ndeliverable: plan.md\nversion: '0.2'\nby: robot\nmmm: nonsense\n---\n");
+    // A manifest says which version it is of, whatever its name. Upper case and strangers are read as what they mean;
+    // an unknown level or author is ignored, not an error.
+    write(root, &format!("{project}/versions/plan/a.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.1'\nby: AI\nmmm: Cyborg\nthread: call\ncreatedAt: 2026-01-01T00:00:00.000Z\nsomething: else\n---\n\nA note.\n");
+    write(root, &format!("{project}/versions/plan/b.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.2'\nby: robot\nmmm: nonsense\n---\n");
     // Not loaded: a version that is not there, one that names no deliverable, a second record of the same version.
-    write(root, &format!("{project}/versions/c.md"), "---\nid: c\ndeliverable: plan.md\nversion: '0.9'\nby: human\n---\n");
-    write(root, &format!("{project}/versions/d.md"), "---\nid: d\nversion: '0.1'\nby: human\n---\n");
-    write(root, &format!("{project}/versions/e.md"), "---\nid: e\ndeliverable: plan.md\nversion: '0.1'\nby: human\ncreatedAt: 2026-06-01T00:00:00.000Z\n---\n");
+    write(root, &format!("{project}/versions/plan/c.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.9'\nby: human\n---\n");
+    write(root, &format!("{project}/versions/plan/d.manifest.md"), "---\nversion: '0.1'\nby: human\n---\n");
+    write(root, &format!("{project}/versions/plan/e.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.1'\nby: human\ncreatedAt: 2026-06-01T00:00:00.000Z\n---\n");
 
     let (_vault, conn) = open(root);
     let known = provenance::resolve(&conn, "acme", "plan.md").unwrap();
@@ -775,7 +835,7 @@ fn hand_written_version_records_are_read_leniently() {
     assert_eq!((known[0].author, known[0].mmm.as_deref(), known[0].thread.as_deref(), known[0].note.as_str()), ("ai", Some("cyborg"), Some("call"), "A note."), "the older record of 0.1 wins");
     assert_eq!((known[1].author, known[1].mmm.as_deref()), ("", None));
     for stray in ["c", "d", "e"] {
-        assert!(root.join(format!("{project}/versions/{stray}.md")).is_file(), "{stray} is left where it was");
+        assert!(root.join(format!("{project}/versions/plan/{stray}.manifest.md")).is_file(), "{stray} is left where it was");
     }
 }
 
@@ -787,7 +847,7 @@ fn a_version_without_a_record_loads_as_it_was_and_is_not_rewritten() {
     write(root, &format!("{project}/project.md"), "---\nname: Acme\n---\n");
     write(root, &format!("{project}/threads/call/thread.md"), "---\ntitle: Call\n---\n");
     write(root, &format!("{project}/deliverables/plan.md"), "# Plan\n\ntwo\n");
-    write(root, &format!("{project}/versions/plan@v0.1.md"), "# Plan\n\none\n");
+    write(root, &format!("{project}/versions/plan/plan@v0.1.md"), "# Plan\n\none\n");
     write(
         root,
         &format!("{project}/threads/call/posts/n1.md"),
@@ -796,7 +856,7 @@ fn a_version_without_a_record_loads_as_it_was_and_is_not_rewritten() {
 
     let (_vault, conn) = open(root);
     // A version put in the versions folder by hand: what the note proves is shown, and no record is written for it.
-    assert_eq!(names(root, &format!("{project}/versions")), ["plan@v0.1.md"], "nothing is written for versions that have no record");
+    assert_eq!(names(root, &format!("{project}/versions/plan")), ["plan@v0.1.md"], "nothing is written for versions that have no record");
     let known = provenance::resolve(&conn, "acme", "plan.md").unwrap();
     assert_eq!((known[0].author, known[0].thread.as_deref(), known[0].record.is_none()), ("", Some("call"), true));
     assert_eq!(posts::list(&conn, "acme", "call").unwrap()[0].prompt_id, None);

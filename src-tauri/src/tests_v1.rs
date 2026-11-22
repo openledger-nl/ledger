@@ -102,7 +102,7 @@ fn hand_written_facts_are_read_leniently() {
         "projects/synth/project.md",
         "---\nname: Synth build\nkind: Hobby\ngoal: A working synth.\nend: someday\nintendedMmm: robot\n---\n",
     );
-    write(root, "projects/bare/project.md", "---\nname: Bare\nkind: company\n---\n");
+    write(root, "projects/bare/project.md", "---\nname: Bare\nkind: work\n---\n");
     let (_vault, conn) = open(root);
     let synth = project_facts::get(&conn, "synth").unwrap().unwrap();
     assert_eq!(synth.kind, "hobby");
@@ -162,7 +162,7 @@ fn a_person_shows_only_in_the_projects_they_are_attached_to_with_a_role_in_each(
     let frank = vault_person(&conn, "Frank de Vries");
     let sanne = vault_person(&conn, "Sanne");
 
-    let saved = project_facts::save_people(&conn, &thrym, &[attached(&frank, "coach"), attached(&sanne, "teammate"), attached(&sanne, "Client")]).unwrap();
+    let saved = project_facts::save_people(&conn, &thrym, &[attached(&frank, "coach"), attached(&sanne, "teammate"), attached(&sanne, "Stakeholder")]).unwrap();
     assert_eq!(saved.iter().map(|p| (p.tag.as_str(), p.role.as_str(), p.name.as_str())).collect::<Vec<_>>(), [("people/frank-de-vries", "coach", "Frank de Vries"), ("people/sanne", "teammate", "Sanne")], "once each");
     project_facts::save_people(&conn, &bakery, &[attached(&frank, "expert")]).unwrap();
     assert_eq!(project_facts::get(&conn, &thrym).unwrap(), None, "people without facts");
@@ -199,6 +199,45 @@ fn people_who_arent_in_the_vault_or_have_no_role_are_refused_and_read_leniently(
     assert_eq!(crate::people::get(&conn, "ana").unwrap().name, "ana", "a person without a name is called after the file");
     assert!(project_facts::save_people(&conn, "synth", &[attached("ghost", "coach")]).is_err(), "only people of the vault");
     assert!(project_facts::save_people(&conn, "synth", &[attached("bo", "wizard")]).is_err());
+}
+
+// ---- clients ------------------------------------------------------------------------------------------
+
+#[test]
+fn a_work_projects_client_is_a_client_of_the_vault_named_by_its_id() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let (mut vault, conn) = open(root);
+    let korenaar = crate::clients::create(&conn, &crate::clients::ClientDraft { name: "Bakkerij De Korenaar".into(), website: "https://korenaar.nl".into(), notes: "Since 1950.".into() }).unwrap();
+    assert_eq!(korenaar.id, "bakkerij-de-korenaar");
+    let slug = projects::create(&conn, "Rota app").unwrap().slug;
+    let work = ProjectMeta { kind: "work".into(), goal: "A rota on phones.".into(), client: Some(korenaar.id.clone()), ..Default::default() };
+    let saved = project_facts::save(&conn, &slug, &work).unwrap();
+    assert_eq!((saved.client.as_deref(), saved.client_name.as_deref()), (Some("bakkerij-de-korenaar"), Some("Bakkerij De Korenaar")));
+    assert!(project_facts::save(&conn, &slug, &ProjectMeta { client: Some("nobody".into()), ..work.clone() }).is_err(), "only a client of the vault");
+    vault.persist(&conn).unwrap();
+
+    assert!(read(root, &format!("projects/{slug}/project.md")).contains("client: bakkerij-de-korenaar"));
+    let file = read(root, "shared/clients/bakkerij-de-korenaar.md");
+    assert!(file.contains("name: Bakkerij De Korenaar") && file.contains("website: https://korenaar.nl") && file.ends_with("Since 1950.\n"), "{file}");
+
+    let (mut vault, again) = open(root);
+    assert_eq!(crate::clients::get(&again, "bakkerij-de-korenaar").unwrap().projects.len(), 1);
+    // Taken out of the vault, the project keeps going without a client.
+    crate::clients::delete(&again, "bakkerij-de-korenaar").unwrap();
+    vault.persist(&again).unwrap();
+    assert_eq!(project_facts::get(&again, &slug).unwrap().unwrap().client, None);
+    assert!(!root.join("shared/clients/bakkerij-de-korenaar.md").exists());
+    assert!(!read(root, &format!("projects/{slug}/project.md")).contains("client:"));
+}
+
+#[test]
+fn a_client_that_isnt_in_the_vault_is_read_as_none() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/rota/project.md", "---\nname: Rota\nkind: work\ngoal: Shifts.\nclient: gone\n---\n");
+    let (_vault, conn) = open(root);
+    assert_eq!(project_facts::get(&conn, "rota").unwrap().unwrap().client, None);
 }
 
 // ---- a post's kind and labels ---------------------------------------------------------------------------
@@ -284,15 +323,22 @@ fn a_deliverables_evidence_description_is_kept_follows_a_rename_and_goes_with_it
     assert_eq!(saved.description, "**Evidence description**\n\n**What?** A plan.\n\n**Goal?** Agree.\n\n**Why it contributes?** Analysing.");
     assert_eq!(saved.description_parts.as_ref().map(|p| p.goal.as_str()), Some("Agree."));
     vault.persist(&conn).unwrap();
-    let meta = frontmatter::parse(&read(root, &format!("projects/{project}/project.md"))).unwrap().meta;
-    assert_eq!(meta.maps("descriptions")[0].text("path").as_deref(), Some(plan.as_str()));
+    // A note of its own beside the deliverable, not in project.md.
+    let file = read(root, &format!("projects/{project}/deliverables/plan.desc.md"));
+    assert!(file.starts_with("---\ndeliverable: plan.md\n---\n") && file.contains("**Goal?** Agree."), "{file}");
+    assert!(!read(root, &format!("projects/{project}/project.md")).contains("Evidence description"));
 
-    // It loads back, and follows the deliverable when it is renamed.
+    // It loads back, is no deliverable of its own, and follows the deliverable when it is renamed.
     let (mut vault, conn) = open(root);
     assert_eq!(deliverable_facts::description(&conn, &project, &plan).unwrap(), saved);
+    assert_eq!(deliverables::list(&conn, &project).unwrap().iter().map(|d| d.path.as_str()).collect::<Vec<_>>(), ["plan.md"]);
     let renamed = deliverables::rename(&conn, root, &project, &plan, "Project plan").unwrap();
     assert_eq!(deliverable_facts::description(&conn, &project, &renamed).unwrap().description, saved.description);
     assert_eq!(deliverable_facts::description(&conn, &project, &plan).unwrap().description, "");
+    assert!(deliverables::rename(&conn, root, &project, &renamed, "Notes.desc").is_err(), "a description's name is no deliverable's");
+    vault.persist(&conn).unwrap();
+    assert!(root.join(format!("projects/{project}/deliverables/Project plan.desc.md")).is_file());
+    assert!(!root.join(format!("projects/{project}/deliverables/plan.desc.md")).exists());
 
     // Emptied, it goes; and deleting the deliverable takes it along.
     assert_eq!(deliverable_facts::save_description(&conn, &project, &renamed, "  ").unwrap().description, "");
@@ -300,6 +346,42 @@ fn a_deliverables_evidence_description_is_kept_follows_a_rename_and_goes_with_it
     vault.persist(&conn).unwrap();
     deliverables::delete(&conn, root, &project, &renamed).unwrap();
     assert_eq!(deliverable_facts::description(&conn, &project, &renamed).unwrap().description, "");
+    vault.persist(&conn).unwrap();
+    assert!(!root.join(format!("projects/{project}/deliverables/Project plan.desc.md")).exists());
+}
+
+#[test]
+fn a_hand_written_description_is_its_deliverables_by_its_name() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/acme/project.md", "---\nname: Acme\n---\n");
+    write(root, "projects/acme/deliverables/reports/plan.pdf", "%PDF");
+    write(root, "projects/acme/deliverables/reports/plan.desc.md", "**What?** The plan, as a PDF.\n");
+    write(root, "projects/acme/deliverables/ghost.desc.md", "Of nothing that is there.\n");
+    let (vault, conn) = open(root);
+    let view = deliverable_facts::description(&conn, "acme", "reports/plan.pdf").unwrap();
+    assert!(view.description.contains("The plan, as a PDF."), "{view:?}");
+    assert_eq!(deliverables::list(&conn, "acme").unwrap().len(), 1);
+    assert!(root.join("projects/acme/deliverables/ghost.desc.md").is_file(), "left alone");
+
+    // A second deliverable of the same name: a description that doesn't say whose it is could be either's, and is left
+    // alone. Ledger's own say whose they are, and are named in full.
+    write(root, "projects/acme/deliverables/reports/plan.md", "# Plan\n");
+    let (mut again, reloaded) = open(root);
+    assert_eq!(deliverable_facts::description(&reloaded, "acme", "reports/plan.pdf").unwrap().description, "");
+    deliverable_facts::save_description(&reloaded, "acme", "reports/plan.md", "**What?** The plan.").unwrap();
+    deliverable_facts::save_description(&reloaded, "acme", "reports/plan.pdf", "**What?** The plan, as a PDF.").unwrap();
+    again.persist(&reloaded).unwrap();
+    let names = |dir: &str| {
+        let mut n: Vec<String> = std::fs::read_dir(root.join(dir)).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        n.sort();
+        n
+    };
+    assert_eq!(names("projects/acme/deliverables/reports"), ["plan.desc.md", "plan.md", "plan.md.desc.md", "plan.pdf", "plan.pdf.desc.md"]);
+    drop(vault);
+    let (_, last) = open(root);
+    assert!(deliverable_facts::description(&last, "acme", "reports/plan.pdf").unwrap().description.contains("as a PDF"));
+    assert!(deliverable_facts::description(&last, "acme", "reports/plan.md").unwrap().description.contains("The plan."));
 }
 
 #[test]
@@ -373,13 +455,8 @@ fn a_version_published_with_another_label_keeps_the_intended_one_and_why() {
     assert!(crate::provenance::confirm_label(&conn, &project, &plan, &version, "robot", "").is_err());
     vault.persist(&conn).unwrap();
 
-    let records: Vec<_> = fs::read_dir(root.join(format!("projects/{project}/versions")))
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .filter(|p| p.extension().is_some_and(|x| x == "md") && !p.file_name().unwrap().to_string_lossy().contains("@v"))
-        .collect();
-    assert_eq!(records.len(), 1);
-    let text = fs::read_to_string(&records[0]).unwrap();
+    let manifest = root.join(format!("projects/{project}/{}", deliverables::manifest_in_project(&plan, &version, [])));
+    let text = fs::read_to_string(&manifest).unwrap();
     let meta = frontmatter::parse(&text).unwrap().meta;
     assert_eq!(meta.text("intendedMmm").as_deref(), Some("man-made"));
     assert_eq!(meta.text("labelReason").as_deref(), Some("I wrote it myself."));
@@ -387,7 +464,7 @@ fn a_version_published_with_another_label_keeps_the_intended_one_and_why() {
     // It loads back, and is written again the same.
     let (mut vault, again) = open(root);
     vault.persist(&again).unwrap();
-    assert_eq!(fs::read_to_string(&records[0]).unwrap(), text);
+    assert_eq!(fs::read_to_string(&manifest).unwrap(), text);
 }
 
 // ---- feedback recorded from the inbox -------------------------------------------------------------------

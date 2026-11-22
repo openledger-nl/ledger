@@ -1,10 +1,19 @@
 //! Deliverables are the files prompts produce, kept in a project's `deliverables/` folder. They can be anything;
 //! markdown ones can be read and edited here. Publishing freezes a copy as "<name>@v1.0.<ext>" in the project's
-//! `versions/` folder, at the same place under it as the live file is under `deliverables/`, and that snapshot never
-//! changes. So `deliverables/` holds only the live files, and reads the same in any other tool.
+//! `versions/` folder, in a folder of the deliverable's own named after it, and that snapshot never changes. Beside it
+//! is its manifest, how it came to be (see `provenance`). So `deliverables/` holds only the live files, and reads the
+//! same in any other tool:
+//!
+//! ```text
+//! deliverables/reports/plan.md                         the live file
+//! deliverables/reports/plan.desc.md                    its evidence description (see `deliverable_facts`): no
+//!                                                      deliverable of its own
+//! versions/reports/plan/plan@v1.2.md                   its version 1.2
+//! versions/reports/plan/plan@v1.2.manifest.md          who made 1.2, in which thread, with what AI-use label
+//! ```
 //!
 //! Paths in this module are relative to the deliverables folder and use `/`; a snapshot's path is named the same way
-//! ("reports/plan@v1.2.md") even though its file is under `versions/` ([`file_of`]).
+//! ("reports/plan@v1.2.md") even though its file is under `versions/` ([`in_project`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -111,8 +120,53 @@ pub fn file_of(root: &Path, project: &str, path: &str) -> PathBuf {
 
 /// The deliverable's file by its path in the vault (see `store`).
 pub fn rel_of(project: &str, path: &str) -> String {
-    let folder = if split_version(path).1.is_some() { "versions" } else { "deliverables" };
-    format!("projects/{project}/{folder}/{path}")
+    format!("projects/{project}/{}", in_project(path))
+}
+
+/// The deliverable's file by its path in its project's folder: a live file under `deliverables/`, a published version
+/// under `versions/`, in its deliverable's own folder ("reports/plan@v1.2.md" is `versions/reports/plan/plan@v1.2.md`).
+pub fn in_project(path: &str) -> String {
+    match split_version(path) {
+        (base, Some(_)) => format!("versions/{}/{}", attachment_dir(&base), file_name(path)),
+        (_, None) => format!("deliverables/{path}"),
+    }
+}
+
+/// The version a file under a project's `versions/` folder is, named as the app names it ("reports/plan/plan@v1.2.md"
+/// is "reports/plan@v1.2.md"). None for anything else there: a manifest, or a version outside its deliverable's folder.
+pub fn version_at(rel: &str) -> Option<String> {
+    let (dir, file) = rel.rsplit_once('/')?;
+    let (base, version) = split_version(file);
+    version?;
+    let (parent, folder) = dir.rsplit_once('/').unwrap_or(("", dir));
+    // Matched whatever the case: a folder renamed by its case alone keeps its old name on Windows and macOS.
+    attachment_dir(&base).eq_ignore_ascii_case(folder).then(|| if parent.is_empty() { file.to_string() } else { format!("{parent}/{file}") })
+}
+
+/// Where the manifest of `base`'s `version` is, in its project's folder: beside the version, as "plan@v1.2.manifest.md".
+/// `others` are the project's deliverables that have manifests (see [`own_name`]).
+pub fn manifest_in_project<'a>(base: &str, version: &str, others: impl IntoIterator<Item = &'a str>) -> String {
+    format!("versions/{}/{}@v{version}.manifest.md", attachment_dir(base), own_name(base, others))
+}
+
+/// Where the evidence description of `base` is, in its project's folder: beside it, as "plan.desc.md". `others` are the
+/// project's live deliverables (see [`own_name`]).
+pub fn description_in_project<'a>(base: &str, others: impl IntoIterator<Item = &'a str>) -> String {
+    let dir = base.rsplit_once('/').map_or(String::new(), |(dir, _)| format!("{dir}/"));
+    format!("deliverables/{dir}{}.desc.md", own_name(base, others))
+}
+
+/// An evidence description beside its deliverable ("plan.desc.md"): not a deliverable itself.
+pub fn is_description(path: &str) -> bool {
+    file_name(path).to_ascii_lowercase().ends_with(".desc.md")
+}
+
+/// What a file Ledger keeps about `base` is named after: its name without the extension ("plan"), or with it ("plan.md")
+/// when another of `others` has the same name in the same folder ("plan.pdf"), so the two never clash.
+fn own_name<'a, 'b>(base: &'a str, others: impl IntoIterator<Item = &'b str>) -> &'a str {
+    let stem = attachment_dir(base);
+    let shared = others.into_iter().any(|other| other != base && attachment_dir(other) == stem);
+    if shared { file_name(base) } else { file_name(&base[..stem.len()]) }
 }
 
 // ---- reading ----------------------------------------------------------------------------------------
@@ -473,6 +527,9 @@ pub fn rename(conn: &Connection, root: &Path, project: &str, path: &str, name: &
     let clean = crate::uploads::sanitize(name);
     let file = ext.map_or(clean.clone(), |ext| format!("{clean}.{ext}"));
     let to = if dir.is_empty() { file } else { format!("{dir}/{file}") };
+    if is_description(&to) {
+        return Err(Error::invalid("A name that ends in .desc.md is an evidence description's: choose another"));
+    }
     rename_base(conn, root, project, path, &to)?;
     Ok(to)
 }

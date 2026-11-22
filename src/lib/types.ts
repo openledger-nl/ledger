@@ -233,6 +233,12 @@ export interface Semester {
 	updatedAt: string;
 }
 
+/**
+ * A semester template (semester_templates.rs), in `shared/templates/semesters/<id>.md`: a semester a new one can start
+ * from, such as NJ26, the one a new vault starts with. Its id is its file's name.
+ */
+export type SemesterTemplate = Semester;
+
 /** What creating or changing a semester takes. Without sprints, they are cut from the start. */
 export interface SemesterDraft {
 	name: string;
@@ -354,7 +360,7 @@ export interface ProvenanceVersion {
 	size: number;
 	sizeChange: number | null;
 	sha256: string | null;
-	/** The id of the record file in the vault (`versions/<id>.md`), when there is one. */
+	/** The version's manifest, by its path in the project's folder (`versions/plan/plan@v0.1.manifest.md`), when it has one. */
 	record: string | null;
 	/** The "version published" note, in its thread. */
 	post: { threadSlug: string; id: string } | null;
@@ -535,10 +541,6 @@ export interface Template {
 	readers: TemplateReader[];
 	/** The readers are a visible line in a new deliverable, not only a `%%` note. */
 	readersShown: boolean;
-	/** One Ledger ships, as shipped: not a file in the vault until it is changed, and it can't be deleted. */
-	builtin: boolean;
-	/** The vault's own version of one Ledger ships: deleting it brings the shipped one back. */
-	customisedBuiltin: boolean;
 	createdAt: string;
 	updatedAt: string;
 	/** A vault-wide template the project has replaced with its own. */
@@ -723,8 +725,8 @@ export interface Vaults {
 	suggestedParent: string | null;
 }
 
-/** What Ledger is used for. Only school works in semesters, so only school is asked for one. */
-export type Purpose = 'work' | 'hobby' | 'school';
+/** What Ledger is used for first: the kind of the first project. Only study works in semesters. */
+export type Purpose = 'study' | 'work' | 'hobby';
 
 export interface OnboardingStatus {
 	/** The guide is on the home page. */
@@ -1415,7 +1417,7 @@ export interface EpsilonView {
 // camelCase on the wire like the rest.
 
 /** Every project is one of three kinds, in the same vault and the same layout; the study parts are optional extras. */
-export type ProjectKind = 'study' | 'hobby' | 'company';
+export type ProjectKind = 'study' | 'work' | 'hobby';
 
 /** The facts in a project's `00 Overview.md` frontmatter that 0.8 doesn't have. */
 export interface ProjectMeta {
@@ -1431,8 +1433,10 @@ export interface ProjectMeta {
 	intendedMmm: MmmLevel | null;
 	/** Study projects have one; optional for the others. */
 	mainQuestion: string | null;
-	/** A company project's client (a company file in Companies/ is roadmap). */
+	/** A work project's client, by its id in shared/clients. */
 	client: string | null;
+	/** That client's name; filled in by Ledger. */
+	clientName?: string | null;
 	/** Shown in the overview's tag, `project/<tag>`, which daily notes and feedback use. */
 	tag: string;
 }
@@ -1482,7 +1486,7 @@ export interface DailyNote {
 /** Your own note (for yourself or for Claude), or feedback from someone else. */
 export type FeedbackKind = 'own' | 'someone';
 
-export type FeedbackRole = 'coach' | 'expert' | 'teammate' | 'client' | 'colleague' | 'other';
+export type FeedbackRole = 'coach' | 'expert' | 'teammate' | 'stakeholder' | 'colleague' | 'other';
 
 /** Someone who is part of a project (its coach, a teammate, the client), listed in its project.md. */
 /** How a project's exported PDFs look and who they name (branding.rs), kept in its project.md. */
@@ -1532,6 +1536,21 @@ export interface Person {
 }
 
 export type PersonDraft = Pick<Person, 'name' | 'email' | 'organisation' | 'portflowUser' | 'notes'>;
+
+/** A client the vault knows (clients.rs), in `shared/clients/<id>.md`: an organisation work projects are done for. */
+export interface Client {
+	/** Its name as a slug when it was added; it stays when it is renamed. */
+	id: string;
+	name: string;
+	website: string;
+	notes: string;
+	/** The projects done for it. */
+	projects: { project: string; projectName: string }[];
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type ClientDraft = Pick<Client, 'name' | 'website' | 'notes'>;
 
 /** Someone of the vault as part of one project, with their role there; listed in the project's project.md. */
 export interface ProjectPerson {

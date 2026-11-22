@@ -18,10 +18,10 @@ CREATE TABLE projects (
     backlog_column_id TEXT NOT NULL DEFAULT '',
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
-    -- What the project is (see project_facts.rs): its kind ('study', 'hobby' or 'company') and goal, when it ends
+    -- What the project is (see project_facts.rs): its kind ('study', 'work' or 'hobby') and goal, when it ends
     -- ('semester', a calendar day, or NULL for no end), the semester it runs in, the AI-use label the work is meant to
-    -- get, a study project's main question and a company project's client. A project without a kind and a goal has
-    -- none of these yet.
+    -- get, a study project's main question and a work project's client (a client's id, see clients.rs). A project
+    -- without a kind and a goal has none of these yet.
     kind              TEXT,
     goal              TEXT,
     project_end       TEXT,
@@ -53,6 +53,16 @@ CREATE TABLE deliverable_descriptions (
     path         TEXT NOT NULL,
     description  TEXT NOT NULL,
     PRIMARY KEY (project_slug, path)
+);
+
+-- The clients the vault knows (see clients.rs), shared by every project: shared/clients/<id>.md.
+CREATE TABLE clients (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    website    TEXT NOT NULL DEFAULT '',
+    notes      TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
 -- The people the vault knows (see people.rs), shared by every project: shared/people/<id>.md.
@@ -271,7 +281,6 @@ CREATE TABLE deliverables (
 -- are deliberately not foreign keys: deleting a thread, a prompt or a note must not erase how a version came about.
 -- `author` is 'ai', 'human', or '' when the origin was never recorded.
 CREATE TABLE version_records (
-    id               TEXT PRIMARY KEY,
     project_slug     TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
     deliverable_path TEXT NOT NULL,
     version          TEXT NOT NULL,
@@ -286,12 +295,12 @@ CREATE TABLE version_records (
     -- Published with another label than the project's intended one: that label, and why (in your words, maybe '').
     intended_mmm     TEXT,
     label_reason     TEXT,
-    UNIQUE (project_slug, deliverable_path, version)
+    PRIMARY KEY (project_slug, deliverable_path, version)
 );
 
 -- scope '' is a vault-wide template, otherwise it is the slug of the project the template belongs to.
 -- kinds: the kinds of project it is for, comma-separated ('' for every kind). readers: who its deliverable is written
--- for, as JSON. builtin: one the app ships, not a file of the vault (until it is changed, which makes it one).
+-- for, as JSON.
 CREATE TABLE templates (
     scope         TEXT NOT NULL,
     id            TEXT NOT NULL,
@@ -301,7 +310,6 @@ CREATE TABLE templates (
     kinds         TEXT NOT NULL DEFAULT '',
     readers       TEXT NOT NULL DEFAULT '[]',
     readers_shown INTEGER NOT NULL DEFAULT 0,
-    builtin       INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL,
     updated_at    TEXT NOT NULL,
     PRIMARY KEY (scope, id)
@@ -393,6 +401,15 @@ CREATE TABLE sprints (
     end_date    TEXT NOT NULL,
     goal        TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (semester_id, position)
+);
+
+-- Semester templates (see semester_templates.rs): what a new semester can start from, such as NJ26. Kept as
+-- shared/templates/semesters/<id>.md, in the form of a semester's file. draft: the semester it makes, as JSON.
+CREATE TABLE semester_templates (
+    id         TEXT PRIMARY KEY,
+    draft      TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
 -- Days off within a semester, in order and not overlapping. Sprints are counted in days of work, around them.

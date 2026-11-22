@@ -116,16 +116,18 @@ projects/&lt;project&gt;/threads/&lt;thread&gt;/thread.md      a thread, with po
 projects/&lt;project&gt;/userstories/&lt;id&gt;.md          a user story
 projects/&lt;project&gt;/tasks/&lt;id&gt;.md                a task on the board
 projects/&lt;project&gt;/deliverables/                  what prompts produce, the live files
-projects/&lt;project&gt;/versions/                      their published versions (name@v1.0.md)
-projects/&lt;project&gt;/versions/&lt;id&gt;.md              how a published version came to be
+projects/&lt;project&gt;/versions/&lt;deliverable&gt;/        its published versions (name@v1.0.md), each with
+                                                  how it came to be (name@v1.0.manifest.md)
 projects/&lt;project&gt;/attachments/                   uploaded files and screenshots
 projects/&lt;project&gt;/templates/prompts/&lt;id&gt;.md    templates for this project
 projects/&lt;project&gt;/templates/pdf/layout.typ     this project's own PDF layout
 meetings/&lt;YYYY&gt;/&lt;MM&gt;/&lt;date&gt;.md                a day's meeting notes
 shared/templates/prompts/&lt;id&gt;.md               templates for every project
 shared/templates/pdf/layout.typ                the vault's own PDF layout
+shared/templates/semesters/&lt;id&gt;.md             what a new semester starts from
 shared/semesters/&lt;id&gt;.md                       semesters and their sprints
 shared/people/&lt;id&gt;.md                          the people of the vault
+shared/clients/&lt;id&gt;.md                         the clients of work projects
 shared/portflow/                                what Portflow mirrors
 ledger.json                                    says that this folder is a vault</pre>
 		<p class="sub">

@@ -1,13 +1,13 @@
 <script lang="ts">
 	// Choosing an AI-use label: no label, then the five official MMM labels from the most AI to the least, side by side
-	// in one row to click, each with its picture; hovering one tells what it means. A link to mmmlabel.tech says more.
+	// in one row to click, each with its picture; hovering one tells what it means. The field it is in links to
+	// mmmlabel.tech (MmmLink), which says more.
 	// The label is always yours to declare; Ledger never picks one for you. Radio buttons underneath, so the arrow keys
 	// move along the row.
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import { MMM } from '$lib/mmm';
 	import { MMM_ICONS } from '$lib/mmmIcons';
 	import type { MmmLevel } from '$lib/types';
-	import MmmLink from './MmmLink.svelte';
 
 	let {
 		value = $bindable(''),
@@ -43,7 +43,6 @@
 			</label>
 		{/each}
 	</div>
-	<span class="hint">What the labels mean: <MmmLink /></span>
 </div>
 
 <style>
