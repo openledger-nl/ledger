@@ -100,7 +100,8 @@
     stroke: (left: 3pt + accent),
     text(style: "italic", fill: rgb("#3e4c59"), it.body),
   )
-  show raw: set text(font: "JetBrains Mono", size: 0.9em)
+  // Code as typed: no ligatures turning `-->` or `!=` into one sign.
+  show raw: set text(font: "JetBrains Mono", size: 0.9em, ligatures: false, features: (calt: 0))
   show raw.where(block: true): it => block(width: 100%, inset: 9pt, radius: 4pt, fill: paper-2, text(size: 8.5pt, it))
   show raw.where(block: false): it => box(fill: paper-2, inset: (x: 3pt), outset: (y: 2pt), radius: 2pt, it)
   set list(indent: 4pt, body-indent: 7pt, marker: ([•], [◦], [‣]))
