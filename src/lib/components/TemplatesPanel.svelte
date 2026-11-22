@@ -73,7 +73,7 @@
 	<div class="panel">
 		<h2>Shared with every project</h2>
 		{#if inherited.length === 0}
-			<div class="hint">There are no shared templates. Add some under Settings > Templates.</div>
+			<div class="hint">There are no shared templates. Add some under Shared, Templates.</div>
 		{:else}
 			<div class="tpl-list">
 				{#each inherited as t (t.id)}

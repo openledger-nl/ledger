@@ -466,7 +466,7 @@
 			<div class="sync-detail">
 				<h3 style="font-size:14px">Import a project from Portflow</h3>
 				{#if semesters.length === 0}
-					<div class="notice">Add a semester first (Settings > Semesters): the project is linked to its collection for one semester.</div>
+					<div class="notice">Add a semester first (Shared, Semesters): the project is linked to its collection for one semester.</div>
 				{:else}
 					<div class="form-row">
 						<div class="field grow">
@@ -529,7 +529,7 @@
 
 			{#if status?.signedIn}
 				{#if semesters.length === 0}
-					<div class="notice">Add a semester first (Settings > Semesters): a collection is linked for one semester.</div>
+					<div class="notice">Add a semester first (Shared, Semesters): a collection is linked for one semester.</div>
 				{:else}
 					<div class="form-row">
 						<div class="field grow">
