@@ -99,7 +99,7 @@ fn is_machine_name(text: &str) -> bool {
 /// never give is a copy.
 fn named_by_ledger(dir: &str, stem: &str) -> bool {
     const BY_ID: [&str; 9] = ["/posts/", "/prompts/", "/feedback/", "/uploads/", "/runs/", "/userstories/", "/tasks/", "/evidence/", "/templates/prompts/"];
-    const SHARED: [&str; 3] = ["shared/people/", "shared/semesters/", "shared/templates/prompts/"];
+    const SHARED: [&str; 5] = ["shared/people/", "shared/semesters/", "shared/clients/", "shared/templates/prompts/", "shared/templates/semesters/"];
     let own_file = matches!(stem, "project" | "thread" | "README");
     let versions_record = dir.ends_with("/versions/") && !stem.contains('@');
     own_file || versions_record || BY_ID.iter().any(|d| dir.ends_with(d)) || SHARED.contains(&dir) || dir.starts_with("meetings/")
