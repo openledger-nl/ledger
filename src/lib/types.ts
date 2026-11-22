@@ -1469,20 +1469,21 @@ export interface MeetingSection {
 	title: string;
 	/** Project tags (`thrym-player`), on the heading: the meeting belongs to each of these projects. */
 	projects: string[];
-	/** Person tags (`people/frank`), on the `With:` line; the same as in feedback. */
-	people: PersonTag[];
+	/** Who was there, by their id in shared/people (`frank`): the `With:` line links to them (`[[people/frank]]`). */
+	people: string[];
 	/** Your notes, as you wrote them: no template, no required parts. */
 	body: string;
 }
 
 /**
  * A daily note, `meetings/<year>/<month>/<day>.md`: one per day, made in Ledger or Obsidian, holding that day's meetings, each under its
- * own heading. Its frontmatter (`type: daily`, `id`, `date`, `tags`) gathers the tags of its meetings, so the day is
- * found by project and by person in Ledger and in Obsidian.
+ * own heading. Its frontmatter (`date`, `tags`, `meetings`) holds each meeting's time and projects and gathers their
+ * project tags; who was there is linked, so their file in shared/people lists the day among its backlinks in Obsidian.
  */
 export interface DailyNote {
 	/** ISO day; also the file's name, so a day has one note. */
 	date: string;
+	/** `daily-<date>`, for the app: the file holds no id. */
 	id: string;
 	meetings: MeetingSection[];
 	updatedAt: string;

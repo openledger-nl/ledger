@@ -24,8 +24,7 @@
 //!   role: teammate
 //! ```
 //!
-//! A person goes by the tag `people/<id>` (`people/frank-de-vries`) in every project: how meetings and feedback name
-//! them.
+//! A person is the same in every project: `[[people/<id>]]` links to them in any markdown (see `people`).
 
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};

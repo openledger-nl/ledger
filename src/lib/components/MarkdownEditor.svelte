@@ -63,7 +63,7 @@
 		onmark?: (id: string) => void;
 		/** What typing `@` offers: a Portflow reading guide's evidence items. */
 		mentions?: EvidenceMention[];
-		/** Or the people `@` offers (a meeting's), each written as `[@Name](person:<tag>)`. */
+		/** Or the people `@` offers (a meeting's), each written as a link to them (`[[people/frank]]`). */
 		people?: MentionOption[];
 		/** What [[links]] point at here, instead of the project the window is in: a meeting's. */
 		linkTargets?: LinkTarget[];

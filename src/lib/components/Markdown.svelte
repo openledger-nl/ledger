@@ -95,12 +95,6 @@
 		void shown;
 		const project = links.project;
 		for (const a of root.querySelectorAll<HTMLAnchorElement>('a.mention')) {
-			// A person mentioned in a meeting's notes: the feedback they gave.
-			if (a.dataset.person) {
-				a.href = `/feedback?from=${encodeURIComponent(a.dataset.person)}`;
-				a.title = `The feedback ${a.textContent?.replace(/^@/, '') ?? ''} gave`;
-				continue;
-			}
 			const id = a.dataset.mention ?? '';
 			const item = a.dataset.mentionType === 'evidence' || id.startsWith('evidence') ? mentions?.find((m) => m.portflowId === numberOf(id)) : undefined;
 			if (item?.deliverable && project) {

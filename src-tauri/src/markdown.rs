@@ -1,8 +1,5 @@
 use pulldown_cmark::{CowStr, Event, LinkType, Options, Parser, Tag, html};
 
-/// What a link to a person mentioned in a meeting's notes starts with: `person:<tag>` (`person:coach/frank`).
-pub const PERSON_SCHEME: &str = "person:";
-
 /// Renders user markdown to HTML that is safe to inject into the page: raw HTML in the source is shown as
 /// text, and links or images with a scheme other than http(s)/mailto lose their target.
 ///
@@ -26,11 +23,6 @@ pub fn render(source: &str) -> String {
         Event::Start(Tag::Link { dest_url, .. }) if dest_url.starts_with(crate::portflow_html::MENTION_SCHEME) => {
             let (id, kind) = crate::portflow_html::parse_mention_url(&dest_url).unwrap_or_default();
             Event::Html(format!("<a class=\"mention\" data-mention=\"{}\" data-mention-type=\"{}\">", escape_attribute(&id), escape_attribute(&kind)).into())
-        }
-        // A person mentioned in a meeting's notes (`[@Frank](person:coach/frank)`): a chip the page points at the
-        // feedback that person gave (Markdown.svelte).
-        Event::Start(Tag::Link { dest_url, .. }) if dest_url.starts_with(PERSON_SCHEME) => {
-            Event::Html(format!("<a class=\"mention person\" data-person=\"{}\">", escape_attribute(&dest_url[PERSON_SCHEME.len()..])).into())
         }
         Event::Start(Tag::Link { link_type, dest_url, title, id }) => {
             Event::Start(Tag::Link { link_type, dest_url: safe_url(dest_url), title, id })
@@ -78,21 +70,6 @@ pub(crate) fn safe_url(url: CowStr<'_>) -> CowStr<'_> {
         || !probe.contains(':');
 
     if allowed { url } else { CowStr::Borrowed("") }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn a_person_mentioned_in_notes_is_a_chip_with_their_tag() {
-        let html = super::render("Asked [@Frank de Vries](person:coach/frank) about it.");
-        assert_eq!(html, "<p>Asked <a class=\"mention person\" data-person=\"coach/frank\">@Frank de Vries</a> about it.</p>\n");
-    }
-
-    #[test]
-    fn a_person_mention_cannot_carry_markup() {
-        let html = super::render("[@x](person:a\"onclick=\"b)");
-        assert!(!html.contains("\"onclick"), "{html}");
-    }
 }
 
 /// The text without its `%%` notes, as Obsidian reads it: from a `%%` to the next one, across lines, and to the end when

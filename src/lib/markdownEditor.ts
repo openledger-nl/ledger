@@ -881,16 +881,16 @@ export interface MarkdownEditorOptions {
 // ---- @ mentions ----------------------------------------------------------------------------------
 // In a reading guide that is a Portflow collection's description: typing `@` offers the project's evidence items and
 // writes the one picked as `[@Name](portflow:evidence-<id>)`, which Portflow gets back as its own mention. In a
-// meeting's notes it offers people, written as `[@Name](person:<tag>)`.
+// meeting's notes it offers people, written as a link to the person (`[[people/frank]]`), as anywhere else.
 
 export interface MentionOption {
-	/** The mention's id in Portflow (`evidence-2110705`), or a person's tag (`coach/frank`). */
+	/** The mention's id in Portflow (`evidence-2110705`), or a person's id (`frank`). */
 	id: string;
 	label: string;
 	/** Where it is in Ledger (its thread), or who the person is, shown beside it. */
 	detail: string;
-	/** Where the written mention points: `portflow:<id>` unless given (`person:coach/frank`). */
-	link?: string;
+	/** What is written for it: `[@Name](portflow:<id>)` unless given (`[[people/frank]]`). */
+	insert?: string;
 }
 
 const mentionSupport = Facet.define<() => MentionOption[], (() => MentionOption[]) | null>({ combine: (values) => values[0] ?? null });
@@ -915,7 +915,7 @@ function mentionCompletions(context: CompletionContext): CompletionResult | null
 			label: `@${m.label}`,
 			detail: m.detail,
 			type: 'mention',
-			apply: `[@${linkWords(m.label)}](${m.link ?? `portflow:${m.id}`})`
+			apply: m.insert ?? `[@${linkWords(m.label)}](portflow:${m.id})`
 		}))
 	};
 }

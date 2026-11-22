@@ -53,9 +53,9 @@ export function personName(tag: PersonTag): string {
 	return last.charAt(0).toUpperCase() + last.slice(1);
 }
 
-/** The tags of the whole team of these projects: every teammate, each once, in the order they are listed. */
-export function teamTags(people: ProjectPerson[], projects: string[]): PersonTag[] {
-	return [...new Set(people.filter((p) => p.role === 'teammate' && projects.includes(p.project)).map((p) => p.tag))];
+/** The whole team of these projects, by id: every teammate, each once, in the order they are listed. */
+export function teamOf(people: ProjectPerson[], projects: string[]): string[] {
+	return [...new Set(people.filter((p) => p.role === 'teammate' && projects.includes(p.project)).map((p) => p.person))];
 }
 
 /** A name as the backend makes it a file or tag name (ids.rs `slugify`): lowercase ASCII letters and digits, the rest

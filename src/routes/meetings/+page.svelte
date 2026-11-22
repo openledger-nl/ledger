@@ -6,14 +6,14 @@
 	import { page } from '$app/state';
 	import MeetingNoteEditor from '$lib/components/MeetingNoteEditor.svelte';
 	import DateInput from '$lib/components/DateInput.svelte';
-	import { personTagOptions, projectTagOptions } from '$lib/tagIndex';
+	import { personOptions, projectTagOptions } from '$lib/tagIndex';
 	import { dayLabel, today } from '$lib/semesters';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
 	const projectOptions = $derived(projectTagOptions(data.projects, data.meta, data.notes, data.feedback));
-	const peopleOptions = $derived(personTagOptions(data.notes, data.feedback, data.people));
+	const peopleOptions = $derived(personOptions(data.everyone, data.people));
 	const day = $derived(page.url.searchParams.get('day') ?? today());
 	const days = $derived([...new Set([today(), ...data.notes.map((n) => n.date)])].sort().reverse());
 	const noteOf = (d: string) => data.notes.find((n) => n.date === d) ?? null;

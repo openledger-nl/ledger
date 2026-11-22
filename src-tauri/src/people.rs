@@ -16,8 +16,9 @@
 //! Notes about them, in markdown.
 //! ```
 //!
-//! The id is the name as a slug when the person is made (`frank-de-vries`), and stays when they are renamed. A person
-//! goes by the tag `people/<id>` (`#people/frank-de-vries`): how meetings and feedback name them.
+//! The id is the name as a slug when the person is made (`frank-de-vries`), and stays when they are renamed. Markdown
+//! links to a person as `[[people/<id>]]` (`[[people/frank-de-vries]]`), a meeting's `With:` line included, so their
+//! file collects them as backlinks in Obsidian; the inbox filters feedback by the tag `people/<id>`.
 
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
@@ -44,7 +45,7 @@ pub struct Person {
     pub notes: String,
     /// The projects they are attached to, with their role in each, in the order of the projects' names.
     pub projects: Vec<Attachment>,
-    /// `people/<id>`, as meetings and feedback tag them (filled in by Ledger).
+    /// `people/<id>`: what a link to them says after `[[`, and the tag the inbox filters feedback by (filled in by Ledger).
     pub tag: String,
     pub created_at: String,
     pub updated_at: String,

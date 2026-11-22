@@ -1,7 +1,8 @@
 // The index of `#` tags the pickers offer: every project tag and person tag in use, from the vault's projects, the
-// meeting notes and the feedback, each with how it reads and how often it is used.
+// meeting notes and the feedback, each with how it reads and how often it is used; and the vault's people, for who was
+// at a meeting.
 
-import type { DailyNote, InboxFeedback, ProjectMeta, ProjectPerson, ProjectSummary } from './types';
+import type { DailyNote, InboxFeedback, Person, ProjectMeta, ProjectPerson, ProjectSummary } from './types';
 import type { TagOption } from './components/TagPicker.svelte';
 import { feedbackTag, personName, personRole, roleName } from './v1';
 import { plural } from './format';
@@ -35,7 +36,7 @@ export function projectTagOptions(projects: ProjectSummary[], meta: ProjectMeta[
 export function personTagOptions(notes: DailyNote[] = [], feedback: InboxFeedback[] = [], people: ProjectPerson[] = []): TagOption[] {
 	const uses = new Map<string, number>();
 	const count = (t: string) => uses.set(t, (uses.get(t) ?? 0) + 1);
-	for (const n of notes) for (const m of n.meetings) m.people.forEach(count);
+	for (const n of notes) for (const m of n.meetings) for (const id of m.people) count(`people/${id}`);
 	const named = new Map<string, string>();
 	for (const f of feedback) {
 		const tag = feedbackTag(f);
@@ -55,4 +56,13 @@ export function personTagOptions(notes: DailyNote[] = [], feedback: InboxFeedbac
 		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
 		.map(([value, n]) => ({ value, label: named.get(value) ?? personName(value), hint: [personRole(value), plural(n, 'use')].filter(Boolean).join(' | ') }));
 	return [...own, ...others];
+}
+
+/** The vault's people, by id, for who was at a meeting: each with the roles they have in their projects, the people of
+ *  the projects first, then everyone else, by name. */
+export function personOptions(everyone: Person[], people: ProjectPerson[] = []): TagOption[] {
+	const roles = (id: string) => people.filter((p) => p.person === id).map((p) => `${roleName(p.role)} in ${p.project}`);
+	return [...everyone]
+		.sort((a, b) => Number(roles(b.id).length > 0) - Number(roles(a.id).length > 0) || a.name.localeCompare(b.name))
+		.map((p) => ({ value: p.id, label: p.name, hint: [roles(p.id).join(', '), p.organisation].filter(Boolean).join(' | ') || undefined }));
 }

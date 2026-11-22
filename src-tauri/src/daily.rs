@@ -4,7 +4,7 @@
 //! ```text
 //! ---
 //! date: 2026-11-09
-//! tags: [project/thrym-player, people/frank]      gathered from the meetings, plus any plain tags of your own
+//! tags: [project/thrym-player]                    the meetings' projects, plus any plain tags of your own
 //! meetings:                                       each meeting's time and the projects it belongs to, by its title
 //! - title: Coach meeting
 //!   time: '10:00'
@@ -12,7 +12,7 @@
 //! ---
 //!
 //! ## Coach meeting                                a meeting: its title
-//! With: #people/frank #people/sam                 who was there
+//! With: [[people/frank]], [[people/sam]]          who was there: links to their files in shared/people
 //!
 //! What was said, decided, to do… [[pricing-brief]] links to the project's deliverables and threads.
 //! ```
@@ -20,7 +20,8 @@
 //! Reading is lenient: a note Obsidian made, without frontmatter, reads in; a heading the frontmatter doesn't list, or
 //! without a `With:` line, is a meeting all the same (with no time and no project). Of two meetings with the same title
 //! the first listed goes with the first heading. Whatever comes before the first `## ` heading, and any frontmatter of
-//! your own, is kept as it is and written back.
+//! your own, is kept as it is and written back. Someone named in a `With:` line who isn't in the vault yet is added to
+//! it when the note is saved, so every name there leads to a file.
 
 use std::collections::HashSet;
 
@@ -47,7 +48,7 @@ pub struct MeetingSection {
     pub title: String,
     /// The projects it belongs to, by their tag (`thrym-player` for `#project/thrym-player`).
     pub projects: Vec<String>,
-    /// Who was there, as person tags (`coach/frank`).
+    /// Who was there, by their id in shared/people (`frank`).
     pub people: Vec<String>,
     /// Your notes, as written.
     pub body: String,
@@ -93,27 +94,14 @@ pub fn file(date: &str) -> String {
     }
 }
 
-/// A `#tag` ends at the first character that can't be in one, as in Obsidian: letters, digits, `_`, `-` and `/`.
-fn tags_in(text: &str) -> Vec<String> {
+/// The people a `With:` line links to: `[[people/frank]]` (or `[[people/frank|Frank]]`), by id.
+fn people_in(line: &str) -> Vec<String> {
     let mut out = vec![];
-    let mut chars = text.char_indices().peekable();
-    while let Some((i, c)) = chars.next() {
-        if c != '#' {
-            continue;
-        }
-        let start = i + 1;
-        let mut end = start;
-        while let Some(&(j, d)) = chars.peek() {
-            if d.is_alphanumeric() || d == '_' || d == '-' || d == '/' {
-                end = j + d.len_utf8();
-                chars.next();
-            } else {
-                break;
-            }
-        }
-        let tag = text[start..end].trim_matches('/');
-        if !tag.is_empty() {
-            out.push(tag.to_string());
+    for (_, rest) in line.match_indices("[[").map(|(at, _)| line.split_at(at + 2)) {
+        let Some(inner) = rest.split("]]").next() else { continue };
+        let target = inner.split('|').next().unwrap_or(inner).trim();
+        if let Some(id) = target.strip_prefix(crate::links::PEOPLE).map(str::trim).filter(|id| !id.is_empty() && !id.contains('[')) {
+            out.push(id.to_lowercase());
         }
     }
     out
@@ -154,10 +142,12 @@ pub fn parse(meta: &Mapping, body: &str) -> ParsedDaily {
     for (title, lines) in sections {
         let found = listed.iter_mut().find(|m| m.as_ref().is_some_and(|(t, ..)| t.eq_ignore_ascii_case(&title))).and_then(Option::take);
         let (time, projects) = found.map(|(_, time, projects)| (time, projects)).unwrap_or_default();
-        // A `With:` line counts when it is the first line with text under the heading.
+        // A `With:` line counts when it is the first line with text under the heading and links to someone; any other
+        // is part of the notes.
         let first = lines.iter().position(|l| !l.trim().is_empty());
-        let (people, notes) = match first {
-            Some(i) if lines[i].trim().to_lowercase().starts_with("with:") => (tags_in(lines[i]), &lines[i + 1..]),
+        let with = first.filter(|i| lines[*i].trim().to_lowercase().starts_with("with:")).map(|i| (i, people_in(lines[i])));
+        let (people, notes) = match with {
+            Some((i, people)) if !people.is_empty() => (people, &lines[i + 1..]),
             _ => (vec![], &lines[..]),
         };
         meetings.push(MeetingSection { time, title, projects, people, body: notes.join("\n").trim().to_string() });
@@ -171,12 +161,10 @@ pub fn parse(meta: &Mapping, body: &str) -> ParsedDaily {
     ParsedDaily { meetings, preamble: preamble.join("\n").trim().to_string(), extra, own_tags }
 }
 
-/// Every tag of the meetings, each once: projects first (`project/x`), then people.
+/// The tags of the meetings' projects (`project/x`), each once. Who was there is linked, not tagged.
 fn gathered(meetings: &[MeetingSection]) -> Vec<String> {
     let mut seen = HashSet::new();
-    let projects = meetings.iter().flat_map(|m| m.projects.iter().map(|p| format!("project/{p}")));
-    let people = meetings.iter().flat_map(|m| m.people.iter().cloned());
-    projects.chain(people).filter(|t| seen.insert(t.clone())).collect()
+    meetings.iter().flat_map(|m| m.projects.iter().map(|p| format!("project/{p}"))).filter(|t| seen.insert(t.clone())).collect()
 }
 
 /// What a meeting's heading says: its title, "Meeting" when it has none.
@@ -221,7 +209,7 @@ pub fn render(date: &str, meetings: &[MeetingSection], preamble: &str, extra: &M
     for m in meetings {
         let mut lines = vec![format!("## {}", heading_of(m))];
         if !m.people.is_empty() {
-            lines.push(format!("With: {}", m.people.iter().map(|p| format!("#{p}")).collect::<Vec<_>>().join(" ")));
+            lines.push(format!("With: {}", m.people.iter().map(|p| format!("[[{}{p}]]", crate::links::PEOPLE)).collect::<Vec<_>>().join(", ")));
         }
         if !m.body.trim().is_empty() {
             lines.push(String::new());
@@ -306,6 +294,34 @@ fn clean_tags(tags: &[String]) -> Vec<String> {
     tags.iter().filter_map(|t| clean_tag(t)).filter(|t| seen.insert(t.clone())).collect()
 }
 
+/// Who was at a meeting, by id, each once: an id as typed (`frank`, `people/frank`, `Frank de Vries`) becomes the id of
+/// someone in shared/people, who is added to the vault when they aren't in it yet (named after the id), so every link
+/// in the `With:` line leads to a file.
+fn people_of(conn: &Connection, typed: &[String]) -> Result<Vec<String>> {
+    let mut out: Vec<String> = vec![];
+    for text in typed {
+        let id = ids::slugify_as(text.trim().trim_start_matches('#').trim_start_matches(crate::links::PEOPLE), "");
+        if id.is_empty() || out.contains(&id) {
+            continue;
+        }
+        let id = if crate::people::exists(conn, &id)? {
+            id
+        } else {
+            let name = id.split('-').filter(|w| !w.is_empty()).map(capitalised).collect::<Vec<_>>().join(" ");
+            crate::people::create(conn, &crate::people::PersonDraft { name, ..Default::default() })?.id
+        };
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    Ok(out)
+}
+
+fn capitalised(word: &str) -> String {
+    let mut chars = word.chars();
+    chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
+}
+
 /// Saves a day's note: a day has one, so this replaces its meetings. A day without meetings (and nothing else) has no note.
 pub fn save(conn: &Connection, draft: &DailyDraft) -> Result<Option<DailyNote>> {
     if !is_day(&draft.date) {
@@ -314,16 +330,18 @@ pub fn save(conn: &Connection, draft: &DailyDraft) -> Result<Option<DailyNote>> 
     let meetings: Vec<MeetingSection> = draft
         .meetings
         .iter()
-        .map(|m| MeetingSection {
-            time: m.time.as_deref().and_then(|t| clock(t.trim())),
-            // A title is one line: a heading can't hold more.
-            title: m.title.split_whitespace().collect::<Vec<_>>().join(" "),
-            projects: clean_tags(&m.projects).into_iter().map(|p| p.trim_start_matches("project/").to_string()).collect(),
-            people: clean_tags(&m.people),
-            // A line starting with `## ` would start another meeting when the note is read back.
-            body: m.body.lines().map(|l| if l.starts_with("## ") { format!("#{l}") } else { l.to_string() }).collect::<Vec<_>>().join("\n").trim().to_string(),
+        .map(|m| -> Result<MeetingSection> {
+            Ok(MeetingSection {
+                time: m.time.as_deref().and_then(|t| clock(t.trim())),
+                // A title is one line: a heading can't hold more.
+                title: m.title.split_whitespace().collect::<Vec<_>>().join(" "),
+                projects: clean_tags(&m.projects).into_iter().map(|p| p.trim_start_matches("project/").to_string()).collect(),
+                people: people_of(conn, &m.people)?,
+                // A line starting with `## ` would start another meeting when the note is read back.
+                body: m.body.lines().map(|l| if l.starts_with("## ") { format!("#{l}") } else { l.to_string() }).collect::<Vec<_>>().join("\n").trim().to_string(),
+            })
         })
-        .collect();
+        .collect::<Result<_>>()?;
     // What the file holds besides the meetings stays as it was.
     let kept = query_opt(conn, "SELECT preamble, extra, own_tags FROM daily_notes WHERE date = ?1", [&draft.date], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))

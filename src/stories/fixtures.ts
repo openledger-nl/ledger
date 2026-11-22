@@ -653,10 +653,10 @@ export const dailyNote: DailyNote = {
 			time: '10:00',
 			title: 'Coach meeting',
 			projects: [PROJECT],
-			people: ['people/frank-de-vries'],
-			body: 'Discussed the sensor research. [@Frank de Vries](person:people/frank-de-vries) wants the price per sensor in it.'
+			people: ['frank-de-vries'],
+			body: 'Discussed the sensor research. [[people/frank-de-vries]] wants the price per sensor in it.'
 		},
-		{ time: '14:30', title: 'Client call', projects: [PROJECT], people: ['people/ries-van-dam', 'people/sam-bakker'], body: 'Ries is happy with the dashboard.' }
+		{ time: '14:30', title: 'Client call', projects: [PROJECT], people: ['ries-van-dam', 'sam-bakker'], body: 'Ries is happy with the dashboard.' }
 	],
 	updatedAt: at(16)
 };
