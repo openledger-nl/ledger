@@ -52,7 +52,7 @@
 		hotkey works outside Ledger too and is set under Tools, Screenshots.
 	</p>
 	<div class="form-row">
-		<label class="sc-search grow">
+		<label class="sc-search">
 			<Search size={14} />
 			<input type="search" bind:value={query} placeholder="Find a command, project or thread" aria-label="Find a command" spellcheck="false" autocomplete="off" />
 		</label>
@@ -91,6 +91,7 @@
 
 <style>
 	.sc-search {
+		flex: 1;
 		display: flex;
 		align-items: center;
 		gap: 8px;
