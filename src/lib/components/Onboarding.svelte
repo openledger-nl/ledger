@@ -1,6 +1,7 @@
 <script lang="ts">
 	// The guide on the home page for a new client: bring in a vault that exists, or set one up step by step (what Ledger is
-	// for, a semester when that is school, a first thread, a first deliverable). What a step needs is read
+	// for first, a semester when that is study, a first project of that kind, a first thread, a first deliverable). What a
+	// step needs is read
 	// from the vault, so it ticks itself off when it is done, wherever it was done, and the guide ends with the first
 	// deliverable (onboarding.rs keeps the rest).
 	import Dropdown from '$lib/components/Dropdown.svelte';
@@ -11,6 +12,7 @@
 	import Compass from '@lucide/svelte/icons/compass';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import FolderInput from '@lucide/svelte/icons/folder-input';
+	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import GraduationCap from '@lucide/svelte/icons/graduation-cap';
 	import MessageSquareText from '@lucide/svelte/icons/message-square-text';
 	import Palette from '@lucide/svelte/icons/palette';
@@ -23,6 +25,7 @@
 	import type { Component } from 'svelte';
 	import type { OnboardingStatus, ProjectSummary, Purpose, Semester, SemesterDraft, SemesterTemplate, Settings } from '$lib/types';
 	import OnboardingImport from './OnboardingImport.svelte';
+	import ProjectModal from './ProjectModal.svelte';
 	import SemesterModal from './SemesterModal.svelte';
 
 	let {
@@ -41,7 +44,7 @@
 		onboarding: OnboardingStatus;
 	} = $props();
 
-	type StepId = 'purpose' | 'semester' | 'thread' | 'deliverable';
+	type StepId = 'purpose' | 'semester' | 'project' | 'thread' | 'deliverable';
 	interface Step {
 		id: StepId;
 		title: string;
@@ -68,12 +71,12 @@
 	let semesterTemplates = $state<SemesterTemplate[]>([]);
 	api.listSemesterTemplates().then((t) => (semesterTemplates = t), () => {});
 	let busy = $state(false);
+	/** The New project window, open for the first project. */
+	let making = $state(false);
 
-	// The first thread: in a project that exists, or one made with it.
-	let projectName = $state('');
+	// The first thread and deliverable, in the project chosen (the first one, unless there are more).
 	let threadTitle = $state('');
 	let chosenProject = $state('');
-	let madeProject = $state<string | null>(null);
 	// The first deliverable
 	let fileName = $state('');
 
@@ -83,11 +86,11 @@
 	// Not asked yet.
 	const purpose = $derived(onboarding.purpose ?? null);
 	const chosen = $derived(purposes.find((p) => p.id === purpose));
-	// Only school works in semesters, so the semester step comes with that answer.
+	// Only study works in semesters, so the semester step comes with that answer.
 	const steps = $derived<Step[]>([
 		{
 			id: 'purpose',
-			title: 'What you use Ledger for',
+			title: 'What do you want to use Ledger for first?',
 			icon: chosen?.icon ?? Compass,
 			done: purpose !== null,
 			skipped: false,
@@ -105,6 +108,14 @@
 					}
 				]
 			: []),
+		{
+			id: 'project',
+			title: 'Set up your first project',
+			icon: FolderPlus,
+			done: projects.length > 0,
+			skipped: false,
+			summary: projects[0]?.name ?? ''
+		},
 		{
 			id: 'thread',
 			title: 'Start your first thread',
@@ -127,7 +138,7 @@
 	const open = $derived(revisiting ?? current?.id ?? null);
 	const finishedCount = $derived(steps.filter(passed).length);
 	const welcome = $derived(!started && !importing && finishedCount === 0 && projects.length === 0);
-	const stepCount = $derived(steps.length === 4 ? 'Four' : 'Three');
+	const stepCount = $derived(['Three', 'Four', 'Five'][steps.length - 3] ?? String(steps.length));
 
 	async function choosePurpose(answer: Purpose) {
 		busy = true;
@@ -144,15 +155,12 @@
 	}
 
 	async function createThread() {
+		if (!project) return;
 		busy = true;
-		const slug = project?.slug ?? madeProject ?? (await attempt(() => api.createProject(projectName.trim())))?.slug;
-		if (slug) {
-			madeProject = slug;
-			const made = await attempt(() => api.createThread(slug, threadTitle.trim()));
-			if (made) {
-				threadTitle = '';
-				await refresh();
-			}
+		const slug = project.slug;
+		if (await attempt(() => api.createThread(slug, threadTitle.trim()))) {
+			threadTitle = '';
+			await refresh();
 		}
 		busy = false;
 	}
@@ -178,7 +186,7 @@
 	async function hide() {
 		const ok = await confirmDialog({
 			title: 'Hide the setup guide?',
-			message: 'What you have set up stays as it is. You can bring the guide back under Settings > Sync & external > Vault.',
+			message: 'What you have set up stays as it is. You can bring the guide back under Settings > Vault & external > Vault.',
 			confirmLabel: 'Hide the guide'
 		});
 		if (ok) await finish();
@@ -213,7 +221,7 @@
 			<button class="onb-choice primary" onclick={() => (started = true)}>
 				<span class="onb-choice-icon"><Rocket size={20} /></span>
 				<strong>Set up a new vault</strong>
-				<span class="onb-choice-sub">A few short steps: what it is for, a first thread and a first deliverable.</span>
+				<span class="onb-choice-sub">A few short steps: what it is for first, then a first project, thread and deliverable.</span>
 			</button>
 		</div>
 	</section>
@@ -254,7 +262,6 @@
 						{#if open === step.id && (!step.done || revisiting === step.id)}
 							<div class="onb-body">
 								{#if step.id === 'purpose'}
-									<p>The steps below follow your answer: only school works in semesters, so only school sets one up.</p>
 									<div class="onb-choices compact">
 										{#each purposes as p (p.id)}
 											{@const Choice = p.icon}
@@ -282,11 +289,16 @@
 										<button class="btn" onclick={() => (editor = {})}>Create my own</button>
 										<button class="btn ghost" onclick={() => skip('semester')}>Skip for now</button>
 									</div>
-								{:else if step.id === 'thread'}
+								{:else if step.id === 'project'}
 									<p>
-										A <strong>project</strong> holds the work on one subject: a course, a client, a team. A <strong>thread</strong> is where you
-										think it through, with posts, prompts and feedback.
+										A <strong>project</strong> holds the work on one subject: a course, a client, a team. It starts from its goal: what it must
+										achieve, and for whom.
 									</p>
+									<div class="onb-actions">
+										<button class="btn primary" onclick={() => (making = true)}><FolderPlus size={15} />{chosen ? `New ${chosen.title.toLowerCase()} project` : 'New project'}</button>
+									</div>
+								{:else if step.id === 'thread'}
+									<p>A <strong>thread</strong> is where you think the work through, with posts, prompts and feedback.</p>
 									<form
 										class="onb-form"
 										onsubmit={(e) => {
@@ -299,18 +311,13 @@
 												Project
 												<Dropdown bind:value={chosenProject} options={projects.map((p) => ({ value: p.slug, label: p.name }))} label="Project" full />
 											</div>
-										{:else if !project && !madeProject}
-											<label class="field">
-												Project
-												<input bind:value={projectName} placeholder="e.g. Pricing overhaul" autocomplete="off" />
-											</label>
 										{/if}
 										<label class="field">
 											Thread
 											<input bind:value={threadTitle} placeholder="e.g. What should we charge?" autocomplete="off" />
 										</label>
 										<div class="onb-actions">
-											<button class="btn primary" type="submit" disabled={busy || !threadTitle.trim() || (!project && !madeProject && !projectName.trim())}>
+											<button class="btn primary" type="submit" disabled={busy || !project || !threadTitle.trim()}>
 												Create thread
 											</button>
 										</div>
@@ -363,4 +370,7 @@
 
 {#if editor}
 	<SemesterModal semester={null} existing={semesters} preset={editor.preset} onclose={() => (editor = undefined)} />
+{/if}
+{#if making}
+	<ProjectModal kind={purpose ?? 'study'} oncreated={(slug) => (chosenProject = slug)} onclose={() => (making = false)} />
 {/if}

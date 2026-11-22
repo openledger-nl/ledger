@@ -18,6 +18,10 @@
 	<Onboarding projects={fx.projects} semesters={[]} deliverableCount={0} settings={fx.settings} onboarding={{ ...fx.onboarding, purpose: null }} />
 </Story>
 
+<Story name="The first project" asChild>
+	<Onboarding projects={[]} semesters={[fx.semester]} deliverableCount={0} settings={fx.settings} onboarding={fx.onboarding} />
+</Story>
+
 <Story name="A new vault" asChild>
 	<Onboarding projects={[]} semesters={[]} deliverableCount={0} settings={fx.settings} onboarding={fx.onboarding} />
 </Story>

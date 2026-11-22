@@ -19,10 +19,16 @@
 
 	let {
 		project = null,
+		kind: startKind = 'study',
+		oncreated,
 		onclose
 	}: {
 		/** The project to set the facts of; null makes a new one. */
 		project?: { slug: string; name: string; meta: ProjectMeta | null } | null;
+		/** The kind a new project starts as. */
+		kind?: ProjectKind;
+		/** Called with a new project's slug instead of going to its page. */
+		oncreated?: (slug: string) => void;
 		onclose: () => void;
 	} = $props();
 
@@ -31,7 +37,8 @@
 	const m = project?.meta;
 	// svelte-ignore state_referenced_locally
 	let name = $state(project?.name ?? '');
-	let kind = $state<ProjectKind>(m?.kind ?? 'study');
+	// svelte-ignore state_referenced_locally
+	let kind = $state<ProjectKind>(m?.kind ?? startKind);
 	let goal = $state(m?.goal ?? '');
 	let endMode = $state<'semester' | 'date' | 'none'>(m ? (m.end === 'semester' ? 'semester' : m.end ? 'date' : 'none') : 'semester');
 	let endDate = $state(m?.end && m.end !== 'semester' ? m.end : '');
@@ -127,7 +134,8 @@
 		await refresh();
 		if (!project) {
 			toast('Project created');
-			await goto(projectUrl(slug));
+			if (oncreated) oncreated(slug);
+			else await goto(projectUrl(slug));
 		}
 	}
 </script>
