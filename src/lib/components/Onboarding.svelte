@@ -177,6 +177,12 @@
 		busy = false;
 	}
 
+	/** A form's submit: `act`, in place of sending the form. */
+	const submit = (act: () => Promise<void>) => (e: SubmitEvent) => {
+		e.preventDefault();
+		void act();
+	};
+
 	async function finish(thanks?: string) {
 		if (!(await attempt(() => api.finishOnboarding()))) return;
 		if (thanks) toast(thanks);
@@ -192,6 +198,16 @@
 		if (ok) await finish();
 	}
 </script>
+
+<!-- Which project the first thread and deliverable go in, when there is more than one. -->
+{#snippet projectPicker()}
+	{#if projects.length > 1}
+		<div class="field">
+			Project
+			<Dropdown bind:value={chosenProject} options={projects.map((p) => ({ value: p.slug, label: p.name }))} label="Project" full />
+		</div>
+	{/if}
+{/snippet}
 
 {#if importing && settings}
 	<section class="onb" aria-label="Import a vault">
@@ -299,19 +315,8 @@
 									</div>
 								{:else if step.id === 'thread'}
 									<p>A <strong>thread</strong> is where you think the work through, with posts, prompts and feedback.</p>
-									<form
-										class="onb-form"
-										onsubmit={(e) => {
-											e.preventDefault();
-											void createThread();
-										}}
-									>
-										{#if projects.length > 1}
-											<div class="field">
-												Project
-												<Dropdown bind:value={chosenProject} options={projects.map((p) => ({ value: p.slug, label: p.name }))} label="Project" full />
-											</div>
-										{/if}
+									<form class="onb-form" onsubmit={submit(createThread)}>
+										{@render projectPicker()}
 										<label class="field">
 											Thread
 											<input bind:value={threadTitle} placeholder="e.g. What should we charge?" autocomplete="off" />
@@ -327,19 +332,8 @@
 										A <strong>deliverable</strong> is a file in the project that your prompts and feedback are about: a brief, a report, a plan.
 										Give it a name; you write it in Ledger.
 									</p>
-									<form
-										class="onb-form"
-										onsubmit={(e) => {
-											e.preventDefault();
-											void createDeliverable();
-										}}
-									>
-										{#if projects.length > 1}
-											<div class="field">
-												Project
-												<Dropdown bind:value={chosenProject} options={projects.map((p) => ({ value: p.slug, label: p.name }))} label="Project" full />
-											</div>
-										{/if}
+									<form class="onb-form" onsubmit={submit(createDeliverable)}>
+										{@render projectPicker()}
 										<label class="field">
 											File name
 											<input bind:value={fileName} placeholder="e.g. pricing-brief.md" autocomplete="off" spellcheck="false" />
