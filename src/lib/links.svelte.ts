@@ -1,6 +1,6 @@
-// The [[links]] of the project the window is in: the index they are resolved and completed against (loaded with the
-// project, so every change that refreshes the page refreshes it), and what opening one does. The rules for matching
-// are in links.ts.
+// The [[links]] of the project the window is in, or of the targets a page gives (a meeting's, of its projects): the index
+// they are resolved and completed against (loaded with the page, so every change that refreshes it refreshes them), and
+// what opening one does. The rules for matching are in links.ts.
 
 import { goto } from '$app/navigation';
 import { page } from '$app/state';
@@ -8,20 +8,26 @@ import { deliverableUrl, threadUrl } from './actions';
 import { LinkIndex } from './links';
 import type { LinkTarget } from './types';
 
-/** Where a link leads. A piece of feedback opens on the deliverable it is about, with its window open at it. */
-export function linkUrl(project: string, target: LinkTarget): string {
+/** Where a link leads, in the target's own project. A piece of feedback opens on the deliverable it is about, with its
+ *  window open at it; a meeting day on that day's notes. */
+export function linkUrl(target: LinkTarget): string {
+	const project = target.project;
+	if (target.kind === 'meeting') return `/meetings?day=${encodeURIComponent(target.id)}`;
 	if (target.kind === 'thread') return threadUrl(project, target.id);
 	const url = deliverableUrl(project, target.open || target.id);
 	return target.kind === 'feedback' ? `${url}&feedback=${encodeURIComponent(target.id)}` : url;
 }
 
 /**
- * The links of the project the page is in, and a way to follow one. Call it while a component is being set up. Outside a
- * project (the vault-wide templates) there is no index: nothing resolves and nothing is offered.
+ * The links of the project the page is in, and a way to follow one. Call it while a component is being set up. `own`
+ * gives the targets instead (a meeting's notes, outside any project). Outside a project and without `own` (the
+ * vault-wide templates) there is no index: nothing resolves and nothing is offered.
  */
-export function projectLinks() {
+export function projectLinks(own?: () => LinkTarget[] | undefined) {
 	const project = $derived(page.params.project ?? null);
 	const index = $derived.by(() => {
+		const given = own?.();
+		if (given) return new LinkIndex(given);
 		const targets = (page.data as { links?: LinkTarget[] }).links;
 		return project && targets ? new LinkIndex(targets) : null;
 	});
@@ -34,7 +40,7 @@ export function projectLinks() {
 		},
 		/** Opens what a link points at. */
 		open(target: LinkTarget) {
-			if (project) void goto(linkUrl(project, target));
+			void goto(linkUrl(target));
 		}
 	};
 }

@@ -58,18 +58,24 @@
 	$effect(() => {
 		void shown;
 		const index = links.index;
-		const project = links.project;
 		for (const a of root.querySelectorAll<HTMLAnchorElement>('a.wikilink')) {
 			const name = a.dataset.wikilink ?? '';
 			const target = index?.resolve(name) ?? null;
 			a.classList.toggle('unresolved', !target);
-			if (!target || !project) {
+			if (!target) {
 				a.removeAttribute('href');
 				a.title = index ? `Nothing in this project is called "${name}"` : 'Links work inside a project';
 				continue;
 			}
-			a.href = linkUrl(project, target);
-			a.title = target.kind === 'feedback' ? `Feedback ${target.detail}` : target.kind === 'thread' ? 'Thread' : `Deliverable ${target.id}`;
+			a.href = linkUrl(target);
+			a.title =
+				target.kind === 'feedback'
+					? `Feedback ${target.detail}`
+					: target.kind === 'thread'
+						? 'Thread'
+						: target.kind === 'meeting'
+							? `Meeting notes of ${target.id}`
+							: `Deliverable ${target.id}`;
 			// Feedback has no name to type: without words of its own, the link says what the feedback says.
 			if (target.kind === 'feedback' && !a.dataset.alias) a.textContent = target.title;
 		}

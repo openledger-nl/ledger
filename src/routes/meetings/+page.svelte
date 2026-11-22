@@ -54,7 +54,7 @@
 				{/each}
 			</ul>
 			{#key day}
-				<MeetingNoteEditor date={day} note={noteOf(day)} {projectOptions} {peopleOptions} people={data.people} />
+				<MeetingNoteEditor date={day} note={noteOf(day)} {projectOptions} {peopleOptions} people={data.people} links={data.links} />
 			{/key}
 		</div>
 	</div>

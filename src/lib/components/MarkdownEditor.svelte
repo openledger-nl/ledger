@@ -3,7 +3,7 @@
 	import { EditorState, type Extension } from '@codemirror/state';
 	import { EditorView } from '@codemirror/view';
 	import type { Mark } from '$lib/anchors';
-	import type { EvidenceMention } from '$lib/types';
+	import type { EvidenceMention, LinkTarget } from '$lib/types';
 	import { projectLinks } from '$lib/links.svelte';
 	import { changeRect, changeTracking, revealChange, revertChange, showChanges, type ChangeView } from '$lib/editorChanges';
 	import { markdownEditor, refreshLinks, revealMark, setSourceMode, showMarks, type MentionOption } from '$lib/markdownEditor';
@@ -33,6 +33,7 @@
 		onmark,
 		mentions,
 		people,
+		linkTargets,
 		changes,
 		onchangeclick
 	}: {
@@ -63,14 +64,17 @@
 		mentions?: EvidenceMention[];
 		/** Or the people `@` offers (a meeting's), each written as `[@Name](person:<tag>)`. */
 		people?: MentionOption[];
+		/** What [[links]] point at here, instead of the project the window is in: a meeting's, of its projects. */
+		linkTargets?: LinkTarget[];
 		/** The changes since a version, in the margin (and in the text with `inline`); see editorChanges.ts. */
 		changes?: ChangeView | null;
 		/** A click on a change's bar or mark. Given, the editor has a margin for the changes. */
 		onchangeclick?: (id: string, rect: DOMRect) => void;
 	} = $props();
 
-	// [[links]] point at the threads, deliverables and feedback of the project the window is in (none outside a project).
-	const links = projectLinks();
+	// [[links]] point at the threads, deliverables, feedback and meeting days of the project the window is in, or at
+	// `linkTargets` when given (none outside a project otherwise).
+	const links = projectLinks(() => linkTargets);
 
 	let host: HTMLDivElement;
 	let view: EditorView | undefined;

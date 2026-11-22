@@ -104,6 +104,7 @@ const answers: Record<string, unknown | ((args: Record<string, unknown>) => unkn
 	],
 	template_skeleton: fx.template.body,
 	list_links: [],
+	list_vault_links: [],
 	search: [
 		{
 			kind: 'post',
