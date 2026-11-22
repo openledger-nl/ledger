@@ -77,7 +77,6 @@
 
 	// The meetings as edited here, from the saved note (the page keys this component by day).
 	let meetings = $state<MeetingSection[]>(untrack(() => structuredClone(note?.meetings ?? [])));
-	const id = untrack(() => note?.id ?? `daily-${date}`);
 	/** The meetings as this editor and the vault last agreed on them: what was loaded, or last saved. */
 	let agreed = untrack(() => JSON.stringify(note?.meetings ?? []));
 
@@ -92,7 +91,7 @@
 		const timer = setTimeout(async () => {
 			const list = JSON.parse(snapshot) as MeetingSection[];
 			// A day without meetings (and nothing else in its note) has no file: the backend takes it away.
-			const saved = await attempt(() => api.saveDailyNote({ date, id, meetings: list }));
+			const saved = await attempt(() => api.saveDailyNote({ date, meetings: list }));
 			if (saved !== undefined) agreed = snapshot;
 			await refresh();
 		}, 700);

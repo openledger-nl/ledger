@@ -1373,8 +1373,8 @@ fn a_note_is_a_markdown_file_in_the_thread_that_survives_reading_the_vault_again
 
     let text = fs::read_to_string(note_file(&f, &note.id)).unwrap();
     assert!(text.starts_with("---\n"), "{text}");
+    assert!(!text.contains("\nid:"), "its id is its file's name: {text}");
     for expected in [
-        "id: 1793660376958-4o6j4fvm".to_string(),
         format!("prompt: {}", f.prompt.id),
         "status: finished".to_string(),
         "model: claude-test".to_string(),

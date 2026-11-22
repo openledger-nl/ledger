@@ -3,8 +3,6 @@
 //!
 //! ```text
 //! ---
-//! type: daily
-//! id: daily-2026-11-09
 //! date: 2026-11-09
 //! tags: [project/thrym-player, people/frank]      gathered from the meetings, plus any plain tags of your own
 //! meetings:                                       each meeting's time and the projects it belongs to, by its title
@@ -69,13 +67,11 @@ pub struct DailyNote {
 #[serde(rename_all = "camelCase", default)]
 pub struct DailyDraft {
     pub date: String,
-    pub id: Option<String>,
     pub meetings: Vec<MeetingSection>,
 }
 
 /// A note as it was read, before it is stored: the meetings and what else the file holds.
 pub struct ParsedDaily {
-    pub id: Option<String>,
     pub meetings: Vec<MeetingSection>,
     /// The text before the first meeting, kept as it is.
     pub preamble: String,
@@ -168,11 +164,11 @@ pub fn parse(meta: &Mapping, body: &str) -> ParsedDaily {
     }
 
     let mut extra = meta.clone();
-    for key in ["type", "id", "date", "tags", "meetings"] {
+    for key in ["date", "tags", "meetings"] {
         extra.remove(key);
     }
     let own_tags = meta.list("tags").into_iter().map(|t| t.trim_start_matches('#').to_string()).filter(|t| !t.is_empty() && !t.contains('/')).collect();
-    ParsedDaily { id: meta.text("id"), meetings, preamble: preamble.join("\n").trim().to_string(), extra, own_tags }
+    ParsedDaily { meetings, preamble: preamble.join("\n").trim().to_string(), extra, own_tags }
 }
 
 /// Every tag of the meetings, each once: projects first (`project/x`), then people.
@@ -191,10 +187,8 @@ fn heading_of(m: &MeetingSection) -> String {
 
 /// The note's text: Ledger's keys first (each meeting's time and projects among them), then any of your own, the text
 /// before the meetings, then a heading each.
-pub fn render(date: &str, id: &str, meetings: &[MeetingSection], preamble: &str, extra: &Mapping, own_tags: &[String]) -> String {
+pub fn render(date: &str, meetings: &[MeetingSection], preamble: &str, extra: &Mapping, own_tags: &[String]) -> String {
     let mut meta = Mapping::new();
-    frontmatter::set(&mut meta, "type", "daily");
-    frontmatter::set(&mut meta, "id", id);
     frontmatter::set(&mut meta, "date", date);
     let mut tags = gathered(meetings);
     tags.extend(own_tags.iter().filter(|t| !tags.contains(t)).cloned().collect::<Vec<_>>());
@@ -248,13 +242,18 @@ fn split(text: String) -> Vec<String> {
     text.lines().filter(|l| !l.is_empty()).map(str::to_string).collect()
 }
 
+/// The id a day's note goes by in the app, from its date: the file holds no id of its own.
+fn id_of(date: &str) -> String {
+    format!("daily-{date}")
+}
+
 /// Stores a day's note as read or saved, replacing what the day had.
-pub fn store(conn: &Connection, date: &str, id: &str, parsed: &ParsedDaily, updated_at: &str) -> Result<()> {
+pub fn store(conn: &Connection, date: &str, parsed: &ParsedDaily, updated_at: &str) -> Result<()> {
     conn.execute("DELETE FROM daily_notes WHERE date = ?1", [date])?;
     let extra = serde_yaml_ng::to_string(&Value::Mapping(parsed.extra.clone())).unwrap_or_default();
     conn.execute(
         "INSERT INTO daily_notes (date, id, preamble, extra, own_tags, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![date, id, parsed.preamble, if parsed.extra.is_empty() { String::new() } else { extra }, joined(&parsed.own_tags), updated_at],
+        params![date, id_of(date), parsed.preamble, if parsed.extra.is_empty() { String::new() } else { extra }, joined(&parsed.own_tags), updated_at],
     )?;
     for (position, m) in parsed.meetings.iter().enumerate() {
         conn.execute(
@@ -326,13 +325,10 @@ pub fn save(conn: &Connection, draft: &DailyDraft) -> Result<Option<DailyNote>> 
         })
         .collect();
     // What the file holds besides the meetings stays as it was.
-    let kept = query_opt(conn, "SELECT id, preamble, extra, own_tags FROM daily_notes WHERE date = ?1", [&draft.date], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?))
+    let kept = query_opt(conn, "SELECT preamble, extra, own_tags FROM daily_notes WHERE date = ?1", [&draft.date], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
     })?;
-    let (id, preamble, extra, own_tags) = match kept {
-        Some((id, preamble, extra, own)) => (id, preamble, extra, own),
-        None => (draft.id.clone().filter(|i| !i.trim().is_empty()).unwrap_or_else(|| format!("daily-{}", draft.date)), String::new(), String::new(), String::new()),
-    };
+    let (preamble, extra, own_tags) = kept.unwrap_or_default();
     let extra = match serde_yaml_ng::from_str::<Value>(&extra) {
         Ok(Value::Mapping(map)) => map,
         _ => Mapping::new(),
@@ -343,8 +339,8 @@ pub fn save(conn: &Connection, draft: &DailyDraft) -> Result<Option<DailyNote>> 
         delete(conn, &draft.date)?;
         return Ok(None);
     }
-    let parsed = ParsedDaily { id: Some(id.clone()), meetings, preamble, extra, own_tags: split(own_tags) };
-    store(conn, &draft.date, &id, &parsed, &ids::now())?;
+    let parsed = ParsedDaily { meetings, preamble, extra, own_tags: split(own_tags) };
+    store(conn, &draft.date, &parsed, &ids::now())?;
     get(conn, &draft.date)
 }
 
@@ -356,17 +352,17 @@ pub fn delete(conn: &Connection, date: &str) -> Result<()> {
 
 /// Every day's note as its file, for the vault.
 pub fn export(conn: &Connection) -> Result<Vec<(String, String)>> {
-    let rows = query_all(conn, "SELECT date, id, preamble, extra, own_tags FROM daily_notes ORDER BY date", [], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?))
+    let rows = query_all(conn, "SELECT date, preamble, extra, own_tags FROM daily_notes ORDER BY date", [], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?))
     })?;
     let mut out = vec![];
-    for (date, id, preamble, extra, own_tags) in rows {
+    for (date, preamble, extra, own_tags) in rows {
         let extra = match serde_yaml_ng::from_str::<Value>(&extra) {
             Ok(Value::Mapping(map)) => map,
             _ => Mapping::new(),
         };
         let meetings = meetings_of(conn, &date)?;
-        out.push((file(&date), render(&date, &id, &meetings, &preamble, &extra, &split(own_tags))));
+        out.push((file(&date), render(&date, &meetings, &preamble, &extra, &split(own_tags))));
     }
     Ok(out)
 }

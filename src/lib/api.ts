@@ -230,7 +230,7 @@ export const api = {
 		call<DailyNote[]>('list_daily_notes', { project: filter.project ?? null, person: filter.person ?? null }),
 	getDailyNote: (date: string) => call<DailyNote | null>('get_daily_note', { date }),
 	/** Replaces the day's meetings; none (and nothing else in the note) removes the note, and null comes back. */
-	saveDailyNote: (note: Pick<DailyNote, 'date' | 'id' | 'meetings'>) => call<DailyNote | null>('save_daily_note', { note }),
+	saveDailyNote: (note: Pick<DailyNote, 'date' | 'meetings'>) => call<DailyNote | null>('save_daily_note', { note }),
 	deleteDailyNote: (date: string) => call<void>('delete_daily_note', { date }),
 
 	// feedback

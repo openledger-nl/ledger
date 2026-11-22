@@ -491,7 +491,8 @@ fn a_hand_written_vault_loads_and_is_repaired() {
     assert_eq!(first.title, "first");
     let bodies: Vec<_> = first.posts.iter().map(|p| (p.id.as_str(), p.body.as_str(), p.parent_id.as_deref())).collect();
     assert!(bodies.contains(&("a", "Just a plain markdown file.", None)), "{bodies:?}");
-    assert!(bodies.contains(&("7", "A reply to the plain file.", Some("a"))), "{bodies:?}");
+    // An id in the frontmatter is not the post's: its file's name is.
+    assert!(bodies.contains(&("b", "A reply to the plain file.", Some("a"))), "{bodies:?}");
     assert!(first.posts.iter().any(|p| p.id == "odd" && p.body.contains("not a mapping")));
     let second = threads::get(&conn, root, "ideas", "second").unwrap();
     assert_eq!((second.title.as_str(), second.linked_threads.len(), first.linked_threads.len()), ("Second thread", 1, 1), "links count from either side and dangling ones are dropped");

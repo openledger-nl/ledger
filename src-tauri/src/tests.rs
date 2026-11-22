@@ -1103,7 +1103,7 @@ fn links_list_what_a_project_can_point_at() {
 
     // A day with a meeting of the project is a target too, by its date, called by the project's meetings that day.
     let meeting = |title: &str, projects: &[&str]| crate::daily::MeetingSection { title: title.into(), projects: projects.iter().map(|p| p.to_string()).collect(), ..Default::default() };
-    let draft = crate::daily::DailyDraft { date: "2026-11-22".into(), id: None, meetings: vec![meeting("Coach", &[&p]), meeting("Lunch", &[]), meeting("Review", &[&p, &other])] };
+    let draft = crate::daily::DailyDraft { date: "2026-11-22".into(), meetings: vec![meeting("Coach", &[&p]), meeting("Lunch", &[]), meeting("Review", &[&p, &other])] };
     crate::daily::save(&c, &draft).unwrap();
     let found = links::list(&c, &p).unwrap();
     let day = found.last().unwrap();

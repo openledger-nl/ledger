@@ -437,7 +437,6 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?, r.get(12)?, r.get(13)?)),
     )? {
         let mut meta = Mapping::new();
-        frontmatter::set(&mut meta, "id", id.clone());
         frontmatter::set_opt(&mut meta, "parentId", parent.as_deref());
         frontmatter::set_flag(&mut meta, "guidingQuestion", guiding);
         frontmatter::set_flag(&mut meta, "versionPublished", published);
@@ -471,7 +470,6 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)),
     )? {
         let mut meta = Mapping::new();
-        frontmatter::set(&mut meta, "id", id.clone());
         frontmatter::set_opt(&mut meta, "title", Some(&title));
         frontmatter::set_opt(&mut meta, "template", template.as_deref());
         frontmatter::set_opt(&mut meta, "base", Some(&base));
@@ -499,7 +497,6 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?)),
     )? {
         let mut meta = Mapping::new();
-        frontmatter::set(&mut meta, "id", id.clone());
         frontmatter::set_opt(&mut meta, "deliverable", Some(&path));
         frontmatter::set_opt(&mut meta, "version", version.as_deref());
         if let Some((kind, story, daily)) = feedback_v1.remove(&id) {
@@ -527,7 +524,6 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
     )? {
         let mut meta = Mapping::new();
-        frontmatter::set(&mut meta, "id", id.clone());
         frontmatter::set(&mut meta, "uploadedAt", uploaded_at);
         frontmatter::set(&mut meta, "file", file);
         frontmatter::set(&mut meta, "name", name);
@@ -550,7 +546,6 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?)),
     )? {
         let mut meta = Mapping::new();
-        frontmatter::set(&mut meta, "id", id.clone());
         frontmatter::set(&mut meta, "prompt", prompt);
         frontmatter::set(&mut meta, "status", status);
         frontmatter::set_opt(&mut meta, "model", Some(&model));
@@ -608,7 +603,6 @@ fn export_stories_and_tasks(conn: &Connection, files: &mut BTreeMap<String, Stri
     for project in query_all(conn, "SELECT slug FROM projects", [], |r| r.get::<_, String>(0))? {
         for story in crate::stories::list(conn, &project)? {
             let mut meta = Mapping::new();
-            frontmatter::set(&mut meta, "id", story.id.clone());
             frontmatter::set(&mut meta, "summary", story.summary);
             frontmatter::set_opt(&mut meta, "role", Some(&story.role));
             frontmatter::set_opt(&mut meta, "want", Some(&story.want));
@@ -637,7 +631,6 @@ fn export_stories_and_tasks(conn: &Connection, files: &mut BTreeMap<String, Stri
 
         for task in board::tasks(conn, &project)? {
             let mut meta = Mapping::new();
-            frontmatter::set(&mut meta, "id", task.id.clone());
             frontmatter::set(&mut meta, "title", task.title);
             frontmatter::set(&mut meta, "columnId", task.column_id);
             frontmatter::set_opt(&mut meta, "story", task.story_id.as_deref());
@@ -828,8 +821,7 @@ fn import_daily(conn: &Connection, source: &Source) -> Result<()> {
         let rel = crate::daily::file(&stem);
         let Some((meta, body)) = source.parsed(&rel) else { continue };
         let parsed = crate::daily::parse(&meta, &body);
-        let id = parsed.id.clone().unwrap_or_else(|| format!("daily-{stem}"));
-        crate::daily::store(conn, &stem, &id, &parsed, &source.stamp(&rel))?;
+        crate::daily::store(conn, &stem, &parsed, &source.stamp(&rel))?;
     }
     Ok(())
 }
@@ -974,7 +966,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             }
             let created_at = meta.text("createdAt").unwrap_or_else(|| source.stamp(&rel));
             posts.push((
-                meta.text("id").unwrap_or(stem),
+                stem,
                 slug.clone(),
                 meta.text("parentId"),
                 meta.flag("guidingQuestion"),
@@ -1023,7 +1015,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             }
             let created_at = meta.text("createdAt").unwrap_or_else(|| source.stamp(&rel));
             prompts.push((
-                meta.text("id").unwrap_or(stem),
+                stem,
                 slug.clone(),
                 meta.text("title").unwrap_or_default(),
                 meta.text("template"),
@@ -1051,7 +1043,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             }
             let created_at = meta.text("createdAt").unwrap_or_else(|| source.stamp(&rel));
             let status = if meta.text("status").as_deref() == Some("resolved") { "resolved" } else { "open" };
-            let id = meta.text("id").unwrap_or(stem);
+            let id = stem;
             feedback_extras.push((id.clone(), extra));
             feedback_v1.push((id.clone(), kind, story, daily));
             feedback.push((
@@ -1074,7 +1066,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             let Some(file) = meta.text("file") else { continue };
             let name = meta.text("name").unwrap_or_else(|| file.rsplit('/').next().unwrap_or(&file).to_string());
             uploads.push((
-                meta.text("id").unwrap_or(stem),
+                stem,
                 slug.clone(),
                 file,
                 name,
@@ -1095,7 +1087,7 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             };
             let started_at = meta.text("startedAt").unwrap_or_else(|| source.stamp(&rel));
             runs.push((
-                meta.text("id").unwrap_or(stem),
+                stem,
                 slug.clone(),
                 prompt,
                 status.to_string(),
@@ -1302,7 +1294,7 @@ fn import_tasks(conn: &Connection, source: &Source, project: &str, threads: &Has
         let Some((meta, body)) = source.parsed(&rel) else { continue };
         let Some(title) = meta.text("title") else { continue };
         let created_at = meta.text("createdAt").unwrap_or_else(|| source.stamp(&rel));
-        tasks.push((meta.text("id").unwrap_or(stem), title, body, meta, created_at));
+        tasks.push((stem, title, body, meta, created_at));
     }
     tasks.sort_by(|a, b| (&a.4, &a.0).cmp(&(&b.4, &b.0)));
 
