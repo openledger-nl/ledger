@@ -92,7 +92,12 @@
 
 	let semesters = $state<Semester[]>([]);
 	api.listSemesters().then((s) => (semesters = s), () => {});
-	const semester = $derived(currentSemester(semesters) ?? nearestSemester(semesters));
+	// A study project runs in a semester of its own, by its id: the one it has, or for a new project (or one whose
+	// semester is gone) the semester of today, else the nearest.
+	// svelte-ignore state_referenced_locally
+	let semesterId = $state<string | null>(m?.semester ?? null);
+	const semester = $derived(semesters.find((s) => s.id === semesterId) ?? currentSemester(semesters) ?? nearestSemester(semesters));
+	const semesterOptions = $derived(semesters.map((s) => ({ value: s.id, label: s.name, hint: `${dayLabel(s.start)} to ${dayLabel(s.end)}` })));
 
 	// Only a study project can end with the semester; the others start with a date of their own.
 	$effect(() => {
@@ -103,7 +108,7 @@
 		kind,
 		goal: goal.trim(),
 		end: endMode === 'semester' ? 'semester' : endMode === 'date' ? endDate || null : null,
-		semester: kind === 'study' ? (semester?.name ?? null) : null,
+		semester: kind === 'study' ? (semester?.id ?? null) : null,
 		intendedMmm: intended || null,
 		mainQuestion: mainQuestion.trim() || null,
 		client: null
@@ -167,10 +172,17 @@
 		<span>End</span>
 		<div class="pm-ends">
 			{#if kind === 'study'}
-				<label class="check">
-					<input type="radio" bind:group={endMode} value="semester" disabled={!semester} />
-					{#if semester}End of the semester ({semester.name}, {dayLabel(semester.end)}){:else}End of the semester (set one up under Shared, Semesters first){/if}
-				</label>
+				<div class="pm-own">
+					<label class="check">
+						<input type="radio" bind:group={endMode} value="semester" disabled={!semester} />
+						{#if semester}End of the semester ({dayLabel(semester.end)}){:else}End of the semester (set one up under Shared, Semesters first){/if}
+					</label>
+					{#if semester}
+						<span class="pm-date" onfocusin={() => (endMode = 'semester')}>
+							<Dropdown bind:value={() => semester.id, (v) => (semesterId = v)} options={semesterOptions} label="Semester" full />
+						</span>
+					{/if}
+				</div>
 			{/if}
 			<div class="pm-own">
 				<label class="check"><input type="radio" bind:group={endMode} value="date" /> A date of your own</label>

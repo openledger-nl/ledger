@@ -34,6 +34,7 @@
 		mentions,
 		people,
 		linkTargets,
+		linkHome = null,
 		changes,
 		onchangeclick
 	}: {
@@ -62,19 +63,21 @@
 		onmark?: (id: string) => void;
 		/** What typing `@` offers: a Portflow reading guide's evidence items. */
 		mentions?: EvidenceMention[];
-		/** Or the people `@` offers (a meeting's), each written as `[@Name](person:<tag>)`. */
+		/** Or the people `@` offers (a meeting's), each written as a link to them (`[[people/frank]]`). */
 		people?: MentionOption[];
-		/** What [[links]] point at here, instead of the project the window is in: a meeting's, of its projects. */
+		/** What [[links]] point at here, instead of the project the window is in: a meeting's. */
 		linkTargets?: LinkTarget[];
+		/** The project those links are written in (a meeting's only project); null for none. */
+		linkHome?: string | null;
 		/** The changes since a version, in the margin (and in the text with `inline`); see editorChanges.ts. */
 		changes?: ChangeView | null;
 		/** A click on a change's bar or mark. Given, the editor has a margin for the changes. */
 		onchangeclick?: (id: string, rect: DOMRect) => void;
 	} = $props();
 
-	// [[links]] point at the threads, deliverables, feedback and meeting days of the project the window is in, or at
-	// `linkTargets` when given (none outside a project otherwise).
-	const links = projectLinks(() => linkTargets);
+	// [[links]] are read from the project the window is in, or from `linkHome` among `linkTargets` when given (none
+	// outside a project otherwise).
+	const links = projectLinks(() => (linkTargets ? { targets: linkTargets, home: linkHome } : undefined));
 
 	let host: HTMLDivElement;
 	let view: EditorView | undefined;

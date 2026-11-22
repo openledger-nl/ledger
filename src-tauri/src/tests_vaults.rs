@@ -190,3 +190,18 @@ fn walk(root: &Path) -> Vec<(String, Vec<u8>)> {
     go(root, "", &mut out);
     out
 }
+
+#[test]
+fn a_vault_missing_its_marker_is_refused_as_one_not_called_a_0x_vault() {
+    let config = tempdir().unwrap();
+    let vault = tempdir().unwrap();
+    fs::create_dir_all(vault.path().join("shared/people")).unwrap();
+    fs::create_dir_all(vault.path().join("projects/thesis")).unwrap();
+    fs::write(vault.path().join("projects/thesis/project.md"), "---\nname: Thesis\n---\n").unwrap();
+    let before: Vec<_> = walk(vault.path());
+
+    let mut core = Core::without_vault(config.path().to_path_buf()).unwrap();
+    let refused = core.open_vault(vault.path()).unwrap_err().to_string();
+    assert!(refused.contains("without its ledger.json") && !refused.contains("0.x"), "{refused}");
+    assert_eq!(walk(vault.path()), before, "no new marker, so no new id: nothing is written");
+}

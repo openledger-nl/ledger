@@ -31,13 +31,21 @@ fn open(root: &Path) -> (Vault, Connection) {
     (vault, conn)
 }
 
+/// The semester `study` runs in; `with_semester` makes it.
+const NJ26: &str = "nj26";
+
+fn with_semester(conn: &Connection) {
+    let draft = crate::models::SemesterDraft { name: "NJ26".into(), start: "2026-08-31".into(), end: "2027-01-24".into(), ..Default::default() };
+    crate::semesters::create(conn, &draft).unwrap();
+}
+
 fn study(slug: &str) -> ProjectMeta {
     ProjectMeta {
         slug: slug.into(),
         kind: "study".into(),
         goal: "  Give the bakery a rota tool.  ".into(),
         end: Some("semester".into()),
-        semester: Some("NJ26".into()),
+        semester: Some(NJ26.into()),
         intended_mmm: Some("cyborg".into()),
         main_question: Some("How can staff swap shifts?".into()),
         client: Some(String::new()),
@@ -62,6 +70,7 @@ fn a_projects_facts_are_kept_in_its_project_file_and_load_back() {
     let root = dir.path();
     let (mut vault, conn) = open(root);
     let slug = projects::create(&conn, "Thrym Player").unwrap().slug;
+    with_semester(&conn);
     let saved = project_facts::save(&conn, &slug, &study(&slug)).unwrap();
     assert_eq!(saved.goal, "Give the bakery a rota tool.", "trimmed");
     assert_eq!(saved.client, None, "an empty client is none");
@@ -72,7 +81,8 @@ fn a_projects_facts_are_kept_in_its_project_file_and_load_back() {
     let meta = frontmatter::parse(&text).unwrap().meta;
     assert_eq!(meta.text("kind").as_deref(), Some("study"));
     assert_eq!(meta.text("end").as_deref(), Some("semester"));
-    assert_eq!(meta.text("intendedMmm").as_deref(), Some("cyborg"));
+    assert_eq!(meta.text("semester").as_deref(), Some(NJ26), "the semester by its id, which a rename leaves alone");
+    assert_eq!(meta.text("intendedAiUse").as_deref(), Some("cyborg"));
     assert_eq!(meta.text("mainQuestion").as_deref(), Some("How can staff swap shifts?"));
     assert!(meta.get("client").is_none(), "{text}");
 
@@ -86,6 +96,8 @@ fn facts_that_make_no_sense_are_refused() {
     let (_vault, conn) = open(dir.path());
     let slug = projects::create(&conn, "Synth").unwrap().slug;
     let bad = |m: ProjectMeta| project_facts::save(&conn, &slug, &m).is_err();
+    assert!(bad(study(&slug)), "a semester that isn't in the vault");
+    with_semester(&conn);
     assert!(bad(ProjectMeta { kind: "school".into(), ..study(&slug) }));
     assert!(bad(ProjectMeta { goal: " ".into(), ..study(&slug) }));
     assert!(bad(ProjectMeta { end: Some("next week".into()), ..study(&slug) }));
@@ -100,7 +112,7 @@ fn hand_written_facts_are_read_leniently() {
     write(
         root,
         "projects/synth/project.md",
-        "---\nname: Synth build\nkind: Hobby\ngoal: A working synth.\nend: someday\nintendedMmm: robot\n---\n",
+        "---\nname: Synth build\nkind: Hobby\ngoal: A working synth.\nend: someday\nintendedAiUse: robot\n---\n",
     );
     write(root, "projects/bare/project.md", "---\nname: Bare\nkind: work\n---\n");
     let (_vault, conn) = open(root);
@@ -427,7 +439,7 @@ fn hand_written_deliverable_facts_are_read_leniently() {
     write(
         root,
         "projects/acme/project.md",
-        "---\nname: Acme\ndeliverables:\n- path: 03 Brief.md\n  goal: A brief.\n  mmm: robot\n- goal: No path.\n- path: Loose.md\n  goal: Loose.\n---\n",
+        "---\nname: Acme\ndeliverables:\n- path: 03 Brief.md\n  goal: A brief.\n  aiUse: robot\n- goal: No path.\n- path: Loose.md\n  goal: Loose.\n---\n",
     );
     write(root, "projects/acme/deliverables/03 Brief.md", "# Brief\n");
     write(root, "projects/acme/deliverables/Loose.md", "# Loose\n");
@@ -458,7 +470,7 @@ fn a_version_published_with_another_label_keeps_the_intended_one_and_why() {
     let manifest = root.join(format!("projects/{project}/{}", deliverables::manifest_in_project(&plan, &version, [])));
     let text = fs::read_to_string(&manifest).unwrap();
     let meta = frontmatter::parse(&text).unwrap().meta;
-    assert_eq!(meta.text("intendedMmm").as_deref(), Some("man-made"));
+    assert_eq!(meta.text("intendedAiUse").as_deref(), Some("man-made"));
     assert_eq!(meta.text("labelReason").as_deref(), Some("I wrote it myself."));
 
     // It loads back, and is written again the same.
@@ -617,33 +629,36 @@ fn a_days_meetings_are_kept_in_its_daily_note_and_load_back() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let (mut vault, conn) = open(root);
+    let frank = vault_person(&conn, "Frank de Vries");
     let draft = DailyDraft {
         date: "2026-11-09".into(),
-        id: None,
         meetings: vec![
-            meeting("9:00", "Coach meeting", &["thrym-player"], &["coach/frank", "#teammate/sam"], "Split the plan.\n\n- [ ] Ask about sprints"),
-            meeting("", "  Stand-up  ", &["thrym-player", "bakery"], &["teammate/sam"], ""),
+            meeting("9:00", "Coach meeting", &["thrym-player"], &[&frank, "people/sam-de-wit"], "Split the plan.\n\n- [ ] Ask about sprints"),
+            meeting("", "  Stand-up  ", &["thrym-player", "bakery"], &["Sam de Wit"], ""),
         ],
     };
     let saved = daily::save(&conn, &draft).unwrap().unwrap();
     assert_eq!(saved.id, "daily-2026-11-09");
     assert_eq!(saved.meetings[0].time.as_deref(), Some("09:00"));
-    assert_eq!(saved.meetings[0].people, vec!["coach/frank", "teammate/sam"]);
+    assert_eq!(saved.meetings[0].people, vec!["frank-de-vries", "sam-de-wit"], "by their id");
+    assert_eq!(saved.meetings[1].people, vec!["sam-de-wit"]);
+    assert_eq!(crate::people::get(&conn, "sam-de-wit").unwrap().name, "Sam De Wit", "someone new is added to the vault, once");
+    assert_eq!(crate::people::list(&conn).unwrap().len(), 2);
     assert_eq!(saved.meetings[1].title, "Stand-up");
     vault.persist(&conn).unwrap();
 
     let text = read(root, "meetings/2026/11/2026-11-09.md");
     let meta = frontmatter::parse(&text).unwrap().meta;
-    assert_eq!(meta.text("type").as_deref(), Some("daily"));
+    assert!(meta.get("type").is_none() && meta.get("id").is_none(), "a day's note is known by its file's name: {text}");
     assert_eq!(meta.text("date").as_deref(), Some("2026-11-09"));
-    assert_eq!(meta.list("tags"), vec!["project/thrym-player", "project/bakery", "coach/frank", "teammate/sam"]);
+    assert_eq!(meta.list("tags"), vec!["project/thrym-player", "project/bakery"], "who was there is linked, not tagged");
     // Each meeting's time and projects are in the frontmatter; its heading is its title.
     let listed = meta.maps("meetings");
     assert_eq!((listed[0].text("title").as_deref(), listed[0].text("time").as_deref(), listed[0].list("projects")), (Some("Coach meeting"), Some("09:00"), vec!["thrym-player".to_string()]));
     assert_eq!((listed[1].text("title").as_deref(), listed[1].text("time"), listed[1].list("projects")), (Some("Stand-up"), None, vec!["thrym-player".to_string(), "bakery".to_string()]));
     assert!(text.contains("time: 09:00"), "{text}");
-    assert!(text.contains("## Coach meeting\nWith: #coach/frank #teammate/sam\n\nSplit the plan."), "{text}");
-    assert!(text.contains("## Stand-up\nWith: #teammate/sam"), "{text}");
+    assert!(text.contains("## Coach meeting\nWith: [[people/frank-de-vries]], [[people/sam-de-wit]]\n\nSplit the plan."), "{text}");
+    assert!(text.contains("## Stand-up\nWith: [[people/sam-de-wit]]"), "{text}");
 
     let (mut again, conn) = open(root);
     let back = daily::get(&conn, "2026-11-09").unwrap().unwrap();
@@ -656,12 +671,13 @@ fn a_days_meetings_are_kept_in_its_daily_note_and_load_back() {
 fn an_obsidian_daily_note_without_frontmatter_reads_in_and_keeps_its_own_text() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    write(root, "meetings/2026/11/2026-11-10.md", "Rainy day.\n\n## Client call\nwith: #client/ries\nThey like it.\n### Next\nShip it.\n");
+    write(root, "meetings/2026/11/2026-11-10.md", "Rainy day.\n\n## Client call\nwith: [[people/ries|Ries]]\nThey like it.\n### Next\nShip it.\n\n## Walk\nWith: nobody\n");
     write(root, "meetings/2026/11/2026-11-11.md", "---\ntags: [journal, coach/old]\nmood: good\n---\n\nJust a journal entry.\n");
     write(root, "meetings/notes about days.md", "Not a day.\n");
     let (mut vault, conn) = open(root);
     let note = daily::get(&conn, "2026-11-10").unwrap().unwrap();
-    assert_eq!(note.meetings, vec![meeting("", "Client call", &[], &["client/ries"], "They like it.\n### Next\nShip it.")]);
+    // A `With:` line that links to nobody is part of the notes.
+    assert_eq!(note.meetings, vec![meeting("", "Client call", &[], &["ries"], "They like it.\n### Next\nShip it."), meeting("", "Walk", &[], &[], "With: nobody")]);
     assert_eq!(daily::get(&conn, "2026-11-11").unwrap().unwrap().meetings, vec![]);
 
     // Saving the day again keeps the text before the meetings; emptying a journal day keeps its own text and keys.
@@ -669,16 +685,17 @@ fn an_obsidian_daily_note_without_frontmatter_reads_in_and_keeps_its_own_text() 
     changed[0].body = "They love it.".into();
     changed[0].time = Some("14:00".into());
     changed[0].projects = vec!["bakery".into()];
-    daily::save(&conn, &DailyDraft { date: "2026-11-10".into(), id: None, meetings: changed }).unwrap();
-    daily::save(&conn, &DailyDraft { date: "2026-11-11".into(), id: None, meetings: vec![] }).unwrap();
+    daily::save(&conn, &DailyDraft { date: "2026-11-10".into(), meetings: changed }).unwrap();
+    daily::save(&conn, &DailyDraft { date: "2026-11-11".into(), meetings: vec![] }).unwrap();
     vault.persist(&conn).unwrap();
     let ten = read(root, "meetings/2026/11/2026-11-10.md");
-    assert!(ten.contains("Rainy day.\n\n## Client call\nWith: #client/ries\n\nThey love it."), "{ten}");
+    assert!(ten.contains("Rainy day.\n\n## Client call\nWith: [[people/ries]]\n\nThey love it."), "{ten}");
+    assert_eq!(crate::people::get(&conn, "ries").unwrap().name, "Ries", "saving the note gives Ries a file");
     assert!(ten.contains("meetings:\n- title: Client call\n  time: 14:00\n  projects:\n  - bakery\n"), "{ten}");
     // Nothing about the journal day changed, so its file stays as it was written by hand.
     assert_eq!(read(root, "meetings/2026/11/2026-11-11.md"), "---\ntags: [journal, coach/old]\nmood: good\n---\n\nJust a journal entry.\n");
-    // Once it gets a meeting it is written by Ledger: its own text, keys and plain tags stay, an old person tag goes.
-    daily::save(&conn, &DailyDraft { date: "2026-11-11".into(), id: None, meetings: vec![meeting("", "Walk", &[], &[], "")] }).unwrap();
+    // Once it gets a meeting it is written by Ledger: its own text, keys and plain tags stay, a tag with levels goes.
+    daily::save(&conn, &DailyDraft { date: "2026-11-11".into(), meetings: vec![meeting("", "Walk", &[], &[], "")] }).unwrap();
     vault.persist(&conn).unwrap();
     let eleven = read(root, "meetings/2026/11/2026-11-11.md");
     assert!(eleven.contains("mood: good") && eleven.contains("Just a journal entry.\n\n## Walk") && eleven.contains("- journal"), "{eleven}");
@@ -695,7 +712,7 @@ fn a_meetings_time_and_projects_are_found_by_its_heading() {
     write(
         root,
         "meetings/2026/11/2026-11-12.md",
-        "---\nmeetings:\n- title: Stand-up\n  time: '9:00'\n  projects: [bakery]\n- title: Gone\n  time: '11:00'\n- title: stand-up\n  time: '16:00'\n  projects: thrym-player\n---\n\n## Stand-up\n\n## Lunch #food\n\n## Stand-up\nWith: #people/sam\n",
+        "---\nmeetings:\n- title: Stand-up\n  time: '9:00'\n  projects: [bakery]\n- title: Gone\n  time: '11:00'\n- title: stand-up\n  time: '16:00'\n  projects: thrym-player\n---\n\n## Stand-up\n\n## Lunch #food\n\n## Stand-up\nWith: [[people/sam]]\n",
     );
     let (_vault, conn) = open(root);
     let note = daily::get(&conn, "2026-11-12").unwrap().unwrap();
@@ -704,7 +721,7 @@ fn a_meetings_time_and_projects_are_found_by_its_heading() {
         vec![
             meeting("09:00", "Stand-up", &["bakery"], &[], ""),
             meeting("", "Lunch #food", &[], &[], ""),
-            meeting("16:00", "Stand-up", &["thrym-player"], &["people/sam"], ""),
+            meeting("16:00", "Stand-up", &["thrym-player"], &["sam"], ""),
         ]
     );
 }
@@ -714,26 +731,26 @@ fn a_day_without_meetings_has_no_note() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let (mut vault, conn) = open(root);
-    daily::save(&conn, &DailyDraft { date: "2026-11-09".into(), id: None, meetings: vec![meeting("10:00", "Coach", &[], &[], "")] }).unwrap();
+    daily::save(&conn, &DailyDraft { date: "2026-11-09".into(), meetings: vec![meeting("10:00", "Coach", &[], &[], "")] }).unwrap();
     vault.persist(&conn).unwrap();
     assert!(root.join("meetings/2026/11/2026-11-09.md").exists());
-    assert_eq!(daily::save(&conn, &DailyDraft { date: "2026-11-09".into(), id: None, meetings: vec![] }).unwrap(), None);
+    assert_eq!(daily::save(&conn, &DailyDraft { date: "2026-11-09".into(), meetings: vec![] }).unwrap(), None);
     vault.persist(&conn).unwrap();
     assert!(!root.join("meetings/2026/11/2026-11-09.md").exists());
-    assert!(daily::save(&conn, &DailyDraft { date: "9-11-2026".into(), id: None, meetings: vec![] }).is_err());
+    assert!(daily::save(&conn, &DailyDraft { date: "9-11-2026".into(), meetings: vec![] }).is_err());
 }
 
 #[test]
 fn daily_notes_are_found_by_project_and_by_person_newest_first() {
     let dir = tempdir().unwrap();
     let (_vault, conn) = open(dir.path());
-    let day = |date: &str, m: MeetingSection| daily::save(&conn, &DailyDraft { date: date.into(), id: None, meetings: vec![m] }).unwrap();
-    day("2026-11-01", meeting("10:00", "Coach", &["thrym-player"], &["coach/frank"], ""));
-    day("2026-11-03", meeting("10:00", "Client", &["bakery"], &["client/ries"], ""));
-    day("2026-11-05", meeting("10:00", "Team", &["thrym-player"], &["teammate/sam"], ""));
+    let day = |date: &str, m: MeetingSection| daily::save(&conn, &DailyDraft { date: date.into(), meetings: vec![m] }).unwrap();
+    day("2026-11-01", meeting("10:00", "Coach", &["thrym-player"], &["frank"], ""));
+    day("2026-11-03", meeting("10:00", "Client", &["bakery"], &["ries"], ""));
+    day("2026-11-05", meeting("10:00", "Team", &["thrym-player"], &["sam"], ""));
     let dates = |notes: Vec<daily::DailyNote>| notes.into_iter().map(|n| n.date).collect::<Vec<_>>();
     assert_eq!(dates(daily::list(&conn, None, None).unwrap()), vec!["2026-11-05", "2026-11-03", "2026-11-01"]);
     assert_eq!(dates(daily::list(&conn, Some("thrym-player"), None).unwrap()), vec!["2026-11-05", "2026-11-01"]);
-    assert_eq!(dates(daily::list(&conn, None, Some("client/ries")).unwrap()), vec!["2026-11-03"]);
-    assert_eq!(dates(daily::list(&conn, Some("bakery"), Some("coach/frank")).unwrap()), Vec::<String>::new());
+    assert_eq!(dates(daily::list(&conn, None, Some("ries")).unwrap()), vec!["2026-11-03"]);
+    assert_eq!(dates(daily::list(&conn, Some("bakery"), Some("frank")).unwrap()), Vec::<String>::new());
 }

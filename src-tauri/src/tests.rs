@@ -421,7 +421,7 @@ fn a_prompts_deliverable_is_edited_published_and_announced_in_its_thread() {
     // The thread of the prompt that produced it hears about each publish.
     let notes: Vec<_> = posts::list(&c, &p, &t).unwrap().into_iter().filter(|x| x.version_published).collect();
     assert_eq!(notes.len(), 2);
-    assert_eq!(notes[0].body, "Version 1.0 of **launch-plan.md** was just published.");
+    assert_eq!(notes[0].body, "Version 1.0 of **launch-plan.md** was published.");
     assert_eq!((notes[0].deliverable_path.as_deref(), notes[0].deliverable_version.as_deref()), (Some("launch-plan.md"), Some("1.0")));
 
     let listed = deliverables::list(&c, &p).unwrap();
@@ -1073,14 +1073,13 @@ fn markdown_marks_wiki_links_for_the_page_to_resolve() {
 }
 
 #[test]
-fn links_list_what_a_project_can_point_at() {
+fn links_list_what_the_vault_can_point_at() {
     let c = conn();
     let (p, t) = setup(&c);
     let brief = deliverables::create(&c, &p, "Pricing brief", "# Pricing brief\n").unwrap();
     let note = feedback::add(&c, &p, &t, &brief.path, "## Too long\n\nCut the intro.", None).unwrap();
     let long = feedback::add(&c, &p, &t, &brief.path, &"word ".repeat(40), None).unwrap();
     feedback::set_status(&c, &p, &t, &long.id, "resolved").unwrap();
-    // Nothing of another project is on offer.
     let (other, other_thread) = {
         let o = projects::create(&c, "Other").unwrap().slug;
         let ot = threads::create(&c, &o, "Elsewhere").unwrap().slug;
@@ -1089,8 +1088,8 @@ fn links_list_what_a_project_can_point_at() {
     let theirs = deliverables::create(&c, &other, "Theirs", "").unwrap();
     feedback::add(&c, &other, &other_thread, &theirs.path, "not yours", None).unwrap();
 
-    let found = links::list(&c, &p).unwrap();
-    let summary: Vec<_> = found.iter().map(|l| (l.kind.as_str(), l.id.as_str(), l.title.as_str(), l.detail.as_str(), l.open.as_str())).collect();
+    let found = links::list(&c).unwrap();
+    let summary: Vec<_> = found.iter().filter(|l| l.project == p).map(|l| (l.kind.as_str(), l.id.as_str(), l.title.as_str(), l.detail.as_str(), l.open.as_str())).collect();
     assert_eq!(summary.len(), 4, "{summary:?}");
     assert_eq!(summary[0], ("thread", t.as_str(), "Calls", "", ""));
     assert_eq!(summary[1], ("deliverable", "pricing-brief.md", "pricing-brief.md", "", "pricing-brief.md"));
@@ -1099,18 +1098,43 @@ fn links_list_what_a_project_can_point_at() {
     assert_eq!(summary[2].2.chars().count(), 60, "{}", summary[2].2);
     assert!(summary[2].2.starts_with("word word") && summary[2].2.ends_with("..."), "{}", summary[2].2);
     assert_eq!(summary[3], ("feedback", note.id.as_str(), "Too long", "on pricing-brief.md", "pricing-brief.md"));
-    assert!(found.iter().all(|l| l.project == p), "each says its project");
+    // Every project's things are there, each with its project, for links that name another project.
+    assert!(found.iter().any(|l| l.project == other && l.kind == "deliverable"));
 
-    // A day with a meeting of the project is a target too, by its date, called by the project's meetings that day.
+    // A day with meetings is a target too, once, by its date, called by its meetings; and so is everyone in the vault.
     let meeting = |title: &str, projects: &[&str]| crate::daily::MeetingSection { title: title.into(), projects: projects.iter().map(|p| p.to_string()).collect(), ..Default::default() };
-    let draft = crate::daily::DailyDraft { date: "2026-11-22".into(), id: None, meetings: vec![meeting("Coach", &[&p]), meeting("Lunch", &[]), meeting("Review", &[&p, &other])] };
+    let draft = crate::daily::DailyDraft { date: "2026-11-22".into(), meetings: vec![meeting("Coach", &[&p]), meeting("Lunch", &[]), meeting("Review", &[&p, &other])] };
     crate::daily::save(&c, &draft).unwrap();
-    let found = links::list(&c, &p).unwrap();
-    let day = found.last().unwrap();
-    assert_eq!((day.kind.as_str(), day.id.as_str(), day.title.as_str(), day.detail.as_str()), ("meeting", "2026-11-22", "Coach | Review", "2026-11-22"));
-    // The meeting notes link to every project's targets, each with its project.
-    let everything = links::list_vault(&c).unwrap();
-    assert!(everything.iter().any(|l| l.project == other && l.kind == "deliverable") && everything.iter().any(|l| l.project == p && l.kind == "meeting"));
+    let frank = crate::people::create(&c, &crate::people::PersonDraft { name: "Frank de Vries".into(), organisation: "Fontys".into(), ..Default::default() }).unwrap();
+    let found = links::list(&c).unwrap();
+    let days: Vec<_> = found.iter().filter(|l| l.kind == "meeting").map(|l| (l.id.as_str(), l.title.as_str(), l.project.as_str())).collect();
+    assert_eq!(days, [("2026-11-22", "Coach | Lunch | Review", "")]);
+    let person = found.last().unwrap();
+    assert_eq!((person.kind.as_str(), person.id.as_str(), person.title.as_str(), person.detail.as_str(), person.project.as_str()), ("person", frank.id.as_str(), "Frank de Vries", "Fontys", ""));
+}
+
+#[test]
+fn links_follow_a_renamed_thread_or_deliverable() {
+    let dir = tempdir().unwrap();
+    let c = conn();
+    let (p, t) = setup(&c);
+    deliverables::create(&c, &p, "Plan", "# Plan").unwrap();
+    let pricing = threads::create(&c, &p, "Pricing model").unwrap().slug;
+    let other = projects::create(&c, "Other").unwrap().slug;
+    let elsewhere = threads::create(&c, &other, "Elsewhere").unwrap().slug;
+    posts::add(&c, &p, &t, "See [[plan]], [[plan#Goal]], [[Pricing model|the model]] and [[pricing-model]].", AddOptions::default()).unwrap();
+    posts::add(&c, &other, &elsewhere, &format!("Theirs: [[{p}/plan]]. Ours: [[plan]]."), AddOptions::default()).unwrap();
+    let meeting = crate::daily::MeetingSection { title: "Coach".into(), projects: vec![p.clone()], body: "Went through [[plan]].".into(), ..Default::default() };
+    crate::daily::save(&c, &crate::daily::DailyDraft { date: "2026-11-22".into(), meetings: vec![meeting] }).unwrap();
+
+    deliverables::rename(&c, dir.path(), &p, "plan.md", "Budget").unwrap();
+    threads::rename(&c, &p, &pricing, "Prices").unwrap();
+
+    let body = |project: &str, thread: &str| posts::list(&c, project, thread).unwrap().remove(0).body;
+    // The words shown are kept; a thread's slug stays, so a link by its slug still works as it is.
+    assert_eq!(body(&p, &t), "See [[Budget]], [[Budget#Goal]], [[Prices|the model]] and [[pricing-model]].");
+    assert_eq!(body(&other, &elsewhere), format!("Theirs: [[{p}/Budget]]. Ours: [[plan]]."), "another project names this one; its own plan is no one's");
+    assert_eq!(crate::daily::get(&c, "2026-11-22").unwrap().unwrap().meetings[0].body, "Went through [[Budget]].", "a meeting of the project");
 }
 
 #[test]

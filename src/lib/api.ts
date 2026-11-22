@@ -106,10 +106,8 @@ async function callRaw<T>(command: string, body: Uint8Array, headers: Record<str
 
 export const api = {
 	renderMarkdown: (body: string) => call<string>('render_markdown', { body }),
-	/** What a [[link]] in this project's markdown can point at: its threads, deliverables and feedback. */
-	listLinks: (project: string) => call<LinkTarget[]>('list_links', { project }),
-	/** What the meeting notes link to: every project's targets, each with its project. */
-	listVaultLinks: () => call<LinkTarget[]>('list_vault_links'),
+	/** What a [[link]] can point at: every project's threads, deliverables and feedback, the meeting days and the people. */
+	listLinks: () => call<LinkTarget[]>('list_links'),
 	search: (query: string) => call<SearchHit[]>('search', { query }),
 	/** Everything made in the vault and when, oldest first: the contribution graph's events. */
 	listActivity: () => call<ActivityEvent[]>('list_activity'),
@@ -230,7 +228,7 @@ export const api = {
 		call<DailyNote[]>('list_daily_notes', { project: filter.project ?? null, person: filter.person ?? null }),
 	getDailyNote: (date: string) => call<DailyNote | null>('get_daily_note', { date }),
 	/** Replaces the day's meetings; none (and nothing else in the note) removes the note, and null comes back. */
-	saveDailyNote: (note: Pick<DailyNote, 'date' | 'id' | 'meetings'>) => call<DailyNote | null>('save_daily_note', { note }),
+	saveDailyNote: (note: Pick<DailyNote, 'date' | 'meetings'>) => call<DailyNote | null>('save_daily_note', { note }),
 	deleteDailyNote: (date: string) => call<void>('delete_daily_note', { date }),
 
 	// feedback

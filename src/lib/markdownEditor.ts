@@ -588,8 +588,9 @@ const comments = StateField.define<{ focused: boolean; decorations: DecorationSe
 // As in Obsidian: `[[Thread]]` and `[[report|the report]]` read as links in both modes. In live preview the brackets (and
 // the target in front of the words shown instead) fade away except where the cursor is; a link that points at nothing is
 // drawn faint and dashed. Ctrl/⌘+click follows one, like a link to the web. Typing `[[` closes the brackets and offers the
-// project's threads, deliverables and feedback. What the targets are is up to whoever hosts the editor (`LinkSupport`);
-// the rules for matching them are in links.ts.
+// project's threads, deliverables and feedback, the meeting days and the people, and another project's once its name is
+// typed. What the targets are is up to whoever hosts the editor (`LinkSupport`); the rules for matching them are in
+// links.ts.
 
 export interface LinkSupport {
 	/** What links can point at right now, or null where there is nothing (outside a project). Asked for each time. */
@@ -635,7 +636,7 @@ function wikiDecorations(view: EditorView): DecorationSet {
 			const words = m[2]?.trim();
 			const missing = !!index && !index.resolve(target);
 			const attributes: Record<string, string> = { 'data-wikilink': target };
-			if (index) attributes.title = missing ? `Nothing in this project is called "${target}"` : 'Ctrl+click to open';
+			if (index) attributes.title = missing ? `Nothing is called "${target}"` : 'Ctrl+click to open';
 			const mark = Decoration.mark({ class: missing ? 'cm-md-wikilink unresolved' : 'cm-md-wikilink', attributes });
 			if (preview && !ranges.some((r) => r.from <= stop && r.to >= at)) {
 				// Only the words that are shown remain: the target alone, or what comes after the bar.
@@ -880,16 +881,16 @@ export interface MarkdownEditorOptions {
 // ---- @ mentions ----------------------------------------------------------------------------------
 // In a reading guide that is a Portflow collection's description: typing `@` offers the project's evidence items and
 // writes the one picked as `[@Name](portflow:evidence-<id>)`, which Portflow gets back as its own mention. In a
-// meeting's notes it offers people, written as `[@Name](person:<tag>)`.
+// meeting's notes it offers people, written as a link to the person (`[[people/frank]]`), as anywhere else.
 
 export interface MentionOption {
-	/** The mention's id in Portflow (`evidence-2110705`), or a person's tag (`coach/frank`). */
+	/** The mention's id in Portflow (`evidence-2110705`), or a person's id (`frank`). */
 	id: string;
 	label: string;
 	/** Where it is in Ledger (its thread), or who the person is, shown beside it. */
 	detail: string;
-	/** Where the written mention points: `portflow:<id>` unless given (`person:coach/frank`). */
-	link?: string;
+	/** What is written for it: `[@Name](portflow:<id>)` unless given (`[[people/frank]]`). */
+	insert?: string;
 }
 
 const mentionSupport = Facet.define<() => MentionOption[], (() => MentionOption[]) | null>({ combine: (values) => values[0] ?? null });
@@ -914,7 +915,7 @@ function mentionCompletions(context: CompletionContext): CompletionResult | null
 			label: `@${m.label}`,
 			detail: m.detail,
 			type: 'mention',
-			apply: `[@${linkWords(m.label)}](${m.link ?? `portflow:${m.id}`})`
+			apply: m.insert ?? `[@${linkWords(m.label)}](portflow:${m.id})`
 		}))
 	};
 }

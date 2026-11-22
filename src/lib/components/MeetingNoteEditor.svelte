@@ -1,9 +1,9 @@
 <script lang="ts">
 	// One day's meeting note: its meetings, each under its own heading (its title; its time and projects go in the note's
-	// frontmatter) with
-	// the people who were there and your notes. Saved as you type, as the day's note `meetings/<year>/<month>/<day>.md`, with frontmatter
-	// that gathers the meetings' tags. No goal and no template: a meeting is a heading and what you write under it.
-	// The people of a meeting's projects come first in its "With", and "Whole team" adds every teammate at once.
+	// frontmatter) with the people who were there, as links to their files in shared/people, and your notes. Saved as
+	// you type, as the day's note `meetings/<year>/<month>/<day>.md`. No goal and no template: a meeting is a heading and
+	// what you write under it. The people of a meeting's projects come first in its "With", "Whole team" adds every
+	// teammate at once, and someone typed who isn't in the vault yet is added to it when the note is saved.
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { tick, untrack } from 'svelte';
@@ -12,7 +12,8 @@
 	import { time } from '$lib/format';
 	import { dayLabel, today } from '$lib/semesters';
 	import { attempt, confirmDialog, refresh } from '$lib/ui.svelte';
-	import { teamTags } from '$lib/v1';
+	import { PEOPLE } from '$lib/links';
+	import { teamOf } from '$lib/v1';
 	import type { DailyNote, LinkTarget, MeetingSection, ProjectPerson } from '$lib/types';
 	import type { MentionOption } from '$lib/markdownEditor';
 	import MarkdownEditor from './MarkdownEditor.svelte';
@@ -30,34 +31,33 @@
 		date: string;
 		/** The day's note as saved; null when the day has none yet. */
 		note: DailyNote | null;
-		/** The indexed project and person tags ($lib/tagIndex). */
+		/** The indexed project tags, and the vault's people by id ($lib/tagIndex). */
 		projectOptions: TagOption[];
 		peopleOptions: TagOption[];
 		/** The projects' people: the meeting's own come first, and make up "Whole team". */
 		people?: ProjectPerson[];
-		/** What [[links]] can point at, in every project (list_vault_links). */
+		/** What [[links]] can point at (list_links). */
 		links?: LinkTarget[];
 	} = $props();
 
-	/** What a meeting's [[links]] point at: the threads, deliverables, feedback and meeting days of its projects, or of
-	 *  every project while it has none. */
-	function linksFor(m: MeetingSection): LinkTarget[] {
-		return m.projects.length ? links.filter((t) => m.projects.includes(t.project)) : links;
-	}
+	/** The project a meeting's [[links]] are written in: its only one. With several or none, a link to a project's
+	 *  thread or deliverable names the project (`[[thrym-player/pricing-brief]]`). */
+	const homeOf = (m: MeetingSection) => (m.projects.length === 1 ? (m.projects[0] ?? null) : null);
 
-	/** Who can be picked for a meeting: the people of its projects first, then everyone else in the index. */
+	/** Who can be picked for a meeting: the people of its projects first, then everyone else in the vault. */
 	function peopleFor(m: MeetingSection): TagOption[] {
-		const own = new Set(people.filter((p) => m.projects.includes(p.project)).map((p) => p.tag));
+		const own = new Set(people.filter((p) => m.projects.includes(p.project)).map((p) => p.person));
 		return [...peopleOptions.filter((o) => own.has(o.value)), ...peopleOptions.filter((o) => !own.has(o.value))];
 	}
 
-	/** Who `@` in a meeting's notes offers: the same people as "With", in the same order. */
+	/** Who `@` in a meeting's notes offers: the same people as "With", in the same order, each written as a link. */
 	function mentionsFor(m: MeetingSection): MentionOption[] {
-		return peopleFor(m).map((o) => ({ id: o.value, label: o.label, detail: o.hint ?? o.value, link: `person:${o.value}` }));
+		return peopleFor(m).map((o) => ({ id: o.value, label: o.label, detail: o.hint ?? o.value, insert: `[[${PEOPLE}${o.value}]]` }));
 	}
 
-	/** The people mentioned in a meeting's notes (`[@Frank](person:coach/frank)`). */
-	const mentionedIn = (body: string) => [...body.matchAll(/\]\(person:([^)\s]+)\)/g)].map((match) => decodeURIComponent(match[1]));
+	/** The people a meeting's notes link to (`[[people/frank]]`), by id. */
+	const mentionedIn = (body: string) =>
+		[...body.matchAll(/\[\[people\/([^[\]|#\n]+)/gi)].map((match) => (match[1] ?? '').trim().toLowerCase()).filter(Boolean);
 
 	/** New notes: whoever is newly mentioned in them was at the meeting too, and joins "With". */
 	function setBody(m: MeetingSection, body: string) {
@@ -69,15 +69,14 @@
 
 	/** "Whole team": every teammate of the meeting's projects, in one click. */
 	function quickFor(m: MeetingSection): TagQuickPick[] {
-		const tags = teamTags(people, m.projects);
-		if (!tags.length) return [];
-		const names = tags.map((t) => people.find((p) => p.tag === t)?.name ?? t).join(', ');
-		return [{ label: 'Whole team', tags, title: `Adds ${names}` }];
+		const team = teamOf(people, m.projects);
+		if (!team.length) return [];
+		const names = team.map((id) => people.find((p) => p.person === id)?.name ?? id).join(', ');
+		return [{ label: 'Whole team', tags: team, title: `Adds ${names}` }];
 	}
 
 	// The meetings as edited here, from the saved note (the page keys this component by day).
 	let meetings = $state<MeetingSection[]>(untrack(() => structuredClone(note?.meetings ?? [])));
-	const id = untrack(() => note?.id ?? `daily-${date}`);
 	/** The meetings as this editor and the vault last agreed on them: what was loaded, or last saved. */
 	let agreed = untrack(() => JSON.stringify(note?.meetings ?? []));
 
@@ -92,7 +91,7 @@
 		const timer = setTimeout(async () => {
 			const list = JSON.parse(snapshot) as MeetingSection[];
 			// A day without meetings (and nothing else in its note) has no file: the backend takes it away.
-			const saved = await attempt(() => api.saveDailyNote({ date, id, meetings: list }));
+			const saved = await attempt(() => api.saveDailyNote({ date, meetings: list }));
 			if (saved !== undefined) agreed = snapshot;
 			await refresh();
 		}, 700);
@@ -177,7 +176,7 @@
 					</div>
 					<div class="field">
 						<span>With</span>
-						<TagPicker bind:value={m.people} options={peopleFor(m)} quick={quickFor(m)} label="With" placeholder="Who was there" />
+						<TagPicker bind:value={m.people} options={peopleFor(m)} quick={quickFor(m)} label="With" placeholder="Who was there" prefix={PEOPLE} />
 					</div>
 				</div>
 				<MarkdownEditor
@@ -186,7 +185,8 @@
 					label="Notes"
 					placeholder="What was said, decided, to do... Type @ to mention someone, [[ to link a document."
 					people={mentionsFor(m)}
-					linkTargets={linksFor(m)}
+					linkTargets={links}
+					linkHome={homeOf(m)}
 				/>
 			</article>
 		{:else}

@@ -475,9 +475,9 @@ pub fn discard_pending(app: &AppHandle) {
     *lock(&state(app).screenshots.pending) = None;
 }
 
-/// The file name a screenshot is saved under.
+/// The file name a screenshot is saved under: when it was taken, by the clock of this computer, as you read it.
 pub fn file_name() -> String {
-    format!("screenshot-{}.png", chrono::Utc::now().format("%Y%m%d-%H%M%S"))
+    format!("screenshot-{}.png", chrono::Local::now().format("%Y%m%d-%H%M%S"))
 }
 
 pub fn reveal_main(app: &AppHandle) {

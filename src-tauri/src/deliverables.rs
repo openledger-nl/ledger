@@ -449,7 +449,8 @@ fn evidence_of(conn: &Connection, project: &str, base: &str) -> Result<(Option<S
 // ---- writing ----------------------------------------------------------------------------------------
 
 /// Renames a deliverable: its live file and every published version (on disk too, for a file that isn't markdown), and
-/// everything that points at it — its facts, prompts, runs, posts, feedback, version records and Portflow evidence.
+/// everything that points at it — its facts, prompts, runs, posts, feedback, version records, Portflow evidence and
+/// the [[links]] written to it.
 /// Refused when `to` is already a deliverable.
 pub fn rename_base(conn: &Connection, root: &Path, project: &str, from: &str, to: &str) -> Result<()> {
     if from == to {
@@ -471,6 +472,8 @@ pub fn rename_base(conn: &Connection, root: &Path, project: &str, from: &str, to
     if moves.is_empty() {
         return Err(Error::not_found("Deliverable not found"));
     }
+    // The [[links]] to it follow (see the end).
+    let before = crate::links::list(conn)?;
     for (old, new, binary) in &moves {
         if *binary {
             // A folder left empty by the move goes too (the store prunes it).
@@ -502,7 +505,7 @@ pub fn rename_base(conn: &Connection, root: &Path, project: &str, from: &str, to
     ] {
         conn.execute(sql, params![project, from, to])?;
     }
-    Ok(())
+    crate::links::follow_rename(conn, &before, "deliverable", project, from, to)
 }
 
 /// Gives the deliverable at `path` (its live file, not a version) another name, as typed: the file keeps its folder and
@@ -668,7 +671,7 @@ fn freeze(
             &tx,
             project,
             thread,
-            &provenance::announcement(&tx, project, &live.name, &version, origin)?,
+            "",
             AddOptions {
                 version_published: true,
                 deliverable_path: Some(base.to_string()),

@@ -8,7 +8,7 @@
 //! - path: 01-project-plan.md
 //!   number: 1
 //!   goal: Agree with the client on what is built first.
-//!   mmm: cyborg
+//!   aiUse: cyborg
 //!   answers: main               "main", or a sub-question in words
 //!   template: plan
 //! ```
@@ -204,7 +204,7 @@ pub fn export(conn: &Connection, project: &str, meta: &mut Mapping) -> Result<()
             frontmatter::set(&mut item, "path", f.path);
             frontmatter::set(&mut item, "number", f.number);
             frontmatter::set(&mut item, "goal", f.goal);
-            frontmatter::set_opt(&mut item, "mmm", f.mmm.as_deref());
+            frontmatter::set_opt(&mut item, "aiUse", f.mmm.as_deref());
             frontmatter::set_opt(&mut item, "answers", f.answers.as_deref());
             frontmatter::set_opt(&mut item, "template", f.template.as_deref());
             Value::Mapping(item)
@@ -230,7 +230,7 @@ pub fn import(conn: &Connection, project: &str, meta: &Mapping) -> Result<()> {
                 |r| r.get(0),
             )?,
         };
-        let mmm = item.text("mmm").and_then(|l| provenance::level(&l).map(str::to_string));
+        let mmm = item.text("aiUse").and_then(|l| provenance::level(&l).map(str::to_string));
         conn.execute(
             "INSERT OR IGNORE INTO deliverable_facts (project_slug, path, number, goal, mmm, answers, template) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![project, path, number, goal.trim(), mmm, item.text("answers"), item.text("template")],

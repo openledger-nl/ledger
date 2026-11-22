@@ -1373,8 +1373,8 @@ fn a_note_is_a_markdown_file_in_the_thread_that_survives_reading_the_vault_again
 
     let text = fs::read_to_string(note_file(&f, &note.id)).unwrap();
     assert!(text.starts_with("---\n"), "{text}");
+    assert!(!text.contains("\nid:"), "its id is its file's name: {text}");
     for expected in [
-        "id: 1793660376958-4o6j4fvm".to_string(),
         format!("prompt: {}", f.prompt.id),
         "status: finished".to_string(),
         "model: claude-test".to_string(),
@@ -1707,7 +1707,7 @@ fn edits_kept_before_a_run_are_recorded_as_the_persons_and_not_linked_to_the_pro
     assert_eq!((known[1].prompt.as_deref(), known[1].run.as_deref(), known[1].thread.as_deref()), (None, None, Some(f.thread.as_str())));
     assert_eq!(known[2].run.as_deref(), Some("run-1"));
     let notes = version_posts(&f);
-    assert!(notes.iter().any(|n| n == "Version 0.2 of **plan.md** keeps your earlier edits, published just before the prompt **Call summary** ran."), "{notes:?}");
+    assert!(notes.iter().any(|n| n == "Version 0.2 of **plan.md** was published."), "{notes:?}");
     assert!(notes.iter().any(|n| n == "Version 0.3 of **plan.md** was published from the prompt **Call summary**."), "{notes:?}");
 }
 
@@ -1754,7 +1754,7 @@ fn what_a_stopped_run_left_in_the_file_is_kept_as_that_runs_when_the_next_run_st
     assert_eq!((known[1].author, known[1].run.as_deref(), known[1].prompt.as_deref()), ("ai", Some("run-stopped"), Some(f.prompt.id.as_str())), "not the person's");
     assert_eq!((known[2].author, known[2].run.as_deref()), ("ai", Some("run-1")));
     assert!(
-        version_posts(&f).iter().any(|n| n == "Version 0.2 of **plan.md** keeps what an earlier run of the prompt **Call summary** left in the file, published just before the prompt **Call summary** ran."),
+        version_posts(&f).iter().any(|n| n == "Version 0.2 of **plan.md** was published from the prompt **Call summary**."),
         "{:?}",
         version_posts(&f)
     );

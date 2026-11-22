@@ -1109,15 +1109,17 @@ export interface CaptureStatus {
 
 /** Something a `[[link]]` in a project's markdown can point at (see links.ts for how a typed target is matched to one). */
 export interface LinkTarget {
-	/** `meeting`: a day's meeting notes. */
-	kind: 'thread' | 'deliverable' | 'feedback' | 'meeting';
-	/** The project it is in, by slug. */
+	/** `meeting`: a day's meeting notes; `person`: someone in shared/people. */
+	kind: 'thread' | 'deliverable' | 'feedback' | 'meeting' | 'person';
+	/** The project it is in, by slug; empty for a meeting day and a person, which belong to the vault. */
 	project: string;
-	/** The thread's slug, the deliverable's live path, the feedback's id, or the day of the meeting notes. */
+	/** The thread's slug, the deliverable's live path, the feedback's id, the day of the meeting notes, the person's id. */
 	id: string;
-	/** A thread's title, a deliverable's file name, the start of what a piece of feedback says, the day's meetings. */
+	/** A thread's title, a deliverable's file name, the start of what a piece of feedback says, the day's meetings, a
+	 *  person's name. */
 	title: string;
-	/** Where it is: a deliverable's folder, the file a piece of feedback is on, the day of the meeting notes. */
+	/** Where it is: a deliverable's folder, the file a piece of feedback is on, the day of the meeting notes, a person's
+	 *  organisation. */
 	detail: string;
 	/** For a deliverable and for feedback, the path that opens it (the live file or a version); empty for a thread. */
 	open: string;
@@ -1430,7 +1432,7 @@ export interface ProjectMeta {
 	goal: string;
 	/** "semester" ends with the semester it runs in; otherwise a day of your own (ISO), or null for no end. */
 	end: 'semester' | string | null;
-	/** The semester a study project runs in, by name (NJ26). */
+	/** The semester a study project runs in, by its id in shared/semesters (nj26-semester-4-2). */
 	semester: string | null;
 	/** The label you mean the work to get; offered when publishing, and compared with what you publish. */
 	intendedMmm: MmmLevel | null;
@@ -1467,20 +1469,21 @@ export interface MeetingSection {
 	title: string;
 	/** Project tags (`thrym-player`), on the heading: the meeting belongs to each of these projects. */
 	projects: string[];
-	/** Person tags (`people/frank`), on the `With:` line; the same as in feedback. */
-	people: PersonTag[];
+	/** Who was there, by their id in shared/people (`frank`): the `With:` line links to them (`[[people/frank]]`). */
+	people: string[];
 	/** Your notes, as you wrote them: no template, no required parts. */
 	body: string;
 }
 
 /**
  * A daily note, `meetings/<year>/<month>/<day>.md`: one per day, made in Ledger or Obsidian, holding that day's meetings, each under its
- * own heading. Its frontmatter (`type: daily`, `id`, `date`, `tags`) gathers the tags of its meetings, so the day is
- * found by project and by person in Ledger and in Obsidian.
+ * own heading. Its frontmatter (`date`, `tags`, `meetings`) holds each meeting's time and projects and gathers their
+ * project tags; who was there is linked, so their file in shared/people lists the day among its backlinks in Obsidian.
  */
 export interface DailyNote {
 	/** ISO day; also the file's name, so a day has one note. */
 	date: string;
+	/** `daily-<date>`, for the app: the file holds no id. */
 	id: string;
 	meetings: MeetingSection[];
 	updatedAt: string;

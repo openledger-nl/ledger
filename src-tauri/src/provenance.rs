@@ -50,20 +50,8 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 
 // ---- what is recorded when a version is published ---------------------------------------------------
 
-/// What caused a version, which decides how the note in the thread reads.
-#[derive(Debug, Clone)]
-pub enum Cause {
-    /// Published from the page.
-    Manual,
-    /// A Claude Code run published what it wrote.
-    Run,
-    /// Edits that no version held, published just before the prompt `running` (its id) was run.
-    Held { running: String },
-}
-
 #[derive(Debug, Clone)]
 pub struct Origin {
-    pub cause: Cause,
     /// Where the note goes and the panel files the version; `None` records it without a thread.
     pub thread: Option<String>,
     pub ai: bool,
@@ -78,7 +66,6 @@ impl Origin {
     /// A Claude Code run published what it wrote in `thread`.
     pub fn run(thread: &str, prompt: &str, run: Option<&str>) -> Origin {
         Origin {
-            cause: Cause::Run,
             thread: Some(thread.to_string()),
             ai: true,
             prompt: Some(prompt.to_string()),
@@ -88,11 +75,9 @@ impl Origin {
         }
     }
 
-    /// The person's own edits, kept before the run of `running`; or, when `stopped` is the run that left them in the
-    /// file, that run's.
-    pub fn held(thread: &str, running: &str, stopped: Option<&StoppedRun>) -> Origin {
+    /// The person's own edits, kept before a run; or, when `stopped` is the run that left them in the file, that run's.
+    pub fn held(thread: &str, stopped: Option<&StoppedRun>) -> Origin {
         Origin {
-            cause: Cause::Held { running: running.to_string() },
             thread: Some(thread.to_string()),
             ai: stopped.is_some(),
             prompt: stopped.map(|s| s.prompt_id.clone()),
@@ -133,7 +118,6 @@ pub fn manual_origin(conn: &Connection, project: &str, base: &str, choices: &Pub
     // A prompt or a run only explains a change that AI made.
     let ai = choices.ai || run.is_some();
     Ok(Origin {
-        cause: Cause::Manual,
         thread,
         ai,
         prompt: prompt.filter(|_| ai),
@@ -148,45 +132,67 @@ fn plain(text: &str) -> String {
     text.chars().filter(|c| !matches!(c, '*' | '`' | '[' | ']')).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The sentence the thread's "version published" note says.
-pub fn announcement(conn: &Connection, project: &str, name: &str, version: &str, origin: &Origin) -> Result<String> {
-    let title = |id: &Option<String>| -> Result<Option<String>> {
-        match id {
-            Some(id) => Ok(prompts::display_title_of(conn, project, id)?.map(|t| plain(&t))),
-            None => Ok(None),
-        }
-    };
-    let mut text = match &origin.cause {
-        Cause::Run => match title(&origin.prompt)? {
-            Some(prompt) => format!("Version {version} of **{name}** was published from the prompt **{prompt}**."),
+/// The sentence the thread's "version published" note says, made from the version's record each time it is shown (the
+/// note's file holds only a link to the manifest, see [`note_link`]).
+pub fn announcement(conn: &Connection, project: &str, base: &str, version: &str) -> Result<String> {
+    let name = plain(deliverables::file_name(base));
+    let record = query_opt(
+        conn,
+        "SELECT prompt_id, run_id, author, note FROM version_records WHERE project_slug = ?1 AND deliverable_path = ?2 AND version = ?3",
+        [project, base, version],
+        |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?)),
+    )?;
+    let Some((prompt, run, author, note)) = record else { return Ok(format!("Version {version} of **{name}** was published.")) };
+    let mut text = match &prompt {
+        Some(id) => match prompts::display_title_of(conn, project, id)? {
+            Some(title) => format!("Version {version} of **{name}** was published from the prompt **{}**.", plain(&title)),
             None => format!("Version {version} of **{name}** was published from a prompt."),
         },
-        Cause::Held { running } => {
-            let running = title(&Some(running.clone()))?.map_or_else(|| "a prompt".to_string(), |t| format!("the prompt **{t}**"));
-            match (origin.ai, title(&origin.prompt)?) {
-                (true, Some(earlier)) => format!(
-                    "Version {version} of **{name}** keeps what an earlier run of the prompt **{earlier}** left in the file, published just before {running} ran."
-                ),
-                (true, None) => format!("Version {version} of **{name}** keeps what an earlier run left in the file, published just before {running} ran."),
-                (false, _) => format!("Version {version} of **{name}** keeps your earlier edits, published just before {running} ran."),
-            }
-        }
-        Cause::Manual => match title(&origin.prompt)? {
-            Some(prompt) => format!("Version {version} of **{name}** was published from the prompt **{prompt}**."),
-            None => format!("Version {version} of **{name}** was just published."),
-        },
+        None => format!("Version {version} of **{name}** was published."),
     };
-    if origin.ai && matches!(origin.cause, Cause::Manual) {
+    // A run says what it did itself; AI used elsewhere is said here.
+    if author == AI && run.is_none() {
         text.push_str(" It was made with generative AI.");
     }
     // A changelog is what a person wrote about the change, so the thread quotes it as theirs. A run writes none.
-    let changelog = origin.note.trim();
+    let changelog = note.trim();
     if !changelog.is_empty() {
-        text.push_str(&format!("
-
-from changelog: {changelog}"));
+        text.push_str(&format!("\n\nfrom changelog: {changelog}"));
     }
     Ok(text)
+}
+
+/// What the file of a thread's "version published" note holds: a link to the version's manifest (`manifest`, its path
+/// in the project) and nothing else, so nothing it says can drift from the record. The note is in
+/// `threads/<thread>/posts/`, three folders below the project; the link reads as the version's file name.
+pub fn note_link(manifest: &str, version_file: &str) -> String {
+    let label: String = version_file.chars().filter(|c| !matches!(c, '[' | ']')).collect();
+    format!("[{label}](../../../{})", encode_path(manifest))
+}
+
+/// The manifest a "version published" note links to, as a path in its project (`versions/plan/plan@v0.1.manifest.md`);
+/// `None` for a post that says anything else.
+pub fn note_manifest(body: &str) -> Option<String> {
+    let rest = body.trim().strip_prefix('[')?;
+    let (label, rest) = rest.split_once("](")?;
+    let target = rest.strip_suffix(')')?;
+    if label.contains(['[', ']', '\n']) || target.contains(['(', ')', ' ', '\n']) {
+        return None;
+    }
+    let path = crate::commands::percent_decode(target.strip_prefix("../../../")?)?;
+    (path.starts_with("versions/") && path.ends_with(".manifest.md") && !path.contains("..")).then_some(path)
+}
+
+/// A path as a markdown link holds it: what would end or break the link written as `%XX`.
+fn encode_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for c in path.chars() {
+        match c {
+            ' ' | '%' | '(' | ')' | '[' | ']' | '<' | '>' | '#' | '?' => out.push_str(&format!("%{:02X}", c as u32)),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// Writes the record of a version that has just been published.

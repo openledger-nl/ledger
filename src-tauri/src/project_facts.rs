@@ -5,8 +5,8 @@
 //! kind: study                  study, work or hobby
 //! goal: Give the bakery a rota tool their staff can use on a phone.
 //! end: semester                semester, a calendar day (2027-01-31), or left out for no end
-//! semester: NJ26               the semester a study project runs in
-//! intendedMmm: cyborg          the label the work is meant to get
+//! semester: nj26-semester-4-2  the semester a study project runs in, by its id (see `semesters`)
+//! intendedAiUse: cyborg        the label the work is meant to get
 //! mainQuestion: How can …?     a study project's main question
 //! client: bakery-bos           a work project's client, by its id (see `clients`)
 //! ```
@@ -24,8 +24,7 @@
 //!   role: teammate
 //! ```
 //!
-//! A person goes by the tag `people/<id>` (`people/frank-de-vries`) in every project: how meetings and feedback name
-//! them.
+//! A person is the same in every project: `[[people/<id>]]` links to them in any markdown (see `people`).
 
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
@@ -141,6 +140,11 @@ pub fn save(conn: &Connection, slug: &str, meta: &ProjectMeta) -> Result<Project
     {
         return Err(Error::invalid(format!("There is no client {client} in this vault: add it under Clients first")));
     }
+    if let Some(semester) = &m.semester
+        && crate::semesters::get(conn, semester).is_err()
+    {
+        return Err(Error::invalid(format!("There is no semester {semester} in this vault: add it under Shared, Semesters first")));
+    }
     conn.execute(
         "UPDATE projects SET kind = ?2, goal = ?3, project_end = ?4, semester = ?5, intended_mmm = ?6, main_question = ?7, client = ?8,
                              updated_at = ?9 WHERE slug = ?1",
@@ -158,7 +162,7 @@ pub fn export(conn: &Connection, slug: &str, meta: &mut Mapping) -> Result<()> {
     frontmatter::set(meta, "goal", m.goal);
     frontmatter::set_opt(meta, "end", m.end.as_deref());
     frontmatter::set_opt(meta, "semester", m.semester.as_deref());
-    frontmatter::set_opt(meta, "intendedMmm", m.intended_mmm.as_deref());
+    frontmatter::set_opt(meta, "intendedAiUse", m.intended_mmm.as_deref());
     frontmatter::set_opt(meta, "mainQuestion", m.main_question.as_deref());
     frontmatter::set_opt(meta, "client", m.client.as_deref());
     Ok(())
@@ -172,7 +176,7 @@ pub fn import(conn: &Connection, slug: &str, meta: &Mapping) -> Result<()> {
     let goal = meta.text("goal").map(|g| g.trim().to_string()).filter(|g| !g.is_empty());
     let (Some(kind), Some(goal)) = (kind, goal) else { return Ok(()) };
     let end = meta.text("end").map(|e| e.trim().to_lowercase()).filter(|e| e == "semester" || crate::dates::is_day(e));
-    let intended = meta.text("intendedMmm").and_then(|l| provenance::level(l.trim()).map(str::to_string));
+    let intended = meta.text("intendedAiUse").and_then(|l| provenance::level(l.trim()).map(str::to_string));
     // A client that isn't in the vault (any more) is no client.
     let client = match meta.text("client").map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
         Some(id) if crate::clients::exists(conn, &id)? => Some(id),
