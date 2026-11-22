@@ -323,15 +323,22 @@ fn a_deliverables_evidence_description_is_kept_follows_a_rename_and_goes_with_it
     assert_eq!(saved.description, "**Evidence description**\n\n**What?** A plan.\n\n**Goal?** Agree.\n\n**Why it contributes?** Analysing.");
     assert_eq!(saved.description_parts.as_ref().map(|p| p.goal.as_str()), Some("Agree."));
     vault.persist(&conn).unwrap();
-    let meta = frontmatter::parse(&read(root, &format!("projects/{project}/project.md"))).unwrap().meta;
-    assert_eq!(meta.maps("descriptions")[0].text("path").as_deref(), Some(plan.as_str()));
+    // A note of its own beside the deliverable, not in project.md.
+    let file = read(root, &format!("projects/{project}/deliverables/plan.desc.md"));
+    assert!(file.starts_with("---\ndeliverable: plan.md\n---\n") && file.contains("**Goal?** Agree."), "{file}");
+    assert!(!read(root, &format!("projects/{project}/project.md")).contains("Evidence description"));
 
-    // It loads back, and follows the deliverable when it is renamed.
+    // It loads back, is no deliverable of its own, and follows the deliverable when it is renamed.
     let (mut vault, conn) = open(root);
     assert_eq!(deliverable_facts::description(&conn, &project, &plan).unwrap(), saved);
+    assert_eq!(deliverables::list(&conn, &project).unwrap().iter().map(|d| d.path.as_str()).collect::<Vec<_>>(), ["plan.md"]);
     let renamed = deliverables::rename(&conn, root, &project, &plan, "Project plan").unwrap();
     assert_eq!(deliverable_facts::description(&conn, &project, &renamed).unwrap().description, saved.description);
     assert_eq!(deliverable_facts::description(&conn, &project, &plan).unwrap().description, "");
+    assert!(deliverables::rename(&conn, root, &project, &renamed, "Notes.desc").is_err(), "a description's name is no deliverable's");
+    vault.persist(&conn).unwrap();
+    assert!(root.join(format!("projects/{project}/deliverables/Project plan.desc.md")).is_file());
+    assert!(!root.join(format!("projects/{project}/deliverables/plan.desc.md")).exists());
 
     // Emptied, it goes; and deleting the deliverable takes it along.
     assert_eq!(deliverable_facts::save_description(&conn, &project, &renamed, "  ").unwrap().description, "");
@@ -339,6 +346,42 @@ fn a_deliverables_evidence_description_is_kept_follows_a_rename_and_goes_with_it
     vault.persist(&conn).unwrap();
     deliverables::delete(&conn, root, &project, &renamed).unwrap();
     assert_eq!(deliverable_facts::description(&conn, &project, &renamed).unwrap().description, "");
+    vault.persist(&conn).unwrap();
+    assert!(!root.join(format!("projects/{project}/deliverables/Project plan.desc.md")).exists());
+}
+
+#[test]
+fn a_hand_written_description_is_its_deliverables_by_its_name() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write(root, "projects/acme/project.md", "---\nname: Acme\n---\n");
+    write(root, "projects/acme/deliverables/reports/plan.pdf", "%PDF");
+    write(root, "projects/acme/deliverables/reports/plan.desc.md", "**What?** The plan, as a PDF.\n");
+    write(root, "projects/acme/deliverables/ghost.desc.md", "Of nothing that is there.\n");
+    let (vault, conn) = open(root);
+    let view = deliverable_facts::description(&conn, "acme", "reports/plan.pdf").unwrap();
+    assert!(view.description.contains("The plan, as a PDF."), "{view:?}");
+    assert_eq!(deliverables::list(&conn, "acme").unwrap().len(), 1);
+    assert!(root.join("projects/acme/deliverables/ghost.desc.md").is_file(), "left alone");
+
+    // A second deliverable of the same name: a description that doesn't say whose it is could be either's, and is left
+    // alone. Ledger's own say whose they are, and are named in full.
+    write(root, "projects/acme/deliverables/reports/plan.md", "# Plan\n");
+    let (mut again, reloaded) = open(root);
+    assert_eq!(deliverable_facts::description(&reloaded, "acme", "reports/plan.pdf").unwrap().description, "");
+    deliverable_facts::save_description(&reloaded, "acme", "reports/plan.md", "**What?** The plan.").unwrap();
+    deliverable_facts::save_description(&reloaded, "acme", "reports/plan.pdf", "**What?** The plan, as a PDF.").unwrap();
+    again.persist(&reloaded).unwrap();
+    let names = |dir: &str| {
+        let mut n: Vec<String> = std::fs::read_dir(root.join(dir)).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        n.sort();
+        n
+    };
+    assert_eq!(names("projects/acme/deliverables/reports"), ["plan.desc.md", "plan.md", "plan.md.desc.md", "plan.pdf", "plan.pdf.desc.md"]);
+    drop(vault);
+    let (_, last) = open(root);
+    assert!(deliverable_facts::description(&last, "acme", "reports/plan.pdf").unwrap().description.contains("as a PDF"));
+    assert!(deliverable_facts::description(&last, "acme", "reports/plan.md").unwrap().description.contains("The plan."));
 }
 
 #[test]

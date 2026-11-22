@@ -13,14 +13,19 @@
 //!   template: plan
 //! ```
 //!
-//! Its evidence description (What? / Goal? / Why it contributes?, the shape teachers expect) is kept beside them, in
-//! `descriptions:`, so it is ready when the deliverable is handed in; a Portflow evidence item keeps its own in its
-//! evidence file (portflow_store.rs) instead:
+//! Its evidence description (What? / Goal? / Why it contributes?, the shape teachers expect) is a note of its own beside
+//! it in `deliverables/`, so it is ready when the deliverable is handed in and reads in any editor; a Portflow evidence
+//! item keeps its own in its evidence file (portflow_store.rs) instead:
 //!
 //! ```text
-//! descriptions:
-//! - path: 01-project-plan.md
-//!   text: "**Evidence description**\n\n**What?** …"
+//! deliverables/01-project-plan.desc.md        (see `deliverables::description_in_project`)
+//! ---
+//! deliverable: 01-project-plan.md             which one it describes, in the same folder
+//! ---
+//!
+//! **Evidence description**
+//!
+//! **What?** …
 //! ```
 //!
 //! Deleting a deliverable drops its facts. A file renamed outside Ledger keeps them when its new name starts with the same
@@ -188,20 +193,6 @@ pub fn export(conn: &Connection, project: &str, meta: &mut Mapping) -> Result<()
     if next > 0 {
         frontmatter::set(meta, "nextDeliverable", next);
     }
-    let descriptions: Vec<(String, String)> =
-        query_all(conn, "SELECT path, description FROM deliverable_descriptions WHERE project_slug = ?1 ORDER BY path", [project], |r| Ok((r.get(0)?, r.get(1)?)))?;
-    if !descriptions.is_empty() {
-        let items = descriptions
-            .into_iter()
-            .map(|(path, text)| {
-                let mut item = Mapping::new();
-                frontmatter::set(&mut item, "path", path);
-                frontmatter::set(&mut item, "text", text);
-                Value::Mapping(item)
-            })
-            .collect();
-        frontmatter::set(meta, "descriptions", Value::Sequence(items));
-    }
     let facts = query_all(conn, &format!("SELECT {COLUMNS} FROM deliverable_facts WHERE project_slug = ?1 ORDER BY number, path"), [project], from_row)?;
     if facts.is_empty() {
         return Ok(());
@@ -228,17 +219,6 @@ pub fn export(conn: &Connection, project: &str, meta: &mut Mapping) -> Result<()
 pub fn import(conn: &Connection, project: &str, meta: &Mapping) -> Result<()> {
     let next = meta.text("nextDeliverable").and_then(|n| n.parse::<i64>().ok()).unwrap_or(0).max(0);
     conn.execute("UPDATE projects SET next_deliverable = ?2 WHERE slug = ?1", params![project, next])?;
-    for item in meta.maps("descriptions") {
-        let (Some(path), Some(text)) = (item.text("path"), item.text("text")) else { continue };
-        let text = text.trim();
-        if text.is_empty() {
-            continue;
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO deliverable_descriptions (project_slug, path, description) VALUES (?1, ?2, ?3)",
-            params![project, deliverables::split_version(path.trim()).0, text],
-        )?;
-    }
     for item in meta.maps("deliverables") {
         let (Some(path), Some(goal)) = (item.text("path"), item.text("goal")) else { continue };
         let path = deliverables::split_version(path.trim()).0;
@@ -255,6 +235,50 @@ pub fn import(conn: &Connection, project: &str, meta: &Mapping) -> Result<()> {
             "INSERT OR IGNORE INTO deliverable_facts (project_slug, path, number, goal, mmm, answers, template) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![project, path, number, goal.trim(), mmm, item.text("answers"), item.text("template")],
         )?;
+    }
+    Ok(())
+}
+
+/// The project's evidence descriptions, one file each beside its deliverable.
+pub fn export_descriptions(conn: &Connection, project: &str, files: &mut std::collections::BTreeMap<String, String>) -> Result<()> {
+    let live: Vec<String> = query_all(conn, "SELECT path FROM deliverables WHERE project_slug = ?1", [project], |r| r.get::<_, String>(0))?
+        .into_iter()
+        .filter(|p| deliverables::split_version(p).1.is_none())
+        .collect();
+    for (path, text) in query_all(conn, "SELECT path, description FROM deliverable_descriptions WHERE project_slug = ?1", [project], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })? {
+        let mut meta = Mapping::new();
+        frontmatter::set(&mut meta, "deliverable", deliverables::file_name(&path).to_string());
+        let rel = deliverables::description_in_project(&path, live.iter().map(String::as_str));
+        files.insert(format!("projects/{project}/{rel}"), frontmatter::render(&meta, &text));
+    }
+    Ok(())
+}
+
+/// Reads an evidence description, `rel` its path under the project's `deliverables/`: of the deliverable its
+/// frontmatter names, or else of the one in its folder its name is ("plan.desc.md" is plan's, when there is one plan).
+/// One for no deliverable that is there is left alone; an empty one is no description.
+pub fn import_description(conn: &Connection, project: &str, rel: &str, meta: &Mapping, text: &str) -> Result<()> {
+    let text = text.trim();
+    let (dir, name) = rel.rsplit_once('/').map_or(("", rel), |(d, n)| (d, n));
+    let in_dir = |file: &str| if dir.is_empty() { file.to_string() } else { format!("{dir}/{file}") };
+    let named = name.get(..name.len().saturating_sub(".desc.md".len())).unwrap_or_default();
+    let live: Vec<String> = query_all(conn, "SELECT path FROM deliverables WHERE project_slug = ?1", [project], |r| r.get::<_, String>(0))?
+        .into_iter()
+        .filter(|p| deliverables::split_version(p).1.is_none())
+        .collect();
+    let path = match meta.text("deliverable") {
+        Some(file) => Some(in_dir(file.trim())),
+        None => {
+            let full = in_dir(named);
+            let by_stem: Vec<&String> = live.iter().filter(|p| deliverables::attachment_dir(p) == full).collect();
+            if live.contains(&full) { Some(full) } else if let [one] = by_stem.as_slice() { Some((*one).clone()) } else { None }
+        }
+    };
+    let Some(path) = path.filter(|p| live.contains(p)) else { return Ok(()) };
+    if !text.is_empty() {
+        conn.execute("INSERT OR IGNORE INTO deliverable_descriptions (project_slug, path, description) VALUES (?1, ?2, ?3)", params![project, path, text])?;
     }
     Ok(())
 }

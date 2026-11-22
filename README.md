@@ -53,6 +53,7 @@ projects/<project>/threads/<thread>/runs/<id>.md        a run of a prompt with C
 projects/<project>/userstories/<id>.md              a user story
 projects/<project>/tasks/<id>.md                    a task (a card on the board)
 projects/<project>/deliverables/                    what prompts produce — any kind of file; only the live files
+projects/<project>/deliverables/…/<name>.desc.md   a deliverable's evidence description, beside it (no deliverable of its own)
 projects/<project>/versions/<deliverable>/          a deliverable's published versions, in a folder named after it at the
                                                     same place under versions/ as its live file is under deliverables/:
                                                     name@v0.1.ext, the version itself, tagged

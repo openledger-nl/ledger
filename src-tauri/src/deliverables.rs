@@ -6,6 +6,8 @@
 //!
 //! ```text
 //! deliverables/reports/plan.md                         the live file
+//! deliverables/reports/plan.desc.md                    its evidence description (see `deliverable_facts`): no
+//!                                                      deliverable of its own
 //! versions/reports/plan/plan@v1.2.md                   its version 1.2
 //! versions/reports/plan/plan@v1.2.manifest.md          who made 1.2, in which thread, with what AI-use label
 //! ```
@@ -142,13 +144,29 @@ pub fn version_at(rel: &str) -> Option<String> {
 }
 
 /// Where the manifest of `base`'s `version` is, in its project's folder: beside the version, as "plan@v1.2.manifest.md".
-/// `others` are the project's deliverables that have manifests: when one of them keeps its versions in the same folder
-/// ("plan.md" and "plan.pdf"), the name keeps the extension ("plan.md@v1.2.manifest.md"), so the two never clash.
+/// `others` are the project's deliverables that have manifests (see [`own_name`]).
 pub fn manifest_in_project<'a>(base: &str, version: &str, others: impl IntoIterator<Item = &'a str>) -> String {
-    let folder = attachment_dir(base);
-    let shared = others.into_iter().any(|other| other != base && attachment_dir(other) == folder);
-    let name = if shared { file_name(base) } else { file_name(&folder) };
-    format!("versions/{folder}/{name}@v{version}.manifest.md")
+    format!("versions/{}/{}@v{version}.manifest.md", attachment_dir(base), own_name(base, others))
+}
+
+/// Where the evidence description of `base` is, in its project's folder: beside it, as "plan.desc.md". `others` are the
+/// project's live deliverables (see [`own_name`]).
+pub fn description_in_project<'a>(base: &str, others: impl IntoIterator<Item = &'a str>) -> String {
+    let dir = base.rsplit_once('/').map_or(String::new(), |(dir, _)| format!("{dir}/"));
+    format!("deliverables/{dir}{}.desc.md", own_name(base, others))
+}
+
+/// An evidence description beside its deliverable ("plan.desc.md"): not a deliverable itself.
+pub fn is_description(path: &str) -> bool {
+    file_name(path).to_ascii_lowercase().ends_with(".desc.md")
+}
+
+/// What a file Ledger keeps about `base` is named after: its name without the extension ("plan"), or with it ("plan.md")
+/// when another of `others` has the same name in the same folder ("plan.pdf"), so the two never clash.
+fn own_name<'a, 'b>(base: &'a str, others: impl IntoIterator<Item = &'b str>) -> &'a str {
+    let stem = attachment_dir(base);
+    let shared = others.into_iter().any(|other| other != base && attachment_dir(other) == stem);
+    if shared { file_name(base) } else { file_name(&base[..stem.len()]) }
 }
 
 // ---- reading ----------------------------------------------------------------------------------------
@@ -509,6 +527,9 @@ pub fn rename(conn: &Connection, root: &Path, project: &str, path: &str, name: &
     let clean = crate::uploads::sanitize(name);
     let file = ext.map_or(clean.clone(), |ext| format!("{clean}.{ext}"));
     let to = if dir.is_empty() { file } else { format!("{dir}/{file}") };
+    if is_description(&to) {
+        return Err(Error::invalid("A name that ends in .desc.md is an evidence description's: choose another"));
+    }
     rename_base(conn, root, project, path, &to)?;
     Ok(to)
 }

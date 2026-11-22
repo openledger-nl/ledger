@@ -20,7 +20,7 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use super::prompt::list_files;
-use crate::deliverables::{parse_version, split_version, version_at};
+use crate::deliverables::{is_description, parse_version, split_version, version_at};
 
 /// A file this big is not followed: a run writes text, and holding one to keep earlier edits would cost too much.
 const MAX_TRACKED_BYTES: u64 = 16 * 1024 * 1024;
@@ -121,7 +121,7 @@ impl Baseline {
         let files = list_files(dir);
         let latest = latest_versions(&list_files(versions));
         let mut baseline = Baseline::default();
-        for path in files.iter().filter(|p| split_version(p).1.is_none()) {
+        for path in files.iter().filter(|p| split_version(p).1.is_none() && !is_description(p)) {
             let Some(bytes) = read_capped(&dir.join(path)) else {
                 baseline.skipped.insert(path.clone());
                 continue;
@@ -140,7 +140,7 @@ impl Baseline {
     /// What the run changed, by path.
     pub fn changes(&self, dir: &Path) -> Vec<Change> {
         let mut changes = Vec::new();
-        for path in list_files(dir).into_iter().filter(|p| split_version(p).1.is_none()) {
+        for path in list_files(dir).into_iter().filter(|p| split_version(p).1.is_none() && !is_description(p)) {
             let Some(seen) = self.seen.get(&path) else {
                 if !self.skipped.contains(&path) {
                     changes.push(Change::New(path));
