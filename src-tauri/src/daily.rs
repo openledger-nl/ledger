@@ -6,18 +6,23 @@
 //! type: daily
 //! id: daily-2026-11-09
 //! date: 2026-11-09
-//! tags: [project/thrym-player, coach/frank]      gathered from the meetings, plus any plain tags of your own
+//! tags: [project/thrym-player, people/frank]      gathered from the meetings, plus any plain tags of your own
+//! meetings:                                       each meeting's time and the projects it belongs to, by its title
+//! - title: Coach meeting
+//!   time: '10:00'
+//!   projects: [thrym-player]
 //! ---
 //!
-//! ## 10:00 Coach meeting #project/thrym-player   a meeting: its time, title and the projects it belongs to
-//! With: #coach/frank #teammate/sam               who was there
+//! ## Coach meeting                                a meeting: its title
+//! With: #people/frank #people/sam                 who was there
 //!
-//! What was said, decided, to do…
+//! What was said, decided, to do… [[pricing-brief]] links to the project's deliverables and threads.
 //! ```
 //!
-//! Reading is lenient: a note Obsidian made, without frontmatter, reads in; a heading without a time or a `With:` line
-//! is a meeting all the same. Whatever comes before the first `## ` heading, and any frontmatter of your own, is kept as
-//! it is and written back.
+//! Reading is lenient: a note Obsidian made, without frontmatter, reads in; a heading the frontmatter doesn't list, or
+//! without a `With:` line, is a meeting all the same (with no time and no project). Of two meetings with the same title
+//! the first listed goes with the first heading. Whatever comes before the first `## ` heading, and any frontmatter of
+//! your own, is kept as it is and written back.
 
 use std::collections::HashSet;
 
@@ -118,24 +123,6 @@ fn tags_in(text: &str) -> Vec<String> {
     out
 }
 
-/// The heading without its tags, its words joined by single spaces.
-fn without_tags(text: &str) -> String {
-    let mut out = String::new();
-    let mut skipping = false;
-    for c in text.chars() {
-        if c == '#' {
-            skipping = true;
-            continue;
-        }
-        if skipping && (c.is_alphanumeric() || c == '_' || c == '-' || c == '/') {
-            continue;
-        }
-        skipping = false;
-        out.push(c);
-    }
-    out.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
 /// "9:05" → "09:05"; none for anything that isn't a time of day.
 fn clock(text: &str) -> Option<String> {
     let (h, m) = text.split_once(':')?;
@@ -143,13 +130,17 @@ fn clock(text: &str) -> Option<String> {
     (h < 24 && m < 60 && text.len() <= 5).then(|| format!("{h:02}:{m:02}"))
 }
 
-/// Reads a daily note: every `## ` heading is a meeting.
+/// What the frontmatter says of a meeting: its title, time and projects.
+type Listed = (String, Option<String>, Vec<String>);
+
+/// Reads a daily note: every `## ` heading is a meeting, called by the heading; its time and projects are in the
+/// frontmatter's `meetings`, found by that title.
 pub fn parse(meta: &Mapping, body: &str) -> ParsedDaily {
     let mut preamble = vec![];
     let mut sections: Vec<(String, Vec<&str>)> = vec![];
     for line in body.lines() {
         if let Some(heading) = line.strip_prefix("## ") {
-            sections.push((heading.to_string(), vec![]));
+            sections.push((heading.split_whitespace().collect::<Vec<_>>().join(" "), vec![]));
         } else if let Some((_, lines)) = sections.last_mut() {
             lines.push(line);
         } else {
@@ -157,28 +148,27 @@ pub fn parse(meta: &Mapping, body: &str) -> ParsedDaily {
         }
     }
 
-    let meetings = sections
+    // What the frontmatter says of each meeting, each taken by the first heading of its title.
+    let mut listed: Vec<Option<Listed>> = meta
+        .maps("meetings")
         .into_iter()
-        .map(|(heading, lines)| {
-            let projects = tags_in(&heading).into_iter().filter_map(|t| t.strip_prefix("project/").map(str::to_string)).collect();
-            let words = without_tags(&heading);
-            let (time, title) = match words.split_once(' ') {
-                Some((first, rest)) if clock(first).is_some() => (clock(first), rest.to_string()),
-                _ if clock(&words).is_some() => (clock(&words), String::new()),
-                _ => (None, words),
-            };
-            // A `With:` line counts when it is the first line with text under the heading.
-            let first = lines.iter().position(|l| !l.trim().is_empty());
-            let (people, notes) = match first {
-                Some(i) if lines[i].trim().to_lowercase().starts_with("with:") => (tags_in(lines[i]), &lines[i + 1..]),
-                _ => (vec![], &lines[..]),
-            };
-            MeetingSection { time, title, projects, people, body: notes.join("\n").trim().to_string() }
-        })
+        .map(|m| Some((m.text("title").unwrap_or_default().trim().to_string(), m.text("time").and_then(|t| clock(t.trim())), m.list("projects"))))
         .collect();
+    let mut meetings = vec![];
+    for (title, lines) in sections {
+        let found = listed.iter_mut().find(|m| m.as_ref().is_some_and(|(t, ..)| t.eq_ignore_ascii_case(&title))).and_then(Option::take);
+        let (time, projects) = found.map(|(_, time, projects)| (time, projects)).unwrap_or_default();
+        // A `With:` line counts when it is the first line with text under the heading.
+        let first = lines.iter().position(|l| !l.trim().is_empty());
+        let (people, notes) = match first {
+            Some(i) if lines[i].trim().to_lowercase().starts_with("with:") => (tags_in(lines[i]), &lines[i + 1..]),
+            _ => (vec![], &lines[..]),
+        };
+        meetings.push(MeetingSection { time, title, projects, people, body: notes.join("\n").trim().to_string() });
+    }
 
     let mut extra = meta.clone();
-    for key in ["type", "id", "date", "tags"] {
+    for key in ["type", "id", "date", "tags", "meetings"] {
         extra.remove(key);
     }
     let own_tags = meta.list("tags").into_iter().map(|t| t.trim_start_matches('#').to_string()).filter(|t| !t.is_empty() && !t.contains('/')).collect();
@@ -193,7 +183,14 @@ fn gathered(meetings: &[MeetingSection]) -> Vec<String> {
     projects.chain(people).filter(|t| seen.insert(t.clone())).collect()
 }
 
-/// The note's text: Ledger's keys first, then any of your own, the text before the meetings, then a heading each.
+/// What a meeting's heading says: its title, "Meeting" when it has none.
+fn heading_of(m: &MeetingSection) -> String {
+    let title = m.title.split_whitespace().collect::<Vec<_>>().join(" ");
+    if title.is_empty() { "Meeting".into() } else { title }
+}
+
+/// The note's text: Ledger's keys first (each meeting's time and projects among them), then any of your own, the text
+/// before the meetings, then a heading each.
 pub fn render(date: &str, id: &str, meetings: &[MeetingSection], preamble: &str, extra: &Mapping, own_tags: &[String]) -> String {
     let mut meta = Mapping::new();
     frontmatter::set(&mut meta, "type", "daily");
@@ -202,6 +199,23 @@ pub fn render(date: &str, id: &str, meetings: &[MeetingSection], preamble: &str,
     let mut tags = gathered(meetings);
     tags.extend(own_tags.iter().filter(|t| !tags.contains(t)).cloned().collect::<Vec<_>>());
     meta.insert(Value::from("tags"), Value::Sequence(tags.into_iter().map(Value::from).collect()));
+    let listed: Vec<Value> = meetings
+        .iter()
+        .map(|m| {
+            let mut item = Mapping::new();
+            frontmatter::set(&mut item, "title", heading_of(m));
+            if let Some(time) = &m.time {
+                frontmatter::set(&mut item, "time", time.clone());
+            }
+            if !m.projects.is_empty() {
+                item.insert(Value::from("projects"), Value::Sequence(m.projects.iter().cloned().map(Value::from).collect()));
+            }
+            Value::Mapping(item)
+        })
+        .collect();
+    if !listed.is_empty() {
+        meta.insert(Value::from("meetings"), Value::Sequence(listed));
+    }
     for (key, value) in extra {
         meta.insert(key.clone(), value.clone());
     }
@@ -211,11 +225,7 @@ pub fn render(date: &str, id: &str, meetings: &[MeetingSection], preamble: &str,
         parts.push(preamble.trim().to_string());
     }
     for m in meetings {
-        let mut heading = vec!["##".to_string()];
-        heading.extend(m.time.clone());
-        heading.push(if m.title.trim().is_empty() { "Meeting".into() } else { m.title.trim().to_string() });
-        heading.extend(m.projects.iter().map(|p| format!("#project/{p}")));
-        let mut lines = vec![heading.join(" ")];
+        let mut lines = vec![format!("## {}", heading_of(m))];
         if !m.people.is_empty() {
             lines.push(format!("With: {}", m.people.iter().map(|p| format!("#{p}")).collect::<Vec<_>>().join(" ")));
         }
