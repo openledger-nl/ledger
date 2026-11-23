@@ -237,3 +237,17 @@ fn a_vault_of_plain_files_gets_an_encrypted_copy_and_is_left_as_it_was() {
     assert_eq!(files(&plain), before, "the vault of plain files is left as it is");
     assert!(core.encrypted_copy(place.path(), "Again", PASSPHRASE).is_err(), "an encrypted vault isn't copied again");
 }
+
+#[test]
+fn a_file_moved_in_an_encrypted_vault_keeps_the_time_it_was_changed() {
+    let (m, _) = vault_with_things();
+    let store = store::at(&m.path);
+    let p = projects::list(&m.core.conn).unwrap()[0].slug.clone();
+    let (from, to) = (format!("projects/{p}/attachments/org chart.png"), format!("projects/{p}/attachments/chart.png"));
+    let before = store.fingerprint(&from).unwrap();
+    std::thread::sleep(Duration::from_millis(30));
+    store.rename(&from, &to).unwrap();
+    assert!(!store.exists(&from));
+    assert_eq!(store.read(&to).unwrap(), b"\x89PNG not really");
+    assert_eq!(store.fingerprint(&to).unwrap().1, before.1, "as a move of a plain file keeps it");
+}
