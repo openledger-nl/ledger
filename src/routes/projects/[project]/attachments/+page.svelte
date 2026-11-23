@@ -24,7 +24,7 @@
 	import Presentation from '@lucide/svelte/icons/presentation';
 	import FileImage from '$lib/components/FileImage.svelte';
 	import { api } from '$lib/api';
-	import { formatSize, threadUrl } from '$lib/actions';
+	import { formatSize, openFile, threadUrl } from '$lib/actions';
 	import { ago, dateTime, plural } from '$lib/format';
 	import { listOrder } from '$lib/order.svelte';
 	import { attempt } from '$lib/ui.svelte';
@@ -50,7 +50,8 @@
 	}
 	const TYPES: Array<[string[], FileType]> = [
 		[['pdf'], { label: 'PDF', icon: FileText, tone: 'red' }],
-		[['doc', 'docx', 'odt', 'rtf', 'txt', 'md', 'pages'], { label: 'Document', icon: FileText, tone: 'accent' }],
+		[['md', 'markdown'], { label: 'Note', icon: FileText, tone: 'green' }],
+		[['doc', 'docx', 'odt', 'rtf', 'txt', 'pages'], { label: 'Document', icon: FileText, tone: 'accent' }],
 		[['xls', 'xlsx', 'ods', 'csv', 'numbers'], { label: 'Spreadsheet', icon: FileSpreadsheet, tone: 'green' }],
 		[['ppt', 'pptx', 'odp', 'key'], { label: 'Presentation', icon: Presentation, tone: 'amber' }],
 		[['zip', 'rar', '7z', 'tar', 'gz'], { label: 'Archive', icon: FileArchive, tone: 'muted' }],
@@ -183,7 +184,8 @@
 	/** The folder a file is in, under attachments/ (empty for the folder itself). */
 	const subfolder = (u: Upload) => parentOf(relOf(u));
 
-	const open = (u: Upload, reveal: boolean) => attempt(() => api.openProjectFile(project, u.file, reveal));
+	// Markdown is read in Ledger; anything else opens in its own program.
+	const open = (u: Upload, reveal: boolean) => openFile(project, u.file, reveal);
 	const openFolder = () => attempt(() => api.openAttachmentsFolder(project, dir));
 
 	// Files put in the folder outside Ledger show up when it gets the focus back.
@@ -206,6 +208,16 @@
 	});
 
 	// The file a link pointed at: its folder shown, whatever the filter, and scrolled to.
+	// A folder asked for in the address (`?dir=hans`, from a file's path): opened once, as a link to a file is.
+	let openedDir: string | null = null;
+	$effect(() => {
+		const asked = data.dir;
+		if (asked === null || asked === openedDir) return;
+		openedDir = asked;
+		filter = '';
+		dir = asked.replace(/^\/+|\/+$/g, '');
+	});
+
 	// Once per link: the page reloads when Ledger gets the focus back, and that shouldn't take you back there.
 	let pointedAt: string | null = null;
 	$effect(() => {

@@ -4,11 +4,9 @@
 
 import { goto } from '$app/navigation';
 import { page } from '$app/state';
-import { deliverableUrl, threadUrl } from './actions';
-import { api } from './api';
+import { deliverableUrl, isMarkdownFile, markdownUrl, openFile, threadUrl } from './actions';
 import { LinkIndex } from './links';
 import type { LinkTarget } from './types';
-import { attempt } from './ui.svelte';
 
 /** Where a link leads, in the target's own project. A piece of feedback opens on the deliverable it is about, with its
  *  window open at it; a meeting day on that day's notes; a person on their page; an attachment on the project's
@@ -18,15 +16,16 @@ export function linkUrl(target: LinkTarget): string {
 	if (target.kind === 'meeting') return `/meetings?day=${encodeURIComponent(target.id)}`;
 	if (target.kind === 'person') return `/people?person=${encodeURIComponent(target.id)}`;
 	if (target.kind === 'thread') return threadUrl(project, target.id);
-	if (target.kind === 'attachment') return `/projects/${encodeURIComponent(project)}/attachments?file=${encodeURIComponent(target.id)}`;
+	if (target.kind === 'attachment')
+		return isMarkdownFile(target.id) ? markdownUrl(project, target.id) : `/projects/${encodeURIComponent(project)}/attachments?file=${encodeURIComponent(target.id)}`;
 	const url = deliverableUrl(project, target.open || target.id);
 	return target.kind === 'feedback' ? `${url}&feedback=${encodeURIComponent(target.id)}` : url;
 }
 
 /** Follows a link: an attachment opens with the system's program for it (a PDF in the PDF reader), anything else in
- *  Ledger. */
+ *  Ledger (a markdown attachment in its reader). */
 export function followLink(target: LinkTarget) {
-	if (target.kind === 'attachment') void attempt(() => api.openProjectFile(target.project, target.id));
+	if (target.kind === 'attachment') void openFile(target.project, target.id);
 	else void goto(linkUrl(target));
 }
 

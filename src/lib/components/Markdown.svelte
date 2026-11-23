@@ -3,7 +3,7 @@
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { goto } from '$app/navigation';
 	import { locate, plain, rangeIn, textOf, type Mark } from '$lib/anchors';
-	import { deliverableUrl, threadUrl } from '$lib/actions';
+	import { deliverableUrl, isMarkdownFile, threadUrl } from '$lib/actions';
 	import { followLink, linkUrl, projectLinks } from '$lib/links.svelte';
 	import { openInPortflow } from '$lib/portflow.svelte';
 	import type { EvidenceMention } from '$lib/types';
@@ -84,8 +84,8 @@
 			// Feedback has no name to type, and a person is written by id: without words of their own, the link says what
 			// the feedback says, or the person's name.
 			if ((target.kind === 'feedback' || target.kind === 'person') && !a.dataset.alias) a.textContent = target.title;
-			// An attachment opens in its own program, not in Ledger.
-			if (target.kind === 'attachment') {
+			// An attachment opens in its own program, not in Ledger; a markdown one is read in Ledger, as the link leads.
+			if (target.kind === 'attachment' && !isMarkdownFile(target.id)) {
 				a.onclick = (event) => {
 					event.preventDefault();
 					followLink(target);

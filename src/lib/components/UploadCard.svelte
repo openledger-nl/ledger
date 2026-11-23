@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { api } from '$lib/api';
-	import { formatSize } from '$lib/actions';
+	import { formatSize, openFile } from '$lib/actions';
 	import { time } from '$lib/format';
 	import { attempt, confirmDialog, refresh } from '$lib/ui.svelte';
 	import type { Upload } from '$lib/types';
@@ -39,7 +39,7 @@
 		if ((await attempt(() => api.deleteUpload(project, thread, upload.id))) !== undefined) await refresh();
 	}
 
-	const open = (reveal: boolean) => attempt(() => api.openProjectFile(project, upload.file, reveal));
+	const open = (reveal: boolean) => openFile(project, upload.file, reveal);
 </script>
 
 <div class="card upload-card" id="u-{upload.id}">

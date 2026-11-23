@@ -9,6 +9,8 @@ export const load: PageLoad = async ({ params, url, depends }) => {
 	return {
 		uploads: await api.listProjectUploads(params.project),
 		/** A file to point out (`?file=attachments/brief.pdf`): where a link to it leads. */
-		file: url.searchParams.get('file')
+		file: url.searchParams.get('file'),
+		/** A folder to open (`?dir=hans`), inside attachments/. */
+		dir: url.searchParams.get('dir')
 	};
 };

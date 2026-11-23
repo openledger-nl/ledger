@@ -11,6 +11,19 @@ export const threadUrl = (project: string, thread: string) => `/projects/${proje
 export const deliverableUrl = (project: string, path: string, thread?: string) =>
 	`/projects/${project}/deliverables/view?path=${encodeURIComponent(path)}${thread ? `&thread=${encodeURIComponent(thread)}` : ''}`;
 
+/** Whether a file is markdown, which Ledger shows itself instead of handing it to another program. */
+export const isMarkdownFile = (path: string) => /\.(md|markdown)$/i.test(path);
+
+/** Where a markdown file of a project is read in Ledger (one in attachments/, say): `path` is relative to the project. */
+export const markdownUrl = (project: string, path: string) => `/projects/${project}/attachments/read?path=${encodeURIComponent(path)}`;
+
+/** Opens a file of a project (`path` relative to it): a markdown one in Ledger's reader, anything else in the system's
+ *  program for it. With `reveal`, shows it in its folder instead. */
+export function openFile(project: string, path: string, reveal = false) {
+	if (!reveal && isMarkdownFile(path)) return goto(markdownUrl(project, path));
+	return attempt(() => api.openProjectFile(project, path, reveal));
+}
+
 /** Opens New project, which asks for the kind, the goal and the end first. */
 export function newProjectFlow() {
 	projectDialogs.project = 'new';
