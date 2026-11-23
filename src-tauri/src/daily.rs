@@ -4,11 +4,11 @@
 //! ```text
 //! ---
 //! date: 2026-11-09
-//! tags: [project/thrym-player]                    the meetings' projects, plus any plain tags of your own
+//! tags: [project/foo-bar]                    the meetings' projects, plus any plain tags of your own
 //! meetings:                                       each meeting's time and the projects it belongs to, by its title
 //! - title: Coach meeting
 //!   time: '10:00'
-//!   projects: [thrym-player]
+//!   projects: [foo-bar]
 //! ---
 //!
 //! ## Coach meeting                                a meeting: its title
@@ -46,7 +46,7 @@ pub struct MeetingSection {
     /// "10:00"; none when the heading has no time.
     pub time: Option<String>,
     pub title: String,
-    /// The projects it belongs to, by their tag (`thrym-player` for `#project/thrym-player`).
+    /// The projects it belongs to, by their tag (`foo-bar` for `#project/foo-bar`).
     pub projects: Vec<String>,
     /// Who was there, by their id in shared/people (`frank`).
     pub people: Vec<String>,

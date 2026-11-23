@@ -1467,7 +1467,7 @@ export interface MeetingSection {
 	/** "10:00", or null when the heading has no time. */
 	time: string | null;
 	title: string;
-	/** Project tags (`thrym-player`), on the heading: the meeting belongs to each of these projects. */
+	/** Project tags (`foo-bar`), on the heading: the meeting belongs to each of these projects. */
 	projects: string[];
 	/** Who was there, by their id in shared/people (`frank`): the `With:` line links to them (`[[people/frank]]`). */
 	people: string[];

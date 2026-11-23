@@ -9,7 +9,7 @@ import { plural } from './format';
 
 const words = (tag: string) => tag.split('-').map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(' ');
 
-/** Project tags (`thrym-player`, shown as `#project/thrym-player`): the vault's projects first, by name. */
+/** Project tags (`foo-bar`, shown as `#project/foo-bar`): the vault's projects first, by name. */
 export function projectTagOptions(projects: ProjectSummary[], meta: ProjectMeta[], notes: DailyNote[] = [], feedback: InboxFeedback[] = []): TagOption[] {
 	const uses = new Map<string, number>();
 	const count = (t: string) => uses.set(t, (uses.get(t) ?? 0) + 1);

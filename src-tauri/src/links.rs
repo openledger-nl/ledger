@@ -6,7 +6,7 @@
 //! ([`follow_rename`], which reads them by the same rules).
 //!
 //! A link is read from the project it is written in: a name there needs nothing more, and another project's things
-//! start with that project's slug (`[[thrym-player/pricing-brief]]`).
+//! start with that project's slug (`[[foo-bar/pricing-brief]]`).
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;

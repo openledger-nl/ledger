@@ -149,7 +149,7 @@
 <Modal title={project ? 'Edit project' : 'New project'} wide {onclose}>
 	<label class="field">
 		<span>Name</span>
-		<input bind:value={name} placeholder="e.g. Thrym Player" data-autofocus={project ? undefined : ''} />
+		<input bind:value={name} placeholder="e.g. Foo Bar" data-autofocus={project ? undefined : ''} />
 	</label>
 
 	<div class="field">
@@ -214,7 +214,7 @@
 	{#if kind === 'study'}
 		<label class="field">
 			<span>Main question (optional)</span>
-			<input bind:value={mainQuestion} placeholder="e.g. How can a music player make offline listening as easy as streaming?" />
+			<input bind:value={mainQuestion} placeholder="e.g. How can a foo make bar easier?" />
 		</label>
 	{:else if kind === 'work'}
 		<label class="field">

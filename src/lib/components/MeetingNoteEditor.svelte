@@ -41,7 +41,7 @@
 	} = $props();
 
 	/** The project a meeting's [[links]] are written in: its only one. With several or none, a link to a project's
-	 *  thread or deliverable names the project (`[[thrym-player/pricing-brief]]`). */
+	 *  thread or deliverable names the project (`[[foo-bar/pricing-brief]]`). */
 	const homeOf = (m: MeetingSection) => (m.projects.length === 1 ? (m.projects[0] ?? null) : null);
 
 	/** Who can be picked for a meeting: the people of its projects first, then everyone else in the vault. */

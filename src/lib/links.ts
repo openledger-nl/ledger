@@ -10,7 +10,7 @@
 //   [[Pricing model]]                a thread, by its title (or its slug)
 //   [[pricing-brief]]                a deliverable, by file name; `[[plans/pricing-brief.md]]` by path
 //   [[feedback:1730…-ab12cd34]]      a piece of feedback, by id
-//   [[thrym-player/pricing-brief]]   any of those in another project, after its slug (only for another project's)
+//   [[foo-bar/pricing-brief]]   any of those in another project, after its slug (only for another project's)
 //   [[people/frank]]                 a person, by id: their file in shared/people
 //   [[2026-11-22]]                   a day's meeting notes, by its date (as Obsidian links a daily note)
 //   [[target|words to show]]         any of them, shown as other words

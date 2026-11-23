@@ -1,6 +1,6 @@
 <script lang="ts" module>
 	export interface TagOption {
-		/** The tag itself, without `#`: `project/thrym-player` is passed as `thrym-player` for projects, `coach/frank` for people. */
+		/** The tag itself, without `#`: `project/foo-bar` is passed as `foo-bar` for projects, `coach/frank` for people. */
 		value: string;
 		/** How it reads: the project's name, the person's name. */
 		label: string;
