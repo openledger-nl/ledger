@@ -278,6 +278,7 @@ pub fn run() {
             commands::delete_upload,
             commands::read_project_file,
             commands::open_project_file,
+            commands::open_attachments_folder,
             commands::list_deliverables,
             commands::get_deliverable,
             commands::create_deliverable,

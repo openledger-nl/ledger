@@ -26,10 +26,11 @@ pub fn render_markdown(body: String) -> String {
     markdown::render(&body)
 }
 
-/// What a `[[link]]` can point at: every project's threads, deliverables and feedback, the meeting days and the people.
+/// What a `[[link]]` can point at: every project's threads, deliverables, feedback and attachments, the meeting days
+/// and the people.
 #[tauri::command]
 pub fn list_links(app: State<App>) -> Result<Vec<LinkTarget>> {
-    app.read(|c, _| links::list(c))
+    app.read(links::list_with_attachments)
 }
 
 #[tauri::command]
@@ -518,10 +519,29 @@ pub(crate) fn percent_decode(s: &str) -> Option<String> {
 }
 
 
-/// Every file uploaded in the project, from all its threads (the project's Attachments tab).
+/// Every file uploaded in the project, from all its threads, and every other file in its `attachments/` folder (the
+/// project's Attachments tab).
 #[tauri::command]
 pub fn list_project_uploads(app: State<App>, project: String) -> Result<Vec<UploadView>> {
     app.read(|c, root| uploads::list_project(c, root, &project))
+}
+
+/// Opens the project's `attachments/` folder, or the folder `sub` in it (`hans/2026`), in the file manager (made first
+/// if it isn't there yet), to put files in by hand. In an encrypted vault that is a plain copy outside the synced
+/// folder; what is put in it is taken into the vault when Ledger gets the focus back.
+#[tauri::command]
+pub fn open_attachments_folder(app: AppHandle, project: String, sub: Option<String>) -> Result<()> {
+    let state = app.state::<App>();
+    let folder = state.read(|c, root| {
+        crate::projects::require(c, &project)?;
+        let store = crate::store::at(root);
+        let sub = sub.as_deref().map(|s| s.trim_matches('/')).filter(|s| !s.is_empty());
+        let dir = project_rel(&project, &sub.map_or_else(|| uploads::ATTACHMENTS.to_string(), |s| format!("{}/{s}", uploads::ATTACHMENTS)))?;
+        let folder = store.materialize_dir(&dir).map_err(|e| Error::io(&store.path(&dir), e))?;
+        std::fs::create_dir_all(&folder).map_err(|e| Error::io(&folder, e))?;
+        Ok(folder)
+    })?;
+    app.opener().open_path(folder.display().to_string(), None::<&str>).map_err(Error::screenshot)
 }
 
 #[tauri::command]

@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { locate, plain, rangeIn, textOf, type Mark } from '$lib/anchors';
 	import { deliverableUrl, threadUrl } from '$lib/actions';
-	import { linkUrl, projectLinks } from '$lib/links.svelte';
+	import { followLink, linkUrl, projectLinks } from '$lib/links.svelte';
 	import { openInPortflow } from '$lib/portflow.svelte';
 	import type { EvidenceMention } from '$lib/types';
 	import { toast } from '$lib/ui.svelte';
@@ -50,7 +50,7 @@
 
 	// ---- [[links]] -------------------------------------------------------------------------------
 	// The backend leaves `[[target]]` as <a class="wikilink" data-wikilink="target"> with no address. What the target is
-	// (a thread, a deliverable, a piece of feedback, a meeting day, a person) is looked up here, in the same list the
+	// (a thread, a deliverable, a piece of feedback, an attachment, a meeting day, a person) is looked up here, in the same list the
 	// editor completes from; one that is nothing is drawn faint, as in Obsidian.
 
 	const links = projectLinks();
@@ -62,6 +62,7 @@
 			const name = a.dataset.wikilink ?? '';
 			const target = index?.resolve(name) ?? null;
 			a.classList.toggle('unresolved', !target);
+			a.onclick = null;
 			if (!target) {
 				a.removeAttribute('href');
 				a.title = index ? `Nothing is called "${name}"` : 'Links work inside a project';
@@ -73,14 +74,23 @@
 					? `Feedback ${target.detail}`
 					: target.kind === 'thread'
 						? 'Thread'
-						: target.kind === 'meeting'
-							? `Meeting notes of ${target.id}`
-							: target.kind === 'person'
-								? `${target.title}${target.detail ? `, ${target.detail}` : ''}`
-								: `Deliverable ${target.id}${target.project !== links.project ? ` in ${target.project}` : ''}`;
+						: target.kind === 'attachment'
+							? `Open ${target.id}${target.project !== links.project ? ` in ${target.project}` : ''}`
+							: target.kind === 'meeting'
+								? `Meeting notes of ${target.id}`
+								: target.kind === 'person'
+									? `${target.title}${target.detail ? `, ${target.detail}` : ''}`
+									: `Deliverable ${target.id}${target.project !== links.project ? ` in ${target.project}` : ''}`;
 			// Feedback has no name to type, and a person is written by id: without words of their own, the link says what
 			// the feedback says, or the person's name.
 			if ((target.kind === 'feedback' || target.kind === 'person') && !a.dataset.alias) a.textContent = target.title;
+			// An attachment opens in its own program, not in Ledger.
+			if (target.kind === 'attachment') {
+				a.onclick = (event) => {
+					event.preventDefault();
+					followLink(target);
+				};
+			}
 		}
 	});
 

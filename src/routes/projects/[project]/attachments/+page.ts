@@ -1,6 +1,14 @@
 import { api } from '$lib/api';
 import type { PageLoad } from './$types';
 
-export const load: PageLoad = async ({ params }) => ({
-	uploads: await api.listProjectUploads(params.project)
-});
+/** What the page reloads on, when Ledger gets the focus back: a file may have been put in the folder meanwhile. */
+export const _ATTACHMENTS = 'ledger:attachments';
+
+export const load: PageLoad = async ({ params, url, depends }) => {
+	depends(_ATTACHMENTS);
+	return {
+		uploads: await api.listProjectUploads(params.project),
+		/** A file to point out (`?file=attachments/brief.pdf`): where a link to it leads. */
+		file: url.searchParams.get('file')
+	};
+};

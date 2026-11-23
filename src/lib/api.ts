@@ -267,6 +267,8 @@ export const api = {
 	/** The preview of a picture being dropped onto the window, read from where it is on this machine. */
 	previewDroppedImage: (path: string) => call<ArrayBuffer>('preview_dropped_image', { path }),
 	openProjectFile: (project: string, path: string, reveal = false) => call<void>('open_project_file', { project, path, reveal }),
+	/** `sub`: a folder inside attachments/ (`hans/2026`); the folder itself without it. */
+	openAttachmentsFolder: (project: string, sub = '') => call<void>('open_attachments_folder', { project, sub: sub || null }),
 
 	// deliverables
 	listDeliverables: (project: string) => call<DeliverableSummary[]>('list_deliverables', { project }),

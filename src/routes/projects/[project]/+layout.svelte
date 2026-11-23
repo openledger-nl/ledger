@@ -33,7 +33,7 @@
 		{ href: base, label: 'Overview', n: null, exact: true },
 		{ href: `${base}/threads`, label: 'Threads', n: project.threadCount, exact: false },
 		{ href: `${base}/deliverables`, label: 'Deliverables', n: project.deliverableCount, exact: false },
-		{ href: `${base}/attachments`, label: 'Attachments', n: project.attachmentCount, exact: false },
+		{ href: `${base}/attachments`, label: 'Attachments', n: null, exact: false },
 		{ href: `${base}/stories`, label: 'Stories', n: project.storyCount, exact: false },
 		{ href: `${base}/board`, label: 'Board', n: project.openTaskCount, exact: false },
 		{ href: `${base}/people`, label: 'People', n: data.people.length || null, exact: false },

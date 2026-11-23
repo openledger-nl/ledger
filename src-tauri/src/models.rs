@@ -524,7 +524,8 @@ pub struct ActivityEvent {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkTarget {
-    /// "thread", "deliverable", "feedback" or "meeting" (a day's meeting notes).
+    /// "thread", "deliverable", "feedback", "attachment" (a file in a project's `attachments/`), "meeting" (a day's
+    /// meeting notes) or "person".
     pub kind: String,
     /// The project it is in, by slug.
     pub project: String,

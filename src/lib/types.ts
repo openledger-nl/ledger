@@ -1109,8 +1109,9 @@ export interface CaptureStatus {
 
 /** Something a `[[link]]` in a project's markdown can point at (see links.ts for how a typed target is matched to one). */
 export interface LinkTarget {
-	/** `meeting`: a day's meeting notes; `person`: someone in shared/people. */
-	kind: 'thread' | 'deliverable' | 'feedback' | 'meeting' | 'person';
+	/** `attachment`: a file in a project's attachments/; `meeting`: a day's meeting notes; `person`: someone in
+	 *  shared/people. */
+	kind: 'thread' | 'deliverable' | 'feedback' | 'attachment' | 'meeting' | 'person';
 	/** The project it is in, by slug; empty for a meeting day and a person, which belong to the vault. */
 	project: string;
 	/** The thread's slug, the deliverable's live path, the feedback's id, the day of the meeting notes, the person's id. */

@@ -57,15 +57,57 @@ pub fn list(conn: &Connection, root: &Path, project: &str, thread: &str) -> Resu
     )
 }
 
-/// Every upload in the project, from all its threads, newest first: what its Attachments tab lists.
+/// Every upload in the project, from all its threads, newest first, and then every other file in its `attachments/`
+/// folder (one put there by hand, say a PDF someone sent), newest first: what its Attachments tab lists. Such a file
+/// has no thread (`thread_slug` is empty) and goes by its path (`id` is `file:<path>`).
 pub fn list_project(conn: &Connection, root: &Path, project: &str) -> Result<Vec<UploadView>> {
-    query_all(
+    let mut found = query_all(
         conn,
         &format!("SELECT {COLUMNS} FROM uploads WHERE project_slug = ?1 ORDER BY uploaded_at DESC, rowid DESC"),
         [project],
         view(root, project),
-    )
+    )?;
+    let recorded: std::collections::HashSet<String> = found.iter().map(|u| u.file.clone()).collect();
+    let mut loose: Vec<UploadView> = folder_files(root, project)
+        .into_iter()
+        .filter(|(file, _, _)| !recorded.contains(file))
+        .map(|(file, size, modified)| {
+            let name = file.rsplit('/').next().unwrap_or(&file).to_string();
+            UploadView {
+                id: format!("file:{file}"),
+                thread_slug: String::new(),
+                image: is_image(&name),
+                exists: true,
+                file,
+                name,
+                size,
+                uploaded_at: modified,
+                description: String::new(),
+                description_html: String::new(),
+            }
+        })
+        .collect();
+    loose.sort_by(|a, b| b.uploaded_at.cmp(&a.uploaded_at));
+    found.extend(loose);
+    Ok(found)
 }
+
+/// Every file in the project's `attachments/` folder, subfolders included: its path in the project
+/// (`attachments/hans/brief.pdf`), its size and when it last changed.
+pub fn folder_files(root: &Path, project: &str) -> Vec<(String, i64, String)> {
+    let prefix = format!("projects/{project}/");
+    store::at(root)
+        .list_under(&project_rel(project, ATTACHMENTS))
+        .into_iter()
+        .filter_map(|(rel, (size, nanos))| {
+            let file = rel.strip_prefix(&prefix)?.to_string();
+            Some((file, size as i64, ids::format_millis((nanos / 1_000_000) as i64)))
+        })
+        .collect()
+}
+
+/// The folder in a project that its attachments are in.
+pub const ATTACHMENTS: &str = "attachments";
 
 fn get(conn: &Connection, root: &Path, project: &str, thread: &str, id: &str) -> Result<UploadView> {
     query_opt(

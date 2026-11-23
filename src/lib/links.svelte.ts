@@ -5,18 +5,29 @@
 import { goto } from '$app/navigation';
 import { page } from '$app/state';
 import { deliverableUrl, threadUrl } from './actions';
+import { api } from './api';
 import { LinkIndex } from './links';
 import type { LinkTarget } from './types';
+import { attempt } from './ui.svelte';
 
 /** Where a link leads, in the target's own project. A piece of feedback opens on the deliverable it is about, with its
- *  window open at it; a meeting day on that day's notes; a person on their page. */
+ *  window open at it; a meeting day on that day's notes; a person on their page; an attachment on the project's
+ *  Attachments tab (following one opens the file itself, see `followLink`). */
 export function linkUrl(target: LinkTarget): string {
 	const project = target.project;
 	if (target.kind === 'meeting') return `/meetings?day=${encodeURIComponent(target.id)}`;
 	if (target.kind === 'person') return `/people?person=${encodeURIComponent(target.id)}`;
 	if (target.kind === 'thread') return threadUrl(project, target.id);
+	if (target.kind === 'attachment') return `/projects/${encodeURIComponent(project)}/attachments?file=${encodeURIComponent(target.id)}`;
 	const url = deliverableUrl(project, target.open || target.id);
 	return target.kind === 'feedback' ? `${url}&feedback=${encodeURIComponent(target.id)}` : url;
+}
+
+/** Follows a link: an attachment opens with the system's program for it (a PDF in the PDF reader), anything else in
+ *  Ledger. */
+export function followLink(target: LinkTarget) {
+	if (target.kind === 'attachment') void attempt(() => api.openProjectFile(target.project, target.id));
+	else void goto(linkUrl(target));
 }
 
 /** The targets a page gives its links, and the project they are written in (null for none of its own). */
@@ -47,7 +58,7 @@ export function projectLinks(own?: () => LinkScope | undefined) {
 		},
 		/** Opens what a link points at. */
 		open(target: LinkTarget) {
-			void goto(linkUrl(target));
+			followLink(target);
 		}
 	};
 }

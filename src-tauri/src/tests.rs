@@ -676,6 +676,47 @@ fn a_project_lists_the_uploads_of_all_its_threads_newest_first() {
 }
 
 #[test]
+fn files_put_in_attachments_by_hand_are_listed_and_can_be_linked() {
+    let c = conn();
+    let dir = tempdir().unwrap();
+    let (p, calls) = setup(&c);
+    let uploaded = uploads::add_bytes(&c, dir.path(), &p, &calls, "notes.pdf", b"%PDF", "").unwrap();
+    let folder = uploads::project_dir(dir.path(), &p).join("attachments");
+    fs::create_dir_all(folder.join("hans")).unwrap();
+    fs::write(folder.join("hans/brief.pdf"), b"%PDF-1.7").unwrap();
+    fs::write(folder.join("photo.PNG"), b"png").unwrap();
+    fs::write(folder.join(".hidden"), b"x").unwrap();
+
+    // After the uploads, the files nothing records, by path, with no thread; dotfiles are not part of the vault.
+    let listed = uploads::list_project(&c, dir.path(), &p).unwrap();
+    let mut loose: Vec<_> = listed[1..].iter().map(|u| (u.id.as_str(), u.file.as_str(), u.name.as_str(), u.thread_slug.as_str(), u.size, u.image, u.exists)).collect();
+    loose.sort();
+    assert_eq!(listed[0].id, uploaded.id, "the upload is listed once, as an upload");
+    assert_eq!(
+        loose,
+        [
+            ("file:attachments/hans/brief.pdf", "attachments/hans/brief.pdf", "brief.pdf", "", 8, false, true),
+            ("file:attachments/photo.PNG", "attachments/photo.PNG", "photo.PNG", "", 3, true, true),
+        ]
+    );
+    assert!(listed[1..].iter().all(|u| u.uploaded_at.ends_with('Z')), "when the file last changed, as a timestamp");
+
+    // Every file in the folder is something a link can point at, the uploaded one too; renaming doesn't need them.
+    let found = links::list_with_attachments(&c, dir.path()).unwrap();
+    let mut files: Vec<_> = found.iter().filter(|l| l.kind == "attachment").map(|l| (l.project.as_str(), l.id.as_str(), l.title.as_str(), l.detail.as_str(), l.open.as_str())).collect();
+    files.sort();
+    assert_eq!(
+        files,
+        [
+            (p.as_str(), "attachments/hans/brief.pdf", "brief.pdf", "attachments/hans", "attachments/hans/brief.pdf"),
+            (p.as_str(), "attachments/notes.pdf", "notes.pdf", "attachments", "attachments/notes.pdf"),
+            (p.as_str(), "attachments/photo.PNG", "photo.PNG", "attachments", "attachments/photo.PNG"),
+        ]
+    );
+    assert!(!links::list(&c).unwrap().iter().any(|l| l.kind == "attachment"));
+}
+
+#[test]
 fn an_upload_is_a_file_in_attachments_and_a_manifest_in_the_thread() {
     let c = conn();
     let dir = tempdir().unwrap();

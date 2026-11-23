@@ -10,6 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
+use std::path::Path;
 
 use rusqlite::{Connection, params};
 
@@ -37,6 +38,20 @@ pub fn list(conn: &Connection) -> Result<Vec<LinkTarget>> {
     }
     for person in crate::people::list(conn)? {
         found.push(LinkTarget { kind: "person".into(), project: String::new(), id: person.id, title: person.name, detail: person.organisation, open: String::new() });
+    }
+    Ok(found)
+}
+
+/// Everything [`list`] gives, and then every file in each project's `attachments/` folder (`[[brief.pdf]]`), what the
+/// editor completes from and the page looks links up in. They come last, so they never take a name from a thread, a
+/// deliverable or a piece of feedback. Renaming leaves them out: nothing renames an attachment.
+pub fn list_with_attachments(conn: &Connection, root: &Path) -> Result<Vec<LinkTarget>> {
+    let mut found = list(conn)?;
+    for project in crate::projects::list(conn)? {
+        for (file, _, _) in crate::uploads::folder_files(root, &project.slug) {
+            let (folder, name) = file.rsplit_once('/').map(|(d, n)| (d.to_string(), n.to_string())).unwrap_or_default();
+            found.push(LinkTarget { kind: "attachment".into(), project: project.slug.clone(), id: file.clone(), title: name, detail: folder, open: file });
+        }
     }
     Ok(found)
 }

@@ -1,8 +1,8 @@
 // [[links]]: what a typed target points at, and what to offer while one is being typed. The rules live here, so the
 // editor (its live preview, its Ctrl/⌘+click, its completion) and the rendered page agree; links.rs follows the same
 // rules to keep links working when a thread or deliverable is renamed. The list of things a link can point at comes
-// from the backend (`list_links`, links.rs): every project's threads, deliverables and feedback, the days of the
-// meeting notes and the vault's people. Plain TypeScript, with nothing of the app in it.
+// from the backend (`list_links`, links.rs): every project's threads, deliverables, feedback and attachments, the days
+// of the meeting notes and the vault's people. Plain TypeScript, with nothing of the app in it.
 //
 // A link is read from where it is written: its own project (the project of the page, or a meeting's only project).
 // Names there need nothing more; another project's things start with that project's slug.
@@ -10,6 +10,7 @@
 //   [[Pricing model]]                a thread, by its title (or its slug)
 //   [[pricing-brief]]                a deliverable, by file name; `[[plans/pricing-brief.md]]` by path
 //   [[feedback:1730…-ab12cd34]]      a piece of feedback, by id
+//   [[brief.pdf]]                    a file in attachments/, by file name; `[[attachments/hans/brief.pdf]]` by path
 //   [[foo-bar/pricing-brief]]   any of those in another project, after its slug (only for another project's)
 //   [[people/frank]]                 a person, by id: their file in shared/people
 //   [[2026-11-22]]                   a day's meeting notes, by its date (as Obsidian links a daily note)
@@ -19,10 +20,10 @@
 import type { LinkTarget } from './types';
 
 export type LinkKind = LinkTarget['kind'];
-type ProjectKind = 'thread' | 'deliverable' | 'feedback';
+type ProjectKind = 'thread' | 'deliverable' | 'feedback' | 'attachment';
 
-const KINDS: LinkKind[] = ['thread', 'deliverable', 'feedback', 'meeting', 'person'];
-const PROJECT_KINDS: ProjectKind[] = ['thread', 'deliverable', 'feedback'];
+const KINDS: LinkKind[] = ['thread', 'deliverable', 'feedback', 'attachment', 'meeting', 'person'];
+const PROJECT_KINDS: ProjectKind[] = ['thread', 'deliverable', 'feedback', 'attachment'];
 
 /** What a link to a person starts with: their file is `shared/people/<id>.md`. */
 export const PEOPLE = 'people/';
@@ -65,13 +66,13 @@ export interface Suggestion {
 /** The names of one project's things: the first target to claim a name keeps it. */
 class Names {
 	readonly all = new Map<string, LinkTarget>();
-	readonly byKind: Record<ProjectKind, Map<string, LinkTarget>> = { thread: new Map(), deliverable: new Map(), feedback: new Map() };
+	readonly byKind: Record<ProjectKind, Map<string, LinkTarget>> = { thread: new Map(), deliverable: new Map(), feedback: new Map(), attachment: new Map() };
 
 	add(t: LinkTarget & { kind: ProjectKind }) {
 		const names =
 			t.kind === 'thread'
 				? [fold(t.title), fold(t.id)]
-				: t.kind === 'deliverable'
+				: t.kind === 'deliverable' || t.kind === 'attachment'
 					? [fold(t.id), fold(withoutExtension(t.id)), fold(fileName(t.id)), fold(withoutExtension(fileName(t.id)))]
 					: [fold(t.id)];
 		for (const name of names) {
@@ -145,7 +146,11 @@ export class LinkIndex {
 		if (t.kind === 'person') return `${PEOPLE}${t.id}`;
 		if (t.kind === 'meeting') return t.id;
 		const candidates =
-			t.kind === 'thread' ? [t.title, t.id] : t.kind === 'deliverable' ? [withoutExtension(fileName(t.id)), fileName(t.id), withoutExtension(t.id), t.id] : [];
+			t.kind === 'thread'
+				? [t.title, t.id]
+				: t.kind === 'deliverable' || t.kind === 'attachment'
+					? [withoutExtension(fileName(t.id)), fileName(t.id), withoutExtension(t.id), t.id]
+					: [];
 		const prefix = this.foreign(t) ? `${t.project}/` : '';
 		for (const name of [...candidates, `${t.kind}:${t.id}`]) {
 			if (!usable(name)) continue;
@@ -184,7 +189,7 @@ export class LinkIndex {
 		if (!needle) {
 			// Another project's things come once its name or theirs is typed, unless there is no project of its own.
 			const near = narrowed || !this.home ? pool : pool.filter((t) => !this.foreign(t));
-			const taken: Record<LinkKind, number> = { thread: 0, deliverable: 0, feedback: 0, meeting: 0, person: 0 };
+			const taken: Record<LinkKind, number> = { thread: 0, deliverable: 0, feedback: 0, attachment: 0, meeting: 0, person: 0 };
 			chosen = near.filter((t) => taken[t.kind]++ < 10);
 		} else {
 			chosen = pool
@@ -206,6 +211,7 @@ export class LinkIndex {
 		if (t.kind === 'meeting') return { target: t, insert: name, label: t.id, detail: t.title ? `meeting notes: ${t.title}` : 'meeting notes' };
 		if (t.kind === 'person') return { target: t, insert: name, label: t.title, detail: t.detail ? `person | ${t.detail}` : 'person' };
 		if (t.kind === 'thread') return { target: t, insert: name, label: t.title, detail: `thread${elsewhere}` };
+		if (t.kind === 'attachment') return { target: t, insert: name, label: t.title, detail: `attachment${elsewhere}` };
 		const where = [this.foreign(t) ? t.project : '', t.detail].filter(Boolean).join('/');
 		return { target: t, insert: name, label: t.title, detail: where ? `deliverable in ${where}` : 'deliverable' };
 	}
@@ -213,12 +219,12 @@ export class LinkIndex {
 	/** How well a target matches what is typed: lower is better, infinity is no match. */
 	private score(t: LinkTarget, needle: string): number {
 		const own = fold(t.title);
-		const where = t.kind === 'deliverable' || t.kind === 'person' ? fold(t.id) : fold(t.detail);
+		const where = t.kind === 'deliverable' || t.kind === 'attachment' || t.kind === 'person' ? fold(t.id) : fold(t.detail);
 		if (own === needle || where === needle) return 0;
 		if (own.startsWith(needle)) return 1;
 		if (own.split(/[\s\-_./]+/).some((word) => word.startsWith(needle))) return 2;
 		if (own.includes(needle)) return 3;
-		if ((t.kind === 'deliverable' || t.kind === 'meeting' || t.kind === 'person') && where.includes(needle)) return 4;
+		if ((t.kind === 'deliverable' || t.kind === 'attachment' || t.kind === 'meeting' || t.kind === 'person') && where.includes(needle)) return 4;
 		if (t.kind === 'feedback' && where.includes(needle)) return 5;
 		return subsequence(own, needle) ? 6 : Infinity;
 	}
