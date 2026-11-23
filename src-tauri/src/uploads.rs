@@ -77,10 +77,6 @@ fn get(conn: &Connection, root: &Path, project: &str, thread: &str, id: &str) ->
     .ok_or_else(|| Error::not_found("Upload not found"))
 }
 
-pub fn files_of_thread(conn: &Connection, project: &str, thread: &str) -> Result<Vec<String>> {
-    query_all(conn, "SELECT file FROM uploads WHERE project_slug = ?1 AND thread_slug = ?2", [project, thread], |r| r.get(0))
-}
-
 /// Copies files from anywhere on this machine into the project's attachments and records each in the thread.
 pub fn add_files(conn: &Connection, root: &Path, project: &str, thread: &str, sources: &[PathBuf], description: &str) -> Result<Vec<UploadView>> {
     threads::require(conn, project, thread)?;
@@ -118,34 +114,11 @@ pub fn set_description(conn: &Connection, root: &Path, project: &str, thread: &s
     get(conn, root, project, thread, id)
 }
 
-/// Removes the manifest, and the file too unless another upload still points at it.
-pub fn delete(conn: &Connection, root: &Path, project: &str, thread: &str, id: &str) -> Result<()> {
-    let file: Option<String> = query_opt(
-        conn,
-        "SELECT file FROM uploads WHERE project_slug = ?1 AND thread_slug = ?2 AND id = ?3",
-        [project, thread, id],
-        |r| r.get(0),
-    )?;
+/// Removes the manifest only: the file stays in the project's `attachments/`. Ledger never deletes a file you put
+/// there; take it out yourself (in a file browser or Obsidian) when you no longer want it.
+pub fn delete(conn: &Connection, project: &str, thread: &str, id: &str) -> Result<()> {
     conn.execute("DELETE FROM uploads WHERE project_slug = ?1 AND thread_slug = ?2 AND id = ?3", [project, thread, id])?;
-    if let Some(file) = file {
-        remove_unreferenced(conn, root, project, &[file]);
-    }
     Ok(())
-}
-
-/// Deletes attachment files that no upload manifest refers to any more. Only ever touches `attachments/`.
-pub fn remove_unreferenced(conn: &Connection, root: &Path, project: &str, files: &[String]) {
-    for file in files {
-        if !file.starts_with("attachments/") || file.contains("..") {
-            continue;
-        }
-        let still_used = conn
-            .query_row("SELECT COUNT(*) FROM uploads WHERE project_slug = ?1 AND file = ?2", [project, file], |r| r.get::<_, i64>(0))
-            .unwrap_or(1);
-        if still_used == 0 {
-            let _ = store::at(root).remove(&project_rel(project, file));
-        }
-    }
 }
 
 fn insert(conn: &Connection, root: &Path, project: &str, thread: &str, file: &str, size: u64, description: &str) -> Result<UploadView> {

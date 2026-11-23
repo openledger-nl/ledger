@@ -306,7 +306,6 @@ fn a_version_keeps_its_record_when_its_note_prompt_and_thread_are_deleted() {
         x.ai = true;
         x.prompt = Some(prompt.clone());
     }));
-    let root = tempdir().unwrap();
 
     let note = notes(&c, &p, &t2)[0].id.clone();
     posts::delete(&c, &p, &t2, &note).unwrap();
@@ -315,7 +314,7 @@ fn a_version_keeps_its_record_when_its_note_prompt_and_thread_are_deleted() {
     assert_eq!((known.author, known.thread.as_deref(), known.prompt.as_deref()), ("ai", Some(t2.as_str()), Some(prompt.as_str())));
     assert!(known.post.is_none());
 
-    threads::delete(&c, root.path(), &p, &t2).unwrap();
+    threads::delete(&c, &p, &t2).unwrap();
     let prov = provenance::for_deliverable(&c, &p, "plan.md").unwrap();
     let group = prov.groups.iter().find(|g| g.thread.as_ref().is_some_and(|t| t.slug == t2)).unwrap();
     let thread = group.thread.as_ref().unwrap();

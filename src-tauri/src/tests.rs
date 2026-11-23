@@ -704,7 +704,7 @@ fn an_upload_is_a_file_in_attachments_and_a_manifest_in_the_thread() {
     uploads::set_description(&c, dir.path(), &p, &t, &upload.id, "Revised").unwrap();
     assert_eq!(uploads::list(&c, dir.path(), &p, &t).unwrap()[0].description, "Revised");
 
-    // Deleting the manifest takes the file with it, unless another manifest still points at it.
+    // Deleting a manifest never deletes the file: attachments are yours, whether or not anything still points at them.
     let twin = uploads::add_bytes(&c, dir.path(), &p, &t, "twin.png", b"x", "").unwrap();
     c.execute(
         "INSERT INTO uploads (id, project_slug, thread_slug, file, name, size, uploaded_at) VALUES ('2', ?1, ?2, ?3, 'twin.png', 1, '2026')",
@@ -712,15 +712,15 @@ fn an_upload_is_a_file_in_attachments_and_a_manifest_in_the_thread() {
     )
     .unwrap();
     let file = uploads::project_dir(dir.path(), &p).join(&twin.file);
-    uploads::delete(&c, dir.path(), &p, &t, &twin.id).unwrap();
+    uploads::delete(&c, &p, &t, &twin.id).unwrap();
     assert!(file.exists(), "still referenced");
-    uploads::delete(&c, dir.path(), &p, &t, "2").unwrap();
-    assert!(!file.exists());
+    uploads::delete(&c, &p, &t, "2").unwrap();
+    assert!(file.exists(), "no manifest points at it, and it stays all the same");
 
-    // Deleting a thread removes the attachments only it used.
+    // Deleting a thread leaves the files it uploaded.
     let kept = uploads::project_dir(dir.path(), &p).join(&shot.file);
-    threads::delete(&c, dir.path(), &p, &t).unwrap();
-    assert!(!kept.exists());
+    threads::delete(&c, &p, &t).unwrap();
+    assert!(kept.exists());
 }
 
 // ---- stories and the board --------------------------------------------------------------------------
@@ -747,7 +747,6 @@ fn story_ids_are_validated_and_unique_per_project_ignoring_case() {
 #[test]
 fn stories_keep_criteria_in_order_link_to_threads_and_survive_thread_deletion() {
     let c = conn();
-    let dir = tempdir().unwrap();
     let (p, a) = setup(&c);
     let b = threads::create(&c, &p, "B").unwrap().slug;
 
@@ -782,14 +781,13 @@ fn stories_keep_criteria_in_order_link_to_threads_and_survive_thread_deletion() 
     stories::add_thread(&c, &p, "S1", &a).unwrap();
     assert_eq!(stories::get(&c, &p, "S1").unwrap().threads.len(), 2);
 
-    threads::delete(&c, dir.path(), &p, &b).unwrap();
+    threads::delete(&c, &p, &b).unwrap();
     assert_eq!(stories::get(&c, &p, "S1").unwrap().threads.len(), 1);
 }
 
 #[test]
 fn tasks_land_in_the_backlog_move_between_columns_and_link_to_stories_and_threads() {
     let c = conn();
-    let dir = tempdir().unwrap();
     let (p, t) = setup(&c);
     stories::create(&c, &p, story("MM01", "Pricing")).unwrap();
 
@@ -811,7 +809,7 @@ fn tasks_land_in_the_backlog_move_between_columns_and_link_to_stories_and_thread
     // Deleting what a task points at only clears the link.
     board::update_task(&c, &p, &task.id, TaskUpdate { story_id: Some("MM01".into()), ..Default::default() }).unwrap();
     stories::delete(&c, &p, "MM01").unwrap();
-    threads::delete(&c, dir.path(), &p, &t).unwrap();
+    threads::delete(&c, &p, &t).unwrap();
     let left = board::task(&c, &p, &task.id).unwrap();
     assert!(left.story_id.is_none() && left.thread_slug.is_none());
 

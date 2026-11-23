@@ -1430,7 +1430,7 @@ fn deleting_a_thread_takes_its_notes_with_it_and_deleting_a_prompt_keeps_them() 
     f.core.reload().unwrap();
     assert!(note_file(&f, &note.id).is_file(), "the note outlives the prompt it was about");
 
-    threads::delete(&f.core.conn, &f.root(), &f.project, &f.thread).unwrap();
+    threads::delete(&f.core.conn, &f.project, &f.thread).unwrap();
     f.persist();
     assert!(!note_file(&f, &note.id).exists());
     assert!(!f.project_dir().join("threads").join(&f.thread).exists(), "no folder is left to bring the thread back when the vault is read");

@@ -360,7 +360,7 @@ fn deleting_things_deletes_their_files_and_leaves_no_empty_folders() {
     vault.persist(&conn).unwrap();
     assert!(root.join(format!("projects/{p}/threads/beta/thread.md")).exists());
 
-    threads::delete(&conn, root, &p, "beta").unwrap();
+    threads::delete(&conn, &p, "beta").unwrap();
     vault.persist(&conn).unwrap();
     assert!(!root.join(format!("projects/{p}/threads/beta")).exists(), "feedback and links went with the thread");
 
@@ -409,7 +409,7 @@ fn files_the_app_does_not_manage_are_left_alone() {
 
     let t = threads::create(&conn, "acme", "New").unwrap().slug;
     vault.persist(&conn).unwrap();
-    threads::delete(&conn, root, "acme", &t).unwrap();
+    threads::delete(&conn, "acme", &t).unwrap();
     vault.persist(&conn).unwrap();
 
     assert_eq!(read(root, "notes/my own note.md"), "mine");

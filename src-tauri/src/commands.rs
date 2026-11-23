@@ -303,7 +303,7 @@ pub fn get_thread(app: State<App>, project: String, slug: String) -> Result<Thre
 
 #[tauri::command]
 pub fn delete_thread(app: State<App>, project: String, slug: String) -> Result<()> {
-    app.mutate(|c, root| threads::delete(c, root, &project, &slug))
+    app.mutate(|c, _| threads::delete(c, &project, &slug))
 }
 
 #[tauri::command]
@@ -531,7 +531,7 @@ pub fn update_upload(app: State<App>, project: String, thread: String, id: Strin
 
 #[tauri::command]
 pub fn delete_upload(app: State<App>, project: String, thread: String, id: String) -> Result<()> {
-    app.mutate(|c, root| uploads::delete(c, root, &project, &thread, &id))
+    app.mutate(|c, _| uploads::delete(c, &project, &thread, &id))
 }
 
 /// A path inside a project's folder, from a path given relative to it; anything that could leave the folder is refused.

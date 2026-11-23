@@ -126,15 +126,13 @@ pub fn get(conn: &Connection, root: &Path, project: &str, slug: &str) -> Result<
     })
 }
 
-/// The thread goes, with its posts, prompts, feedback, upload manifests and links. Attachments nothing else
-/// refers to go with it; tasks that pointed at it just lose that link.
-pub fn delete(conn: &Connection, root: &Path, project: &str, slug: &str) -> Result<()> {
-    let files = uploads::files_of_thread(conn, project, slug)?;
+/// The thread goes, with its posts, prompts, feedback, upload manifests and links. The files it uploaded stay in the
+/// project's `attachments/`: Ledger never deletes them. Tasks that pointed at it just lose that link.
+pub fn delete(conn: &Connection, project: &str, slug: &str) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute("UPDATE tasks SET thread_slug = NULL WHERE project_slug = ?1 AND thread_slug = ?2", [project, slug])?;
     tx.execute("DELETE FROM threads WHERE project_slug = ?1 AND slug = ?2", [project, slug])?;
     tx.commit()?;
-    uploads::remove_unreferenced(conn, root, project, &files);
     Ok(())
 }
 
