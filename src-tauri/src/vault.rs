@@ -139,9 +139,9 @@ pub struct Vault {
 }
 
 impl Vault {
-    /// Opens the vault in `root`, making the folder and its marker when it is new, and bringing it up to today's format
-    /// when it is of an older one (see `upgrade`). A folder that holds a vault from Ledger 0.x, or one from a newer
-    /// Ledger, is refused (see `marker`), and nothing in it is changed.
+    /// Opens the vault in `root`, making the folder and its marker when it is new. A folder that holds a vault from
+    /// Ledger 0.x, one of an older format (until the user chooses to upgrade it, see `upgrade`) or one from a newer
+    /// Ledger is refused (see `marker`), and nothing in it is changed.
     pub fn open(root: PathBuf) -> Result<Vault> {
         let found = marker::inspect(&root);
         if let Some(refused) = marker::refusal(&root, &found) {
@@ -151,16 +151,21 @@ impl Vault {
             marker::Found::Vault(marker) => marker,
             _ => marker::create(&root)?,
         };
-        let store = match &marker.encryption {
-            None => Store::plain(root.clone()),
+        let store = Vault::store_for(&root, &marker)?;
+        store::register(&store);
+        Ok(Vault::with(root, store, marker.id))
+    }
+
+    /// Where the files of the vault in `root`, whose marker is `marker`, are read and written: sealed when it is
+    /// encrypted, with its key, which this machine must have (`Error::Locked` when it doesn't).
+    pub fn store_for(root: &Path, marker: &marker::Marker) -> Result<Store> {
+        Ok(match &marker.encryption {
+            None => Store::plain(root.to_path_buf()),
             Some(_) => {
                 let key = crate::vault_crypto::known(&marker.id).ok_or_else(|| Error::Locked(format!("{} is encrypted: enter its passphrase to open it", root.display())))?;
-                Store::sealed(root.clone(), std::sync::Arc::new(crate::vault_crypto::Sealed::new(key, &marker.id)))
+                Store::sealed(root.to_path_buf(), std::sync::Arc::new(crate::vault_crypto::Sealed::new(key, &marker.id)))
             }
-        };
-        store::register(&store);
-        let marker = crate::upgrade::run(&root, &store, &marker)?;
-        Ok(Vault::with(root, store, marker.id))
+        })
     }
 
     fn with(root: PathBuf, store: Store, id: String) -> Vault {

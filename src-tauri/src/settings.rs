@@ -143,9 +143,9 @@ pub fn local_dir(root: &Path) -> PathBuf {
     if let Some(dir) = LOCAL_DIRS.lock().unwrap_or_else(PoisonError::into_inner).get(root) {
         return dir.clone();
     }
-    let id = match crate::marker::inspect(root) {
-        crate::marker::Found::Vault(marker) => marker.id,
-        _ => {
+    let id = match crate::marker::inspect(root).marker() {
+        Some(marker) => marker.id.clone(),
+        None => {
             use std::hash::{Hash, Hasher};
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             root.hash(&mut hasher);

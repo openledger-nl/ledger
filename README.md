@@ -96,16 +96,20 @@ today's that has lost its `ledger.json` (it has a `shared/` folder), or whose `l
 computer yet, is refused too, and the picker says so: wait for the sync, or put the file back from the cloud's version
 history. Ledger doesn't make it a new one, which would give it another id.
 
-**When the format changes**, `ledger.json` says which one a vault is in, and opening it in a newer Ledger brings it up to
-date, once. Format 1 was Ledger 1.0's; **format 2** keeps a project's history in one folder: its published
-versions move from `versions/` to `history/deliverables/`, and the record of each Claude Code run from its thread's
-`runs/` to `history/runs/`, so it no longer goes when the thread is deleted. The links that pointed at the old places (a
-"version published" note, the version a prompt's feedback was on) are pointed at the new ones. The files are moved
-first and `ledger.json` is written last, so an upgrade that stops halfway carries on where it stopped the next time the
-vault is opened. A Ledger of an older format refuses the vault from then on ("made by a newer Ledger"): update it on
-every computer that shares the vault. One that still had the vault open may write to the old places until it is closed;
-what it put there is moved in the next time a newer Ledger opens the vault, and a version that was published twice under
-one number is kept beside the first as a conflict copy.
+**When the format changes**, `ledger.json` says which one a vault is in. A newer Ledger never upgrades a vault on its
+own: it doesn't open a vault of an older format, and changes nothing in it, until you choose to. The vault picker marks
+such a vault "Needs an upgrade" (and starts on it when it is the one Ledger opened last), says what upgrading changes,
+and only its **Upgrade and open** does it; **Not now** leaves the vault as it is. Format 1 was Ledger 1.0's; **format
+2** keeps a project's history in one folder: its published versions move from `versions/` to `history/deliverables/`,
+and the record of each Claude Code run from its thread's `runs/` to `history/runs/`, so it no longer goes when the
+thread is deleted. The links that pointed at the old places (a "version published" note, the version a prompt's
+feedback was on) are pointed at the new ones; nothing is deleted. The files are moved first and `ledger.json` is
+written last, so an upgrade that stops halfway leaves a vault of format 1: the picker asks again, and upgrading it then
+carries on where it stopped. A Ledger of an older format refuses the vault from then on ("made by a newer Ledger"), so
+close Ledger on your other computers before you upgrade, and update it there. One that still had the vault open may
+write to the old places until it is closed; Ledger leaves what it put there alone, and Settings > Vault says how many
+files there are and offers **Move them into history/**. A version that was published twice under one number is then
+kept beside the first as a conflict copy.
 
 ### Choosing where the vault lives
 
@@ -359,7 +363,7 @@ src-tauri/src/
   vault.rs frontmatter.rs   files ⇄ database: layout, lenient import, canonical export, write-through that looks
                          before it writes
   marker.rs              ledger.json: that a folder is a vault, its format and id; vaults from Ledger 0.x are refused
-  upgrade.rs             brings a vault of an older format up to today's when it is opened, once (1 to 2: history/)
+  upgrade.rs             upgrades a vault of an older format to today's, only when the user chooses to (1 to 2: history/)
   store.rs               every file of the vault, read and written by its path: atomic writes, retried when a sync
                          client holds a file, plain or sealed
   vault_crypto.rs crypto.rs  encrypted vaults: the passphrase and the key, sealed files, the work folder

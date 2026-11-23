@@ -2,9 +2,11 @@
 	// Choosing the vault, as Obsidian does: the vaults opened on this machine on the left, and on the right making a new
 	// one or opening a folder that is there. It is the whole window before the first vault (the first start goes
 	// straight to making one), and after that an overlay in the middle of the window (vaults.svelte.ts). Opening a vault reloads the window on it, so nothing
-	// of the vault before is left in any page.
+	// of the vault before is left in any page. A vault of an older format is never upgraded behind the user's back: the
+	// picker says what upgrading it changes, and only its "Upgrade and open" does it.
 	import { open as pickFolder } from '@tauri-apps/plugin-dialog';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import CircleArrowUp from '@lucide/svelte/icons/circle-arrow-up';
 	import Cloud from '@lucide/svelte/icons/cloud';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
@@ -22,9 +24,49 @@
 	/** What the picker opened with, read once: after that it keeps its own list. */
 	const start = () => initial;
 	const firstStart = () => !start().open && start().vaults.length === 0;
+	/** The app started without a vault because the one it opened last needs an upgrade: the picker asks about that first. */
+	const waitingAtStart = () => {
+		const last = start().vaults[0];
+		return !start().open && last?.upgradeFrom ? last : null;
+	};
 	let vaults = $state(start());
-	let view = $state<'choose' | 'create' | 'unlock' | 'recovery'>(firstStart() ? 'create' : 'choose');
+	let view = $state<'choose' | 'create' | 'unlock' | 'recovery' | 'upgrade'>(firstStart() ? 'create' : waitingAtStart() ? 'upgrade' : 'choose');
 	let busy = $state(false);
+
+	const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+	/** The error that says an encrypted vault takes its passphrase (vault.rs). */
+	const asksForKey = (e: unknown) => errorText(e).includes('enter its passphrase');
+
+	// ---- a vault of an older format: upgraded only when the user says so
+
+	/** The vault the picker asks about upgrading. */
+	let outdated = $state<VaultEntry | null>(waitingAtStart());
+
+	function askUpgrade(vault: VaultEntry) {
+		outdated = vault;
+		view = 'upgrade';
+	}
+
+	function notNow() {
+		outdated = null;
+		view = 'choose';
+	}
+
+	/** What the user chose: upgrade it, and open it. An encrypted vault takes its passphrase first. */
+	async function upgrade() {
+		const vault = outdated;
+		if (!vault) return;
+		if (vault.needsKey) return askKey(vault.path, vault.name, true);
+		busy = true;
+		try {
+			await api.upgradeVault(vault.path);
+			return opened();
+		} catch (e) {
+			busy = false;
+			if (asksForKey(e)) return askKey(vault.path, vault.name, true);
+			await attempt(() => Promise.reject(e));
+		}
+	}
 
 	// ---- an encrypted vault: its passphrase when it is made, and to open one this computer has no key for
 
@@ -36,13 +78,14 @@
 	/** The recovery key of the vault just made, shown once before the window opens on it. */
 	let recovery = $state('');
 
-	/** The encrypted vault to open, and what is typed to open it. */
-	let locked = $state<{ path: string; name: string } | null>(null);
+	/** The encrypted vault to open, and what is typed to open it. `upgrade`: the user chose to upgrade it, which takes
+	 * its key. */
+	let locked = $state<{ path: string; name: string; upgrade: boolean } | null>(null);
 	let secret = $state('');
 	let keep = $state(true);
 
-	function askKey(path: string, name = path.split(/[\\/]/).pop() ?? path) {
-		locked = { path, name };
+	function askKey(path: string, name = path.split(/[\\/]/).pop() ?? path, upgrade = false) {
+		locked = { path, name, upgrade };
 		secret = '';
 		view = 'unlock';
 	}
@@ -50,7 +93,7 @@
 	async function unlock() {
 		if (!locked || !secret) return;
 		busy = true;
-		const done = await attempt(() => api.unlockVault(locked?.path ?? '', secret, keep));
+		const done = await attempt(() => api.unlockVault(locked?.path ?? '', secret, keep, locked?.upgrade ?? false));
 		secret = '';
 		if (done) return opened();
 		busy = false;
@@ -87,7 +130,16 @@
 
 	async function openFolder() {
 		const chosen = await attempt(() => pickFolder({ directory: true, multiple: false, title: 'Open folder as vault' }));
-		if (typeof chosen === 'string') await openPath(chosen);
+		if (typeof chosen !== 'string') return;
+		const vault = await attempt(() => api.vaultAt(chosen));
+		if (vault) await choose(vault);
+	}
+
+	/** A vault from the list, or a folder picked: asks about an upgrade when it needs one, then for its key, or opens it. */
+	async function choose(vault: VaultEntry) {
+		if (vault.upgradeFrom) return askUpgrade(vault);
+		if (vault.needsKey) return askKey(vault.path, vault.name);
+		await openPath(vault.path);
 	}
 
 	async function openPath(path: string) {
@@ -97,9 +149,8 @@
 			return opened();
 		} catch (e) {
 			busy = false;
-			const message = e instanceof Error ? e.message : String(e);
 			// An encrypted vault this computer has no key for: it takes the passphrase.
-			if (message.includes('enter its passphrase')) return askKey(path);
+			if (asksForKey(e)) return askKey(path);
 			await attempt(() => Promise.reject(e));
 		}
 	}
@@ -128,14 +179,16 @@
 							<button
 								class="vp-vault"
 								disabled={busy || vault.open || !vault.exists || !!vault.refused || vaults.locked}
-								onclick={() => (vault.needsKey ? askKey(vault.path, vault.name) : openPath(vault.path))}
-								title={vault.refused ?? (vault.exists ? vault.path : `${vault.path} isn't there any more`)}
+								onclick={() => choose(vault)}
+								title={vault.refused ?? (!vault.exists ? `${vault.path} isn't there any more` : vault.upgradeFrom ? `Made by an older Ledger: open it to choose whether to upgrade it` : vault.path)}
 							>
 								<span class="vp-name"
 									>{vault.name}{#if vault.encrypted}<span class="vp-lock" title="Encrypted"><Lock size={11} /></span>{/if}{#if vault.open}<span class="vp-tag">open</span>{/if}</span
 								>
 								<span class="vp-path mono">{vault.path}</span>
-								{#if !vault.exists}<span class="vp-where">Folder not found</span>{:else if vault.refused}<span class="vp-where">Can't be opened by this Ledger</span>{/if}
+								{#if !vault.exists}<span class="vp-where">Folder not found</span>{:else if vault.refused}<span class="vp-where">Can't be opened by this Ledger</span>{:else if vault.upgradeFrom}<span
+										class="vp-where vp-upgrade">Needs an upgrade</span
+									>{/if}
 							</button>
 							{#if !vault.open}
 								<button class="vp-forget" aria-label="Remove {vault.name} from the list" title="Remove from the list (the folder is left alone)" onclick={() => forget(vault)}>
@@ -160,10 +213,14 @@
 				<RecoveryKey value={recovery} ondone={opened} done="I have kept it: open the vault" />
 			{:else if view === 'unlock' && locked}
 				{#if !firstStart()}
-					<button class="link vp-back" onclick={() => ((view = 'choose'), (locked = null))}><ArrowLeft size={13} />Back</button>
+					<button class="link vp-back" onclick={() => ((view = locked?.upgrade && outdated ? 'upgrade' : 'choose'), (locked = null))}
+						><ArrowLeft size={13} />Back</button
+					>
 				{/if}
-				<h2><Lock size={18} /> Open {locked.name}</h2>
-				<p class="vp-lead">This vault is encrypted. Enter its passphrase, or its recovery key when the passphrase is lost.</p>
+				<h2><Lock size={18} /> {locked.upgrade ? 'Upgrade' : 'Open'} {locked.name}</h2>
+				<p class="vp-lead">
+					This vault is encrypted. Enter its passphrase, or its recovery key when the passphrase is lost{locked.upgrade ? ': Ledger upgrades it as you chose, then opens it' : ''}.
+				</p>
 				<form
 					class="vp-form"
 					onsubmit={(e) => {
@@ -178,9 +235,42 @@
 					</label>
 					<label class="check"><input type="checkbox" bind:checked={keep} /> Remember on this computer (in its keychain), so Ledger doesn't ask again</label>
 					<div class="row-end">
-						<button type="submit" class="btn primary" disabled={busy || !secret}><Lock size={14} />Open vault</button>
+						<button type="submit" class="btn primary" disabled={busy || !secret}><Lock size={14} />{locked.upgrade ? 'Upgrade and open' : 'Open vault'}</button>
 					</div>
 				</form>
+			{:else if view === 'upgrade' && outdated}
+				<button class="link vp-back" disabled={busy} onclick={notNow}><ArrowLeft size={13} />Back</button>
+				<h2>Upgrade {outdated.name}?</h2>
+				<p class="vp-lead">
+					An older Ledger made this vault (vault format {outdated.upgradeFrom}). This Ledger keeps a project's history in one folder, so it opens the vault
+					once you upgrade it. Until you do, nothing in it is changed.
+				</p>
+				<div class="vp-changes">
+					<h4>What the upgrade changes</h4>
+					<ul>
+						<li>Each project's published versions move from <code>versions/</code> to <code>history/deliverables/</code>, with the same names and contents.</li>
+						<li>
+							The record of each Claude Code run moves from its thread's <code>runs/</code> to the project's <code>history/runs/</code>, so it stays when the thread
+							is deleted.
+						</li>
+						<li>The "version published" notes and the prompts that name those files are pointed at the new places. Nothing else changes, and nothing is deleted.</li>
+					</ul>
+				</div>
+				<div class="notice">
+					Once it is upgraded, an older Ledger can't open this vault. Close Ledger on your other computers before you upgrade, and update it there before you
+					open the vault again.
+				</div>
+				<div class="vp-cloud">
+					<Cloud size={14} />
+					<span
+						>Your cloud storage keeps the earlier versions of every file, so it can put the folder back as it was before the upgrade. If the upgrade stops halfway,
+						nothing is lost: Ledger asks again next time, and carries on where it stopped.</span
+					>
+				</div>
+				<div class="row-end vp-ask">
+					<button class="btn ghost" disabled={busy} onclick={notNow}>Not now</button>
+					<button class="btn primary" disabled={busy || vaults.locked} onclick={upgrade}><CircleArrowUp size={14} />Upgrade and open</button>
+				</div>
 			{:else if vaults.locked}
 				<div class="notice info">The vault is fixed by the <code>LEDGER_VAULT</code> environment variable, so no other can be opened.</div>
 			{:else if view === 'choose'}
@@ -371,6 +461,23 @@
 		font-size: 11px;
 		color: var(--faint);
 	}
+	.vp-where.vp-upgrade {
+		color: var(--amber);
+	}
+	.vp-changes h4 {
+		margin: 0 0 6px;
+		font-size: 13px;
+	}
+	.vp-changes ul {
+		margin: 0;
+		padding-left: 18px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		font-size: 13px;
+		color: var(--muted);
+		max-width: 520px;
+	}
 	.vp-forget {
 		position: absolute;
 		right: 4px;
@@ -443,7 +550,8 @@
 		color: var(--muted);
 	}
 	.vp-action .btn,
-	.vp-form .btn {
+	.vp-form .btn,
+	.vp-ask .btn {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;

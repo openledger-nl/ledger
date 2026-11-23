@@ -12,8 +12,9 @@
 //!   it), so what belongs to this machine's copy (its settings, its secrets) is kept outside the vault by id: see
 //!   [`crate::settings::local_dir`].
 //! - **The format** is what a change to the vault's files bumps, with a step that brings a vault from one format to the
-//!   next, run once when the vault is opened (see `upgrade`). Format 1 was Ledger 1.0's; format 2 keeps a project's
-//!   versions and run records together in its `history/`.
+//!   next (see `upgrade`). That step is the user's to take: a vault of an older format isn't opened, and nothing in it
+//!   is changed, until they choose to upgrade it in the vault picker. Format 1 was Ledger 1.0's; format 2 keeps a
+//!   project's versions and run records together in its `history/`.
 
 use std::fs;
 use std::path::Path;
@@ -28,7 +29,7 @@ pub const FILE: &str = "ledger.json";
 /// The format of the vault's files that this Ledger reads and writes.
 pub const FORMAT: u32 = 2;
 
-/// The oldest format this Ledger brings up to date (see `upgrade`).
+/// The oldest format this Ledger can bring up to date, when the user asks it to (see `upgrade`).
 pub const OLDEST: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,8 +46,11 @@ pub struct Marker {
 /// What a folder is, as far as opening it as a vault goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Found {
-    /// A vault of today's format, or of an older one that is brought up to date when it is opened (see `upgrade`).
+    /// A vault of today's format.
     Vault(Marker),
+    /// A vault of an older format, which this Ledger can bring up to today's (see `upgrade`), but only when the user
+    /// chooses to in the vault picker. Until then it isn't opened, and nothing in it is changed.
+    Older(Marker),
     /// Nothing there yet, or a folder of other files without anything of Ledger in it: it becomes a vault.
     New,
     /// A vault from Ledger 0.x: refused, and left as it is.
@@ -69,8 +73,11 @@ pub fn inspect(root: &Path) -> Found {
     match fs::read_to_string(&file) {
         Ok(text) => match serde_json::from_str::<Marker>(&text) {
             Ok(marker) if marker.ledger > FORMAT => Found::Newer(marker.ledger),
-            Ok(marker) if (OLDEST..=FORMAT).contains(&marker.ledger) && !marker.id.trim().is_empty() => Found::Vault(marker),
-            Ok(marker) => Found::Damaged(format!("{} names format {} and id {:?}, which this Ledger doesn't read", file.display(), marker.ledger, marker.id)),
+            Ok(marker) if marker.ledger < OLDEST || marker.id.trim().is_empty() => {
+                Found::Damaged(format!("{} names format {} and id {:?}, which this Ledger doesn't read", file.display(), marker.ledger, marker.id))
+            }
+            Ok(marker) if marker.ledger < FORMAT => Found::Older(marker),
+            Ok(marker) => Found::Vault(marker),
             Err(e) => Found::Damaged(format!("{}: {e}", file.display())),
         },
         Err(_) if root.join(crate::vault::SHARED).is_dir() => Found::Unmarked,
@@ -79,10 +86,25 @@ pub fn inspect(root: &Path) -> Found {
     }
 }
 
+impl Found {
+    /// The marker of a vault, of today's format or an older one.
+    pub fn marker(&self) -> Option<&Marker> {
+        match self {
+            Found::Vault(marker) | Found::Older(marker) => Some(marker),
+            _ => None,
+        }
+    }
+}
+
 /// What to tell someone about a folder that can't be opened as a vault; `None` for one that can.
 pub fn refusal(root: &Path, found: &Found) -> Option<Error> {
     match found {
         Found::Vault(_) | Found::New => None,
+        Found::Older(marker) => Some(Error::invalid(format!(
+            "{} is a vault of an older Ledger (vault format {}). This Ledger opens it once you choose to upgrade it, in the vault picker; until then nothing in it is changed.",
+            root.display(),
+            marker.ledger
+        ))),
         Found::Legacy => Some(Error::invalid(format!(
             "{} holds a vault from Ledger 0.x. Ledger 1.0 can't open it and doesn't change it: create a new vault, in a folder your cloud storage keeps in sync.",
             root.display()
@@ -121,7 +143,7 @@ pub fn create_encrypted(root: &Path, passphrase: &str) -> Result<(Marker, crate:
 }
 
 /// Writes the marker. It is written when the vault is made, and changes only when an encrypted vault's passphrase does
-/// or the vault is brought up to a newer format.
+/// or the user has the vault upgraded to a newer format.
 pub fn write(root: &Path, marker: &Marker) -> Result<()> {
     fs::create_dir_all(root).map_err(|e| Error::io(root, e))?;
     let file = root.join(FILE);

@@ -1,6 +1,8 @@
-//! Bringing a vault of an older format up to today's (see `upgrade`): format 1 kept a project's versions in
-//! `versions/` and each run's record in its thread; format 2 keeps both in the project's `history/`.
+//! Upgrading a vault of an older format to today's (see `upgrade`): format 1 kept a project's versions in `versions/`
+//! and each run's record in its thread; format 2 keeps both in the project's `history/`. Only ever when the user
+//! chooses to: opening a vault, at the start or from the picker, never changes it.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
@@ -12,7 +14,7 @@ use crate::claude_code::records::{self, RunRecord};
 use crate::marker::{self, Found};
 use crate::state::Core;
 use crate::vault::Vault;
-use crate::{posts, prompts, provenance, store, threads};
+use crate::{posts, prompts, provenance, settings, store, threads, upgrade};
 
 const ID: &str = "0123456789abcdef0123456789abcdef";
 
@@ -33,10 +35,33 @@ fn names(root: &Path, rel: &str) -> Vec<String> {
 }
 
 fn format_of(root: &Path) -> u32 {
-    match marker::inspect(root) {
-        Found::Vault(marker) => marker.ledger,
-        other => panic!("{other:?}"),
+    match marker::inspect(root).marker() {
+        Some(marker) => marker.ledger,
+        None => panic!("{root:?} isn't a vault"),
     }
+}
+
+/// Every file in the folder, with its contents and the time it was last changed.
+fn snapshot(root: &Path) -> BTreeMap<String, (Vec<u8>, SystemTime)> {
+    fn walk(dir: &Path, root: &Path, out: &mut BTreeMap<String, (Vec<u8>, SystemTime)>) {
+        for entry in fs::read_dir(dir).unwrap().map(Result::unwrap) {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, root, out);
+            } else {
+                let rel = path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
+                out.insert(rel, (fs::read(&path).unwrap(), fs::metadata(&path).unwrap().modified().unwrap()));
+            }
+        }
+    }
+    let mut out = BTreeMap::new();
+    walk(root, root, &mut out);
+    out
+}
+
+/// Why opening the vault in `root` is refused.
+fn refused(root: &Path) -> String {
+    Vault::open(root.to_path_buf()).err().expect("a vault of an older format isn't opened").to_string()
 }
 
 fn open(root: &Path) -> (Vault, Connection) {
@@ -74,14 +99,48 @@ fn vault_of_format_1(root: &Path) {
 }
 
 #[test]
-fn a_vault_of_format_1_keeps_its_history_in_one_folder_once_it_is_opened() {
+fn a_vault_of_format_1_is_left_as_it_is_until_the_user_chooses_to_upgrade_it() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    vault_of_format_1(root);
+    let before = snapshot(root);
+    assert!(matches!(marker::inspect(root), Found::Older(ref m) if m.ledger == 1 && m.id == ID));
+
+    // Opened as a vault, from the picker or as a folder: refused, saying why and what to do.
+    let why = refused(root);
+    assert!(why.contains("older Ledger") && why.contains("upgrade it"), "{why}");
+    let config = tempdir().unwrap();
+    let mut core = Core::without_vault(config.path().to_path_buf()).unwrap();
+    assert!(core.open_vault(root).is_err());
+    assert!(!core.open);
+
+    // The vault opened last, at the start: the app starts on the picker, which asks.
+    settings::remember_vault(config.path(), root).unwrap();
+    let core = Core::open(config.path().to_path_buf()).unwrap();
+    assert!(!core.open, "a vault that needs an upgrade isn't opened at the start");
+    drop(core);
+
+    assert_eq!(snapshot(root), before, "nothing in it is changed, not even ledger.json");
+    assert_eq!(format_of(root), 1);
+
+    // The user chooses to upgrade it: the picker's "Upgrade and open".
+    let mut core = Core::without_vault(config.path().to_path_buf()).unwrap();
+    core.upgrade_vault(root).unwrap();
+    assert!(core.open);
+    assert_eq!(format_of(root), marker::FORMAT);
+    let projects: Vec<String> = crate::projects::list(&core.conn).unwrap().into_iter().map(|p| p.name).collect();
+    assert_eq!(projects, ["Acme"]);
+}
+
+#[test]
+fn upgrading_a_vault_of_format_1_keeps_its_history_in_one_folder() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     vault_of_format_1(root);
     let made = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
     fs::File::options().write(true).open(root.join("projects/acme/versions/chart/chart@v0.1.png")).unwrap().set_modified(made).unwrap();
-    assert_eq!(format_of(root), 1, "a vault of format 1 is one this Ledger opens");
 
+    assert_eq!(upgrade::vault(root).unwrap().ledger, marker::FORMAT);
     let (_vault, conn) = open(root);
     assert_eq!(format_of(root), marker::FORMAT);
     assert!(read(root, "ledger.json").contains(ID), "it is the same vault, with the same id");
@@ -119,11 +178,12 @@ fn a_vault_of_format_1_keeps_its_history_in_one_folder_once_it_is_opened() {
     assert_eq!(runs[0].files, ["plan@v0.1.md"]);
     assert_eq!(prompts::list(&conn, "acme", "call").unwrap().len(), 1);
 
-    // Opening it again changes nothing.
+    // Upgrading it again, or opening it again, changes nothing.
     let before: Vec<(String, String)> = ["history/runs/r1.md", "threads/call/posts/n1.md", "threads/call/prompts/p1.md"]
         .iter()
         .map(|rel| (rel.to_string(), read(root, &format!("{project}/{rel}"))))
         .collect();
+    upgrade::vault(root).unwrap();
     drop(open(root));
     for (rel, text) in before {
         assert_eq!(read(root, &format!("{project}/{rel}")), text, "{rel}");
@@ -140,6 +200,10 @@ fn an_upgrade_that_stopped_halfway_carries_on_where_it_stopped() {
     let run_v2 = format!("---\nthread: call\n{}", RUN_V1.strip_prefix("---\n").unwrap());
     write(root, "projects/acme/history/runs/r1.md", &run_v2);
 
+    // Its marker still says format 1, so it is still not opened: the picker asks again.
+    assert!(refused(root).contains("older Ledger"));
+
+    upgrade::vault(root).unwrap();
     let (vault, _conn) = open(root);
     assert_eq!(format_of(root), marker::FORMAT);
     assert!(!root.join("projects/acme/versions").exists() && !root.join("projects/acme/threads/call/runs").exists());
@@ -149,19 +213,32 @@ fn an_upgrade_that_stopped_halfway_carries_on_where_it_stopped() {
 }
 
 #[test]
-fn what_an_older_ledger_still_writes_to_the_old_places_is_moved_in() {
+fn what_an_older_ledger_still_writes_to_the_old_places_is_moved_in_only_when_asked() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     vault_of_format_1(root);
-    drop(open(root));
-    assert_eq!(format_of(root), marker::FORMAT);
+    upgrade::vault(root).unwrap();
+    let (vault, _) = open(root);
+    assert_eq!(upgrade::leftovers(vault.store()), 0);
+    drop(vault);
 
     // A Ledger 1.0 that had the vault open on another computer all along: it saw no versions any more, published the
     // plan as v0.1 again, and ran a prompt.
     write(root, "projects/acme/versions/plan/plan@v0.1.md", "# Plan\n\ntwo\n");
     write(root, "projects/acme/threads/call/runs/r2.md", &RUN_V1.replace("Wrote the plan.", "Wrote it again."));
 
-    let (vault, conn) = open(root);
+    // Opening the vault leaves them where they are, and only counts them, for Settings > Vault.
+    let before = snapshot(root);
+    let (mut vault, conn) = open(root);
+    assert_eq!(snapshot(root), before, "opening moves nothing");
+    assert_eq!(upgrade::leftovers(vault.store()), 2);
+    assert_eq!(records::for_prompt(&conn, "acme", "call", "p1").unwrap().len(), 1, "not read until they are moved");
+
+    // The user moves them in.
+    let moved = upgrade::tidy(vault.store()).unwrap();
+    assert_eq!((moved.versions, moved.runs, moved.kept_apart), (0, 1, 1));
+    let conn = vault.load().unwrap();
+    assert_eq!(upgrade::leftovers(vault.store()), 0);
     assert!(!root.join("projects/acme/versions").exists() && !root.join("projects/acme/threads/call/runs").exists());
     assert!(read(root, "projects/acme/history/runs/r2.md").starts_with("---\nthread: call\n"));
     assert_eq!(records::for_prompt(&conn, "acme", "call", "p1").unwrap().len(), 2);
@@ -212,26 +289,39 @@ fn a_run_stays_when_its_thread_is_deleted_as_the_versions_it_made_do() {
 }
 
 #[test]
-fn an_encrypted_vault_of_format_1_is_brought_up_to_date_sealed() {
+fn an_encrypted_vault_of_format_1_is_upgraded_sealed_once_the_user_chooses_to() {
+    const PASSPHRASE: &str = "correct horse battery staple";
     let place = tempdir().unwrap();
     let config = tempdir().unwrap();
-    let mut core = Core::without_vault(config.path().to_path_buf()).unwrap();
-    let (root, _) = core.create_vault(place.path(), "Secret", Some("correct horse battery staple")).unwrap();
-    let project = crate::projects::create(&core.conn, "Acme").unwrap().slug;
-    threads::create(&core.conn, &project, "Call").unwrap();
-    core.vault.persist(&core.conn).unwrap();
+    let root = place.path().join("Secret");
+    let project = "acme";
 
-    // Files where format 1 kept them, sealed, and a marker that says format 1.
-    let sealed = store::at(&root);
+    // An encrypted vault as Ledger 1.0 left it: its files where format 1 kept them, sealed, and a marker that says
+    // format 1. This machine doesn't have its key yet.
+    let (mut old, key) = marker::create_encrypted(&root, PASSPHRASE).unwrap();
+    let sealed = store::Store::sealed(root.clone(), std::sync::Arc::new(crate::vault_crypto::Sealed::new(std::sync::Arc::new(key), &old.id)));
+    sealed.write(&format!("projects/{project}/project.md"), b"---\nname: Acme\n---\n").unwrap();
+    sealed.write(&format!("projects/{project}/threads/call/thread.md"), b"---\ntitle: Call\n---\n").unwrap();
     sealed.write(&format!("projects/{project}/versions/plan/plan@v0.1.md"), b"# Plan\n\none\n").unwrap();
     sealed.write(&format!("projects/{project}/threads/call/runs/r1.md"), RUN_V1.as_bytes()).unwrap();
     sealed.write(&format!("projects/{project}/threads/call/posts/n1.md"), NOTE_V1.as_bytes()).unwrap();
-    let Found::Vault(mut old) = marker::inspect(&root) else { panic!() };
+    drop(sealed);
     old.ledger = 1;
     marker::write(&root, &old).unwrap();
-    drop(core);
 
-    let core = Core::open_at(root.clone(), config.path().to_path_buf(), false).unwrap();
+    // Not opened, and not changed, until the user chooses to upgrade it.
+    let before = snapshot(&root);
+    assert!(Core::open_at(root.clone(), config.path().to_path_buf(), false).is_err());
+    assert_eq!(snapshot(&root), before);
+
+    // Upgrading it takes its key: without it, nothing happens.
+    let mut core = Core::without_vault(config.path().to_path_buf()).unwrap();
+    assert!(matches!(core.upgrade_vault(&root), Err(crate::error::Error::Locked(_))));
+    assert_eq!(snapshot(&root), before);
+    let key = crate::vault_crypto::unlock(old.encryption.as_ref().unwrap(), &old.id, PASSPHRASE).unwrap();
+    crate::vault_crypto::remember(&old.id, key, true);
+
+    core.upgrade_vault(&root).unwrap();
     assert_eq!(format_of(&root), marker::FORMAT);
     let sealed = store::at(&root);
     assert!(!sealed.exists(&format!("projects/{project}/versions/plan/plan@v0.1.md")));
@@ -244,14 +334,21 @@ fn an_encrypted_vault_of_format_1_is_brought_up_to_date_sealed() {
 }
 
 #[test]
-fn only_formats_this_ledger_knows_are_opened() {
+fn only_a_vault_of_todays_format_opens_and_an_older_one_can_be_upgraded() {
     let dir = tempdir().unwrap();
     let root = dir.path();
-    for (format, opens) in [(0, false), (1, true), (2, true), (3, false)] {
+    for format in 0..=3 {
         write(root, "ledger.json", &format!("{{ \"ledger\": {format}, \"id\": \"{ID}\" }}"));
         let found = marker::inspect(root);
-        assert_eq!(matches!(found, Found::Vault(_)), opens, "format {format}: {found:?}");
+        let expected = match format {
+            0 => matches!(found, Found::Damaged(_)),
+            1 => matches!(found, Found::Older(_)),
+            2 => matches!(found, Found::Vault(_)),
+            _ => found == Found::Newer(3),
+        };
+        assert!(expected, "format {format}: {found:?}");
+        assert_eq!(marker::refusal(root, &found).is_none(), format == 2, "format {format}");
     }
-    assert_eq!(marker::inspect(root), Found::Newer(3));
     assert!(marker::refusal(root, &Found::Newer(3)).unwrap().to_string().contains("Update Ledger"));
+    assert!(upgrade::vault(root).is_err(), "a vault of a newer format isn't upgraded, or changed");
 }

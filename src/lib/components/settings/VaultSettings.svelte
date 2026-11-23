@@ -1,6 +1,8 @@
 <script lang="ts">
 	// Where the vault lives on this machine: the folder, switching to another vault (the vault picker), moving this one,
-	// and reloading it from disk.
+	// and reloading it from disk. And what an older Ledger still wrote where it keeps a project's history, after the
+	// vault was upgraded: said here, and moved into history/ only when the user asks.
+	import { onMount } from 'svelte';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { goto } from '$app/navigation';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -58,6 +60,28 @@
 			await refresh();
 		}
 	}
+
+	/** Files an older Ledger wrote to versions/ or a thread's runs/ after the vault was upgraded: only counted here. */
+	let leftovers = $state(0);
+	let tidying = $state(false);
+
+	onMount(() => {
+		api.vaultLeftovers().then(
+			(n) => (leftovers = n),
+			() => {}
+		);
+	});
+
+	async function tidy() {
+		tidying = true;
+		const moved = await attempt(() => api.tidyVault());
+		tidying = false;
+		if (!moved) return;
+		const files = moved.versions + moved.runs + moved.keptApart;
+		toast(`Moved ${files} ${files === 1 ? 'file' : 'files'} into history/${moved.keptApart ? `, ${moved.keptApart} as conflict copies (see Conflicts)` : ''}`);
+		leftovers = (await attempt(() => api.vaultLeftovers())) ?? 0;
+		await refresh();
+	}
 </script>
 
 <div class="panel">
@@ -76,6 +100,20 @@
 	</div>
 	{#if settings.vaultLocked}
 		<div class="notice info">The location is fixed by the <code>LEDGER_VAULT</code> environment variable.</div>
+	{/if}
+	{#if leftovers}
+		<div class="notice leftovers">
+			<p>
+				{leftovers}
+				{leftovers === 1 ? 'file is' : 'files are'} where an older Ledger keeps a project's history (<code>versions/</code>, or a thread's
+				<code>runs/</code>): a Ledger on another computer that had this vault open from before it was upgraded wrote them. Ledger doesn't show them until
+				they are in <code>history/</code>. Close or update Ledger on that computer, then move them; a file whose place is taken is kept beside it as a
+				conflict copy.
+			</p>
+			<div class="row-end">
+				<button class="btn small" onclick={tidy} disabled={tidying}>Move them into history/</button>
+			</div>
+		</div>
 	{/if}
 	<div class="form-row">
 		<button class="btn small" onclick={reload}>Reload from disk</button>
@@ -140,6 +178,9 @@ ledger.json                                    says that this folder is a vault<
 </div>
 
 <style>
+	.leftovers p {
+		margin: 0 0 8px;
+	}
 	.vault-now {
 		display: flex;
 		align-items: center;
