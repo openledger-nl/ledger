@@ -360,7 +360,7 @@ export interface ProvenanceVersion {
 	size: number;
 	sizeChange: number | null;
 	sha256: string | null;
-	/** The version's manifest, by its path in the project's folder (`versions/plan/plan@v0.1.manifest.md`), when it has one. */
+	/** The version's manifest, by its path in the project's folder (`history/deliverables/plan/plan@v0.1.manifest.md`), when it has one. */
 	record: string | null;
 	/** The "version published" note, in its thread. */
 	post: { threadSlug: string; id: string } | null;
@@ -852,7 +852,7 @@ export interface ClaudeRun {
 	vaultReloaded: boolean;
 }
 
-/** The note kept in the thread (`runs/<id>.md`) about a run of a prompt that is over. */
+/** The note kept in the project's history (`history/runs/<id>.md`) about a run of a prompt that is over. */
 export interface ClaudeRunRecord {
 	/** The id of the run, as it was while it ran. */
 	id: string;

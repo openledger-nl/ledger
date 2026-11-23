@@ -50,7 +50,7 @@
 	const file = $derived(deliverableFile(doc.path));
 	/** How the deliverable reads: its name without the file's extension (an evidence item's name is shown as it is). */
 	const title = $derived(doc.evidence ? doc.name : doc.name.replace(/\.[^./]+$/, '') || doc.name);
-	// Pictures in it are looked for beside the live file, also in a version (which is kept in versions/, apart from them).
+	// Pictures in it are looked for beside the live file, also in a version (which is kept in history/deliverables/, apart from them).
 	const images = $derived({ project, dir: dirOf(deliverableFile(doc.basePath)) });
 
 	// ---- the editable copy (markdown) ----------------------------------------------------------

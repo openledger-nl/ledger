@@ -1,19 +1,19 @@
 //! Deliverables are the files prompts produce, kept in a project's `deliverables/` folder. They can be anything;
 //! markdown ones can be read and edited here. Publishing freezes a copy as "<name>@v1.0.<ext>" in the project's
-//! `versions/` folder, in a folder of the deliverable's own named after it, and that snapshot never changes. Beside it
-//! is its manifest, how it came to be (see `provenance`). So `deliverables/` holds only the live files, and reads the
-//! same in any other tool:
+//! history, under `history/deliverables/`, in a folder of the deliverable's own at the same place as its live file is
+//! under `deliverables/`, and that snapshot never changes. Beside it is its manifest, how it came to be (see
+//! `provenance`). So `deliverables/` holds only the live files, and reads the same in any other tool:
 //!
 //! ```text
-//! deliverables/reports/plan.md                         the live file
-//! deliverables/reports/plan.desc.md                    its evidence description (see `deliverable_facts`): no
-//!                                                      deliverable of its own
-//! versions/reports/plan/plan@v1.2.md                   its version 1.2
-//! versions/reports/plan/plan@v1.2.manifest.md          who made 1.2, in which thread, with what AI-use label
+//! deliverables/reports/plan.md                                 the live file
+//! deliverables/reports/plan.desc.md                            its evidence description (see `deliverable_facts`):
+//!                                                              no deliverable of its own
+//! history/deliverables/reports/plan/plan@v1.2.md               its version 1.2
+//! history/deliverables/reports/plan/plan@v1.2.manifest.md      who made 1.2, in which thread, with what AI-use label
 //! ```
 //!
 //! Paths in this module are relative to the deliverables folder and use `/`; a snapshot's path is named the same way
-//! ("reports/plan@v1.2.md") even though its file is under `versions/` ([`in_project`]).
+//! ("reports/plan@v1.2.md") even though its file is under `history/deliverables/` ([`in_project`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -107,13 +107,18 @@ pub fn deliverables_dir(root: &Path, project: &str) -> PathBuf {
     uploads::project_dir(root, project).join("deliverables")
 }
 
+/// Where a project keeps its deliverables' published versions, with their manifests: in its history, beside the
+/// records of its Claude Code runs (`history/runs/`, see `vault`).
+pub const VERSIONS_DIR: &str = "history/deliverables";
+
 /// Where published versions are kept, next to the records of how each came to be (see [`provenance`]), for tests.
 #[cfg(test)]
 pub fn versions_dir(root: &Path, project: &str) -> PathBuf {
-    uploads::project_dir(root, project).join("versions")
+    uploads::project_dir(root, project).join(VERSIONS_DIR)
 }
 
-/// The file on disk for a deliverable path: a live file under `deliverables/`, a published version under `versions/`.
+/// The file on disk for a deliverable path: a live file under `deliverables/`, a published version under
+/// `history/deliverables/`.
 pub fn file_of(root: &Path, project: &str, path: &str) -> PathBuf {
     root.join(rel_of(project, path))
 }
@@ -124,16 +129,17 @@ pub fn rel_of(project: &str, path: &str) -> String {
 }
 
 /// The deliverable's file by its path in its project's folder: a live file under `deliverables/`, a published version
-/// under `versions/`, in its deliverable's own folder ("reports/plan@v1.2.md" is `versions/reports/plan/plan@v1.2.md`).
+/// under `history/deliverables/`, in its deliverable's own folder ("reports/plan@v1.2.md" is
+/// `history/deliverables/reports/plan/plan@v1.2.md`).
 pub fn in_project(path: &str) -> String {
     match split_version(path) {
-        (base, Some(_)) => format!("versions/{}/{}", attachment_dir(&base), file_name(path)),
+        (base, Some(_)) => format!("{VERSIONS_DIR}/{}/{}", attachment_dir(&base), file_name(path)),
         (_, None) => format!("deliverables/{path}"),
     }
 }
 
-/// The version a file under a project's `versions/` folder is, named as the app names it ("reports/plan/plan@v1.2.md"
-/// is "reports/plan@v1.2.md"). None for anything else there: a manifest, or a version outside its deliverable's folder.
+/// The version a file under a project's `history/deliverables/` folder is, named as the app names it
+/// ("reports/plan/plan@v1.2.md" is "reports/plan@v1.2.md"). None for anything else there: a manifest, or a version outside its deliverable's folder.
 pub fn version_at(rel: &str) -> Option<String> {
     let (dir, file) = rel.rsplit_once('/')?;
     let (base, version) = split_version(file);
@@ -146,7 +152,7 @@ pub fn version_at(rel: &str) -> Option<String> {
 /// Where the manifest of `base`'s `version` is, in its project's folder: beside the version, as "plan@v1.2.manifest.md".
 /// `others` are the project's deliverables that have manifests (see [`own_name`]).
 pub fn manifest_in_project<'a>(base: &str, version: &str, others: impl IntoIterator<Item = &'a str>) -> String {
-    format!("versions/{}/{}@v{version}.manifest.md", attachment_dir(base), own_name(base, others))
+    format!("{VERSIONS_DIR}/{}/{}@v{version}.manifest.md", attachment_dir(base), own_name(base, others))
 }
 
 /// Where the evidence description of `base` is, in its project's folder: beside it, as "plan.desc.md". `others` are the

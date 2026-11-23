@@ -522,8 +522,8 @@ fn a_round_mirrors_outcomes_people_and_the_linked_collection() {
     assert_eq!(fs::read(project.join("deliverables/Research.pdf")).unwrap(), bytes_of(3));
     assert_eq!(fs::read(project.join("deliverables/Project plan.pdf")).unwrap(), bytes_of(1));
     assert_eq!(fs::read(project.join("deliverables/Project plan/sources.zip")).unwrap(), bytes_of(2));
-    assert_eq!(fs::read(project.join("versions/Project plan/Project plan@v2.0.pdf")).unwrap(), bytes_of(1));
-    assert_eq!(fs::read(project.join("versions/Research/Research@v1.0.pdf")).unwrap(), bytes_of(3));
+    assert_eq!(fs::read(project.join("history/deliverables/Project plan/Project plan@v2.0.pdf")).unwrap(), bytes_of(1));
+    assert_eq!(fs::read(project.join("history/deliverables/Research/Research@v1.0.pdf")).unwrap(), bytes_of(3));
     let evidence = m.read(|c| store::evidence_in_project(c, "speed-edit", ME)).unwrap();
     let plan = evidence.iter().find(|e| e.slug == "project-plan").unwrap();
     assert_eq!(plan.versions.iter().map(|v| v.number).collect::<Vec<_>>(), [2, 1]);
@@ -1563,7 +1563,7 @@ fn each_file_is_downloaded_once_and_its_versions_are_published() {
     assert_eq!(view.versions, ["1.0", "2.0"]);
     let project = m.root().join("projects/speed-edit");
     assert_eq!(fs::read(project.join("deliverables/Research.pdf")).unwrap(), bytes_of(4));
-    assert_eq!(fs::read(project.join("versions/Research/Research@v1.0.pdf")).unwrap(), bytes_of(3), "the old version stays");
+    assert_eq!(fs::read(project.join("history/deliverables/Research/Research@v1.0.pdf")).unwrap(), bytes_of(3), "the old version stays");
 
     // Another machine reading the vault knows the files are there: nothing to download.
     m.reload();
@@ -1594,7 +1594,7 @@ fn a_live_file_changed_in_ledger_is_kept_and_a_new_name_never_clobbers() {
     let report = portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
     assert_eq!(report.downloaded, 1);
     assert_eq!(fs::read(project.join("deliverables/Project plan.pdf")).unwrap(), b"edited here");
-    assert_eq!(fs::read(project.join("versions/Project plan/Project plan@v3.0.pdf")).unwrap(), bytes_of(5));
+    assert_eq!(fs::read(project.join("history/deliverables/Project plan/Project plan@v3.0.pdf")).unwrap(), bytes_of(5));
     assert!(report.notes.iter().any(|n| n.contains("Project plan.pdf") && n.contains("stays")), "{:?}", report.notes);
 }
 
@@ -1670,7 +1670,7 @@ fn the_deliverable_has_the_evidence_items_name_not_the_files() {
     portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
     let project = m.root().join("projects/speed-edit");
     assert_eq!(fs::read(project.join("deliverables/Project plan DAE.pdf")).unwrap(), bytes_of(3));
-    assert_eq!(fs::read(project.join("versions/Project plan DAE/Project plan DAE@v1.0.pdf")).unwrap(), bytes_of(3));
+    assert_eq!(fs::read(project.join("history/deliverables/Project plan DAE/Project plan DAE@v1.0.pdf")).unwrap(), bytes_of(3));
     assert_eq!(fs::read(project.join("deliverables/Project plan.pdf")).unwrap(), bytes_of(1), "the other item's, by its own name");
 
     // One deliverable per item, shown by the item's name; a second file of a version is folded into it.
@@ -1709,11 +1709,11 @@ fn a_rename_in_portflow_renames_the_deliverable_with_its_versions() {
     assert_eq!((report.renamed, report.downloaded), (3, 0), "both deliverables and the plan's attachment: {report:?}");
     let project = m.root().join("projects/speed-edit");
     assert_eq!(fs::read(project.join("deliverables/Research report.pdf")).unwrap(), bytes_of(3));
-    assert_eq!(fs::read(project.join("versions/Research report/Research report@v1.0.pdf")).unwrap(), bytes_of(3));
+    assert_eq!(fs::read(project.join("history/deliverables/Research report/Research report@v1.0.pdf")).unwrap(), bytes_of(3));
     assert_eq!(fs::read(project.join("deliverables/Plan of approach.pdf")).unwrap(), bytes_of(1));
     assert_eq!(fs::read(project.join("deliverables/Plan of approach/sources.zip")).unwrap(), bytes_of(2));
-    assert_eq!(fs::read(project.join("versions/Plan of approach/sources/sources@v2.0.zip")).unwrap(), bytes_of(2));
-    for gone in ["deliverables/Research.pdf", "versions/Research", "deliverables/Project plan.pdf", "deliverables/Project plan", "versions/Project plan"] {
+    assert_eq!(fs::read(project.join("history/deliverables/Plan of approach/sources/sources@v2.0.zip")).unwrap(), bytes_of(2));
+    for gone in ["deliverables/Research.pdf", "history/deliverables/Research", "deliverables/Project plan.pdf", "deliverables/Project plan", "history/deliverables/Project plan"] {
         assert!(!project.join(gone).exists(), "{gone} is still there");
     }
     // What pointed at it points at the new name: its record, the feedback on it, the version in Portflow, the mention.
@@ -1741,8 +1741,8 @@ fn a_deliverable_made_in_ledger_keeps_its_file_name_but_shows_the_items() {
     m.linked();
     // Ledger handed in v1.0 of its own "research-notes.pdf" as the research item.
     let project = m.root().join("projects/speed-edit");
-    fs::create_dir_all(project.join("versions/research-notes")).unwrap();
-    fs::write(project.join("versions/research-notes/research-notes@v1.0.pdf"), bytes_of(3)).unwrap();
+    fs::create_dir_all(project.join("history/deliverables/research-notes")).unwrap();
+    fs::write(project.join("history/deliverables/research-notes/research-notes@v1.0.pdf"), bytes_of(3)).unwrap();
     m.edit(|c| crate::deliverables::upsert(c, "speed-edit", "research-notes@v1.0.pdf", 5, "2026-10-01T10:00:00Z", None).unwrap());
     let fake = FakePortflow::new();
     fake.world.lock().unwrap().versions.insert(800, vec![version(8001, 800, 1, "file", vec![file(3, "research-notes@v1.0.pdf")])]);
@@ -1778,11 +1778,11 @@ fn an_older_layout_in_a_folder_of_the_items_comes_to_the_top_under_the_items_nam
     m.linked();
     // What an older import left: the item's file in a folder of its own, its versions listed as `<file>: <version>`.
     let project = m.root().join("projects/speed-edit");
-    fs::create_dir_all(project.join("versions/research/old-research")).unwrap();
+    fs::create_dir_all(project.join("history/deliverables/research/old-research")).unwrap();
     fs::create_dir_all(project.join("evidence")).unwrap();
-    fs::write(project.join("versions/research/old-research/old-research@v1.0.pdf"), bytes_of(3)).unwrap();
+    fs::write(project.join("history/deliverables/research/old-research/old-research@v1.0.pdf"), bytes_of(3)).unwrap();
     fs::write(
-        project.join("versions/research/old-research/old-research@v1.0.manifest.md"),
+        project.join("history/deliverables/research/old-research/old-research@v1.0.manifest.md"),
         "---\ndeliverable: research/old-research.pdf\nversion: '1.0'\nsha256: x\ncreatedAt: 2026-10-01T10:00:00Z\n---\n\nVersion 1 in Portflow\n",
     )
     .unwrap();
@@ -1799,9 +1799,9 @@ fn an_older_layout_in_a_folder_of_the_items_comes_to_the_top_under_the_items_nam
     assert_eq!(report.renamed, 1, "{report:?}");
     let view = m.read(|c| crate::deliverables::get(c, "speed-edit", "Research.pdf")).unwrap();
     assert_eq!(view.versions, ["1.0", "2.0"]);
-    assert_eq!(fs::read(project.join("versions/Research/Research@v1.0.pdf")).unwrap(), bytes_of(3));
+    assert_eq!(fs::read(project.join("history/deliverables/Research/Research@v1.0.pdf")).unwrap(), bytes_of(3));
     assert_eq!(fs::read(project.join("deliverables/Research.pdf")).unwrap(), bytes_of(6));
-    assert!(!project.join("versions/research/old-research").exists() && !project.join("deliverables/research").exists());
+    assert!(!project.join("history/deliverables/research/old-research").exists() && !project.join("deliverables/research").exists());
     let mirror = fs::read_to_string(project.join("evidence/research.md")).unwrap();
     assert!(mirror.contains("deliverable: Research@v1.0.pdf") && mirror.contains("- Research.pdf"), "{mirror}");
     m.reload();

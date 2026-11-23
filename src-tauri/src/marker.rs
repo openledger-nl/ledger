@@ -2,7 +2,7 @@
 //! the vault's id, and how it is encrypted when it is (see `vault_crypto`):
 //!
 //! ```json
-//! { "ledger": 1, "id": "3f9a…", "encryption": { "cipher": "aes-256-gcm", "kdf": { … }, … } }
+//! { "ledger": 2, "id": "3f9a…", "encryption": { "cipher": "aes-256-gcm", "kdf": { … }, … } }
 //! ```
 //!
 //! - **The cutoff.** Ledger opens only folders with a marker of a format it reads. A folder that holds a vault from
@@ -11,8 +11,9 @@
 //! - **The id** names the vault on this machine (the vault's folder has another path on every machine that syncs
 //!   it), so what belongs to this machine's copy (its settings, its secrets) is kept outside the vault by id: see
 //!   [`crate::settings::local_dir`].
-//! - **The format** is what a future change to the vault's files bumps, with a step that brings a vault from one
-//!   format to the next, run once.
+//! - **The format** is what a change to the vault's files bumps, with a step that brings a vault from one format to the
+//!   next, run once when the vault is opened (see `upgrade`). Format 1 was Ledger 1.0's; format 2 keeps a project's
+//!   versions and run records together in its `history/`.
 
 use std::fs;
 use std::path::Path;
@@ -25,7 +26,10 @@ use crate::error::{Error, Result};
 pub const FILE: &str = "ledger.json";
 
 /// The format of the vault's files that this Ledger reads and writes.
-pub const FORMAT: u32 = 1;
+pub const FORMAT: u32 = 2;
+
+/// The oldest format this Ledger brings up to date (see `upgrade`).
+pub const OLDEST: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,7 +45,7 @@ pub struct Marker {
 /// What a folder is, as far as opening it as a vault goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Found {
-    /// A vault of today's format.
+    /// A vault of today's format, or of an older one that is brought up to date when it is opened (see `upgrade`).
     Vault(Marker),
     /// Nothing there yet, or a folder of other files without anything of Ledger in it: it becomes a vault.
     New,
@@ -65,7 +69,7 @@ pub fn inspect(root: &Path) -> Found {
     match fs::read_to_string(&file) {
         Ok(text) => match serde_json::from_str::<Marker>(&text) {
             Ok(marker) if marker.ledger > FORMAT => Found::Newer(marker.ledger),
-            Ok(marker) if marker.ledger == FORMAT && !marker.id.trim().is_empty() => Found::Vault(marker),
+            Ok(marker) if (OLDEST..=FORMAT).contains(&marker.ledger) && !marker.id.trim().is_empty() => Found::Vault(marker),
             Ok(marker) => Found::Damaged(format!("{} names format {} and id {:?}, which this Ledger doesn't read", file.display(), marker.ledger, marker.id)),
             Err(e) => Found::Damaged(format!("{}: {e}", file.display())),
         },
@@ -116,7 +120,8 @@ pub fn create_encrypted(root: &Path, passphrase: &str) -> Result<(Marker, crate:
     Ok((marker, key))
 }
 
-/// Writes the marker. It is written when the vault is made, and changes only when an encrypted vault's passphrase does.
+/// Writes the marker. It is written when the vault is made, and changes only when an encrypted vault's passphrase does
+/// or the vault is brought up to a newer format.
 pub fn write(root: &Path, marker: &Marker) -> Result<()> {
     fs::create_dir_all(root).map_err(|e| Error::io(root, e))?;
     let file = root.join(FILE);

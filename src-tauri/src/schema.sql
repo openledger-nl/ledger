@@ -222,12 +222,12 @@ CREATE TABLE prompt_feedback (
     PRIMARY KEY (prompt_id, feedback_id)
 );
 
--- What running a prompt with Claude Code did: how it ended, and what it said and did. Kept as runs/<id>.md in the
--- thread, so the history reads without the app. `prompt_id` is deliberately not a foreign key: deleting a prompt
--- leaves the record of what ran.
+-- What running a prompt with Claude Code did: how it ended, and what it said and did. Kept as history/runs/<id>.md in
+-- the project, so the history reads without the app. `thread_slug` and `prompt_id` are deliberately not foreign keys:
+-- deleting a thread or a prompt leaves the record of what ran, as it leaves the versions the run made.
 CREATE TABLE claude_runs (
     id              TEXT PRIMARY KEY,
-    project_slug    TEXT NOT NULL,
+    project_slug    TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
     thread_slug     TEXT NOT NULL,
     prompt_id       TEXT NOT NULL,
     -- finished, failed or cancelled
@@ -238,8 +238,7 @@ CREATE TABLE claude_runs (
     finished_at     TEXT NOT NULL,
     seconds         INTEGER NOT NULL DEFAULT 0,
     turns           INTEGER,
-    body            TEXT NOT NULL,
-    FOREIGN KEY (project_slug, thread_slug) REFERENCES threads(project_slug, slug) ON DELETE CASCADE
+    body            TEXT NOT NULL
 );
 CREATE INDEX claude_runs_by_prompt ON claude_runs (prompt_id, started_at);
 
@@ -266,7 +265,7 @@ CREATE TABLE uploads (
 
 -- Every file under a project's deliverables/ folder, whatever its type. `body` is the text of a markdown file and
 -- NULL for anything else, whose bytes stay on disk. A published version is its own row, named "<name>@v1.0.<ext>"
--- relative to deliverables/ like the rest, though its file is at that place under the project's versions/ folder.
+-- relative to deliverables/ like the rest, though its file is at that place under the project's history/deliverables/.
 CREATE TABLE deliverables (
     project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
     path         TEXT NOT NULL,
@@ -277,8 +276,9 @@ CREATE TABLE deliverables (
 );
 
 -- How a published version came to be: who made the change, where it is filed, and the AI-use label (MMM) declared
--- for the product at that version. Kept as versions/<id>.md in the project. `thread_slug`, `prompt_id` and `run_id`
--- are deliberately not foreign keys: deleting a thread, a prompt or a note must not erase how a version came about.
+-- for the product at that version. Kept as a manifest beside the version, in the project's history/deliverables/.
+-- `thread_slug`, `prompt_id` and `run_id` are deliberately not foreign keys: deleting a thread, a prompt or a note must
+-- not erase how a version came about.
 -- `author` is 'ai', 'human', or '' when the origin was never recorded.
 CREATE TABLE version_records (
     project_slug     TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,

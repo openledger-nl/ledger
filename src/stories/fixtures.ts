@@ -450,7 +450,7 @@ export const evidence: Evidence = {
 			kind: 'file',
 			createdAt: at(5),
 			descriptionHtml: '',
-			files: [{ name: 'Project plan.pdf', path: 'versions/Project plan@v1.0.pdf' }],
+			files: [{ name: 'Project plan.pdf', path: 'history/deliverables/Project plan/Project plan@v1.0.pdf' }],
 			inLedger: true,
 			portflowUrl: null
 		},
@@ -460,7 +460,7 @@ export const evidence: Evidence = {
 			kind: 'file',
 			createdAt: at(12),
 			descriptionHtml: '',
-			files: [{ name: 'Project plan.pdf', path: 'versions/Project plan@v2.0.pdf' }],
+			files: [{ name: 'Project plan.pdf', path: 'history/deliverables/Project plan/Project plan@v2.0.pdf' }],
 			inLedger: true,
 			portflowUrl: null
 		}

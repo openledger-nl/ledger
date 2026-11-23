@@ -17,11 +17,13 @@
 //!                                    /prompts/<id>.md     its prompts (requests for deliverables)
 //!                                    /feedback/<id>.md    its feedback (on a deliverable)
 //!                                    /uploads/<id>.md     a manifest: when, where the file is, a description
-//!                                    /runs/<id>.md        a run of a prompt with Claude Code: how it went, what it did
-//! projects/<project>/versions/<deliverable>/…    a deliverable's published versions, in a folder named after it, at the
-//!                                                same place under versions/ as its live file is under deliverables/:
-//!                                                plan@v1.0.md, the version itself, and plan@v1.0.manifest.md, how it came
-//!                                                to be (who made it, its thread, its AI-use label)
+//! projects/<project>/history/                    what happened, frozen: written once, never changed after
+//!                           deliverables/<deliverable>/…   a deliverable's published versions, in a folder named after
+//!                                                it, at the same place as its live file is under deliverables/:
+//!                                                plan@v1.0.md, the version itself, and plan@v1.0.manifest.md, how it
+//!                                                came to be (who made it, its thread, its AI-use label)
+//!                           runs/<id>.md         a run of a prompt with Claude Code: its thread and prompt, how it went,
+//!                                                what it did. It outlives its thread, as the versions it made do.
 //! projects/<project>/userstories/<id>.md         a user story
 //! projects/<project>/tasks/<id>.md               a task on the board
 //! projects/<project>/templates/prompts/<id>.md   the project's own templates
@@ -82,6 +84,14 @@ fn entity_file(project: &str, thread: &str, folder: &str, id: &str) -> String {
     format!("{}/{folder}/{id}.md", thread_dir(project, thread))
 }
 
+/// Where a project keeps the records of its Claude Code runs: in its history, beside its deliverables' versions
+/// (see `deliverables::VERSIONS_DIR`).
+pub const RUNS_DIR: &str = "history/runs";
+
+pub fn run_file(project: &str, id: &str) -> String {
+    format!("projects/{project}/{RUNS_DIR}/{id}.md")
+}
+
 fn story_file(project: &str, id: &str) -> String {
     format!("projects/{project}/userstories/{id}.md")
 }
@@ -129,8 +139,9 @@ pub struct Vault {
 }
 
 impl Vault {
-    /// Opens the vault in `root`, making the folder and its marker when it is new. A folder that holds a vault from
-    /// Ledger 0.x, or one from a newer Ledger, is refused (see `marker`), and nothing in it is changed.
+    /// Opens the vault in `root`, making the folder and its marker when it is new, and bringing it up to today's format
+    /// when it is of an older one (see `upgrade`). A folder that holds a vault from Ledger 0.x, or one from a newer
+    /// Ledger, is refused (see `marker`), and nothing in it is changed.
     pub fn open(root: PathBuf) -> Result<Vault> {
         let found = marker::inspect(&root);
         if let Some(refused) = marker::refusal(&root, &found) {
@@ -148,6 +159,7 @@ impl Vault {
             }
         };
         store::register(&store);
+        let marker = crate::upgrade::run(&root, &store, &marker)?;
         Ok(Vault::with(root, store, marker.id))
     }
 
@@ -288,9 +300,9 @@ impl Vault {
     }
 }
 
-/// A path as the file system tells files apart. Windows and macOS ignore case, so there "versions/Plan/…" and
-/// "versions/plan/…" are one file, and a folder whose name only changed case keeps its old name on disk. What the
-/// vault has seen on disk is kept by this, so such a file is never taken for one that changed under it.
+/// A path as the file system tells files apart. Windows and macOS ignore case, so there "history/deliverables/Plan/…"
+/// and "history/deliverables/plan/…" are one file, and a folder whose name only changed case keeps its old name on
+/// disk. What the vault has seen on disk is kept by this, so such a file is never taken for one that changed under it.
 fn fold(path: &str) -> String {
     if cfg!(any(windows, target_os = "macos")) { path.to_lowercase() } else { path.to_string() }
 }
@@ -317,13 +329,15 @@ fn stamp_of(fp: Option<&Fingerprint>) -> String {
 
 /// Whether the app looks at this path: markdown anywhere under `projects/`, `shared/` and `meetings/`,
 /// any file at all under a project's `deliverables/`, and any published version ("chart/chart@v0.1.png") under its
-/// `versions/`.
+/// `history/deliverables/`.
 fn managed(rel: &str) -> bool {
     let parts: Vec<&str> = rel.split('/').collect();
     let in_project = |folder: &str| parts.len() >= 4 && parts[0] == "projects" && parts[2] == folder;
-    in_project("deliverables")
-        || (in_project("versions") && deliverables::version_at(&parts[3..].join("/")).is_some())
-        || rel.ends_with(".md")
+    let version = || -> Option<String> {
+        let project = parts.get(1).filter(|_| parts[0] == "projects")?;
+        deliverables::version_at(rel.strip_prefix(&format!("projects/{project}/{}/", deliverables::VERSIONS_DIR))?)
+    };
+    in_project("deliverables") || rel.ends_with(".md") || version().is_some()
 }
 
 /// Every managed file, with its fingerprint. Dotfiles (including the temporary files writes go through) are not
@@ -549,6 +563,7 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?)),
     )? {
         let mut meta = Mapping::new();
+        frontmatter::set(&mut meta, "thread", thread);
         frontmatter::set(&mut meta, "prompt", prompt);
         frontmatter::set(&mut meta, "status", status);
         frontmatter::set_opt(&mut meta, "model", Some(&model));
@@ -560,7 +575,7 @@ fn export_threads(conn: &Connection, files: &mut BTreeMap<String, String>) -> Re
             frontmatter::set(&mut meta, "turns", turns);
         }
         frontmatter::set_list(&mut meta, "deliverables", &run_files.remove(&id).unwrap_or_default());
-        files.insert(entity_file(&project, &thread, "runs", &id), frontmatter::render(&meta, &body));
+        files.insert(run_file(&project, &id), frontmatter::render(&meta, &body));
     }
     Ok(())
 }
@@ -795,6 +810,7 @@ fn import(conn: &Connection, root: &Path, store: &Store, listing: &BTreeMap<Stri
     for project in &projects {
         import_templates(&tx, &source, project)?;
         let threads = import_threads(&tx, &source, project)?;
+        import_runs(&tx, &source, project)?;
         import_deliverables(&tx, &source, project)?;
         crate::deliverable_facts::reattach(&tx, project)?;
         import_version_records(&tx, &source, project)?;
@@ -1040,9 +1056,6 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
     // id, then whose it is ("own"/"someone"), the story and the meeting note's day
     let mut feedback_v1: Vec<(String, Option<String>, Option<String>, Option<String>)> = vec![];
     let mut uploads: Vec<(String, String, String, String, i64, String, String)> = vec![];
-    // id, thread, prompt, status, model, permission mode, started, finished, seconds, turns, deliverables, body
-    type RunItem = (String, String, String, String, String, String, String, String, i64, Option<i64>, Vec<String>, String);
-    let mut runs: Vec<RunItem> = vec![];
     for slug in &slugs {
         for stem in source.stems(&format!("{}/prompts", thread_dir(project, slug))) {
             let rel = entity_file(project, slug, "prompts", &stem);
@@ -1113,32 +1126,6 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
                 description,
             ));
         }
-        for stem in source.stems(&format!("{}/runs", thread_dir(project, slug))) {
-            let rel = entity_file(project, slug, "runs", &stem);
-            let Some((meta, body)) = source.parsed(&rel) else { continue };
-            let Some(prompt) = meta.text("prompt") else { continue };
-            // A status this version doesn't know is shown as a failure rather than as a success nobody checked.
-            let status = match meta.text("status").as_deref() {
-                Some("finished") => "finished",
-                Some("cancelled") => "cancelled",
-                _ => "failed",
-            };
-            let started_at = meta.text("startedAt").unwrap_or_else(|| source.stamp(&rel));
-            runs.push((
-                stem,
-                slug.clone(),
-                prompt,
-                status.to_string(),
-                meta.text("model").unwrap_or_default(),
-                meta.text("permissionMode").unwrap_or_default(),
-                started_at.clone(),
-                meta.text("finishedAt").unwrap_or(started_at),
-                meta.text("seconds").and_then(|s| s.parse().ok()).unwrap_or(0),
-                meta.text("turns").and_then(|s| s.parse().ok()),
-                meta.list("deliverables"),
-                body,
-            ));
-        }
     }
 
     prompts.sort_by(|a, b| (&a.5, &a.0).cmp(&(&b.5, &b.0)));
@@ -1189,6 +1176,46 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             params![id, project, thread, file, name, size, uploaded_at, description],
         )?;
     }
+    Ok(known)
+}
+
+/// The records of the project's Claude Code runs: every `history/runs/<id>.md`. A run names its thread and its prompt;
+/// either may be gone (deleted since), and the record stays: it is how a version a run made came to be. A record that
+/// doesn't name its thread (written by hand) is its prompt's.
+fn import_runs(conn: &Connection, source: &Source, project: &str) -> Result<()> {
+    // id, thread, prompt, status, model, permission mode, started, finished, seconds, turns, deliverables, body
+    type RunItem = (String, String, String, String, String, String, String, String, i64, Option<i64>, Vec<String>, String);
+    let mut runs: Vec<RunItem> = vec![];
+    for stem in source.stems(&format!("projects/{project}/{RUNS_DIR}")) {
+        let rel = run_file(project, &stem);
+        let Some((meta, body)) = source.parsed(&rel) else { continue };
+        let Some(prompt) = meta.text("prompt") else { continue };
+        // A status this version doesn't know is shown as a failure rather than as a success nobody checked.
+        let status = match meta.text("status").as_deref() {
+            Some("finished") => "finished",
+            Some("cancelled") => "cancelled",
+            _ => "failed",
+        };
+        let started_at = meta.text("startedAt").unwrap_or_else(|| source.stamp(&rel));
+        let thread = match meta.text("thread") {
+            Some(thread) => thread,
+            None => db::query_opt(conn, "SELECT thread_slug FROM prompts WHERE project_slug = ?1 AND id = ?2", [project, &prompt], |r| r.get(0))?.unwrap_or_default(),
+        };
+        runs.push((
+            stem,
+            thread,
+            prompt,
+            status.to_string(),
+            meta.text("model").unwrap_or_default(),
+            meta.text("permissionMode").unwrap_or_default(),
+            started_at.clone(),
+            meta.text("finishedAt").unwrap_or(started_at),
+            meta.text("seconds").and_then(|s| s.parse().ok()).unwrap_or(0),
+            meta.text("turns").and_then(|s| s.parse().ok()),
+            meta.list("deliverables"),
+            body,
+        ));
+    }
     runs.sort_by(|a, b| (&a.6, &a.0).cmp(&(&b.6, &b.0)));
     for (id, thread, prompt, status, model, mode, started_at, finished_at, seconds, turns, deliverables, body) in runs {
         conn.execute(
@@ -1200,13 +1227,13 @@ fn import_threads(conn: &Connection, source: &Source, project: &str) -> Result<H
             conn.execute("INSERT OR IGNORE INTO claude_run_files (run_id, position, path) VALUES (?1, ?2, ?3)", params![id, position as i64, path])?;
         }
     }
-    Ok(known)
+    Ok(())
 }
 
 /// Every file in the project's deliverables folder is a deliverable, but for the evidence descriptions beside them
-/// ("plan.desc.md"), and every published version in its versions folder (in the folder of its deliverable) is a version
-/// of one; markdown ones are read in. A file in the deliverables folder named like a version
-/// ("plan@v0.1.md") is not: versions are kept in the versions folder.
+/// ("plan.desc.md"), and every published version in `history/deliverables/` (in the folder of its deliverable) is a
+/// version of one; markdown ones are read in. A file in the deliverables folder named like a version
+/// ("plan@v0.1.md") is not: versions are kept in the history.
 fn import_deliverables(conn: &Connection, source: &Source, project: &str) -> Result<()> {
     // (path in the vault, path as the app names the deliverable, fingerprint) of the files in one of the project's folders
     let in_folder = |folder: &str| -> Vec<(String, String, Fingerprint)> {
@@ -1218,7 +1245,7 @@ fn import_deliverables(conn: &Connection, source: &Source, project: &str) -> Res
             .collect()
     };
     let is_version = |path: &str| deliverables::split_version(path).1.is_some();
-    let versions: Vec<_> = in_folder("versions").into_iter().filter_map(|(rel, path, fp)| Some((rel, deliverables::version_at(&path)?, fp))).collect();
+    let versions: Vec<_> = in_folder(deliverables::VERSIONS_DIR).into_iter().filter_map(|(rel, path, fp)| Some((rel, deliverables::version_at(&path)?, fp))).collect();
     let (descriptions, live): (Vec<_>, Vec<_>) =
         in_folder("deliverables").into_iter().filter(|(_, path, _)| !is_version(path)).partition(|(_, path, _)| deliverables::is_description(path));
     for (rel, path, (size, nanos)) in versions.into_iter().chain(live) {
@@ -1234,11 +1261,11 @@ fn import_deliverables(conn: &Connection, source: &Source, project: &str) -> Res
     Ok(())
 }
 
-/// The manifest of each published version: every `*.manifest.md` under the project's versions folder, whatever its name
+/// The manifest of each published version: every `*.manifest.md` under `history/deliverables/`, whatever its name
 /// (it says which version it is of). One for a version that is not there (any more) is left alone in the vault but not
 /// loaded; of two for the same version the older wins.
 fn import_version_records(conn: &Connection, source: &Source, project: &str) -> Result<()> {
-    let prefix = format!("projects/{project}/versions/");
+    let prefix = format!("projects/{project}/{}/", deliverables::VERSIONS_DIR);
     let manifests: Vec<String> =
         source.listing.range(prefix.clone()..).map_while(|(rel, _)| rel.starts_with(&prefix).then(|| rel.clone())).filter(|rel| rel.ends_with(".manifest.md")).collect();
     let mut records = vec![];

@@ -42,6 +42,7 @@ mod store;
 mod templates;
 mod threads;
 mod updates;
+mod upgrade;
 mod uploads;
 mod vault;
 mod vault_crypto;
@@ -104,6 +105,8 @@ mod tests_updates;
 mod tests_vault;
 #[cfg(test)]
 mod tests_vaults;
+#[cfg(test)]
+mod tests_upgrade;
 
 
 use std::sync::{Arc, Mutex};

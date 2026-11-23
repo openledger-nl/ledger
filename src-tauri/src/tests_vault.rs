@@ -130,7 +130,7 @@ fn the_vault_has_the_agreed_folder_structure() {
     let thread = format!("{project}/threads/{t}");
 
     // The project: its definition, its reading guide, and the folders hanging off it.
-    assert_eq!(names(root, &project), ["README.md", "attachments", "deliverables", "project.md", "tasks", "templates", "threads", "userstories", "versions"]);
+    assert_eq!(names(root, &project), ["README.md", "attachments", "deliverables", "history", "project.md", "tasks", "templates", "threads", "userstories"]);
     let definition = read(root, &format!("{project}/project.md"));
     assert!(definition.contains("name: Acme") && definition.contains("- id: backlog") && definition.contains("name: In review"), "{definition}");
     assert_eq!(read(root, &format!("{project}/README.md")), "# Acme\n\nRead the call notes first.\n");
@@ -173,16 +173,16 @@ fn the_vault_has_the_agreed_folder_structure() {
     assert!(manifest.contains("uploadedAt:") && manifest.contains("file: attachments/site plan.png") && manifest.ends_with("The site plan\n"), "{manifest}");
     assert_eq!(fs::read(root.join(&project).join("attachments/site plan.png")).unwrap(), b"\x89PNG....");
 
-    // Deliverables are written verbatim; a published version is tagged @v1.0 and kept in versions/, in a folder of the
+    // Deliverables are written verbatim; a published version is tagged @v1.0 and kept in history/deliverables/, in a folder of the
     // deliverable's own, so deliverables/ holds only the live files.
     assert_eq!(names(root, &format!("{project}/deliverables")), ["call-summary.md"]);
     assert_eq!(read(root, &format!("{project}/deliverables/call-summary.md")), "# Call summary\n\nAna wants SSO.\n");
-    assert_eq!(names(root, &format!("{project}/versions")), ["call-summary"]);
-    assert_eq!(read(root, &format!("{project}/versions/call-summary/call-summary@v1.0.md")), "# Call summary\n\nAna wants SSO.\n");
+    assert_eq!(names(root, &format!("{project}/history/deliverables")), ["call-summary"]);
+    assert_eq!(read(root, &format!("{project}/history/deliverables/call-summary/call-summary@v1.0.md")), "# Call summary\n\nAna wants SSO.\n");
 
     // How the published version came to be: its manifest, beside the version itself, named after it.
-    assert_eq!(names(root, &format!("{project}/versions/call-summary")), ["call-summary@v1.0.manifest.md", "call-summary@v1.0.md"]);
-    let record = read(root, &format!("{project}/versions/call-summary/call-summary@v1.0.manifest.md"));
+    assert_eq!(names(root, &format!("{project}/history/deliverables/call-summary")), ["call-summary@v1.0.manifest.md", "call-summary@v1.0.md"]);
+    let record = read(root, &format!("{project}/history/deliverables/call-summary/call-summary@v1.0.manifest.md"));
     assert!(
         record.contains("deliverable: call-summary.md") && record.contains("version: '1.0'") && record.contains("thread: alpha-the-first") && record.contains("by: human") && record.contains("sha256: "),
         "{record}"
@@ -190,7 +190,7 @@ fn the_vault_has_the_agreed_folder_structure() {
     assert!(!record.contains("prompt:") && !record.contains("run:") && !record.contains("aiUse:"), "what isn't known is left out: {record}");
 
     assert!(!record.contains("id:"), "a manifest is known by its name, not an id: {record}");
-    assert!(!root.join(format!("{project}/history")).exists(), "the history is in the versions, not in notes of its own");
+    assert_eq!(names(root, &format!("{project}/history")), ["deliverables"], "the history holds the versions (and the runs, once there are any)");
 
     // Stories and tasks, and the two kinds of template.
     let story = read(root, &format!("{project}/userstories/MM01.md"));
@@ -204,7 +204,7 @@ fn the_vault_has_the_agreed_folder_structure() {
     assert!(global.contains("name: Interview") && global.contains("trigger: after a call") && global.contains("- Who?") && global.ends_with("## Who\n"), "{global}");
 
     // The marker says it is a vault, and of which format.
-    assert!(read(root, "ledger.json").contains("\"ledger\": 1"));
+    assert!(read(root, "ledger.json").contains("\"ledger\": 2"));
 }
 
 #[test]
@@ -372,7 +372,7 @@ fn deleting_things_deletes_their_files_and_leaves_no_empty_folders() {
     deliverables::delete(&conn, root, &p, "call-summary.md").unwrap();
     vault.persist(&conn).unwrap();
     assert!(!root.join(format!("projects/{p}/deliverables")).exists());
-    assert!(names(root, &format!("projects/{p}/versions/call-summary")).contains(&"call-summary@v1.0.md".to_string()));
+    assert!(names(root, &format!("projects/{p}/history/deliverables/call-summary")).contains(&"call-summary@v1.0.md".to_string()));
 }
 
 #[test]
@@ -431,11 +431,11 @@ fn a_published_version_that_is_not_markdown_is_watched_in_the_versions_folder() 
     let root = dir.path();
     write(root, "projects/acme/project.md", "---\nname: Acme\n---\n");
     let (vault, _conn) = open(root);
-    write(root, "projects/acme/versions/sketch.png", "not a version");
-    assert!(!vault.changed_on_disk(), "a file in versions/ that is no version isn't the app's");
-    write(root, "projects/acme/versions/chart@v0.1.png", "png");
+    write(root, "projects/acme/history/deliverables/sketch.png", "not a version");
+    assert!(!vault.changed_on_disk(), "a file in history/deliverables/ that is no version isn't the app's");
+    write(root, "projects/acme/history/deliverables/chart@v0.1.png", "png");
     assert!(!vault.changed_on_disk(), "nor is a version outside its deliverable's folder");
-    write(root, "projects/acme/versions/chart/chart@v0.1.png", "png");
+    write(root, "projects/acme/history/deliverables/chart/chart@v0.1.png", "png");
     assert!(vault.changed_on_disk());
 }
 
@@ -464,7 +464,7 @@ fn a_hand_written_vault_loads_and_is_repaired() {
 
     // Deliverables of every kind, nested ones included; a markdown one keeps its own frontmatter.
     write(root, "projects/ideas/deliverables/x.md", "---\ntitle: X\nauthor: me\n---\n\n# The brief\n");
-    write(root, "projects/ideas/versions/x/x@v1.0.md", "# The brief, v1\n");
+    write(root, "projects/ideas/history/deliverables/x/x@v1.0.md", "# The brief, v1\n");
     write(root, "projects/ideas/deliverables/sub/data.csv", "a,b\n1,2\n");
     write(root, "projects/ideas/deliverables/diagram.png", "not really a png");
 
@@ -763,7 +763,7 @@ fn version_records_and_the_prompt_a_note_names_survive_a_reload() {
     deliverables::publish_run(&conn, root, &p, "plan.md", None, &origin).unwrap();
     vault.persist(&conn).unwrap();
 
-    let record = read(root, &format!("projects/{p}/versions/plan/plan@v0.1.manifest.md"));
+    let record = read(root, &format!("projects/{p}/history/deliverables/plan/plan@v0.1.manifest.md"));
     assert!(
         record.contains("deliverable: plan.md")
             && record.contains(&format!("prompt: {}", prompt.id))
@@ -777,7 +777,7 @@ fn version_records_and_the_prompt_a_note_names_survive_a_reload() {
     // The thread's note is a link to the manifest and nothing else: what it says is made from the record.
     let note_name = names(root, &format!("projects/{p}/threads/{t}/posts")).into_iter().find(|n| read(root, &format!("projects/{p}/threads/{t}/posts/{n}")).contains("manifest.md")).unwrap();
     let note = read(root, &format!("projects/{p}/threads/{t}/posts/{note_name}"));
-    assert!(note.ends_with("---\n\n[plan@v0.1.md](../../../versions/plan/plan@v0.1.manifest.md)\n"), "{note}");
+    assert!(note.ends_with("---\n\n[plan@v0.1.md](../../../history/deliverables/plan/plan@v0.1.manifest.md)\n"), "{note}");
     for repeated in ["prompt:", "deliverable:", "deliverableVersion:", "versionPublished:", "Summary", "First draft"] {
         assert!(!note.contains(repeated), "{repeated} is the manifest's to say: {note}");
     }
@@ -802,18 +802,18 @@ fn two_deliverables_of_one_name_keep_their_versions_in_one_folder_with_manifests
     deliverables::create(&conn, &p, "Plan", "# Plan\n").unwrap();
     deliverables::publish(&conn, root, &p, "plan.md", Bump::Minor, None).unwrap();
     vault.persist(&conn).unwrap();
-    assert_eq!(names(root, &format!("projects/{p}/versions/plan")), ["plan@v0.1.manifest.md", "plan@v0.1.md"]);
+    assert_eq!(names(root, &format!("projects/{p}/history/deliverables/plan")), ["plan@v0.1.manifest.md", "plan@v0.1.md"]);
 
     // A PDF of it, published too: its versions go in the same folder, and both manifests say whose they are.
     write(root, &format!("projects/{p}/deliverables/plan.pdf"), "%PDF");
     let (mut again, reloaded) = open(root);
     deliverables::publish(&reloaded, root, &p, "plan.pdf", Bump::Minor, None).unwrap();
     again.persist(&reloaded).unwrap();
-    assert_eq!(names(root, &format!("projects/{p}/versions/plan")), ["plan.md@v0.1.manifest.md", "plan.pdf@v0.1.manifest.md", "plan@v0.1.md", "plan@v0.1.pdf"]);
+    assert_eq!(names(root, &format!("projects/{p}/history/deliverables/plan")), ["plan.md@v0.1.manifest.md", "plan.pdf@v0.1.manifest.md", "plan@v0.1.md", "plan@v0.1.pdf"]);
     let (_, last) = open(root);
     for base in ["plan.md", "plan.pdf"] {
         let known = provenance::resolve(&last, &p, base).unwrap();
-        assert_eq!(known[0].record.as_deref(), Some(format!("versions/plan/{base}@v0.1.manifest.md").as_str()), "{base}");
+        assert_eq!(known[0].record.as_deref(), Some(format!("history/deliverables/plan/{base}@v0.1.manifest.md").as_str()), "{base}");
     }
 }
 
@@ -826,16 +826,16 @@ fn hand_written_version_records_are_read_leniently() {
     write(root, &format!("{project}/threads/call/thread.md"), "---\ntitle: Call\n---\n");
     write(root, &format!("{project}/deliverables/plan.md"), "# plan.md\n");
     for name in ["plan@v0.1.md", "plan@v0.2.md"] {
-        write(root, &format!("{project}/versions/plan/{name}"), &format!("# {name}\n"));
+        write(root, &format!("{project}/history/deliverables/plan/{name}"), &format!("# {name}\n"));
     }
     // A manifest says which version it is of, whatever its name. Upper case and strangers are read as what they mean;
     // an unknown level or author is ignored, not an error.
-    write(root, &format!("{project}/versions/plan/a.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.1'\nby: AI\naiUse: Cyborg\nthread: call\ncreatedAt: 2026-01-01T00:00:00.000Z\nsomething: else\n---\n\nA note.\n");
-    write(root, &format!("{project}/versions/plan/b.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.2'\nby: robot\naiUse: nonsense\n---\n");
+    write(root, &format!("{project}/history/deliverables/plan/a.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.1'\nby: AI\naiUse: Cyborg\nthread: call\ncreatedAt: 2026-01-01T00:00:00.000Z\nsomething: else\n---\n\nA note.\n");
+    write(root, &format!("{project}/history/deliverables/plan/b.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.2'\nby: robot\naiUse: nonsense\n---\n");
     // Not loaded: a version that is not there, one that names no deliverable, a second record of the same version.
-    write(root, &format!("{project}/versions/plan/c.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.9'\nby: human\n---\n");
-    write(root, &format!("{project}/versions/plan/d.manifest.md"), "---\nversion: '0.1'\nby: human\n---\n");
-    write(root, &format!("{project}/versions/plan/e.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.1'\nby: human\ncreatedAt: 2026-06-01T00:00:00.000Z\n---\n");
+    write(root, &format!("{project}/history/deliverables/plan/c.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.9'\nby: human\n---\n");
+    write(root, &format!("{project}/history/deliverables/plan/d.manifest.md"), "---\nversion: '0.1'\nby: human\n---\n");
+    write(root, &format!("{project}/history/deliverables/plan/e.manifest.md"), "---\ndeliverable: plan.md\nversion: '0.1'\nby: human\ncreatedAt: 2026-06-01T00:00:00.000Z\n---\n");
 
     let (_vault, conn) = open(root);
     let known = provenance::resolve(&conn, "acme", "plan.md").unwrap();
@@ -843,7 +843,7 @@ fn hand_written_version_records_are_read_leniently() {
     assert_eq!((known[0].author, known[0].mmm.as_deref(), known[0].thread.as_deref(), known[0].note.as_str()), ("ai", Some("cyborg"), Some("call"), "A note."), "the older record of 0.1 wins");
     assert_eq!((known[1].author, known[1].mmm.as_deref()), ("", None));
     for stray in ["c", "d", "e"] {
-        assert!(root.join(format!("{project}/versions/plan/{stray}.manifest.md")).is_file(), "{stray} is left where it was");
+        assert!(root.join(format!("{project}/history/deliverables/plan/{stray}.manifest.md")).is_file(), "{stray} is left where it was");
     }
 }
 
@@ -855,14 +855,14 @@ fn a_version_without_a_record_loads_as_it_was_and_is_not_rewritten() {
     write(root, &format!("{project}/project.md"), "---\nname: Acme\n---\n");
     write(root, &format!("{project}/threads/call/thread.md"), "---\ntitle: Call\n---\n");
     write(root, &format!("{project}/deliverables/plan.md"), "# Plan\n\ntwo\n");
-    write(root, &format!("{project}/versions/plan/plan@v0.1.md"), "# Plan\n\none\n");
+    write(root, &format!("{project}/history/deliverables/plan/plan@v0.1.md"), "# Plan\n\none\n");
     // A note linking to a manifest that isn't there is a post like any other.
-    let note = "---\ncreatedAt: 2026-01-01T00:00:00.000Z\n---\n\n[plan@v0.1.md](../../../versions/plan/plan@v0.1.manifest.md)\n";
+    let note = "---\ncreatedAt: 2026-01-01T00:00:00.000Z\n---\n\n[plan@v0.1.md](../../../history/deliverables/plan/plan@v0.1.manifest.md)\n";
     write(root, &format!("{project}/threads/call/posts/n1.md"), note);
 
     let (_vault, conn) = open(root);
     // A version put in the versions folder by hand is shown, and no record is written for it.
-    assert_eq!(names(root, &format!("{project}/versions/plan")), ["plan@v0.1.md"], "nothing is written for versions that have no record");
+    assert_eq!(names(root, &format!("{project}/history/deliverables/plan")), ["plan@v0.1.md"], "nothing is written for versions that have no record");
     let known = provenance::resolve(&conn, "acme", "plan.md").unwrap();
     assert_eq!((known[0].author, known[0].thread.as_deref(), known[0].record.is_none()), ("", None, true));
     assert!(!posts::list(&conn, "acme", "call").unwrap()[0].version_published);
@@ -880,10 +880,10 @@ fn a_note_linking_to_a_manifest_is_that_versions_note() {
     write(root, &format!("{project}/project.md"), "---\nname: Acme\n---\n");
     write(root, &format!("{project}/threads/call/thread.md"), "---\ntitle: Call\n---\n");
     write(root, &format!("{project}/deliverables/my plan.md"), "# Plan\n\ntwo\n");
-    write(root, &format!("{project}/versions/my plan/my plan@v0.1.md"), "# Plan\n\none\n");
-    write(root, &format!("{project}/versions/my plan/my plan@v0.1.manifest.md"), "---\ndeliverable: my plan.md\nversion: '0.1'\nthread: call\nby: human\n---\n\nFirst go.\n");
+    write(root, &format!("{project}/history/deliverables/my plan/my plan@v0.1.md"), "# Plan\n\none\n");
+    write(root, &format!("{project}/history/deliverables/my plan/my plan@v0.1.manifest.md"), "---\ndeliverable: my plan.md\nversion: '0.1'\nthread: call\nby: human\n---\n\nFirst go.\n");
     // Written by hand, with the space in the path as a link writes it.
-    write(root, &format!("{project}/threads/call/posts/n1.md"), "---\ncreatedAt: 2026-01-01T00:00:00.000Z\n---\n\n[the plan](../../../versions/my%20plan/my%20plan@v0.1.manifest.md)\n");
+    write(root, &format!("{project}/threads/call/posts/n1.md"), "---\ncreatedAt: 2026-01-01T00:00:00.000Z\n---\n\n[the plan](../../../history/deliverables/my%20plan/my%20plan@v0.1.manifest.md)\n");
 
     let (_vault, conn) = open(root);
     let note = posts::list(&conn, "acme", "call").unwrap().remove(0);
@@ -891,7 +891,7 @@ fn a_note_linking_to_a_manifest_is_that_versions_note() {
     assert_eq!((note.deliverable_path.as_deref(), note.deliverable_version.as_deref()), (Some("my plan.md"), Some("0.1")));
     assert_eq!(note.body, "Version 0.1 of **my plan.md** was published.\n\nfrom changelog: First go.");
     let written = vault::export(&conn).unwrap().remove(&format!("{project}/threads/call/posts/n1.md")).unwrap();
-    assert!(written.ends_with("\n[my plan@v0.1.md](../../../versions/my%20plan/my%20plan@v0.1.manifest.md)\n"), "{written}");
+    assert!(written.ends_with("\n[my plan@v0.1.md](../../../history/deliverables/my%20plan/my%20plan@v0.1.manifest.md)\n"), "{written}");
 }
 
 #[test]

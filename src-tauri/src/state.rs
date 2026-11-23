@@ -41,6 +41,12 @@ impl Core {
                         crate::applog::info("vault", why);
                         Core::without_vault(config_dir)
                     }
+                    // Files that couldn't be read or moved (a vault being brought up to date, a file a sync client
+                    // holds): the picker opens, and opening the vault from there tries again and says why.
+                    Err(e @ Error::Io(_)) => {
+                        crate::applog::error("vault", &e);
+                        Core::without_vault(config_dir)
+                    }
                     other => other,
                 }
             }

@@ -2,9 +2,9 @@
 //! says they used elsewhere), the thread it is filed under, the prompt and run behind it, and the AI-use label
 //! (MMM, https://mmmlabel.tech) declared for the product at that version.
 //!
-//! A version is a bare file in `versions/` (as "<name>@v1.0.<ext>", see [`deliverables`]) and must stay one (its bytes
-//! are compared with the live file), so this lives in a record of its own beside it: `versions/<id>.md` in the project,
-//! one per published version. A version published before records existed has none; what can be proven from
+//! A version is a bare file in the project's `history/deliverables/` (as "<name>@v1.0.<ext>", see [`deliverables`]) and
+//! must stay one (its bytes are compared with the live file), so this lives in a record of its own beside it, its
+//! manifest ("<name>@v1.0.manifest.md"), one per published version. A version published before records existed has none; what can be proven from
 //! the runs and the "version published" notes is worked out when it is shown ([`resolve`]), and nothing is written for
 //! it until the person marks it.
 //!
@@ -170,9 +170,16 @@ pub fn note_link(manifest: &str, version_file: &str) -> String {
     format!("[{label}](../../../{})", encode_path(manifest))
 }
 
-/// The manifest a "version published" note links to, as a path in its project (`versions/plan/plan@v0.1.manifest.md`);
-/// `None` for a post that says anything else.
+/// The manifest a "version published" note links to, as a path in its project
+/// (`history/deliverables/plan/plan@v0.1.manifest.md`); `None` for a post that says anything else.
 pub fn note_manifest(body: &str) -> Option<String> {
+    let (_, path) = note_target(body)?;
+    path.strip_prefix(deliverables::VERSIONS_DIR).is_some_and(|rest| rest.starts_with('/')).then_some(path)
+}
+
+/// What a post that is one link to a manifest says: the link's words, and the manifest it points at as a path in its
+/// project, wherever in the project that is (a vault of an older format kept them elsewhere, see `upgrade`).
+pub fn note_target(body: &str) -> Option<(String, String)> {
     let rest = body.trim().strip_prefix('[')?;
     let (label, rest) = rest.split_once("](")?;
     let target = rest.strip_suffix(')')?;
@@ -180,7 +187,7 @@ pub fn note_manifest(body: &str) -> Option<String> {
         return None;
     }
     let path = crate::commands::percent_decode(target.strip_prefix("../../../")?)?;
-    (path.starts_with("versions/") && path.ends_with(".manifest.md") && !path.contains("..")).then_some(path)
+    (path.ends_with(".manifest.md") && !path.contains("..")).then(|| (label.to_string(), path))
 }
 
 /// A path as a markdown link holds it: what would end or break the link written as `%XX`.
@@ -522,7 +529,7 @@ pub struct NoteRef {
 #[serde(rename_all = "camelCase")]
 pub struct VersionEntry {
     pub version: String,
-    /// The snapshot, named relative to the deliverables folder (its file is at that place under `versions/`).
+    /// The snapshot, named relative to the deliverables folder (its file is at that place under `history/deliverables/`).
     pub path: String,
     pub at: String,
     /// "ai", "human" or "unknown".
@@ -535,8 +542,8 @@ pub struct VersionEntry {
     /// Against the version before it.
     pub size_change: Option<i64>,
     pub sha256: Option<String>,
-    /// The version's manifest, by its path in the project's folder (`versions/plan/plan@v0.1.manifest.md`), when it has
-    /// one.
+    /// The version's manifest, by its path in the project's folder (`history/deliverables/plan/plan@v0.1.manifest.md`),
+    /// when it has one.
     pub record: Option<String>,
     pub post: Option<NoteRef>,
 }

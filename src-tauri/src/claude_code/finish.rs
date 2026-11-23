@@ -12,7 +12,7 @@ use crate::provenance::{self, Origin};
 use crate::state::Core;
 use crate::{deliverables, prompts};
 
-/// Keeps the note about a run in its thread, and writes it to the vault's files. Fails if the thread is gone.
+/// Keeps the record of a run in the project's history, and writes it to the vault's files. Fails if the project is gone.
 pub fn keep_record(core: &mut Core, record: &RunRecord) -> Result<()> {
     records::insert(&core.conn, record)?;
     core.vault.persist(&core.conn)?;
