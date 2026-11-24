@@ -15,7 +15,8 @@
 	// The side of a deliverable's page: the side window (SideWindow.svelte, also beside a thread's timeline) with its three
 	// sections, Produced by, Feedback and Prompts.
 
-	// `thread` is the page's thread, where new feedback goes; `pending` the passage selected in the document that feedback is
+	// `thread` is the page's thread (picked in the Thread box at the top), where new feedback and prompts go, and
+	// `onnewthread` makes a new one and picks it; `pending` the passage selected in the document that feedback is
 	// about to be written on; `lost` the feedback whose passage is no longer in the text; `onlocate` shows one in the document.
 	// `here` says whether a piece of feedback belongs to what the page shows; `draft` is what the live file holds beyond the
 	// last version, as it stands while it is being edited; `prompts` are the ones about this deliverable.
@@ -26,8 +27,9 @@
 		draft,
 		prompts,
 		threads,
-		thread = $bindable(),
+		thread,
 		threadTitle,
+		onnewthread,
 		pending = $bindable(null),
 		lost,
 		here,
@@ -44,6 +46,7 @@
 		threads: ThreadSummary[];
 		thread: string;
 		threadTitle: string;
+		onnewthread?: () => void;
 		pending?: Anchor | null;
 		lost: Set<string>;
 		here: (f: Feedback) => boolean;
@@ -96,7 +99,7 @@
 		{:else if id === 'changes' && changes}
 			<ChangesPanel tracker={changes} {live} onhistory={(view) => onhistory?.(view)} />
 		{:else if id === 'feedback'}
-			<FeedbackPanel {project} {doc} {prompts} {threads} bind:thread {threadTitle} bind:pending {lost} {here} {onlocate} onopenprompts={() => void reveal('prompts')} />
+			<FeedbackPanel {project} {doc} {prompts} {threads} {thread} {threadTitle} {onnewthread} bind:pending {lost} {here} {onlocate} onopenprompts={() => void reveal('prompts')} />
 		{:else}
 			<PromptsPanel {project} {doc} {prompts} {threads} {thread} {threadTitle} onfeedback={(fid) => void reveal('feedback', fid)} />
 		{/if}
