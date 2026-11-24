@@ -186,7 +186,7 @@
 
 	// ---- the evidence item it is -----------------------------------------------------------------
 	// A deliverable that is a Portflow evidence item shows the item's description (What? / Goal? / Why it contributes?)
-	// under the document, to read and edit here rather than in the thread.
+	// in the side window's Evidence description section, to read and edit here rather than in the thread.
 
 	let evidence = $state<Evidence | null>(null);
 	// A file that continues another (its markdown) is the item that other one is in.
@@ -209,7 +209,7 @@
 	});
 	const evidenceSaved = (items: Evidence[]) => (evidence = items.find((e) => e.slug === evidence?.slug) ?? evidence);
 
-	// Any other deliverable can have one too, kept in Ledger for when it is handed in: offered under the document while
+	// Any other deliverable can have one too, kept in Ledger for when it is handed in: offered in the same section while
 	// it is worked on, as one line until it is written.
 	let described = $state<DeliverableDescription | null>(null);
 	$effect(() => {
@@ -742,21 +742,38 @@
 				</div>
 			</div>
 		{/if}
-
-		{#if evidence}
-			<section class="card doc-evidence" aria-label="Evidence description">
-				<EvidenceDescription {evidence} onsaved={evidenceSaved} />
-			</section>
-		{:else if described && doc.exists}
-			<section class="card doc-evidence" aria-label="Evidence description">
-				<EvidenceDescription deliverable={described} ondescribed={(d) => (described = d)} />
-			</section>
-		{/if}
 	</div>
 </div>
 
 <SelectionComment root={docArea} oncomment={commentOn} />
-<DocSide bind:this={side} {project} {doc} {provenance} {draft} prompts={data.prompts} {threads} bind:thread={workThread} {threadTitle} bind:pending {lost} {here} onlocate={showPassage} changes={isMarkdown ? tracker : undefined} live={following} onhistory={(view) => void openHistory(view)} />
+<!-- The evidence description (What? / Goal? / Why it contributes?): the item's in Portflow, or one kept for handing in. -->
+{#snippet description()}
+	{#if evidence}
+		<EvidenceDescription {evidence} onsaved={evidenceSaved} />
+	{:else if described}
+		<EvidenceDescription deliverable={described} ondescribed={(d) => (described = d)} />
+	{/if}
+{/snippet}
+<DocSide
+	bind:this={side}
+	{project}
+	{doc}
+	{provenance}
+	{draft}
+	prompts={data.prompts}
+	{threads}
+	bind:thread={workThread}
+	{threadTitle}
+	bind:pending
+	{lost}
+	{here}
+	onlocate={showPassage}
+	changes={isMarkdown ? tracker : undefined}
+	live={following}
+	onhistory={(view) => void openHistory(view)}
+	description={evidence || (described && doc.exists) ? description : undefined}
+	descriptionEmpty={!(evidence ?? described)?.description.trim()}
+/>
 </div>
 
 {#if renaming}
@@ -875,8 +892,5 @@
 	/* Writing on white (the card colour: white in the light themes, the card's own in a dark one). */
 	.page-inner :global(.md-editor.md-doc) {
 		background: var(--field);
-	}
-	.doc-evidence {
-		padding: 14px 18px;
 	}
 </style>

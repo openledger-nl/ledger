@@ -1,8 +1,10 @@
 <script lang="ts">
+	import ClipboardCheck from '@lucide/svelte/icons/clipboard-check';
 	import FileClock from '@lucide/svelte/icons/file-clock';
 	import GitCompareArrows from '@lucide/svelte/icons/git-compare-arrows';
 	import MessageSquareText from '@lucide/svelte/icons/message-square-text';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import type { Snippet } from 'svelte';
 	import type { Anchor } from '$lib/anchors';
 	import type { ChangeTracker } from '$lib/liveChanges.svelte';
 	import type { Deliverable, Feedback, Prompt, Provenance, ProvenanceDraft, ThreadSummary } from '$lib/types';
@@ -12,8 +14,8 @@
 	import ProvenancePanel from './ProvenancePanel.svelte';
 	import SideWindow from './SideWindow.svelte';
 
-	// The side of a deliverable's page: the side window (SideWindow.svelte, also beside a thread's timeline) with its three
-	// sections, Produced by, Feedback and Prompts.
+	// The side of a deliverable's page: the side window (SideWindow.svelte, also beside a thread's timeline) with its
+	// sections: Produced by, Changes, its evidence description (when it has or can have one), Feedback and Prompts.
 
 	// `thread` is the page's thread, where new feedback goes; `pending` the passage selected in the document that feedback is
 	// about to be written on; `lost` the feedback whose passage is no longer in the text; `onlocate` shows one in the document.
@@ -34,7 +36,9 @@
 		onlocate,
 		changes,
 		live = false,
-		onhistory
+		onhistory,
+		description,
+		descriptionEmpty = false
 	}: {
 		project: string;
 		doc: Deliverable;
@@ -53,9 +57,13 @@
 		/** The live file is open, so its changes are followed. */
 		live?: boolean;
 		onhistory?: (view: 'changes' | 'authors') => void;
+		/** The evidence description (What? / Goal? / Why it contributes?); without it, no Evidence section. */
+		description?: Snippet;
+		/** It isn't written yet. */
+		descriptionEmpty?: boolean;
 	} = $props();
 
-	type Section = 'provenance' | 'changes' | 'feedback' | 'prompts';
+	type Section = 'provenance' | 'changes' | 'evidence' | 'feedback' | 'prompts';
 
 	const openCount = $derived(doc.feedback.filter((f) => f.status === 'open').length);
 	const sections = $derived([
@@ -71,6 +79,7 @@
 					}
 				]
 			: []),
+		...(description ? [{ id: 'evidence', title: 'Evidence description', icon: ClipboardCheck, headCount: descriptionEmpty ? 'not written yet' : undefined }] : []),
 		{
 			id: 'feedback',
 			title: 'Feedback',
@@ -95,6 +104,8 @@
 			<ProvenancePanel {project} {doc} {provenance} {draft} />
 		{:else if id === 'changes' && changes}
 			<ChangesPanel tracker={changes} {live} onhistory={(view) => onhistory?.(view)} />
+		{:else if id === 'evidence' && description}
+			{@render description()}
 		{:else if id === 'feedback'}
 			<FeedbackPanel {project} {doc} {prompts} {threads} bind:thread {threadTitle} bind:pending {lost} {here} {onlocate} onopenprompts={() => void reveal('prompts')} />
 		{:else}
