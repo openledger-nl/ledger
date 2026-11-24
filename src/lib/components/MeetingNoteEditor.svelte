@@ -77,8 +77,11 @@
 
 	// The meetings as edited here, from the saved note (the page keys this component by day).
 	let meetings = $state<MeetingSection[]>(untrack(() => structuredClone(note?.meetings ?? [])));
-	/** The meetings as this editor and the vault last agreed on them: what was loaded, or last saved. */
-	let agreed = untrack(() => JSON.stringify(note?.meetings ?? []));
+	/** The meetings as this editor last saved them (or loaded them), as they were typed here. */
+	let sent = untrack(() => JSON.stringify(note?.meetings ?? []));
+	/** The same meetings as the vault keeps them. Saving tidies a note (a meeting's notes trimmed, a `## ` heading in
+	 *  them made `### `, a title on one line, the people as ids), so this can differ from `sent` while saying the same. */
+	let kept = sent;
 
 	// Saved a moment after the last change; a day without meetings has no file.
 	let skip = true;
@@ -92,19 +95,47 @@
 			const list = JSON.parse(snapshot) as MeetingSection[];
 			// A day without meetings (and nothing else in its note) has no file: the backend takes it away.
 			const saved = await attempt(() => api.saveDailyNote({ date, meetings: list }));
-			if (saved !== undefined) agreed = snapshot;
+			if (saved !== undefined) {
+				sent = snapshot;
+				kept = JSON.stringify(saved?.meetings ?? []);
+				takeIds(snapshot, saved?.meetings ?? []);
+			}
 			await refresh();
 		}, 700);
 		return () => clearTimeout(timer);
 	});
 
+	/** After a save, the people and projects as the vault keeps them (ids, for someone typed who wasn't in the vault
+	 *  yet), when nothing was typed since. The titles and notes stay as they were typed: putting the tidied text in
+	 *  their place would move the cursor while you write (back up to a heading you just pressed Enter after). */
+	function takeIds(snapshot: string, saved: MeetingSection[]) {
+		if (JSON.stringify(meetings) !== snapshot || saved.length !== meetings.length) return;
+		let changed = false;
+		meetings.forEach((m, i) => {
+			const s = saved[i];
+			if (!s) return;
+			if (JSON.stringify(m.people) !== JSON.stringify(s.people)) {
+				m.people = [...s.people];
+				changed = true;
+			}
+			if (JSON.stringify(m.projects) !== JSON.stringify(s.projects)) {
+				m.projects = [...s.projects];
+				changed = true;
+			}
+		});
+		if (!changed) return;
+		skip = true;
+		sent = JSON.stringify(meetings);
+	}
+
 	// The note changed somewhere else (Obsidian, a sync from another machine): it comes in, unless there is something
-	// typed here that isn't saved yet, which then wins and is saved over it.
+	// typed here that isn't saved yet, which then wins and is saved over it. This editor's own save coming back, tidied by
+	// the vault, is not a change: what is typed here stays as it is.
 	$effect(() => {
 		const incoming = JSON.stringify(note?.meetings ?? []);
 		untrack(() => {
-			if (incoming === agreed || JSON.stringify(meetings) !== agreed) return;
-			agreed = incoming;
+			if (incoming === kept || JSON.stringify(meetings) !== sent) return;
+			sent = kept = incoming;
 			skip = true;
 			meetings = structuredClone(note?.meetings ?? []);
 		});
