@@ -16,19 +16,25 @@ export function newProjectFlow() {
 	projectDialogs.project = 'new';
 }
 
-/** Asks for a title, creates the thread in the project and opens it. */
-export async function newThreadFlow(project: string) {
+/** Asks for a title and creates the thread in the project, staying where you are; null when that is cancelled. */
+export async function createThreadFlow(project: string) {
 	const title = await promptDialog({
 		title: 'New thread',
 		label: 'What are you thinking about?',
 		placeholder: 'e.g. Pricing model',
 		confirmLabel: 'Create'
 	});
-	if (!title) return;
+	if (!title) return null;
 	const created = await attempt(() => api.createThread(project, title));
-	if (!created) return;
+	if (!created) return null;
 	await refresh();
-	await goto(threadUrl(project, created.slug));
+	return created;
+}
+
+/** Asks for a title, creates the thread in the project and opens it. */
+export async function newThreadFlow(project: string) {
+	const created = await createThreadFlow(project);
+	if (created) await goto(threadUrl(project, created.slug));
 }
 
 /** A learning outcome's level, as Epsilon+ shows it: what a thread or deliverable started from it aims at. */

@@ -5,6 +5,7 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FileDown from '@lucide/svelte/icons/file-down';
 	import FileText from '@lucide/svelte/icons/file-text';
+	import MessagesSquare from '@lucide/svelte/icons/messages-square';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
 	import TextCursorInput from '@lucide/svelte/icons/text-cursor-input';
@@ -26,7 +27,7 @@
 	import SelectionComment from '$lib/components/SelectionComment.svelte';
 	import { api, portflowApi } from '$lib/api';
 	import { portflow } from '$lib/portflow.svelte';
-	import { deliverableFile, deliverableUrl, nextVersion, snapshotPath } from '$lib/actions';
+	import { createThreadFlow, deliverableFile, deliverableUrl, nextVersion, snapshotPath } from '$lib/actions';
 	import { locate, plain, type Anchor, type Mark } from '$lib/anchors';
 	import { sha256Hex } from '$lib/hash';
 	import { dateTime } from '$lib/format';
@@ -164,23 +165,62 @@
 	}
 
 	// ---- the thread of this page ---------------------------------------------------------------
-	// One thread for everything done here: the note a publish leaves, new feedback, and the prompts made from feedback. It
-	// isn't chosen: it is the thread the deliverable belongs to. That is its evidence item's thread, else where its last
-	// version went, else the thread of the prompt that asked for it, else the thread it was opened from (`?thread=<slug>`),
-	// else the project's first thread.
-
-	let workThread = $state('');
+	// One thread for everything done here: the note a publish leaves, new feedback, and the prompts made here or from
+	// feedback. The Thread box at the top shows it, and changing it there changes it for all of them. What is picked there
+	// is kept for this deliverable (on this computer). Opened from a thread (`?thread=<slug>`), it is that thread, as the
+	// top bar says. Otherwise it is the one last picked for this deliverable, else the thread it belongs to: its evidence
+	// item's thread, else where its last version went, else the thread of the prompt that asked for it, else the project's
+	// most recently active thread. Only a pick is kept, not what it starts on, so that follows the deliverable.
 
 	const cameFrom = $derived(page.url.searchParams.get('thread'));
-	$effect(() => {
+	const threadKey = $derived(`ledger-doc-thread:${project}:${doc.basePath}`);
+	/** The thread picked in the box on this visit, for the deliverable it was picked for. */
+	let picked = $state<{ key: string; slug: string } | null>(null);
+
+	function lastPicked(key: string): string | null {
+		try {
+			return localStorage.getItem(key);
+		} catch {
+			return null;
+		}
+	}
+
+	const workThread = $derived.by(() => {
 		const options = threads.map((t) => t.slug);
-		workThread =
-			[evidence?.thread, provenance.defaultThread, doc.prompts[0]?.threadSlug, cameFrom].find((slug) => slug && options.includes(slug)) ??
-			options[0] ??
-			'';
+		const candidates = [
+			picked?.key === threadKey ? picked.slug : null,
+			cameFrom,
+			lastPicked(threadKey),
+			evidence?.thread,
+			provenance.defaultThread,
+			doc.prompts[0]?.threadSlug
+		];
+		return candidates.find((slug) => slug && options.includes(slug)) ?? options[0] ?? '';
 	});
 
 	const threadTitle = $derived(threads.find((t) => t.slug === workThread)?.title ?? '');
+
+	/** The box's last option: a new thread, made here, which the page then uses. */
+	const NEW_THREAD = '+new-thread';
+	const threadOptions = $derived([...threads.map((t) => ({ value: t.slug, label: t.title })), { value: NEW_THREAD, label: 'New thread...' }]);
+
+	function pickThread(slug: string) {
+		if (slug === NEW_THREAD) {
+			void newThread();
+			return;
+		}
+		picked = { key: threadKey, slug };
+		try {
+			localStorage.setItem(threadKey, slug);
+		} catch {
+			// Kept for this visit only.
+		}
+	}
+
+	async function newThread() {
+		const created = await createThreadFlow(project);
+		if (created) pickThread(created.slug);
+	}
 
 	// ---- the evidence item it is -----------------------------------------------------------------
 	// A deliverable that is a Portflow evidence item shows the item's description (What? / Goal? / Why it contributes?)
@@ -585,6 +625,15 @@
 			{/if}
 		</div>
 		<div class="header-actions">
+			<div class="thread-box" title="New feedback, the prompts made here and the note a publish leaves go to this thread">
+				<MessagesSquare size={15} />
+				<span class="tb-label">Thread</span>
+				{#if threads.length}
+					<Dropdown bind:value={() => workThread, pickThread} options={threadOptions} label="Thread for this page" align="end" />
+				{:else}
+					<button class="link accent" onclick={() => void newThread()}>Create one</button>
+				{/if}
+			</div>
 			{#if following}
 				{@const reading = mode === 'reading' && history === 'off'}
 				<button
@@ -692,7 +741,7 @@
 </div>
 
 <SelectionComment root={docArea} oncomment={commentOn} />
-<DocSide bind:this={side} {project} {doc} {provenance} {draft} prompts={data.prompts} {threads} bind:thread={workThread} {threadTitle} bind:pending {lost} {here} onlocate={showPassage} changes={isMarkdown ? tracker : undefined} live={following} onhistory={(view) => void openHistory(view)} />
+<DocSide bind:this={side} {project} {doc} {provenance} {draft} prompts={data.prompts} {threads} thread={workThread} {threadTitle} onnewthread={newThread} bind:pending {lost} {here} onlocate={showPassage} changes={isMarkdown ? tracker : undefined} live={following} onhistory={(view) => void openHistory(view)} />
 </div>
 
 {#if renaming}

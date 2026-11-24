@@ -17,7 +17,7 @@
 	import PromptModal from './PromptModal.svelte';
 
 	// What was said about the file: the box to say more, and the list, by thread and, within each, by version (the version
-	// each piece was given on). New feedback goes to the deliverable's own thread (`thread`, which the page works out), on the
+	// each piece was given on). New feedback goes to the page's thread (`thread`, picked in the Thread box at the top), on the
 	// whole document or, with `pending`, on the passage selected in it. Open feedback can be selected, and the selected ones made
 	// into a prompt, or added to one (`prompts` are the ones about this file). `lost`: the feedback whose passage is no longer
 	// in the text; `onlocate` shows a passage in the document; `here` says whether a piece belongs to what the page shows.
@@ -26,8 +26,9 @@
 		doc,
 		prompts,
 		threads,
-		thread = $bindable(),
+		thread,
 		threadTitle,
+		onnewthread,
 		pending = $bindable(null),
 		lost,
 		here,
@@ -40,6 +41,8 @@
 		threads: ThreadSummary[];
 		thread: string;
 		threadTitle: string;
+		/** Makes a new thread and picks it for the page, staying on it; without it, the new thread is opened. */
+		onnewthread?: () => void;
 		pending?: Anchor | null;
 		lost: Set<string>;
 		here: (f: Feedback) => boolean;
@@ -155,7 +158,7 @@
 	</span>
 	{#if !thread}
 		<span class="hint">
-			Create a thread first - feedback is written in one. <button class="link accent" onclick={() => newThreadFlow(project)}>Create one</button>
+			Create a thread first - feedback is written in one. <button class="link accent" onclick={() => (onnewthread ? onnewthread() : newThreadFlow(project))}>Create one</button>
 		</span>
 	{:else if inPortflow}
 		<span class="hint">Feedback on a Portflow item is given in Portflow; it comes in with the sync.</span>
