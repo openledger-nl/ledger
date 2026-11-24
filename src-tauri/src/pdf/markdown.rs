@@ -23,7 +23,9 @@ pub struct Converted {
 
 /// Converts `source`. `picture` is asked for each picture's address as written and gives the name the PDF reads it
 /// under, or `None` when it can't be had (a web address, a file that isn't there): its alt text is shown instead.
-pub fn to_typst(source: &str, picture: &mut dyn FnMut(&str) -> Option<String>) -> Converted {
+/// For an embed (`![[shot.png]]`, as Obsidian writes it) it is asked with `true` and the target, which is a file's name
+/// rather than an address. Only a picture is embedded: `![[report.pdf]]` is its words, as a `[[link]]` is.
+pub fn to_typst(source: &str, picture: &mut dyn FnMut(&str, bool) -> Option<String>) -> Converted {
     // Frontmatter is the caller's to read; it is not part of the text. Only a block at the very top is frontmatter: the
     // parser's own metadata blocks also start at a `---` further down (a horizontal rule with text right under it) and
     // run to the next one, which would turn all the text in between into raw lines.
@@ -133,7 +135,11 @@ pub fn string(text: &str) -> String {
 
 /// What is being written into, besides the main text: a picture's alt text, a code block's lines.
 enum Capture {
-    Image { name: Option<String> },
+    /// `embed`: written as `![[target]]` (no words of its own: no caption) or `![[target|words]]`, where words that are
+    /// a number are its width, not a caption.
+    Image { name: Option<String>, embed: Option<bool>, src: String },
+    /// An embed of something that isn't a picture: its words, as a link's.
+    Words,
     Code { lang: Option<String> },
 }
 
@@ -215,13 +221,13 @@ impl<'a> Writer<'a> {
         }
     }
 
-    fn run(&mut self, events: &[Event], picture: &mut dyn FnMut(&str) -> Option<String>) {
+    fn run(&mut self, events: &[Event], picture: &mut dyn FnMut(&str, bool) -> Option<String>) {
         for event in events {
             self.event(event, picture);
         }
     }
 
-    fn event(&mut self, event: &Event, picture: &mut dyn FnMut(&str) -> Option<String>) {
+    fn event(&mut self, event: &Event, picture: &mut dyn FnMut(&str, bool) -> Option<String>) {
         // Inside a code block every line is its text, as it is.
         if let Some((Capture::Code { .. }, text)) = self.captures.last_mut() {
             match event {
@@ -272,7 +278,7 @@ impl<'a> Writer<'a> {
         }
     }
 
-    fn start(&mut self, tag: &Tag, picture: &mut dyn FnMut(&str) -> Option<String>) {
+    fn start(&mut self, tag: &Tag, picture: &mut dyn FnMut(&str, bool) -> Option<String>) {
         match tag {
             Tag::Paragraph => {}
             Tag::Heading { level, .. } => {
@@ -333,9 +339,16 @@ impl<'a> Writer<'a> {
                 }
                 self.links.push(web);
             }
-            Tag::Image { dest_url, .. } => {
-                let name = picture(dest_url);
-                self.captures.push((Capture::Image { name }, String::new()));
+            Tag::Image { link_type: LinkType::WikiLink { .. }, dest_url, .. } if !crate::uploads::is_image(dest_url.trim()) => {
+                self.captures.push((Capture::Words, String::new()));
+            }
+            Tag::Image { link_type, dest_url, .. } => {
+                let embed = match link_type {
+                    LinkType::WikiLink { has_pothole } => Some(*has_pothole),
+                    _ => None,
+                };
+                let name = picture(dest_url, embed.is_some());
+                self.captures.push((Capture::Image { name, embed, src: dest_url.to_string() }, String::new()));
             }
             Tag::FootnoteDefinition(_) | Tag::MetadataBlock(_) | Tag::HtmlBlock | Tag::DefinitionList => {}
             Tag::DefinitionListTitle => self.push("#strong["),
@@ -403,10 +416,23 @@ impl<'a> Writer<'a> {
                 }
             }
             TagEnd::Image => {
-                if let Some((Capture::Image { name }, alt)) = self.captures.pop() {
+                let captured = self.captures.pop();
+                if let Some((Capture::Words, words)) = &captured {
+                    let words = words.trim().to_string();
+                    self.push(&words);
+                }
+                if let Some((Capture::Image { name, embed, src }, alt)) = captured {
+                    // `![[shot.png|300]]`: a width, not words; `![[shot.png]]`: its words are only its name.
+                    let size = |t: &str| !t.is_empty() && t.split('x').all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+                    let alt = match embed {
+                        Some(worded) if !worded || size(alt.trim()) => String::new(),
+                        _ => alt,
+                    };
                     let alt_arg = if alt.trim().is_empty() { "none".to_string() } else { format!("[{}]", alt.trim()) };
                     let call = match name {
                         Some(name) => format!("#ledger-image({}, {alt_arg})", string(&name)),
+                        // A picture that isn't there is named by its words, or else by what was written.
+                        None if alt.trim().is_empty() => format!("#ledger-missing-image([{}])", escape(src.trim())),
                         None => format!("#ledger-missing-image([{}])", alt.trim()),
                     };
                     self.push(&call);

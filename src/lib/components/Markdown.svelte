@@ -3,12 +3,12 @@
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { goto } from '$app/navigation';
 	import { locate, plain, rangeIn, textOf, type Mark } from '$lib/anchors';
-	import { deliverableUrl, isMarkdownFile, threadUrl } from '$lib/actions';
+	import { deliverableUrl, isImageName, isMarkdownFile, threadUrl } from '$lib/actions';
 	import { followLink, linkUrl, projectLinks } from '$lib/links.svelte';
 	import { openInPortflow } from '$lib/portflow.svelte';
 	import type { EvidenceMention } from '$lib/types';
 	import { toast } from '$lib/ui.svelte';
-	import { imageLoader, isVaultSrc, type ImageBase } from '$lib/vaultImages';
+	import { embeddable, embeddedPicture, embedWidth, imageLoader, isVaultSrc, threadEmbedNote, type ImageBase } from '$lib/vaultImages';
 
 	/**
 	 * `html` is rendered by the backend, which escapes raw HTML and drops unsafe link targets. With `images`, pictures
@@ -55,17 +55,37 @@
 
 	const links = projectLinks();
 
+	/** `![[shot.png]]`: the picture in place of the link, once it is read; the link stays when it can't be. */
+	function showEmbed(a: HTMLAnchorElement, src: string) {
+		const width = a.dataset.alias ? embedWidth(a.textContent) : null;
+		const alt = width || !a.dataset.alias ? (a.dataset.wikilink ?? '') : (a.textContent ?? '');
+		void pictures.load(src).then((url) => {
+			if (!url || !a.isConnected) return;
+			const img = Object.assign(document.createElement('img'), { src: url, alt, className: 'embed' });
+			if (width) img.style.width = `${width}px`;
+			a.replaceWith(img);
+		});
+	}
+
 	$effect(() => {
 		void shown;
 		const index = links.index;
 		for (const a of root.querySelectorAll<HTMLAnchorElement>('a.wikilink')) {
 			const name = a.dataset.wikilink ?? '';
-			const target = index?.resolve(name) ?? null;
+			const found = index?.resolve(name) ?? null;
+			// A thread is linked, never embedded: `![[Thread]]` points at nothing.
+			const target = found && (!a.dataset.embed || embeddable(found)) ? found : null;
+			// An embed of a picture shows it (one that is no link target may be a picture beside the file); an embed of
+			// anything else (a PDF, a deliverable, a thread) is a link to it, as below.
+			if (a.dataset.embed && images) {
+				const src = target ? embeddedPicture(target) : isImageName(name) ? name : null;
+				if (src) showEmbed(a, src);
+			}
 			a.classList.toggle('unresolved', !target);
 			a.onclick = null;
 			if (!target) {
 				a.removeAttribute('href');
-				a.title = index ? `Nothing is called "${name}"` : 'Links work inside a project';
+				a.title = found ? threadEmbedNote(name) : index ? `Nothing is called "${name}"` : 'Links work inside a project';
 				continue;
 			}
 			a.href = linkUrl(target);

@@ -1096,6 +1096,17 @@ fn markdown_escapes_raw_html_and_strips_unsafe_links() {
 }
 
 #[test]
+fn an_embed_is_a_link_the_page_shows_a_picture_for() {
+    let html = markdown::render("![[Shot 01.png]] and ![[report.pdf|the report]] and ![[chart.png|300]]");
+    assert!(html.contains(r#"<a class="wikilink" data-wikilink="Shot 01.png" data-embed="1">Shot 01.png</a>"#), "{html}");
+    assert!(html.contains(r#"data-wikilink="report.pdf" data-embed="1" data-alias="1">the report</a>"#), "{html}");
+    assert!(html.contains(r#"data-wikilink="chart.png" data-embed="1" data-alias="1">300</a>"#), "{html}");
+    assert!(!html.contains("<img"), "the page decides what it is\n{html}");
+    // An ordinary picture still is one.
+    assert!(markdown::render("![a chart](chart.png)").contains(r#"<img src="chart.png" alt="a chart""#));
+}
+
+#[test]
 fn markdown_marks_wiki_links_for_the_page_to_resolve() {
     let html = markdown::render("see [[Pricing model]], [[brief.md|the brief]] and [[feedback:17-abc|a note]]");
     assert!(html.contains(r#"<a class="wikilink" data-wikilink="Pricing model">Pricing model</a>"#), "{html}");

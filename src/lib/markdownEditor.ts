@@ -36,7 +36,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { locate, plain, type Mark } from '$lib/anchors';
 import { WIKI_LINK, type LinkIndex } from '$lib/links';
 import type { LinkTarget } from '$lib/types';
-import { isVaultSrc, isWebSrc, type ImageLoad } from '$lib/vaultImages';
+import { embeddable, embeddedPicture, embedWidth, isVaultSrc, isWebSrc, threadEmbedNote, type ImageLoad } from '$lib/vaultImages';
 
 type SyntaxNode = ReturnType<typeof syntaxTree>['topNode'];
 
@@ -150,11 +150,12 @@ const webOnly: ImageLoad = (src) => Promise.resolve(isWebSrc(src) ? src.trim() :
 const imageLoad = Facet.define<ImageLoad, ImageLoad>({ combine: (loads) => loads[0] ?? webOnly });
 
 /** A picture, shown once it is read; if it can't be, a note saying so in its place. */
-function picture(src: string, alt: string, view: EditorView): HTMLElement {
+function picture(src: string, alt: string, view: EditorView, width: number | null = null): HTMLElement {
 	const box = document.createElement('span');
 	box.className = 'cm-md-picture';
 	const img = box.appendChild(document.createElement('img'));
 	img.alt = alt;
+	if (width) img.style.width = `${width}px`;
 	const missing = () => {
 		box.textContent = `Couldn't load ${alt || src}`;
 		box.classList.add('missing');
@@ -170,15 +171,16 @@ function picture(src: string, alt: string, view: EditorView): HTMLElement {
 class Picture extends WidgetType {
 	constructor(
 		readonly src: string,
-		readonly alt: string
+		readonly alt: string,
+		readonly width: number | null = null
 	) {
 		super();
 	}
 	eq(other: Picture) {
-		return other.src === this.src && other.alt === this.alt;
+		return other.src === this.src && other.alt === this.alt && other.width === this.width;
 	}
 	toDOM(view: EditorView) {
-		return picture(this.src, this.alt, view);
+		return picture(this.src, this.alt, view, this.width);
 	}
 	ignoreEvent() {
 		return false;
@@ -634,9 +636,24 @@ function wikiDecorations(view: EditorView): DecorationSet {
 			if (notLinkable(state, at)) continue;
 			const target = m[1].trim();
 			const words = m[2]?.trim();
-			const missing = !!index && !index.resolve(target);
-			const attributes: Record<string, string> = { 'data-wikilink': target };
-			if (index) attributes.title = missing ? `Nothing is called "${target}"` : 'Ctrl+click to open';
+			const embed = at > 0 && state.sliceDoc(at - 1, at) === '!';
+			const named = index?.resolve(target) ?? null;
+			// A thread is linked, never embedded: `![[Thread]]` points at nothing.
+			const resolved = named && (!embed || embeddable(named)) ? named : null;
+			const missing = !!index && !resolved;
+			const touchedHere = ranges.some((r) => r.from <= stop && r.to >= at - 1);
+			// `![[shot.png]]`: a picture is shown in its place (beside it while the cursor is on it); anything else that is
+			// embedded reads as a link to it, the `!` hidden.
+			const src = embed && resolved ? embeddedPicture(resolved) : null;
+			if (src && preview && state.facet(imageLoad) !== webOnly) {
+				const widget = new Picture(src, embedWidth(words) ? target : words || target, embedWidth(words));
+				if (!touchedHere) found.push(Decoration.replace({ widget }).range(at - 1, stop));
+				else found.push(wikiBracket.range(at - 1, at + 2), wikiBracket.range(stop - 2, stop), Decoration.widget({ widget, side: 1 }).range(stop));
+				continue;
+			}
+			if (embed && preview && !touchedHere) found.push(hidden.range(at - 1, at));
+			const attributes: Record<string, string> = named && !resolved ? {} : { 'data-wikilink': target };
+			if (index) attributes.title = named && !resolved ? threadEmbedNote(target) : missing ? `Nothing is called "${target}"` : 'Ctrl+click to open';
 			const mark = Decoration.mark({ class: missing ? 'cm-md-wikilink unresolved' : 'cm-md-wikilink', attributes });
 			if (preview && !ranges.some((r) => r.from <= stop && r.to >= at)) {
 				// Only the words that are shown remain: the target alone, or what comes after the bar.
@@ -694,10 +711,12 @@ function wikiCompletions(context: CompletionContext): CompletionResult | null {
 	const index = context.state.facet(linkSupport)?.index();
 	const typed = context.matchBefore(LINK_TEXT);
 	if (!index || !typed || notLinkable(context.state, typed.from)) return null;
+	// After `![[`, everything but threads: a thread is linked, not embedded.
+	const embed = typed.from > 0 && context.state.sliceDoc(typed.from - 1, typed.from) === '!';
 	return {
 		from: typed.from + 2,
 		filter: false,
-		options: index.suggest(typed.text.slice(2)).map((s) => ({
+		options: index.suggest(typed.text.slice(2)).filter((s) => !embed || embeddable(s.target)).map((s) => ({
 			label: s.label,
 			detail: s.detail,
 			type: s.target.kind,

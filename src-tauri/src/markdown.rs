@@ -1,4 +1,4 @@
-use pulldown_cmark::{CowStr, Event, LinkType, Options, Parser, Tag, html};
+use pulldown_cmark::{CowStr, Event, LinkType, Options, Parser, Tag, TagEnd, html};
 
 /// Renders user markdown to HTML that is safe to inject into the page: raw HTML in the source is shown as
 /// text, and links or images with a scheme other than http(s)/mailto lose their target.
@@ -9,11 +9,25 @@ use pulldown_cmark::{CowStr, Event, LinkType, Options, Parser, Tag, html};
 /// `[[target]]` and `[[target|label]]` become `<a class="wikilink" data-wikilink="target">`, with no address: what
 /// a target points at (a thread, a deliverable, a piece of feedback) is the page's to find out, from the same list
 /// the editor completes from (see `links.rs`), so that one set of rules serves both.
+///
+/// `![[target]]` (an embed, as Obsidian writes it) is the same link with `data-embed`: the page shows a picture in its
+/// place, and anything else it points at (a PDF, a deliverable, a thread) stays a link to it.
 pub fn render(source: &str) -> String {
     let source = &*strip_comments(source);
     let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_WIKILINKS;
+    // Whether the picture being read is an embed, whose end is a link's end.
+    let mut embed = false;
     let events = Parser::new_ext(source, options).map(|event| match event {
         Event::Html(text) | Event::InlineHtml(text) => Event::Text(text),
+        Event::Start(Tag::Image { link_type: LinkType::WikiLink { has_pothole }, dest_url, .. }) => {
+            embed = true;
+            let alias = if has_pothole { " data-alias=\"1\"" } else { "" };
+            Event::Html(format!("<a class=\"wikilink\" data-wikilink=\"{}\" data-embed=\"1\"{alias}>", escape_attribute(&dest_url)).into())
+        }
+        Event::End(TagEnd::Image) if embed => {
+            embed = false;
+            Event::Html("</a>".into())
+        }
         Event::Start(Tag::Link { link_type: LinkType::WikiLink { has_pothole }, dest_url, .. }) => {
             let alias = if has_pothole { " data-alias=\"1\"" } else { "" };
             Event::Html(format!("<a class=\"wikilink\" data-wikilink=\"{}\"{alias}>", escape_attribute(&dest_url)).into())

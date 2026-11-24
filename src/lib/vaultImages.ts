@@ -2,7 +2,8 @@
 // webview can't open itself: they are read through the backend, as FileImage does, and shown from blob URLs. Web
 // pictures (http, https) are shown as they are. Used by the rendered page (Markdown.svelte) and the editor.
 
-import { shownMimeOf } from '$lib/actions';
+import { deliverableFile, isImageName, shownMimeOf } from '$lib/actions';
+import type { LinkTarget } from '$lib/types';
 import { api } from '$lib/api';
 
 /** Where a markdown file's pictures are looked for: its project, and its folder in that project. */
@@ -75,4 +76,29 @@ export function imageLoader(base: () => ImageBase | undefined): { load: ImageLoa
 	};
 
 	return { load, dispose };
+}
+
+// ---- ![[embeds]] -------------------------------------------------------------------------------------
+// As in Obsidian, `![[shot.png]]` shows the picture where it is written. Only a picture is put in the text: anything
+// else is referred to, so `![[report.pdf]]` reads as the link `[[report.pdf]]` (a deliverable, an attachment, a meeting,
+// feedback, a person). A thread can't be embedded: it is linked with `[[…]]`.
+
+/** Whether an embed can point at `target`: anything but a thread. */
+export const embeddable = (target: LinkTarget) => target.kind !== 'thread';
+
+/** What an embed of a thread says, drawn as a link that points at nothing. */
+export const threadEmbedNote = (name: string) => `A thread can't be embedded: link to it with [[${name}]]`;
+
+/** The picture an `![[embed]]` that points at `target` shows, as an address from the project's folder (`/attachments/
+ *  shot.png`, which `resolveSrc` reads from any folder), or null when it isn't a picture and stays a link. */
+export function embeddedPicture(target: LinkTarget): string | null {
+	if (target.kind === 'attachment' && isImageName(target.id)) return `/${target.id}`;
+	if (target.kind === 'deliverable' && isImageName(target.open || target.id)) return `/${deliverableFile(target.open || target.id)}`;
+	return null;
+}
+
+/** The width an embed's words ask for, as Obsidian reads them: `![[shot.png|300]]` (or `|300x200`) is 300 pixels wide. */
+export function embedWidth(words: string | null | undefined): number | null {
+	const m = /^\s*(\d{1,4})(?:x\d{1,4})?\s*$/.exec(words ?? '');
+	return m ? Number(m[1]) : null;
 }

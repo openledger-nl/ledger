@@ -3,7 +3,7 @@ use super::*;
 use std::fs;
 
 fn convert(source: &str) -> markdown::Converted {
-    to_typst(source, &mut |src| (src == "chart.png").then(|| "/pictures/0.png".to_string()))
+    to_typst(source, &mut |src, _| (src == "chart.png").then(|| "/pictures/0.png".to_string()))
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn names_and_dates_read_well() {
 #[test]
 fn a_document_with_everything_in_it_becomes_a_pdf() {
     let source = "# Plan\n\nIntro with **bold**, *italic*, ~~gone~~, `code` and a [link](https://example.com).[^n]\n\n## One\n\n> A quote.\n\n- a\n  - nested\n- [ ] task\n\n### Two\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n```\nplain code\n```\n\n---\n\n## Three\n\n![missing](nope.png)\n\n[^n]: A note.\n";
-    let converted = to_typst(source, &mut |_| None);
+    let converted = to_typst(source, &mut |_, _| None);
     let data = Data {
         title: converted.title.clone().unwrap(),
         subtitle: Some("A subtitle".into()),
@@ -283,4 +283,31 @@ fn a_layout_of_ones_own_is_used_and_its_mistakes_are_located() {
     assert_eq!(reset_layout(root, &project, LayoutScope::Project).unwrap().used, LayoutScope::Vault);
     assert!(project_file.with_file_name("corner.png").exists(), "the other files of the folder stay");
     assert_eq!(reset_layout(root, &project, LayoutScope::Vault).unwrap().used, LayoutScope::Ledger);
+}
+
+#[test]
+fn an_embedded_picture_is_in_the_pdf_and_any_other_embed_is_its_words() {
+    let c = convert("See ![[chart.png|300]] and ![[report.pdf|the report]] and ![[lost.png]].\n");
+    assert!(c.body.contains(r#"#ledger-image("/pictures/0.png", none)"#), "a width is no caption\n{}", c.body);
+    assert!(c.body.contains("and the report and"), "{}", c.body);
+    assert!(!c.body.contains("report.pdf"), "{}", c.body);
+    assert!(c.body.contains(r"#ledger-missing-image([lost\.png])"), "{}", c.body);
+}
+
+/// `![[shot.png]]` finds the picture by its name in the project's attachments, in any folder, as the page does.
+#[test]
+fn an_embed_finds_its_picture_in_the_attachments() {
+    let c = crate::db::open_in_memory().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let project = crate::projects::create(&c, "Police dashboard").unwrap().slug;
+    let doc = deliverables::create(&c, &project, "Plan", "# Project plan\n\n![[Design 01.png]]\n\nSee ![[report.pdf]].\n").unwrap();
+    let folder = uploads::project_dir(root, &project).join("attachments/Deliverables/Plan");
+    fs::create_dir_all(&folder).unwrap();
+    image::RgbImage::from_pixel(40, 20, image::Rgb([21, 66, 115])).save(folder.join("Design 01.png")).unwrap();
+    let prepared = prepare(&c, root, &project, &doc.path).unwrap();
+    assert!(prepared.files.iter().any(|(name, _)| name == "/pictures/0.png"), "the picture goes along");
+    assert!(prepared.main.contains(r#"#ledger-image("/pictures/0.png", none)"#), "{}", prepared.main);
+    assert!(prepared.main.contains(r"See report\.pdf"), "{}", prepared.main);
+    assert!(make(prepared).unwrap().ends_with(".pdf"));
 }

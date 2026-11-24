@@ -111,8 +111,9 @@ pub fn prepare(conn: &Connection, root: &Path, project: &str, path: &str) -> Res
     let store = crate::store::at(root);
     let dir = format!("deliverables/{}", base.rsplit_once('/').map_or("", |(d, _)| d));
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-    let mut picture = |src: &str| -> Option<String> {
-        let rel = resolve_src(&dir, src)?;
+    let attachments = uploads::folder_files(root, project);
+    let mut picture = |src: &str, embed: bool| -> Option<String> {
+        let rel = if embed { embedded(conn, project, &attachments, &dir, src) } else { resolve_src(&dir, src) }?;
         let in_vault = uploads::project_rel(project, &rel);
         let ext = rel.rsplit_once('.')?.1.to_ascii_lowercase();
         let ext = match ext.as_str() {
@@ -342,6 +343,27 @@ fn collect_folder(store: &Store, dir: &str) -> Result<Vec<(String, Vec<u8>)>> {
 
 /// The project path a picture's address points at from `dir`, or `None` for a web address or one that leaves the
 /// project. A leading `/` is the project's own folder. (As `resolveSrc` in vaultImages.ts.)
+/// The file an embed (`![[shot.png]]`) shows, by its project path, found as a `[[link]]` finds it (links.ts): a path in
+/// the project, else an attachment, else a deliverable of that name (in any folder, whatever the case), else a file
+/// beside the document.
+fn embedded(conn: &Connection, project: &str, attachments: &[(String, i64, String)], dir: &str, target: &str) -> Option<String> {
+    let target = target.trim();
+    let wanted = target.to_lowercase();
+    if let Some((file, _, _)) = attachments.iter().find(|(file, _, _)| file.to_lowercase() == wanted || file.to_lowercase() == format!("attachments/{wanted}")) {
+        return Some(file.clone());
+    }
+    if !target.contains('/') {
+        if let Some((file, _, _)) = attachments.iter().find(|(file, _, _)| deliverables::file_name(file).to_lowercase() == wanted) {
+            return Some(file.clone());
+        }
+        let live: Vec<String> = crate::db::query_all(conn, "SELECT path FROM deliverables WHERE project_slug = ?1", [project], |r| r.get(0)).ok()?;
+        if let Some(found) = live.iter().find(|p| deliverables::split_version(p).1.is_none() && deliverables::file_name(p).to_lowercase() == wanted) {
+            return Some(format!("deliverables/{found}"));
+        }
+    }
+    resolve_src(dir, target)
+}
+
 fn resolve_src(dir: &str, src: &str) -> Option<String> {
     let src = src.trim();
     let lower = src.to_ascii_lowercase();
