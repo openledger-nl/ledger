@@ -6,6 +6,7 @@
 	import MessagesSquare from '@lucide/svelte/icons/messages-square';
 	import { deliverableTarget, deliverableUrl, newThreadFlow, projectUrl, threadUrl } from '$lib/actions';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
+	import VersionBadge from '$lib/components/VersionBadge.svelte';
 	import { ago, deliverableTime, newest, stamp, threadMeta } from '$lib/format';
 	import type { DeliverableSummary, ProjectSummary } from '$lib/types';
 
@@ -64,11 +65,7 @@
 			<span class="dash-main">
 				<span class="dash-title" title={d.path}>{d.name}</span>
 				<span class="dash-meta dash-badges">
-					{#if d.versions.length}
-						<span class="badge published">v{d.versions.at(-1)}</span>
-					{:else}
-						<span class="badge draft">Draft</span>
-					{/if}
+					<VersionBadge {d} />
 					{#if d.delivered}<span class="badge accent" title={when.title}>v{d.delivered.number} in Portflow</span>{/if}
 					{#if d.mmm}<MmmBadge level={d.mmm} />{/if}
 					{#if d.openFeedback}<span class="badge draft">{d.openFeedback} open</span>{/if}

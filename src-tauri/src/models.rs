@@ -289,6 +289,17 @@ pub struct DeliverableSummary {
     pub evidence: Option<String>,
     /// The item's other files (base paths, in a folder beside it), folded into it rather than listed on their own.
     pub attachments: Vec<String>,
+    /// The file this one continues (see `deliverables::continue_in`): its versions came before this file's.
+    pub earlier: Option<Earlier>,
+}
+
+/// The earlier file a deliverable goes on from, a PDF from Portflow say, and that file's published versions, oldest
+/// first. They are the deliverable's versions before its own.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Earlier {
+    pub path: String,
+    pub versions: Vec<String>,
 }
 
 /// A version delivered to Portflow: its number (Ledger's major) and when Portflow got it.
@@ -331,6 +342,11 @@ pub struct DeliverableView {
     /// See [`DeliverableSummary::evidence`] and [`DeliverableSummary::attachments`].
     pub evidence: Option<String>,
     pub attachments: Vec<String>,
+    /// See [`DeliverableSummary::earlier`].
+    pub earlier: Option<Earlier>,
+    /// The file this one is continued in, when it is: that one is the deliverable now, and this one's versions are its
+    /// earlier ones.
+    pub later: Option<String>,
 }
 
 // ---- templates --------------------------------------------------------------------------------------

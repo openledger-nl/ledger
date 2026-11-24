@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import Dropdown, { type DropdownOption } from '$lib/components/Dropdown.svelte';
 	import MmmBadge from '$lib/components/MmmBadge.svelte';
+	import VersionBadge from '$lib/components/VersionBadge.svelte';
 	import { api } from '$lib/api';
 	import { deliverableUrl, formatSize, snapshotPath } from '$lib/actions';
 	import { ago, deliverableTime, plural } from '$lib/format';
@@ -84,11 +85,7 @@
 						<a class="doc-row all" href={deliverableUrl(project, target(d))}>
 							<span class="doc-title" title={d.path}>{d.evidence ?? d.path}</span>
 							<span class="doc-space">
-								{#if d.versions.length}
-									<span class="badge published">v{d.versions.at(-1)}</span>
-								{:else}
-									<span class="badge draft">Draft</span>
-								{/if}
+								<VersionBadge {d} />
 								{#if d.delivered}<span class="badge accent" title={deliverableTime(d).title}>v{d.delivered.number} in Portflow</span>{/if}
 								{#if d.mmm}<MmmBadge level={d.mmm} />{/if}
 								{#if !d.exists}<span class="badge">live file removed</span>{/if}

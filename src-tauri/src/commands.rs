@@ -744,7 +744,16 @@ pub fn get_provenance(app: State<App>, project: String, path: String) -> Result<
 pub fn update_version_record(app: State<App>, project: String, path: String, version: String, update: VersionUpdate) -> Result<provenance::Provenance> {
     let base = deliverables::split_version(&path).0;
     app.mutate(|c, _| {
-        provenance::update_record(c, &project, &base, &version, &update)?;
+        // A version only the file it continues has (a PDF from Portflow) is that file's record.
+        let target = match deliverables::earlier_of(c, &project, &base)? {
+            Some(earlier)
+                if !deliverables::versions_of(c, &project, &base)?.contains(&version) && deliverables::versions_of(c, &project, &earlier)?.contains(&version) =>
+            {
+                earlier
+            }
+            _ => base.clone(),
+        };
+        provenance::update_record(c, &project, &target, &version, &update)?;
         provenance::for_deliverable(c, &project, &base)
     })
 }
@@ -753,6 +762,19 @@ pub fn update_version_record(app: State<App>, project: String, path: String, ver
 #[tauri::command]
 pub fn rename_deliverable(app: State<App>, project: String, path: String, name: String) -> Result<String> {
     app.mutate(|c, root| deliverables::rename(c, root, &project, &path, &name))
+}
+
+/// Goes on with a deliverable that isn't markdown (a PDF from Portflow) in the markdown file beside it, made when it
+/// isn't there yet; the answer is the markdown's path.
+#[tauri::command]
+pub fn continue_deliverable_in_markdown(app: State<App>, project: String, path: String) -> Result<String> {
+    app.mutate(|c, root| deliverables::continue_in_markdown(c, root, &project, &path))
+}
+
+/// Takes a deliverable apart from the file it continues.
+#[tauri::command]
+pub fn separate_deliverable(app: State<App>, project: String, path: String) -> Result<()> {
+    app.mutate(|c, _| deliverables::separate(c, &project, &path))
 }
 
 #[tauri::command]

@@ -299,6 +299,10 @@ export const api = {
 	deleteDeliverable: (project: string, path: string) => call<void>('delete_deliverable', { project, path }),
 	/** Gives a deliverable another name (its extension stays); the answer is its new path. */
 	renameDeliverable: (project: string, path: string, name: string) => call<string>('rename_deliverable', { project, path, name }),
+	/** Goes on with a file that isn't markdown (a PDF from Portflow) in the markdown beside it; the answer is its path. */
+	continueDeliverableInMarkdown: (project: string, path: string) => call<string>('continue_deliverable_in_markdown', { project, path }),
+	/** Takes a deliverable apart from the file it continues. */
+	separateDeliverable: (project: string, path: string) => call<void>('separate_deliverable', { project, path }),
 
 	// templates
 	listTemplates: (scope: string) => call<Template[]>('list_templates', { scope }),

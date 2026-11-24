@@ -999,7 +999,8 @@ pub fn store_download(
         conn.execute("INSERT INTO evidence_files (project_slug, evidence_slug, position, path) VALUES (?1, ?2, ?3, ?4)", params![project, evidence, position, base])?;
     }
 
-    if !newest {
+    // A file continued in another (its markdown) has no live file of its own any more: the other one is.
+    if !newest || crate::deliverables::later_of(conn, project, base)?.is_some() {
         return Ok(Live::Untouched);
     }
     // The live file as it is now: missing, the same as the last published version, or changed in Ledger since.

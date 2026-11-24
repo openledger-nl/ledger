@@ -1572,6 +1572,68 @@ fn each_file_is_downloaded_once_and_its_versions_are_published() {
 }
 
 #[test]
+fn a_pdf_from_portflow_goes_on_in_markdown_as_the_same_deliverable() {
+    let m = Machine::new();
+    m.switch(true);
+    m.linked();
+    study(&m);
+    let fake = FakePortflow::new();
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    let project = m.root().join("projects/speed-edit");
+    assert!(project.join("deliverables/Project plan.pdf").exists());
+    let root = m.root().to_path_buf();
+
+    // Its markdown, written beside it (by hand, or by an assistant), is first a deliverable of its own.
+    m.edit(|c| crate::deliverables::upsert(c, "speed-edit", "Project plan.md", 7, "2026-10-01T10:00:00Z", Some("# Plan\n")).unwrap());
+    let later = m.edit(|c| crate::deliverables::continue_in_markdown(c, &root, "speed-edit", "Project plan.pdf")).unwrap();
+    assert_eq!(later, "Project plan.md");
+
+    // One deliverable: the markdown, named after the evidence item, with the PDF's versions before its own.
+    let listed = m.read(|c| crate::deliverables::list(c, "speed-edit")).unwrap();
+    let plans: Vec<_> = listed.iter().filter(|d| d.path.starts_with("Project plan")).collect();
+    assert_eq!(plans.len(), 1, "{listed:?}");
+    assert_eq!(plans[0].path, "Project plan.md");
+    assert_eq!(plans[0].evidence.as_deref(), Some("Project plan"));
+    assert_eq!(plans[0].earlier.as_ref().map(|e| (e.path.as_str(), e.versions.clone())), Some(("Project plan.pdf", vec!["2.0".to_string()])));
+    assert!(!project.join("deliverables/Project plan.pdf").exists(), "the live PDF was a copy of its version 2.0");
+    assert!(project.join("versions/Project plan/Project plan@v2.0.pdf").exists(), "its versions stay");
+    // One timeline: Portflow's v2.0 is a version of the markdown, and opens as the PDF it is, read-only.
+    assert_eq!(plans[0].versions, ["2.0"]);
+    for path in ["Project plan@v2.0.md", "Project plan@v2.0.pdf"] {
+        let view = m.read(|c| crate::deliverables::get(c, "speed-edit", path)).unwrap();
+        assert_eq!((view.path.as_str(), view.base_path.as_str(), view.version.as_deref()), ("Project plan@v2.0.pdf", "Project plan.md", Some("2.0")), "{path}");
+        assert_eq!((view.kind.as_str(), view.editable, view.evidence.as_deref()), ("other", false, Some("Project plan")));
+    }
+    let view = m.read(|c| crate::deliverables::get(c, "speed-edit", "Project plan.pdf")).unwrap();
+    assert_eq!(view.later.as_deref(), Some("Project plan.md"), "the PDF's own page points at the deliverable");
+    assert!(fs::read_to_string(project.join("project.md")).unwrap().contains("Project plan.pdf: Project plan.md"));
+
+    // Its version numbers go on from the PDF's, also after the vault is read again.
+    m.reload();
+    let published = m.edit(|c| crate::deliverables::publish(c, &root, "speed-edit", "Project plan.md", crate::models::Bump::Minor, None)).unwrap();
+    assert_eq!(published.versions, ["2.0", "2.1"]);
+    assert_eq!(published.earlier.map(|e| e.versions), Some(vec!["2.0".to_string()]));
+    let text = m.read(|c| crate::deliverables::get(c, "speed-edit", "Project plan@v2.1.md")).unwrap();
+    assert_eq!((text.kind.as_str(), text.body.as_deref()), ("markdown", Some("# Plan\n")), "a version of its own has its text");
+
+    // A new version in Portflow is one of the PDF's: it doesn't bring the live PDF back.
+    fake.world.lock().unwrap().versions.get_mut(&700).unwrap().insert(0, version(7003, 700, 3, "file", vec![file(5, "plan.pdf")]));
+    portflow_sync::run(&fake, &m.ledger, &m.settings()).unwrap();
+    assert!(!project.join("deliverables/Project plan.pdf").exists());
+    let listed = m.read(|c| crate::deliverables::list(c, "speed-edit")).unwrap();
+    let plan = listed.iter().find(|d| d.path == "Project plan.md").unwrap();
+    assert_eq!(plan.versions, ["2.0", "2.1", "3.0"]);
+    assert_eq!(plan.earlier.as_ref().unwrap().versions, ["2.0", "3.0"]);
+    assert_eq!(plan.delivered.as_ref().map(|d| d.number), Some(3));
+    assert!(!listed.iter().any(|d| d.path == "Project plan.pdf"));
+
+    // Taken apart again, the PDF is a deliverable of its own (its versions only).
+    m.edit(|c| crate::deliverables::separate(c, "speed-edit", "Project plan.md")).unwrap();
+    let listed = m.read(|c| crate::deliverables::list(c, "speed-edit")).unwrap();
+    assert!(listed.iter().any(|d| d.path == "Project plan.pdf" && !d.exists && d.evidence.is_some()));
+}
+
+#[test]
 fn a_live_file_changed_in_ledger_is_kept_and_a_new_name_never_clobbers() {
     let m = Machine::new();
     m.switch(true);

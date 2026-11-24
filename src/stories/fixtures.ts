@@ -348,7 +348,9 @@ export const deliverable: Deliverable = {
 	prompts: [{ threadSlug: THREAD, threadTitle: 'Sensor research', id: 'pr-1', title: 'Compare soil moisture sensors' }],
 	feedback: feedbackList,
 	evidence: null,
-	attachments: []
+	attachments: [],
+	earlier: null,
+	later: null
 };
 
 export const deliverables: DeliverableSummary[] = [
@@ -366,7 +368,8 @@ export const deliverables: DeliverableSummary[] = [
 		latestAt: at(14),
 		delivered: null,
 		evidence: null,
-		attachments: []
+		attachments: [],
+		earlier: null
 	},
 	{
 		path: 'Project plan.pdf',
@@ -382,7 +385,8 @@ export const deliverables: DeliverableSummary[] = [
 		latestAt: at(12),
 		delivered: { number: 1, at: at(12) },
 		evidence: 'project-plan',
-		attachments: []
+		attachments: [],
+		earlier: null
 	}
 ];
 

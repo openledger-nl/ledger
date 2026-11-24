@@ -399,6 +399,7 @@ fn export_projects(conn: &Connection, files: &mut BTreeMap<String, String>) -> R
         crate::project_facts::export_people(conn, &slug, &mut meta)?;
         crate::branding::export(conn, &slug, &mut meta)?;
         crate::deliverable_facts::export(conn, &slug, &mut meta)?;
+        crate::deliverables::export_continued(conn, &slug, &mut meta)?;
         files.insert(project_file(&slug), frontmatter::render(&meta, &description));
         files.insert(readme_file(&slug), readme);
     }
@@ -902,6 +903,7 @@ fn import_projects(conn: &Connection, source: &Source) -> Result<Vec<String>> {
         crate::project_facts::import_people(conn, slug, &meta)?;
         crate::branding::import(conn, slug, &meta)?;
         crate::deliverable_facts::import(conn, slug, &meta)?;
+        crate::deliverables::import_continued(conn, slug, &meta)?;
         if seen.is_empty() {
             board::seed_columns(conn, slug)?;
         } else {

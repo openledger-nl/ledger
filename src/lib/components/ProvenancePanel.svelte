@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { api } from '$lib/api';
-	import { deliverableUrl, formatSize, threadUrl } from '$lib/actions';
+	import { deliverableUrl, formatSize, textVersions, threadUrl } from '$lib/actions';
 	import { ago, date, dateTime, dayKey, plural } from '$lib/format';
 	import { MMM, authorLabel, sizeChange } from '$lib/mmm';
 	import { MMM_ICONS } from '$lib/mmmIcons';
@@ -22,6 +22,8 @@
 
 	const summary = $derived(provenance.summary);
 	const latest = $derived(doc.versions.at(-1) ?? null);
+	/** The versions with the deliverable's own text: a PDF from Portflow before them isn't compared. */
+	const texts = $derived(textVersions(doc));
 	/** Whether there is a live file to list: the page's "Live" chip follows the same rule. */
 	const hasLive = $derived(!!doc.basePath && (doc.exists || doc.version === null));
 	// The order is a setting (Settings, Order); the live file is the newest thing there is, so it goes where newest does.
@@ -186,8 +188,8 @@
 							{#if e.sizeChange}<span class="pv-size">{sizeChange(e.sizeChange)}</span>{/if}
 						</div>
 						{#if e.note}<p class="pv-note">{e.note}</p>{/if}
-						{#if doc.kind === 'markdown'}
-							{@const before = doc.versions[doc.versions.indexOf(e.version) - 1]}
+						{#if doc.kind === 'markdown' && texts.includes(e.version)}
+							{@const before = texts[texts.indexOf(e.version) - 1]}
 							<div class="pv-meta pv-history">
 								{#if before}<a href={historyUrl({ history: 'changes', from: before, to: e.version })}>What changed since v{before}</a>{/if}
 								{#if e.by === 'ai'}<a href={historyUrl({ history: 'authors', focus: e.version })}>Where its words are now</a>{/if}

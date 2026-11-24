@@ -296,6 +296,8 @@ pub fn run() {
             commands::update_version_record,
             commands::delete_deliverable,
             commands::rename_deliverable,
+            commands::continue_deliverable_in_markdown,
+            commands::separate_deliverable,
             commands::list_templates,
             commands::project_templates,
             commands::effective_templates,

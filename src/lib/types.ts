@@ -288,6 +288,14 @@ export interface DeliverableSummary {
 	evidence: string | null;
 	/** The item's other files (base paths, in a folder beside it), folded into it rather than listed on their own. */
 	attachments: string[];
+	/** The file this one continues (a PDF from Portflow, say): its versions came before this file's own. */
+	earlier: EarlierFile | null;
+}
+
+/** The earlier file a deliverable goes on from, and that file's published versions, oldest first. */
+export interface EarlierFile {
+	path: string;
+	versions: string[];
 }
 
 export interface DeliverablePrompt {
@@ -317,6 +325,10 @@ export interface Deliverable {
 	evidence: string | null;
 	/** The item's other files (base paths, in a folder beside it), folded into it rather than listed on their own. */
 	attachments: string[];
+	/** The file this one continues: see {@link DeliverableSummary.earlier}. */
+	earlier: EarlierFile | null;
+	/** The file this one is continued in, when it is: that one is the deliverable now. */
+	later: string | null;
 }
 
 // ---- how versions came to be ------------------------------------------------------------------------

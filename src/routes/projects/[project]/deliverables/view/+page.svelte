@@ -4,10 +4,12 @@
 	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FileDown from '@lucide/svelte/icons/file-down';
+	import FilePen from '@lucide/svelte/icons/file-pen';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import PencilLine from '@lucide/svelte/icons/pencil-line';
 	import TextCursorInput from '@lucide/svelte/icons/text-cursor-input';
+	import Unlink from '@lucide/svelte/icons/unlink';
 	import Trash from '@lucide/svelte/icons/trash';
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
@@ -26,7 +28,7 @@
 	import SelectionComment from '$lib/components/SelectionComment.svelte';
 	import { api, portflowApi } from '$lib/api';
 	import { portflow } from '$lib/portflow.svelte';
-	import { deliverableFile, deliverableUrl, nextVersion, snapshotPath } from '$lib/actions';
+	import { deliverableFile, deliverableUrl, nextVersion, snapshotPath, textVersions } from '$lib/actions';
 	import { locate, plain, type Anchor, type Mark } from '$lib/anchors';
 	import { sha256Hex } from '$lib/hash';
 	import { dateTime } from '$lib/format';
@@ -187,7 +189,9 @@
 	// under the document, to read and edit here rather than in the thread.
 
 	let evidence = $state<Evidence | null>(null);
-	const isEvidenceFile = (e: Evidence) => e.files.some((f) => f.path === doc.basePath || f.path === `deliverables/${doc.basePath}`);
+	// A file that continues another (its markdown) is the item that other one is in.
+	const isEvidenceFile = (e: Evidence) =>
+		e.files.some((f) => [doc.basePath, doc.earlier?.path].some((p) => p && (f.path === p || f.path === `deliverables/${p}`)));
 	$effect(() => {
 		const wanted = doc.evidence;
 		const slug = project;
@@ -275,6 +279,7 @@
 			// Not kept: it starts ticked next time.
 		}
 	}
+	// A file that continues another has that one's versions in its own (after Portflow's v6.0 the next is 6.1 or 7.0).
 	const preview = $derived({ minor: nextVersion(doc.versions, 'minor'), major: nextVersion(doc.versions, 'major') });
 
 	// What the person says about the change. Claude Code runs started here are recorded as they happen; the box is for AI
@@ -362,6 +367,36 @@
 		if (made) toast(`PDF saved as ${made}`);
 	}
 
+	// ---- one deliverable, two files ------------------------------------------------------------
+
+	async function continueInMarkdown() {
+		const md = `${doc.basePath.replace(/\.[^./]+$/, '')}.md`;
+		const ok = await confirmDialog({
+			title: 'Continue in markdown?',
+			message: `${md.split('/').at(-1)} becomes this deliverable: you edit it here, and its versions go on from v${doc.versions.at(-1)}. The published versions of this file stay as its earlier versions, and the live copy of the newest one goes. An existing ${md.split('/').at(-1)} is used as it is; otherwise it starts empty.`,
+			confirmLabel: 'Continue in markdown'
+		});
+		if (!ok) return;
+		const later = await attempt(() => api.continueDeliverableInMarkdown(project, doc.basePath));
+		if (later === undefined) return;
+		await refresh();
+		await goto(deliverableUrl(project, later));
+	}
+
+	async function separate() {
+		const earlier = doc.earlier?.path;
+		if (!earlier) return;
+		const ok = await confirmDialog({
+			title: `Separate from ${earlier.split('/').at(-1)}?`,
+			message: `${earlier.split('/').at(-1)} and its versions are a deliverable of their own again, and this file starts its versions afresh.`,
+			confirmLabel: 'Separate'
+		});
+		if (!ok) return;
+		if ((await attempt(() => api.separateDeliverable(project, doc.basePath))) === undefined) return;
+		await refresh();
+		await goto(deliverableUrl(project, doc.basePath), { invalidateAll: true });
+	}
+
 	async function remove() {
 		const ok = await confirmDialog({
 			title: `Delete "${doc.name}"?`,
@@ -395,6 +430,11 @@
 		// Copy, Open and Show in folder are buttons of their own beside it.
 		...(isMarkdown && doc.exists ? [{ id: 'pdf', label: exporting ? 'Making the PDF' : 'Export as PDF', icon: FileDown, rule: !snapshot }] : []),
 		...(!snapshot && doc.exists && !doc.evidence ? [{ id: 'rename', label: 'Rename', icon: TextCursorInput }] : []),
+		// A PDF (from Portflow, say) goes on in markdown, edited here, as the same deliverable.
+		...(!isMarkdown && !snapshot && !doc.later && !doc.earlier && doc.versions.length
+			? [{ id: 'continue', label: 'Continue in markdown', sub: 'Edit it here from now on; its versions stay', icon: FilePen, rule: true }]
+			: []),
+		...(!snapshot && doc.earlier ? [{ id: 'separate', label: `Separate from ${doc.earlier.path.split('/').at(-1)}`, icon: Unlink, rule: true }] : []),
 		...(!snapshot && doc.exists ? [{ id: 'delete', label: 'Delete deliverable', icon: Trash, danger: true, rule: true }] : [])
 	]);
 
@@ -405,6 +445,8 @@
 		else if (id === 'reveal') void open(true);
 		else if (id === 'pdf') void (exporting || exportPdf(doc.path));
 		else if (id === 'rename') startRenaming();
+		else if (id === 'continue') void continueInMarkdown();
+		else if (id === 'separate') void separate();
 		else if (id === 'delete') void remove();
 	}
 
@@ -513,9 +555,11 @@
 	let historyFocus = $state('');
 	const hasDraft = $derived(!snapshot && !!draft);
 	/** What can be shown or compared, oldest first: the versions, and the live file when it differs from the last. */
-	const steps = $derived([...doc.versions, ...(hasDraft ? ['live'] : [])]);
+	// Only versions with the text: a PDF from Portflow earlier in the timeline opens as itself, and isn't compared.
+	const texts = $derived(textVersions(doc));
+	const steps = $derived([...texts, ...(hasDraft ? ['live'] : [])]);
 	const historyVersions = $derived(
-		doc.versions.map((v) => published.find((p) => p.version === v) ?? { version: v, by: 'unknown' as const, run: null })
+		texts.map((v) => published.find((p) => p.version === v) ?? { version: v, by: 'unknown' as const, run: null })
 	);
 
 	async function openHistory(next: Exclude<History, 'off'>, wanted: { from?: string | null; to?: string | null; focus?: string | null } = {}) {
@@ -613,6 +657,12 @@
 <div class="doc-body">
 <div class="page">
 	<div class="page-inner" bind:this={docArea}>
+		{#if doc.later}
+			<div class="notice info">
+				This file goes on in {doc.later.split('/').at(-1)}: that is the deliverable now, and these are its earlier versions.
+				<a href={deliverableUrl(project, doc.later)}>Open {doc.later.split('/').at(-1)}</a>
+			</div>
+		{/if}
 		{#if snapshot}
 			<div class="notice info">
 				Published version {doc.version}, {dateTime(doc.modified)} - read-only.
@@ -664,6 +714,19 @@
 		{:else if doc.kind === 'image'}
 			<div class="doc-view" style="display:grid;place-items:center">
 				<FileImage {project} path={file} alt={doc.name} cls="shot-preview" />
+			</div>
+		{:else if snapshot && doc.earlier && doc.path.startsWith(doc.earlier.path.replace(/\.[^./]+$/, '@v'))}
+			<!-- A version from before the markdown: the file as it was handed in (a PDF from Portflow), read-only. -->
+			<div class="panel">
+				<h2>Version {doc.version}, as handed in</h2>
+				<p class="sub" style="margin:0">
+					This version is the {doc.path.split('.').at(-1)?.toUpperCase()} from before the deliverable was written here, so it has no text to show or
+					compare. Open it to read it; it stays as it is.
+				</p>
+				<div class="row-end" style="justify-content:flex-start">
+					<button class="btn primary" onclick={() => open(false)}>Open the {doc.path.split('.').at(-1)?.toUpperCase()}</button>
+					<button class="btn" onclick={() => open(true)}>Show in folder</button>
+				</div>
 			</div>
 		{:else}
 			<div class="panel">

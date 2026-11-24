@@ -46,6 +46,16 @@ CREATE TABLE deliverable_facts (
     PRIMARY KEY (project_slug, path)
 );
 
+-- A deliverable that goes on in another file (see deliverables.rs): `earlier` (a PDF from Portflow, say) is continued in
+-- `later` (its markdown), and the two are one deliverable from then on. Each file is in one of these at most.
+CREATE TABLE deliverable_continued (
+    project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+    earlier      TEXT NOT NULL,
+    later        TEXT NOT NULL,
+    PRIMARY KEY (project_slug, earlier),
+    UNIQUE (project_slug, later)
+);
+
 -- A deliverable's evidence description (What? / Goal? / Why it contributes?), by its live path, ready for when it is
 -- handed in (see deliverable_facts.rs). A Portflow evidence item keeps its own in its evidence file instead.
 CREATE TABLE deliverable_descriptions (

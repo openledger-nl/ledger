@@ -233,7 +233,14 @@ pub fn default_thread(conn: &Connection, project: &str, base: &str) -> Result<Op
     if recorded.is_some() {
         return Ok(recorded);
     }
-    Ok(prompts::producing(conn, project, base)?.first().map(|p| p.thread_slug.clone()))
+    if let Some(thread) = prompts::producing(conn, project, base)?.first().map(|p| p.thread_slug.clone()) {
+        return Ok(Some(thread));
+    }
+    // A file that continues another is filed where that one was.
+    match deliverables::earlier_of(conn, project, base)? {
+        Some(earlier) => default_thread(conn, project, &earlier),
+        None => Ok(None),
+    }
 }
 
 // ---- what the files and notes prove -----------------------------------------------------------------
@@ -653,7 +660,18 @@ fn excerpt(text: &str) -> String {
 
 /// Everything the side window of a deliverable shows.
 pub fn for_deliverable(conn: &Connection, project: &str, base: &str) -> Result<Provenance> {
-    let resolved = resolve(conn, project, base)?;
+    let mut resolved = resolve(conn, project, base)?;
+    // One timeline: a file that continues another (its markdown) has that one's versions (the PDFs from Portflow) too.
+    let earlier = deliverables::earlier_of(conn, project, base)?;
+    if let Some(earlier) = &earlier {
+        let own: HashSet<String> = resolved.iter().map(|v| v.version.clone()).collect();
+        resolved.extend(resolve(conn, project, earlier)?.into_iter().filter(|v| !own.contains(&v.version)));
+        resolved.sort_by_key(|v| deliverables::parse_version(&v.version));
+    }
+    let of_this = |path: &str| {
+        let b = split_version(path).0;
+        b == base || earlier.as_deref() == Some(b.as_str())
+    };
 
     let thread_titles: HashMap<String, String> =
         query_all(conn, "SELECT slug, title FROM threads WHERE project_slug = ?1", [project], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
@@ -777,7 +795,7 @@ pub fn for_deliverable(conn: &Connection, project: &str, base: &str) -> Result<P
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?, r.get::<_, String>(6)?))
         },
     )? {
-        if split_version(&path).0 == base {
+        if of_this(&path) {
             entries.push((Some(thread), Entry::Feedback { id, status, version, excerpt: excerpt(&body), at: created_at }));
         }
     }

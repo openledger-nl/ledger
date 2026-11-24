@@ -117,6 +117,10 @@ export function nextVersion(versions: string[], bump: Bump): string {
 	return bump === 'major' ? `${major + 1}.0` : `${major}.${minor + 1}`;
 }
 
+/** The versions that have the deliverable's own text, oldest first: not those that are only the file it continues (a PDF
+ * from Portflow, which opens as that file). What can be compared, line by line or by who wrote it. */
+export const textVersions = (d: Pick<DeliverableSummary, 'versions' | 'earlier'>): string[] => d.versions.filter((v) => !d.earlier?.versions.includes(v));
+
 /** "reports/plan.md" + "1.2" → "reports/plan@v1.2.md", as the backend names a published version. */
 export function snapshotPath(base: string, version: string): string {
 	const slash = base.lastIndexOf('/');

@@ -12,6 +12,9 @@
 //! versions/reports/plan/plan@v1.2.manifest.md          who made 1.2, in which thread, with what AI-use label
 //! ```
 //!
+//! A deliverable can go on in another file (see [`continue_in`]): a PDF that came from Portflow, say, continued in the
+//! markdown that is edited here. The two are one deliverable from then on.
+//!
 //! Paths in this module are relative to the deliverables folder and use `/`; a snapshot's path is named the same way
 //! ("reports/plan@v1.2.md") even though its file is under `versions/` ([`in_project`]).
 
@@ -22,7 +25,7 @@ use rusqlite::{Connection, params};
 
 use crate::db::{query_all, query_opt};
 use crate::error::{Error, Result};
-use crate::models::{Bump, Delivered, DeliverableSummary, DeliverableView, PublishChoices};
+use crate::models::{Bump, Delivered, DeliverableSummary, DeliverableView, Earlier, PublishChoices};
 use crate::posts::{self, AddOptions};
 use crate::provenance::{self, Origin};
 use crate::{feedback, frontmatter, ids, markdown, projects, prompts, store, uploads};
@@ -257,7 +260,241 @@ pub fn evidence_roles(conn: &Connection, project: &str) -> Result<EvidenceRoles>
         }
         roles.names.insert(paths[main].clone(), name);
     }
+    // A file continued in another is that other one now: the item's deliverable, or one of its attachments.
+    let pairs = continued(conn, project)?;
+    for (earlier, later) in &pairs {
+        if let Some(name) = roles.names.remove(earlier) {
+            let mut files = roles.attachments.remove(earlier).unwrap_or_default();
+            files.retain(|f| f != later);
+            roles.folded.remove(later);
+            roles.folded.insert(earlier.clone());
+            if !files.is_empty() {
+                roles.attachments.insert(later.clone(), files);
+            }
+            roles.names.insert(later.clone(), name);
+        }
+    }
+    for (earlier, later) in &pairs {
+        for (owner, files) in &mut roles.attachments {
+            if let Some(i) = files.iter().position(|f| f == earlier) {
+                if owner == later || files.contains(later) {
+                    files.remove(i);
+                } else {
+                    files[i] = later.clone();
+                }
+                roles.folded.insert(later.clone());
+            }
+        }
+    }
     Ok(roles)
+}
+
+// ---- one deliverable, two files ---------------------------------------------------------------------
+// A deliverable can go on in another file. A PDF that came from Portflow is continued in a markdown file, so it can be
+// edited here: the earlier file keeps its published versions as they are, and the later one is the deliverable from
+// then on. It takes the earlier one's place in the list, its evidence item and its feedback, and its version numbers go
+// on from the earlier one's (after Portflow's version 6, v6.0, the markdown's first is 6.1 or 7.0). Kept in the
+// project's `project.md`:
+//
+//   continued:
+//     Plan.pdf: Plan.md            earlier: later
+
+/// Every file continued in another, as (earlier, later), whose later file is there (live, or published versions only).
+pub fn continued(conn: &Connection, project: &str) -> Result<Vec<(String, String)>> {
+    let pairs: Vec<(String, String)> =
+        query_all(conn, "SELECT earlier, later FROM deliverable_continued WHERE project_slug = ?1 ORDER BY earlier", [project], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    if pairs.is_empty() {
+        return Ok(pairs);
+    }
+    let paths: Vec<String> = query_all(conn, "SELECT path FROM deliverables WHERE project_slug = ?1", [project], |r| r.get(0))?;
+    let bases: std::collections::HashSet<String> = paths.iter().map(|p| split_version(p).0).collect();
+    Ok(pairs.into_iter().filter(|(_, later)| bases.contains(later)).collect())
+}
+
+/// The file `earlier` is continued in, if it is (and that file is there).
+pub fn later_of(conn: &Connection, project: &str, earlier: &str) -> Result<Option<String>> {
+    Ok(continued(conn, project)?.into_iter().find(|(e, _)| e == earlier).map(|(_, later)| later))
+}
+
+/// The file `later` continues, if it does.
+pub fn earlier_of(conn: &Connection, project: &str, later: &str) -> Result<Option<String>> {
+    Ok(continued(conn, project)?.into_iter().find(|(_, l)| l == later).map(|(earlier, _)| earlier))
+}
+
+/// Whether either file continues, or is continued in, another already.
+fn in_a_pair(conn: &Connection, project: &str, earlier: &str, later: &str) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM deliverable_continued WHERE project_slug = ?1 AND (earlier IN (?2, ?3) OR later IN (?2, ?3)))",
+        params![project, earlier, later],
+        |r| r.get(0),
+    )?)
+}
+
+/// Makes `later` (a live file with no versions of its own) the deliverable `earlier` is from now on. The earlier file
+/// keeps its versions; its live file goes when it is the same as its newest version (a copy of it), and is refused
+/// otherwise, so nothing written in it is hidden. Its facts and evidence description go to `later`, which has none.
+pub fn continue_in(conn: &Connection, root: &Path, project: &str, earlier: &str, later: &str) -> Result<()> {
+    projects::require(conn, project)?;
+    if split_version(earlier).1.is_some() || split_version(later).1.is_some() {
+        return Err(Error::invalid("A deliverable is continued, not one of its published versions"));
+    }
+    if earlier == later {
+        return Err(Error::invalid("A file can't continue itself"));
+    }
+    let versions = versions_of(conn, project, earlier)?;
+    let Some(newest) = versions.last() else {
+        return Err(Error::invalid(format!("{earlier} has no published versions to go on from")));
+    };
+    if !exists(conn, project, later)? {
+        return Err(Error::not_found(format!("There is no {later} to continue it in")));
+    }
+    if !versions_of(conn, project, later)?.is_empty() {
+        return Err(Error::invalid(format!("{later} has published versions of its own, so it can't continue another file")));
+    }
+    let taken = in_a_pair(conn, project, earlier, later)?;
+    if taken {
+        return Err(Error::invalid("One of these files already continues, or is continued in, another"));
+    }
+    // The earlier live file: a copy of its newest version goes, anything else stays and stops this.
+    let mut remove_live = false;
+    if exists(conn, project, earlier)? {
+        let body: Option<String> = query_opt(conn, "SELECT body FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, earlier], |r| r.get(0))?.flatten();
+        let live_sha = match &body {
+            Some(body) => provenance::sha256_hex(body.as_bytes()),
+            None => provenance::sha256_hex(&store::at(root).read(&rel_of(project, earlier)).map_err(|e| Error::io(&file_of(root, project, earlier), e))?),
+        };
+        let newest_sha: Option<String> = query_opt(
+            conn,
+            "SELECT sha256 FROM version_records WHERE project_slug = ?1 AND deliverable_path = ?2 AND version = ?3",
+            params![project, earlier, newest],
+            |r| r.get::<_, Option<String>>(0),
+        )?
+        .flatten();
+        if newest_sha.as_deref() != Some(live_sha.as_str()) {
+            return Err(Error::invalid(format!(
+                "{earlier} was changed since its version {newest}: publish it, or delete the live file, before it goes on in {later}"
+            )));
+        }
+        remove_live = body.is_none();
+    }
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, earlier])?;
+    tx.execute("INSERT INTO deliverable_continued (project_slug, earlier, later) VALUES (?1, ?2, ?3)", params![project, earlier, later])?;
+    for sql in [
+        "UPDATE deliverable_facts SET path = ?3 WHERE project_slug = ?1 AND path = ?2
+         AND NOT EXISTS (SELECT 1 FROM deliverable_facts WHERE project_slug = ?1 AND path = ?3)",
+        "UPDATE deliverable_descriptions SET path = ?3 WHERE project_slug = ?1 AND path = ?2
+         AND NOT EXISTS (SELECT 1 FROM deliverable_descriptions WHERE project_slug = ?1 AND path = ?3)",
+    ] {
+        tx.execute(sql, params![project, earlier, later])?;
+    }
+    tx.commit()?;
+    if remove_live {
+        store::at(root).remove(&rel_of(project, earlier)).map_err(|e| Error::io(&file_of(root, project, earlier), e))?;
+    }
+    Ok(())
+}
+
+/// Continues `earlier` (not markdown) in the markdown file beside it with the same name ("Plan.pdf" in "Plan.md"),
+/// written now with the deliverable's name as its heading when it isn't there yet. Returns the markdown's path.
+pub fn continue_in_markdown(conn: &Connection, root: &Path, project: &str, earlier: &str) -> Result<String> {
+    if is_markdown(earlier) {
+        return Err(Error::invalid("This is markdown already: edit it as it is"));
+    }
+    let later = format!("{}.md", attachment_dir(earlier));
+    let created = !exists(conn, project, &later)?;
+    if created {
+        let (name, _) = evidence_of(conn, project, earlier)?;
+        let title = name.unwrap_or_else(|| file_name(&attachment_dir(earlier)).to_string());
+        let text = format!("# {title}\n");
+        upsert(conn, project, &later, text.len() as i64, &ids::now(), Some(&text))?;
+    }
+    if let Err(e) = continue_in(conn, root, project, earlier, &later) {
+        if created {
+            conn.execute("DELETE FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, &later])?;
+        }
+        return Err(e);
+    }
+    Ok(later)
+}
+
+/// Takes `later` apart from the file it continues: that one is a deliverable of its own again (with only its versions).
+pub fn separate(conn: &Connection, project: &str, later: &str) -> Result<()> {
+    let changed = conn.execute("DELETE FROM deliverable_continued WHERE project_slug = ?1 AND later = ?2", [project, later])?;
+    if changed == 0 {
+        return Err(Error::not_found("This deliverable doesn't continue another file"));
+    }
+    Ok(())
+}
+
+/// What a deliverable has from the file it continues, or which file it is continued in.
+/// One timeline: a version of the earlier file (a PDF from Portflow) is a version of the deliverable the later file is,
+/// and opens as one; the later file's versions are all of them, its own and the earlier file's, by number.
+fn fill_continued(conn: &Connection, project: &str, view: &mut DeliverableView) -> Result<()> {
+    if let Some(later) = later_of(conn, project, &view.base_path)? {
+        if view.version.is_none() {
+            // The earlier file's own page (it has no live file any more): the deliverable is the later one.
+            view.later = Some(later);
+            return Ok(());
+        }
+        let whole = get(conn, project, &later)?;
+        view.base_path = whole.base_path;
+        view.name = whole.name;
+        view.evidence = whole.evidence;
+        view.attachments = whole.attachments;
+        view.versions = whole.versions;
+        view.prompts = whole.prompts;
+        view.feedback = whole.feedback;
+        view.earlier = whole.earlier;
+        view.later = None;
+        return Ok(());
+    }
+    let Some(earlier) = earlier_of(conn, project, &view.base_path)? else { return Ok(()) };
+    for prompt in prompts::producing(conn, project, &earlier)? {
+        if !view.prompts.iter().any(|p| p.id == prompt.id) {
+            view.prompts.push(prompt);
+        }
+    }
+    view.feedback.extend(feedback::list_for_deliverable(conn, project, &earlier)?);
+    view.feedback.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    // The earlier file's versions that have no text of the later one's at the same number: those open as the earlier file.
+    let only_earlier: Vec<String> = versions_of(conn, project, &earlier)?.into_iter().filter(|v| !view.versions.contains(v)).collect();
+    view.versions.extend(only_earlier.iter().cloned());
+    view.versions.sort_by_key(|v| parse_version(v));
+    view.earlier = Some(Earlier { versions: only_earlier, path: earlier });
+    Ok(())
+}
+
+/// The continued files in the project's `project.md`.
+pub fn export_continued(conn: &Connection, project: &str, meta: &mut serde_yaml_ng::Mapping) -> Result<()> {
+    let pairs: Vec<(String, String)> =
+        query_all(conn, "SELECT earlier, later FROM deliverable_continued WHERE project_slug = ?1 ORDER BY earlier", [project], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    if pairs.is_empty() {
+        return Ok(());
+    }
+    let mut map = serde_yaml_ng::Mapping::new();
+    for (earlier, later) in pairs {
+        map.insert(earlier.into(), later.into());
+    }
+    frontmatter::set(meta, "continued", serde_yaml_ng::Value::Mapping(map));
+    Ok(())
+}
+
+/// Reads them leniently: a pair that isn't two names, names a version, or has a file in another pair already is skipped.
+/// The files needn't be there yet (they may still be syncing): until the later one is, the earlier one is shown alone.
+pub fn import_continued(conn: &Connection, project: &str, meta: &serde_yaml_ng::Mapping) -> Result<()> {
+    let Some(serde_yaml_ng::Value::Mapping(map)) = meta.get("continued") else { return Ok(()) };
+    for (earlier, later) in map {
+        let (Some(earlier), Some(later)) = (earlier.as_str().map(str::trim), later.as_str().map(str::trim)) else { continue };
+        if earlier.is_empty() || later.is_empty() || earlier == later || split_version(earlier).1.is_some() || split_version(later).1.is_some() {
+            continue;
+        }
+        let taken = in_a_pair(conn, project, earlier, later)?;
+        if !taken {
+            conn.execute("INSERT INTO deliverable_continued (project_slug, earlier, later) VALUES (?1, ?2, ?3)", params![project, earlier, later])?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Default)]
@@ -343,11 +580,29 @@ pub fn list(conn: &Connection, project: &str) -> Result<Vec<DeliverableSummary>>
     }
 
     let mut roles = evidence_roles(conn, project)?;
+    // A file continued in another is listed as part of that one: later → (earlier, its group).
+    let mut earlier: HashMap<String, (String, Group)> = HashMap::new();
+    for (from, to) in continued(conn, project)? {
+        if let Some(mut group) = groups.remove(&from) {
+            group.snapshots.sort();
+            earlier.insert(to, (from, group));
+        }
+    }
     let mut out: Vec<DeliverableSummary> = groups
         .into_iter()
         .filter(|(base, _)| !roles.folded.contains(base))
         .map(|(base, mut group)| {
             group.snapshots.sort();
+            let before = earlier.remove(&base);
+            let from = before.as_ref().map(|(path, _)| path.clone()).unwrap_or_default();
+            let newest_of = |path: &str, group: &Group| -> Option<String> {
+                group.snapshots.last().map(|s| made.get(&(path.to_string(), s.2.clone())).cloned().unwrap_or_else(|| s.4.clone()))
+            };
+            let latest_at = newest_of(&base, &group).or_else(|| before.as_ref().and_then(|(path, g)| newest_of(path, g)));
+            let delivered = match (delivered.remove(&base), delivered.remove(&from)) {
+                (Some(a), Some(b)) => Some(if a.number >= b.number { a } else { b }),
+                (a, b) => a.or(b),
+            };
             let (size, modified) = group
                 .live
                 .clone()
@@ -362,12 +617,24 @@ pub fn list(conn: &Connection, project: &str) -> Result<Vec<DeliverableSummary>>
                 size,
                 modified,
                 exists: group.live.is_some(),
-                versions: group.snapshots.iter().map(|s| s.2.clone()).collect(),
-                prompt_count: prompt_counts.get(&base).copied().unwrap_or(0),
-                open_feedback: open_feedback.get(&base).copied().unwrap_or(0),
-                mmm: labels.get(&base).map(|(_, level)| level.clone()),
-                latest_at: group.snapshots.last().map(|s| made.get(&(base.clone(), s.2.clone())).cloned().unwrap_or_else(|| s.4.clone())),
-                delivered: delivered.remove(&base),
+                versions: {
+                    // One timeline: the file it continues has the versions before (and between) its own.
+                    let mut all: Vec<String> = group.snapshots.iter().map(|s| s.2.clone()).collect();
+                    if let Some((_, g)) = &before {
+                        all.extend(g.snapshots.iter().map(|s| s.2.clone()).filter(|v| !all.contains(v)).collect::<Vec<_>>());
+                    }
+                    all.sort_by_key(|v| parse_version(v));
+                    all
+                },
+                prompt_count: prompt_counts.get(&base).copied().unwrap_or(0) + prompt_counts.get(&from).copied().unwrap_or(0),
+                open_feedback: open_feedback.get(&base).copied().unwrap_or(0) + open_feedback.get(&from).copied().unwrap_or(0),
+                mmm: labels.get(&base).or_else(|| labels.get(&from)).map(|(_, level)| level.clone()),
+                latest_at,
+                delivered,
+                earlier: before.map(|(path, g)| Earlier {
+                    versions: g.snapshots.iter().map(|s| s.2.clone()).filter(|v| !group.snapshots.iter().any(|own| own.2 == *v)).collect(),
+                    path,
+                }),
                 path: base,
             }
         })
@@ -385,50 +652,43 @@ pub fn get(conn: &Connection, project: &str, path: &str) -> Result<DeliverableVi
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     )?;
     let (base, version) = split_version(path);
-    let Some((size, modified, body)) = row else {
-        // A file whose live copy is gone (or never was here) but that has published versions is still a deliverable.
-        let versions = versions_of(conn, project, &base)?;
-        let Some(newest) = versions.last() else { return Err(Error::not_found("Deliverable not found")) };
-        if version.is_some() {
-            return Err(Error::not_found("Deliverable not found"));
+    let (exists, size, modified, body) = match row {
+        Some((size, modified, body)) => (true, size, modified, body),
+        None => {
+            // A file whose live copy is gone (or never was here) but that has published versions is still a deliverable.
+            if let Some(v) = &version {
+                // A version of the deliverable that is only there as the file it continues ("Plan@v2.0.md" is
+                // "Plan@v2.0.pdf"): that file, read-only.
+                if let Some(earlier) = earlier_of(conn, project, &base)? {
+                    let snapshot = snapshot_path(&earlier, v);
+                    if exists(conn, project, &snapshot)? {
+                        return get(conn, project, &snapshot);
+                    }
+                }
+                return Err(Error::not_found("Deliverable not found"));
+            }
+            let versions = versions_of(conn, project, &base)?;
+            let Some(newest) = versions.last() else { return Err(Error::not_found("Deliverable not found")) };
+            let modified: String = conn.query_row(
+                "SELECT modified FROM deliverables WHERE project_slug = ?1 AND path = ?2",
+                [project, &snapshot_path(&base, newest)],
+                |r| r.get(0),
+            )?;
+            (false, 0, modified, None)
         }
-        let modified: String = conn.query_row(
-            "SELECT modified FROM deliverables WHERE project_slug = ?1 AND path = ?2",
-            [project, &snapshot_path(&base, newest)],
-            |r| r.get(0),
-        )?;
-        let (evidence, attachments) = evidence_of(conn, project, &base)?;
-        return Ok(DeliverableView {
-            path: path.to_string(),
-            name: evidence.clone().unwrap_or_else(|| file_name(&base).to_string()),
-            evidence,
-            attachments,
-            kind: kind_of(&base).to_string(),
-            editable: false,
-            versions,
-            exists: false,
-            prompts: prompts::producing(conn, project, &base)?,
-            feedback: feedback::list_for_deliverable(conn, project, &base)?,
-            base_path: base,
-            version: None,
-            size: 0,
-            modified,
-            body: None,
-            html: None,
-        });
     };
 
     let html = body.as_ref().map(|text| markdown::render(&frontmatter::parse(text).map_or_else(|| text.clone(), |p| p.body)));
     let (evidence, attachments) = evidence_of(conn, project, &base)?;
-    Ok(DeliverableView {
+    let mut view = DeliverableView {
         path: path.to_string(),
         name: evidence.clone().unwrap_or_else(|| file_name(&base).to_string()),
         evidence,
         attachments,
         kind: kind_of(&base).to_string(),
-        editable: version.is_none() && body.is_some(),
+        editable: exists && version.is_none() && body.is_some(),
         versions: versions_of(conn, project, &base)?,
-        exists: true,
+        exists,
         prompts: prompts::producing(conn, project, &base)?,
         feedback: feedback::list_for_deliverable(conn, project, &base)?,
         base_path: base,
@@ -437,7 +697,11 @@ pub fn get(conn: &Connection, project: &str, path: &str) -> Result<DeliverableVi
         modified,
         body,
         html,
-    })
+        earlier: None,
+        later: None,
+    };
+    fill_continued(conn, project, &mut view)?;
+    Ok(view)
 }
 
 /// The evidence item a deliverable is (its name) and the item's attachments.
@@ -499,6 +763,8 @@ pub fn rename_base(conn: &Connection, root: &Path, project: &str, from: &str, to
         "UPDATE version_records SET deliverable_path = ?3 WHERE project_slug = ?1 AND deliverable_path = ?2",
         "UPDATE posts SET deliverable_path = ?3 WHERE project_slug = ?1 AND deliverable_path = ?2",
         "UPDATE evidence_files SET path = ?3 WHERE project_slug = ?1 AND path = ?2",
+        "UPDATE deliverable_continued SET earlier = ?3 WHERE project_slug = ?1 AND earlier = ?2",
+        "UPDATE deliverable_continued SET later = ?3 WHERE project_slug = ?1 AND later = ?2",
         "UPDATE feedback SET deliverable_path = ?3 WHERE project_slug = ?1 AND deliverable_path = ?2",
         "UPDATE prompt_deliverables SET path = ?3 WHERE path = ?2 AND prompt_id IN (SELECT id FROM prompts WHERE project_slug = ?1)",
         "UPDATE claude_run_files SET path = ?3 WHERE path = ?2 AND run_id IN (SELECT id FROM claude_runs WHERE project_slug = ?1)",
@@ -631,6 +897,7 @@ fn freeze(
 ) -> Result<String> {
     let live = get(conn, project, base)?;
 
+    // Of a file that continues another, these are that one's versions too: the numbers go on from them.
     let existing = live.versions.clone();
     let version = match explicit.map(str::trim).filter(|v| !v.is_empty()) {
         Some(v) => {
@@ -696,6 +963,10 @@ pub fn delete(conn: &Connection, root: &Path, project: &str, path: &str) -> Resu
     let tx = conn.unchecked_transaction()?;
     tx.execute("DELETE FROM deliverables WHERE project_slug = ?1 AND path = ?2", [project, path])?;
     crate::deliverable_facts::forget(&tx, project, path)?;
+    // Gone for good (no versions of its own): the file it continued is a deliverable of its own again.
+    if view.versions.is_empty() {
+        tx.execute("DELETE FROM deliverable_continued WHERE project_slug = ?1 AND later = ?2", [project, path])?;
+    }
     tx.execute(
         "DELETE FROM prompt_deliverables WHERE path = ?2 AND prompt_id IN (SELECT id FROM prompts WHERE project_slug = ?1)",
         [project, path],
