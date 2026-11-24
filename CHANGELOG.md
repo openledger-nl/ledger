@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 (2026-11-24)
+
+### Features
+
+- **vault:** ask before upgrading a vault, and leave it as it is until you do ([09ff08c](https://github.com/openledger-nl/ledger/commit/09ff08c25dbe5f2f521c76be2f1e4797976b59a2))
+- **vault:** keep a project's versions and runs together in history/ ([f45bff3](https://github.com/openledger-nl/ledger/commit/f45bff3eeb558a5cf7b8b4406384cd8f09939589))
+
+### Fixes
+
+- **crypto:** keep a file's time when it moves in an encrypted vault ([81dfffc](https://github.com/openledger-nl/ledger/commit/81dfffc9fd53f8149251b65cfafffc65e7757f54))
+
 ## 1.0.0 (2026-11-22)
 
 ### Breaking changes

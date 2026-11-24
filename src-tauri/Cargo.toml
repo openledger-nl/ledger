@@ -1,6 +1,6 @@
 [package]
 name = "ledger"
-version = "1.0.0"
+version = "1.1.0"
 description = "Local-first ledger of threads, documents, user stories and a planboard"
 authors = ["Milan Molenbrugge"]
 edition = "2024"
