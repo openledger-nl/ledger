@@ -8,6 +8,8 @@
 	import { changeRect, changeTracking, revealChange, revertChange, showChanges, type ChangeView } from '$lib/editorChanges';
 	import { markdownEditor, refreshLinks, revealMark, setSourceMode, showMarks, type MentionOption } from '$lib/markdownEditor';
 	import { imageLoader, type ImageBase } from '$lib/vaultImages';
+	import { api } from '$lib/api';
+	import { attempt, refresh } from '$lib/ui.svelte';
 
 	/**
 	 * Where markdown is written: CodeMirror on the markdown itself, styled like the rendered page (see markdownEditor.ts).
@@ -36,7 +38,8 @@
 		linkTargets,
 		linkHome = null,
 		changes,
-		onchangeclick
+		onchangeclick,
+		pasteFolder
 	}: {
 		value?: string;
 		placeholder?: string;
@@ -73,7 +76,25 @@
 		changes?: ChangeView | null;
 		/** A click on a change's bar or mark. Given, the editor has a margin for the changes. */
 		onchangeclick?: (id: string, rect: DOMRect) => void;
+		/** Where in the project's attachments a pasted picture is saved ("Deliverables/Plan"), embedded where it was
+		 *  pasted as `![[Pasted image ….png]]`. Without it (or `images`), pasting a picture does nothing special. */
+		pasteFolder?: string;
 	} = $props();
+
+	/** Saves a pasted picture in the project's attachments and gives its embed; it then resolves, as the links are read again. */
+	async function pastePicture(file: File): Promise<string | null> {
+		const project = images?.project;
+		if (!project || pasteFolder === undefined) return null;
+		const ext = (file.type.split('/')[1] ?? 'png').replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '') || 'png';
+		const now = new Date();
+		const pad = (n: number) => String(n).padStart(2, '0');
+		// As Obsidian names one, so a name is never shared: "Pasted image 20261124103012.png".
+		const name = `Pasted image ${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.${ext}`;
+		const path = await attempt(() => api.savePastedImage(project, pasteFolder, name, file));
+		if (!path) return null;
+		await refresh();
+		return `![[${path.slice(path.lastIndexOf('/') + 1)}]]`;
+	}
 
 	// [[links]] are read from the project the window is in, or from `linkHome` among `linkTargets` when given (none
 	// outside a project otherwise).
@@ -105,6 +126,7 @@
 			},
 			markClicked: (id) => onmark?.(id),
 			links: { index: () => links.index, open: (target) => links.open(target) },
+			pasteImage: (file) => pastePicture(file),
 			mentions: () =>
 				people ?? (mentions ?? []).map((m) => ({ id: `evidence-${m.portflowId}`, label: m.name, detail: m.deliverable ? 'Deliverable' : (m.threadTitle ?? 'Not in Ledger yet') })),
 			changed: (update) => {

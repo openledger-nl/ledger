@@ -489,15 +489,33 @@ pub fn upload_files(app: State<App>, project: String, thread: String, paths: Vec
 /// where it goes in the headers `project`, `thread` and `name` (percent-encoded, as headers carry only ASCII).
 #[tauri::command]
 pub fn upload_dropped(app: State<App>, request: tauri::ipc::Request<'_>) -> Result<UploadView> {
+    let (bytes, [project, thread, name]) = raw_file(&request, ["project", "thread", "name"])?;
+    app.mutate(|c, root| uploads::add_bytes(c, root, &project, &thread, &name, bytes, ""))
+}
+
+/// A file sent as a request's raw body, and the headers that say where it goes (percent-encoded, as headers carry only
+/// ASCII).
+fn raw_file<'a, const N: usize>(request: &'a tauri::ipc::Request<'_>, keys: [&str; N]) -> Result<(&'a [u8], [String; N])> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err(Error::invalid("The file didn't arrive: send its bytes as the request body"));
     };
-    let header = |key: &str| -> Result<String> {
+    let mut values: [String; N] = std::array::from_fn(|_| String::new());
+    for (value, key) in values.iter_mut().zip(keys) {
         let raw = request.headers().get(key).and_then(|v| v.to_str().ok()).ok_or_else(|| Error::invalid(format!("Missing `{key}`")))?;
-        percent_decode(raw).ok_or_else(|| Error::invalid(format!("`{key}` is not percent-encoded UTF-8")))
-    };
-    let (project, thread, name) = (header("project")?, header("thread")?, header("name")?);
-    app.mutate(|c, root| uploads::add_bytes(c, root, &project, &thread, &name, bytes, ""))
+        *value = percent_decode(raw).ok_or_else(|| Error::invalid(format!("`{key}` is not percent-encoded UTF-8")))?;
+    }
+    Ok((bytes, values))
+}
+
+/// A picture pasted into a document: its bytes as the raw body, and in the headers `project`, `folder` (in its
+/// attachments) and `name`. The answer is its path in the project, to embed.
+#[tauri::command]
+pub fn save_pasted_image(app: State<App>, request: tauri::ipc::Request<'_>) -> Result<String> {
+    let (bytes, [project, folder, name]) = raw_file(&request, ["project", "folder", "name"])?;
+    app.mutate(|c, root| {
+        crate::projects::require(c, &project)?;
+        uploads::add_pasted(root, &project, &folder, &name, bytes)
+    })
 }
 
 /// Undoes `encodeURIComponent`: `%XX` escapes to bytes, read as UTF-8; `None` for a broken escape or text.

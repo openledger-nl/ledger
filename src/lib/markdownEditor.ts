@@ -895,6 +895,9 @@ export interface MarkdownEditorOptions {
 	links?: LinkSupport;
 	/** What `@` offers (a reading guide's evidence items, a meeting's people); without it, `@` is just a character. */
 	mentions?: () => MentionOption[];
+	/** A picture pasted in (a screenshot, an image copied from a page): saves it and gives the markdown that shows it
+	 *  (`![[Pasted image ….png]]`), or null when it wasn't saved. Without it, pasting a picture does nothing special. */
+	pasteImage?: (file: File) => Promise<string | null>;
 }
 
 // ---- @ mentions ----------------------------------------------------------------------------------
@@ -973,6 +976,25 @@ export function markdownEditor(options: MarkdownEditorOptions): Extension {
 		comments,
 		markField,
 		EditorView.domEventHandlers({
+			paste: (event, view) => {
+				const paste = options.pasteImage;
+				const file = paste ? [...(event.clipboardData?.files ?? [])].find((f) => f.type.startsWith('image/')) : undefined;
+				if (!paste || !file) return false;
+				event.preventDefault();
+				// Where the cursor is now, kept as the text changes while the picture is saved.
+				let at = view.state.selection.main.from;
+				const until = view.state.selection.main.to;
+				void paste(file).then((text) => {
+					if (!text) return;
+					at = Math.min(at, view.state.doc.length);
+					const line = view.state.doc.lineAt(at);
+					// On a line of its own, as a picture reads best.
+					const before = at > line.from ? '\n' : '';
+					const after = at < line.to ? '\n' : '';
+					view.dispatch({ changes: { from: at, to: Math.min(until, view.state.doc.length), insert: before + text + after }, userEvent: 'input.paste' });
+				});
+				return true;
+			},
 			click: (event, view) => {
 				const id = (event.target as HTMLElement | null)?.closest?.<HTMLElement>('[data-fb]')?.dataset.fb;
 				if (id && view.state.selection.main.empty) options.markClicked?.(id);

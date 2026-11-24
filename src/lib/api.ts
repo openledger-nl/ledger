@@ -260,6 +260,10 @@ export const api = {
 	updateUpload: (project: string, thread: string, id: string, description: string) =>
 		call<Upload>('update_upload', { project, thread, id, description }),
 	deleteUpload: (project: string, thread: string, id: string) => call<void>('delete_upload', { project, thread, id }),
+	/** A picture pasted into a document, saved in the project's attachments in `folder`; the answer is its path in the
+	 *  project ("attachments/Deliverables/Plan/Pasted image 20261124 1030.png"). */
+	savePastedImage: async (project: string, folder: string, name: string, file: Blob) =>
+		callRaw<string>('save_pasted_image', new Uint8Array(await file.arrayBuffer()), { project, folder, name }),
 	/** A file in the project's folder ("attachments/…", "deliverables/…"), as raw bytes. */
 	readProjectFile: (project: string, path: string) => call<ArrayBuffer>('read_project_file', { project, path }),
 	/** A picture in a project's folder as the window can show it: a JPEG XL one as PNG (see `shownMimeOf`). */

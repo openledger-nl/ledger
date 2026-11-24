@@ -709,6 +709,7 @@
 					oninput={edited}
 					changes={tracker.view}
 					onchangeclick={(id, rect) => tracker.open(id, rect)}
+					pasteFolder={`Deliverables/${doc.basePath.replace(/\.[^./]+$/, '')}`}
 				/>
 			{/if}
 		{:else if doc.kind === 'image'}

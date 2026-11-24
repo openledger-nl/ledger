@@ -271,6 +271,7 @@ pub fn run() {
             commands::delete_feedback,
             commands::upload_files,
             commands::upload_dropped,
+            commands::save_pasted_image,
             commands::read_project_image,
             commands::preview_dropped_image,
             commands::list_project_uploads,

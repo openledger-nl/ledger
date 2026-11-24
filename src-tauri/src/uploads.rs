@@ -174,8 +174,27 @@ fn insert(conn: &Connection, root: &Path, project: &str, thread: &str, file: &st
     get(conn, root, project, thread, &id)
 }
 
+/// A picture pasted into a document (`folder` the attachments' folder it goes in, as "Deliverables/Plan"): saved there
+/// under a free name, and given back by its path in the project ("attachments/Deliverables/Plan/Pasted image.png") for
+/// the document to embed. It is in no thread: like a file put in attachments/ by hand, it is listed and linked from there.
+pub fn add_pasted(root: &Path, project: &str, folder: &str, name: &str, bytes: &[u8]) -> Result<String> {
+    if !is_image(name) {
+        return Err(Error::invalid("Only a picture can be pasted into the text"));
+    }
+    let dir = folder.split('/').map(str::trim).filter(|p| !p.is_empty() && *p != "." && *p != "..").map(sanitize).collect::<Vec<_>>().join("/");
+    let file = place_in(root, project, &if dir.is_empty() { ATTACHMENTS.to_string() } else { format!("{ATTACHMENTS}/{dir}") }, name);
+    let rel = project_rel(project, &file);
+    store::at(root).write(&rel, bytes).map_err(|e| Error::io(&root.join(&rel), e))?;
+    Ok(file)
+}
+
 /// A free spot in the project's attachments, as recorded ("attachments/<name>"). A name that is taken gets a number.
 fn place(root: &Path, project: &str, name: &str) -> String {
+    place_in(root, project, ATTACHMENTS, name)
+}
+
+/// A free spot in `dir` of the project ("attachments/hans"), as "<dir>/<name>"; a name that is taken gets a number.
+fn place_in(root: &Path, project: &str, dir: &str, name: &str) -> String {
     let store = store::at(root);
 
     let clean = sanitize(name);
@@ -185,11 +204,11 @@ fn place(root: &Path, project: &str, name: &str) -> String {
     };
     let mut candidate = clean;
     let mut n = 2;
-    while store.exists(&project_rel(project, &format!("attachments/{candidate}"))) {
+    while store.exists(&project_rel(project, &format!("{dir}/{candidate}"))) {
         candidate = format!("{stem}-{n}{ext}");
         n += 1;
     }
-    format!("attachments/{candidate}")
+    format!("{dir}/{candidate}")
 }
 
 /// A file name that is safe on every platform.

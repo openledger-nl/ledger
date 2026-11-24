@@ -1221,3 +1221,18 @@ fn notes_between_percent_marks_are_left_out_of_the_page() {
     assert!(matches!(markdown::strip_comments("no notes"), std::borrow::Cow::Borrowed(_)));
     assert_eq!(markdown::strip_comments("50%% off"), "50", "a lone %% runs to the end, as in Obsidian");
 }
+
+#[test]
+fn a_pasted_picture_goes_in_its_folder_in_the_attachments_under_a_free_name() {
+    let c = conn();
+    let dir = tempdir().unwrap();
+    let (p, _) = setup(&c);
+    let first = uploads::add_pasted(dir.path(), &p, "Deliverables/Plan", "Pasted image 1.png", &[1, 2, 3]).unwrap();
+    assert_eq!(first, "attachments/Deliverables/Plan/Pasted image 1.png");
+    let second = uploads::add_pasted(dir.path(), &p, "Deliverables/Plan", "Pasted image 1.png", &[4]).unwrap();
+    assert_eq!(second, "attachments/Deliverables/Plan/Pasted image 1-2.png", "a name that is taken gets a number");
+    assert_eq!(fs::read(uploads::project_dir(dir.path(), &p).join(&first)).unwrap(), [1, 2, 3]);
+    // Nothing gets out of the attachments, and only a picture is taken.
+    assert_eq!(uploads::add_pasted(dir.path(), &p, "../../elsewhere", "x.png", &[1]).unwrap(), "attachments/elsewhere/x.png");
+    assert!(uploads::add_pasted(dir.path(), &p, "", "notes.txt", &[1]).is_err());
+}
