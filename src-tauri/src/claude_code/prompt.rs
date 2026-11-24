@@ -1,8 +1,8 @@
 //! What gets sent to Claude Code for a prompt, and where it runs.
 //!
 //! The prompt is run in its project's folder (`<vault>/projects/<project>/`): there it can read the project's
-//! README (the reading guide), its threads, its other deliverables and their published versions (in `versions/`),
-//! and write the deliverable where this app looks for it, in `deliverables/`. Around the prompt's own text goes a
+//! README (the reading guide), its threads, its other deliverables and their published versions (in
+//! `history/deliverables/`), and write the deliverable where this app looks for it, in `deliverables/`. Around the prompt's own text goes a
 //! short, fixed preamble that says exactly that and nothing more. The whole text is shown to the person before
 //! anything is started.
 
@@ -99,7 +99,7 @@ pub fn compose(project_name: &str, prompt: &PromptView) -> String {
         one_line(project_name)
     ));
     out.push_str(
-        "Put what the request below asks for in the deliverables/ folder, as a markdown file unless the request says otherwise. Stay inside this folder, and leave the published versions in versions/ (names like plan/plan@v1.0.md) alone.\n",
+        "Put what the request below asks for in the deliverables/ folder, as a markdown file unless the request says otherwise. Stay inside this folder, and leave history/ alone: it holds the published versions (in history/deliverables/, names like plan/plan@v1.0.md) and the records of earlier runs.\n",
     );
 
     let linked: &[PromptDeliverable] = &prompt.deliverables;

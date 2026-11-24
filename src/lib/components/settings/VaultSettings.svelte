@@ -1,6 +1,8 @@
 <script lang="ts">
 	// Where the vault lives on this machine: the folder, switching to another vault (the vault picker), moving this one,
-	// and reloading it from disk.
+	// and reloading it from disk. And what an older Ledger still wrote where it keeps a project's history, after the
+	// vault was upgraded: said here, and moved into history/ only when the user asks.
+	import { onMount } from 'svelte';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { goto } from '$app/navigation';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -58,6 +60,28 @@
 			await refresh();
 		}
 	}
+
+	/** Files an older Ledger wrote to versions/ or a thread's runs/ after the vault was upgraded: only counted here. */
+	let leftovers = $state(0);
+	let tidying = $state(false);
+
+	onMount(() => {
+		api.vaultLeftovers().then(
+			(n) => (leftovers = n),
+			() => {}
+		);
+	});
+
+	async function tidy() {
+		tidying = true;
+		const moved = await attempt(() => api.tidyVault());
+		tidying = false;
+		if (!moved) return;
+		const files = moved.versions + moved.runs + moved.keptApart;
+		toast(`Moved ${files} ${files === 1 ? 'file' : 'files'} into history/${moved.keptApart ? `, ${moved.keptApart} as conflict copies (see Conflicts)` : ''}`);
+		leftovers = (await attempt(() => api.vaultLeftovers())) ?? 0;
+		await refresh();
+	}
 </script>
 
 <div class="panel">
@@ -76,6 +100,20 @@
 	</div>
 	{#if settings.vaultLocked}
 		<div class="notice info">The location is fixed by the <code>LEDGER_VAULT</code> environment variable.</div>
+	{/if}
+	{#if leftovers}
+		<div class="notice leftovers">
+			<p>
+				{leftovers}
+				{leftovers === 1 ? 'file is' : 'files are'} where an older Ledger keeps a project's history (<code>versions/</code>, or a thread's
+				<code>runs/</code>): a Ledger on another computer that had this vault open from before it was upgraded wrote them. Ledger doesn't show them until
+				they are in <code>history/</code>. Close or update Ledger on that computer, then move them; a file whose place is taken is kept beside it as a
+				conflict copy.
+			</p>
+			<div class="row-end">
+				<button class="btn small" onclick={tidy} disabled={tidying}>Move them into history/</button>
+			</div>
+		</div>
 	{/if}
 	<div class="form-row">
 		<button class="btn small" onclick={reload}>Reload from disk</button>
@@ -116,8 +154,10 @@ projects/&lt;project&gt;/threads/&lt;thread&gt;/thread.md      a thread, with po
 projects/&lt;project&gt;/userstories/&lt;id&gt;.md          a user story
 projects/&lt;project&gt;/tasks/&lt;id&gt;.md                a task on the board
 projects/&lt;project&gt;/deliverables/                  what prompts produce, the live files
-projects/&lt;project&gt;/versions/&lt;deliverable&gt;/        its published versions (name@v1.0.md), each with
-                                                  how it came to be (name@v1.0.manifest.md)
+projects/&lt;project&gt;/history/                       what happened, frozen:
+  deliverables/&lt;deliverable&gt;/                     its published versions (name@v1.0.md), each
+                                                  with how it came to be (name@v1.0.manifest.md)
+  runs/&lt;id&gt;.md                                    what each Claude Code run did
 projects/&lt;project&gt;/attachments/                   uploaded files and screenshots
 projects/&lt;project&gt;/templates/prompts/&lt;id&gt;.md    templates for this project
 projects/&lt;project&gt;/templates/pdf/layout.typ     this project's own PDF layout
@@ -138,6 +178,9 @@ ledger.json                                    says that this folder is a vault<
 </div>
 
 <style>
+	.leftovers p {
+		margin: 0 0 8px;
+	}
 	.vault-now {
 		display: flex;
 		align-items: center;

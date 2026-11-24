@@ -208,12 +208,11 @@ impl Store {
         Ok(())
     }
 
-    /// Moves the file at `from` to `to`, making the folders `to` needs and removing those `from` leaves empty.
+    /// Moves the file at `from` to `to`, making the folders `to` needs and removing those `from` leaves empty. The time
+    /// it was last changed goes with it.
     pub fn rename(&self, from: &str, to: &str) -> io::Result<()> {
-        if self.sealed.is_some() {
-            let bytes = self.read(from)?;
-            self.write(to, &bytes)?;
-            return self.remove(from);
+        if let Some(sealed) = &self.sealed {
+            return sealed.rename(&self.root, from, to);
         }
         let (a, b) = (self.root.join(from), self.root.join(to));
         if let Some(dir) = b.parent() {

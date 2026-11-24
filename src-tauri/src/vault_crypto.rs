@@ -373,6 +373,26 @@ impl Sealed {
         Ok(())
     }
 
+    /// Moves the file at `from` to `to`: sealed again under the new path, as its name and its seal hold the path, and
+    /// with the time it was last changed kept, as a move in a vault of plain files keeps it (a version's date can be
+    /// that time).
+    pub fn rename(&self, root: &Path, from: &str, to: &str) -> io::Result<()> {
+        if from == to {
+            return Ok(());
+        }
+        let old = self.locate(root, from).ok_or_else(|| io::Error::from(ErrorKind::NotFound))?;
+        let modified = fs::metadata(root.join(&old))?.modified()?;
+        let bytes = self.read(root, from)?;
+        self.write(root, to, &bytes)?;
+        let blob = self.blob_of(to);
+        let file = root.join(&blob);
+        store::retrying(|| fs::File::options().write(true).open(&file)?.set_modified(modified))?;
+        if let Some(fp) = store::fingerprint_of(&file) {
+            self.seen.lock().unwrap_or_else(PoisonError::into_inner).insert(blob, (fp, to.to_string()));
+        }
+        self.remove(root, from)
+    }
+
     pub fn remove(&self, root: &Path, path: &str) -> io::Result<()> {
         let Some(blob) = self.locate(root, path) else { return Ok(()) };
         store::Store::plain(root.to_path_buf()).remove(&blob)?;

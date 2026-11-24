@@ -136,15 +136,16 @@ export const isVersionPath = (path: string) => /^.+@v\d+\.\d+(\.[^.]*)?$/.test(b
 
 /**
  * Where a project's deliverable lives relative to the project's folder (what file commands take), as the backend puts it
- * (`deliverables::in_project`): the live file under `deliverables/`, a published version under `versions/`, in a folder
- * of its deliverable's own named after it ("reports/plan@v1.2.md" is `versions/reports/plan/plan@v1.2.md`).
+ * (`deliverables::in_project`): the live file under `deliverables/`, a published version under `history/deliverables/`,
+ * in a folder of its deliverable's own named after it ("reports/plan@v1.2.md" is
+ * `history/deliverables/reports/plan/plan@v1.2.md`).
  */
 export function deliverableFile(path: string): string {
 	if (!isVersionPath(path)) return `deliverables/${path}`;
 	const name = baseName(path);
 	const live = name.replace(/@v\d+\.\d+(?=(\.[^.]*)?$)/, '');
 	const dot = live.lastIndexOf('.');
-	return `versions/${path.slice(0, path.length - name.length)}${dot > 0 ? live.slice(0, dot) : live}/${name}`;
+	return `history/deliverables/${path.slice(0, path.length - name.length)}${dot > 0 ? live.slice(0, dot) : live}/${name}`;
 }
 
 export function mimeOf(name: string): string {

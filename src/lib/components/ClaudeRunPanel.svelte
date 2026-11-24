@@ -142,7 +142,7 @@
 			<pre class="mono output" bind:this={outputBox} {onscroll}>{tracked?.output || (running ? 'Waiting for the first output...' : 'No output.')}</pre>
 		{/if}
 		{#if noted}
-			<div class="hint">Kept in the thread as a note: <span class="mono">runs/{run.id}.md</span></div>
+			<div class="hint">Kept in the project's history as a note: <span class="mono">history/runs/{run.id}.md</span></div>
 		{/if}
 	{/if}
 
@@ -162,7 +162,7 @@
 						</summary>
 						<Markdown html={past.html} />
 						{#if past.files.length}<div class="hint">Wrote: {past.files.join(', ')}</div>{/if}
-						<div class="hint">Kept in the thread as <span class="mono">runs/{past.id}.md</span></div>
+						<div class="hint">Kept in the project's history as <span class="mono">history/runs/{past.id}.md</span></div>
 					</details>
 				{/each}
 			</div>

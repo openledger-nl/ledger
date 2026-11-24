@@ -27,7 +27,8 @@ pub struct Core {
 
 impl Core {
     /// Opens the vault wherever it is configured to be, and loads it; with none chosen yet, starts without one. So
-    /// does a vault that can't be opened (one from Ledger 0.x, say): the picker then says why.
+    /// does a vault that can't be opened (one from Ledger 0.x, say): the picker then says why. One of an older format
+    /// is left as it is too: the picker asks whether to upgrade it.
     pub fn open(config_dir: PathBuf) -> Result<Core> {
         match settings::resolve_vault(&config_dir) {
             (Some(root), from_env) => {
@@ -39,6 +40,12 @@ impl Core {
                     // An encrypted vault whose key this machine doesn't keep: the picker asks for the passphrase.
                     Err(Error::Locked(why)) => {
                         crate::applog::info("vault", why);
+                        Core::without_vault(config_dir)
+                    }
+                    // Files that couldn't be read (one a sync client holds): the picker opens, and opening the vault
+                    // from there tries again and says why.
+                    Err(e @ Error::Io(_)) => {
+                        crate::applog::error("vault", &e);
                         Core::without_vault(config_dir)
                     }
                     other => other,
@@ -160,6 +167,19 @@ impl Core {
         if !path.is_dir() {
             return Err(Error::invalid(format!("{} isn't a folder that exists", path.display())));
         }
+        self.set_vault(path, false)
+    }
+
+    /// Upgrades the vault in `path`, of an older format, to today's (see `upgrade`), and switches to it. Only ever
+    /// because the user chose to, in the vault picker: opening a vault never upgrades it.
+    pub fn upgrade_vault(&mut self, path: &Path) -> Result<()> {
+        if self.vault_from_env {
+            return Err(Error::invalid("The vault location is set by the LEDGER_VAULT environment variable"));
+        }
+        if !path.is_dir() {
+            return Err(Error::invalid(format!("{} isn't a folder that exists", path.display())));
+        }
+        crate::upgrade::vault(path)?;
         self.set_vault(path, false)
     }
 }

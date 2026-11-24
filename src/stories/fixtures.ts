@@ -450,7 +450,7 @@ export const evidence: Evidence = {
 			kind: 'file',
 			createdAt: at(5),
 			descriptionHtml: '',
-			files: [{ name: 'Project plan.pdf', path: 'versions/Project plan@v1.0.pdf' }],
+			files: [{ name: 'Project plan.pdf', path: 'history/deliverables/Project plan/Project plan@v1.0.pdf' }],
 			inLedger: true,
 			portflowUrl: null
 		},
@@ -460,7 +460,7 @@ export const evidence: Evidence = {
 			kind: 'file',
 			createdAt: at(12),
 			descriptionHtml: '',
-			files: [{ name: 'Project plan.pdf', path: 'versions/Project plan@v2.0.pdf' }],
+			files: [{ name: 'Project plan.pdf', path: 'history/deliverables/Project plan/Project plan@v2.0.pdf' }],
 			inLedger: true,
 			portflowUrl: null
 		}
@@ -729,16 +729,25 @@ export const conflicts: ConflictView[] = [
 /** The machine as it opens on the vault picker for the first time: no vault yet, none opened before. */
 export const firstStart: Vaults = { open: false, locked: false, vaults: [], suggestedParent: '/home/student/Documents' };
 
+/** A start after updating Ledger: the vault opened last is of an older format, so the picker asks to upgrade it. */
+export const upgradeWaiting: Vaults = {
+	open: false,
+	locked: false,
+	suggestedParent: '/home/student/Documents',
+	vaults: [{ path: '/home/student/OneDrive/Thesis', name: 'Thesis', exists: true, open: false, refused: null, encrypted: false, needsKey: false, upgradeFrom: 1 }]
+};
+
 /** The vault the sample opens, and the other vaults this machine has opened. */
 export const vaults: Vaults = {
 	open: true,
 	locked: false,
 	suggestedParent: '/home/student/Documents',
 	vaults: [
-		{ path: '/home/student/OneDrive/Ledger', name: 'Ledger', exists: true, open: true, refused: null, encrypted: false, needsKey: false },
-		{ path: '/home/student/Nextcloud/School 2025', name: 'School 2025', exists: true, open: false, refused: null, encrypted: true, needsKey: true },
-		{ path: '/home/student/Documents/Hobby', name: 'Hobby', exists: true, open: false, refused: "/home/student/Documents/Hobby holds a vault from Ledger 0.x. Ledger 1.0 can't open it and doesn't change it: create a new vault, in a folder your cloud storage keeps in sync.", encrypted: false, needsKey: false },
-		{ path: '/media/usb/Old vault', name: 'Old vault', exists: false, open: false, refused: null, encrypted: false, needsKey: false }
+		{ path: '/home/student/OneDrive/Ledger', name: 'Ledger', exists: true, open: true, refused: null, encrypted: false, needsKey: false, upgradeFrom: null },
+		{ path: '/home/student/OneDrive/Thesis', name: 'Thesis', exists: true, open: false, refused: null, encrypted: false, needsKey: false, upgradeFrom: 1 },
+		{ path: '/home/student/Nextcloud/School 2025', name: 'School 2025', exists: true, open: false, refused: null, encrypted: true, needsKey: true, upgradeFrom: null },
+		{ path: '/home/student/Documents/Hobby', name: 'Hobby', exists: true, open: false, refused: "/home/student/Documents/Hobby holds a vault from Ledger 0.x. Ledger 1.0 can't open it and doesn't change it: create a new vault, in a folder your cloud storage keeps in sync.", encrypted: false, needsKey: false, upgradeFrom: null },
+		{ path: '/media/usb/Old vault', name: 'Old vault', exists: false, open: false, refused: null, encrypted: false, needsKey: false, upgradeFrom: null }
 	]
 };
 

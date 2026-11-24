@@ -20,6 +20,8 @@ import type {
 	ConflictView,
 	CreatedVault,
 	EncryptionView,
+	MovedIntoHistory,
+	VaultEntry,
 	Person,
 	PersonDraft,
 	ProjectPerson,
@@ -337,8 +339,17 @@ export const api = {
 	listVaults: () => call<Vaults>('list_vaults'),
 	/** A new vault: a folder called `name` in `parent`, which must not be there yet or be empty. With a passphrase it is encrypted. */
 	createVault: (parent: string, name: string, passphrase: string | null = null) => call<CreatedVault>('create_vault', { parent, name, passphrase }),
-	/** Opens an encrypted vault with its passphrase or recovery key; `keep` keeps its key in this computer's keychain. */
-	unlockVault: (path: string, secret: string, keep: boolean) => call<Vaults>('unlock_vault', { path, secret, keep }),
+	/** Opens an encrypted vault with its passphrase or recovery key; `keep` keeps its key in this computer's keychain. With
+	 * `upgrade` (the user chose it), a vault of an older format is upgraded first. */
+	unlockVault: (path: string, secret: string, keep: boolean, upgrade = false) => call<Vaults>('unlock_vault', { path, secret, keep, upgrade }),
+	/** What the picker knows of a folder before opening it: whether it takes its passphrase, or needs an upgrade. */
+	vaultAt: (path: string) => call<VaultEntry>('vault_at', { path }),
+	/** Upgrades a vault of an older format and opens it. Only ever after the user chose to in the picker. */
+	upgradeVault: (path: string) => call<Vaults>('upgrade_vault', { path }),
+	/** How many files in the open vault are where an older Ledger keeps a project's history; only counted. */
+	vaultLeftovers: () => call<number>('vault_leftovers'),
+	/** Moves those into history/, as asked in Settings > Vault. */
+	tidyVault: () => call<MovedIntoHistory>('tidy_vault'),
 	// the open vault's encryption
 	vaultEncryption: () => call<EncryptionView>('vault_encryption'),
 	changePassphrase: (current: string, passphrase: string) => call<EncryptionView>('change_passphrase', { current, passphrase }),

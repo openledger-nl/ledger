@@ -940,6 +940,9 @@ pub struct VaultEntry {
     pub encrypted: bool,
     /// Encrypted, and this machine doesn't have its key: opening it takes the passphrase or the recovery key.
     pub needs_key: bool,
+    /// A vault of an older format, this one: it opens once the user chooses to upgrade it, which the picker asks
+    /// first (see `upgrade`). Until then nothing in it is changed.
+    pub upgrade_from: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -957,19 +960,36 @@ pub struct VaultsView {
 
 fn vault_entry(path: &Path, open: bool) -> VaultEntry {
     let found = crate::marker::inspect(path);
-    let (encrypted, needs_key) = match &found {
-        crate::marker::Found::Vault(m) if m.encryption.is_some() => (true, crate::vault_crypto::known(&m.id).is_none()),
+    let (encrypted, needs_key) = match found.marker() {
+        Some(m) if m.encryption.is_some() => (true, crate::vault_crypto::known(&m.id).is_none()),
         _ => (false, false),
+    };
+    let upgrade_from = match &found {
+        crate::marker::Found::Older(m) if !open => Some(m.ledger),
+        _ => None,
     };
     VaultEntry {
         path: path.display().to_string(),
         name: path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().to_string()),
         exists: path.is_dir(),
         open,
-        refused: if open || !path.is_dir() { None } else { crate::marker::refusal(path, &found).map(|e| e.to_string()) },
+        refused: if open || !path.is_dir() || upgrade_from.is_some() { None } else { crate::marker::refusal(path, &found).map(|e| e.to_string()) },
         encrypted,
         needs_key: needs_key && !open,
+        upgrade_from,
     }
+}
+
+/// What the picker knows of the folder `path` before it opens it, as for a vault on its list: whether it takes its
+/// passphrase, and whether it needs an upgrade (which the picker asks about first).
+#[tauri::command]
+pub fn vault_at(app: State<App>, path: String) -> VaultEntry {
+    let path = PathBuf::from(path.trim());
+    let open = {
+        let core = app.lock();
+        core.open && core.vault.root() == path
+    };
+    vault_entry(&path, open)
 }
 
 fn vaults_view(app: &AppHandle) -> VaultsView {
@@ -1019,19 +1039,57 @@ pub fn create_vault(app: AppHandle, parent: String, name: String, passphrase: Op
 }
 
 /// Opens an encrypted vault with its passphrase or its recovery key. With `keep`, this machine keeps its key in the
-/// system's keychain, so the next start opens it without asking.
+/// system's keychain, so the next start opens it without asking. With `upgrade`, a vault of an older format is
+/// upgraded first, which the user chose in the picker; without it, such a vault is refused before its key is used.
 #[tauri::command]
-pub fn unlock_vault(app: AppHandle, path: String, secret: String, keep: bool) -> Result<VaultsView> {
+pub fn unlock_vault(app: AppHandle, path: String, secret: String, keep: bool, upgrade: Option<bool>) -> Result<VaultsView> {
     let secret = Zeroizing::new(secret);
     let path = PathBuf::from(path.trim());
-    let crate::marker::Found::Vault(marker) = crate::marker::inspect(&path) else {
+    let upgrade = upgrade.unwrap_or(false);
+    let found = crate::marker::inspect(&path);
+    let Some(marker) = found.marker() else {
         return Err(Error::invalid(format!("{} isn't a vault", path.display())));
     };
+    if matches!(found, crate::marker::Found::Older(_)) && !upgrade {
+        return Err(crate::marker::refusal(&path, &found).unwrap_or_else(|| Error::invalid("That vault needs an upgrade first")));
+    }
     let Some(header) = &marker.encryption else { return Err(Error::invalid("That vault isn't encrypted")) };
     let key = crate::vault_crypto::unlock(header, &marker.id, &secret)?;
     crate::vault_crypto::remember(&marker.id, key, keep);
-    switch_vault(&app, |core| core.open_vault(&path))?;
+    switch_vault(&app, |core| if upgrade { core.upgrade_vault(&path) } else { core.open_vault(&path) })?;
     Ok(vaults_view(&app))
+}
+
+/// Upgrades the vault in `path`, of an older format, to today's and opens it: what the user chose in the vault picker,
+/// after it said what changes (see `upgrade`). Nothing else upgrades a vault.
+#[tauri::command]
+pub fn upgrade_vault(app: AppHandle, path: String) -> Result<VaultsView> {
+    switch_vault(&app, |core| core.upgrade_vault(&PathBuf::from(path.trim())))?;
+    Ok(vaults_view(&app))
+}
+
+/// How many files in the open vault are where an older Ledger keeps a project's history (see `upgrade::leftovers`):
+/// only counted, for Settings > Vault to say so.
+#[tauri::command]
+pub fn vault_leftovers(app: State<App>) -> usize {
+    let core = app.lock();
+    if core.open { crate::upgrade::leftovers(core.vault.store()) } else { 0 }
+}
+
+/// Moves those files into `history/`, as the user asked in Settings > Vault, and reads the vault in again.
+#[tauri::command]
+pub fn tidy_vault(app: State<App>) -> Result<crate::upgrade::Moved> {
+    let moved = {
+        let mut core = app.lock();
+        if !core.open {
+            return Err(Error::invalid("Open a vault first"));
+        }
+        let moved = crate::upgrade::tidy(core.vault.store())?;
+        core.reload()?;
+        moved
+    };
+    crate::trello::notify_vault_changed();
+    Ok(moved)
 }
 
 // ---- the open vault's encryption ------------------------------------------------------------------

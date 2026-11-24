@@ -42,6 +42,7 @@ mod store;
 mod templates;
 mod threads;
 mod updates;
+mod upgrade;
 mod uploads;
 mod vault;
 mod vault_crypto;
@@ -104,6 +105,8 @@ mod tests_updates;
 mod tests_vault;
 #[cfg(test)]
 mod tests_vaults;
+#[cfg(test)]
+mod tests_upgrade;
 
 
 use std::sync::{Arc, Mutex};
@@ -380,6 +383,10 @@ pub fn run() {
             commands::check_vault_changes,
             commands::list_conflicts,
             commands::unlock_vault,
+            commands::vault_at,
+            commands::upgrade_vault,
+            commands::vault_leftovers,
+            commands::tidy_vault,
             commands::vault_encryption,
             commands::change_passphrase,
             commands::recovery_key,

@@ -734,7 +734,7 @@ first text
     assert!(!text.contains("Choose a short"), "the file is named already: {text}");
     assert!(text.contains("already linked to deliverables/plan.md"), "{text}");
     assert!(
-        text.contains("versions/plan/plan@v0.1.md, versions/plan/plan@v0.2.md") && text.contains("frozen history to read, not to change"),
+        text.contains("history/deliverables/plan/plan@v0.1.md, history/deliverables/plan/plan@v0.2.md") && text.contains("frozen history to read, not to change"),
         "the versions, oldest first, as history: {text}"
     );
     assert!(!text.contains("(not written yet)"));
@@ -855,11 +855,11 @@ fn the_files_in_the_deliverables_folder_are_listed_without_dotfiles() {
 #[test]
 fn a_baseline_tells_new_and_changed_files_from_untouched_ones_and_remembers_unpublished_edits() {
     let dir = tempdir().unwrap();
-    let (live, versions) = (dir.path().join("deliverables"), dir.path().join("versions"));
+    let (live, versions) = (dir.path().join("deliverables"), dir.path().join(crate::deliverables::VERSIONS_DIR));
     // A published version goes in the versions folder, beside the deliverables one.
     let put = |name: &str, text: &str| {
-        // A version is in its deliverable's own folder under versions/.
-        let file = match crate::deliverables::in_project(name).strip_prefix("versions/") {
+        // A version is in its deliverable's own folder under history/deliverables/.
+        let file = match crate::deliverables::in_project(name).strip_prefix("history/deliverables/") {
             Some(in_versions) => versions.join(in_versions),
             None => live.join(name),
         };
@@ -1174,7 +1174,7 @@ fn facts<'a>(status: &'a str, result: Option<&'a ResultInfo>, steps: &'a [Step],
 }
 
 fn note_file(f: &Fixture, id: &str) -> PathBuf {
-    f.project_dir().join("threads").join(&f.thread).join("runs").join(format!("{id}.md"))
+    f.project_dir().join("history").join("runs").join(format!("{id}.md"))
 }
 
 fn sample_note(f: &Fixture, id: &str, prompt_id: &str) -> RunRecord {
@@ -1420,10 +1420,13 @@ fn the_runs_of_a_prompt_are_listed_newest_first_and_only_for_that_prompt() {
 }
 
 #[test]
-fn deleting_a_thread_takes_its_notes_with_it_and_deleting_a_prompt_keeps_them() {
+fn deleting_a_prompt_or_its_thread_keeps_the_notes_of_its_runs() {
     let mut f = Fixture::new();
     let note = sample_note(&f, "1793660376958-4o6j4fvm", &f.prompt.id.clone());
     finish::keep_record(&mut f.core, &note).unwrap();
+    let kept = |conn: &rusqlite::Connection, project: &str| -> Vec<String> {
+        crate::db::query_all(conn, "SELECT id FROM claude_runs WHERE project_slug = ?1", [project], |r| r.get(0)).unwrap()
+    };
 
     prompts::delete(&f.core.conn, &f.project, &f.thread, &f.prompt.id).unwrap();
     f.persist();
@@ -1432,17 +1435,20 @@ fn deleting_a_thread_takes_its_notes_with_it_and_deleting_a_prompt_keeps_them() 
 
     threads::delete(&f.core.conn, &f.root(), &f.project, &f.thread).unwrap();
     f.persist();
-    assert!(!note_file(&f, &note.id).exists());
+    assert!(note_file(&f, &note.id).is_file(), "and the thread: it is how the versions the run made came to be");
     assert!(!f.project_dir().join("threads").join(&f.thread).exists(), "no folder is left to bring the thread back when the vault is read");
     f.core.reload().unwrap();
     assert!(threads::require(&f.core.conn, &f.project, &f.thread).is_err());
-    assert!(finish::keep_record(&mut f.core, &note).is_err(), "a note can't be kept for a thread that is gone");
+    assert_eq!(kept(&f.core.conn, &f.project), [note.id.clone()]);
+    let later = sample_note(&f, "1793660999999-5p7k5gwn", &f.prompt.id.clone());
+    finish::keep_record(&mut f.core, &later).unwrap();
+    assert!(note_file(&f, &later.id).is_file(), "a run that ends after its thread went is noted as well");
 }
 
 #[test]
 fn a_note_edited_by_hand_is_read_as_it_is_written() {
     let mut f = Fixture::new();
-    let dir = f.project_dir().join("threads").join(&f.thread).join("runs");
+    let dir = f.project_dir().join("history").join("runs");
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("1793660376958-dddddddd.md"), format!("---\nprompt: {}\nstatus: maybe\n---\n\nHand written.\n", f.prompt.id)).unwrap();
     fs::write(dir.join("no-prompt.md"), "---\nstatus: finished\n---\n\nThis one says nothing about a prompt.\n").unwrap();
@@ -1564,7 +1570,7 @@ fn deliverables_folder(f: &Fixture) -> PathBuf {
 
 /// Where the published versions are, beside the deliverables folder.
 fn versions_folder(f: &Fixture) -> PathBuf {
-    f.project_dir().join("versions")
+    f.project_dir().join(crate::deliverables::VERSIONS_DIR)
 }
 
 /// A deliverable the person wrote and published once, as 0.1.
@@ -1620,7 +1626,7 @@ fn a_new_file_is_published_as_the_first_version_and_the_prompt_is_linked_to_the_
     // Written to the vault's files, so it survives a reload.
     f.core.reload().unwrap();
     assert_eq!(linked_paths(&f), ["chart.png", "summary.md"]);
-    assert!(versions_folder(&f).join("summary/summary@v0.1.md").is_file() && !dir.join("summary@v0.1.md").exists(), "a version is kept in versions/");
+    assert!(versions_folder(&f).join("summary/summary@v0.1.md").is_file() && !dir.join("summary@v0.1.md").exists(), "a version is kept in history/deliverables/");
 }
 
 #[test]
@@ -1902,7 +1908,7 @@ fn a_run_that_creates_a_deliverable_ends_with_its_first_version_published_and_th
     assert_eq!(noted.len(), 1);
     assert_eq!((noted[0].id.as_str(), noted[0].status.as_str(), noted[0].turns), (run.id.as_str(), "finished", Some(2)));
     assert_eq!(noted[0].files, ["summary@v0.1.md"]);
-    let file = request.cwd.join("threads").join(&thread).join("runs").join(format!("{}.md", run.id));
+    let file = request.cwd.join("history").join("runs").join(format!("{}.md", run.id));
     assert!(fs::read_to_string(file).unwrap().contains("Wrote deliverables/summary.md"));
     drop(core);
     drop(cli_dir);

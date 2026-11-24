@@ -1,6 +1,7 @@
-//! The record of a run, kept in the thread as `runs/<id>.md`: how the run ended, what Claude Code said at the end,
-//! and a short list of what it did. It is written when the run is over and is an ordinary note of the vault: it is
-//! synced, encrypted and read like the rest. The raw output, the command line and the text that was sent are not
+//! The record of a run, kept in the project's history as `history/runs/<id>.md`: its thread and prompt, how the run
+//! ended, what Claude Code said at the end, and a short list of what it did. It is written when the run is over and is
+//! an ordinary note of the vault: it is synced, encrypted and read like the rest. It outlives its thread and its prompt,
+//! as the versions the run made do, so how a version came to be can always be told. The raw output, the command line and the text that was sent are not
 //! kept: they are for watching a run while it goes, and the prompt itself is already in the thread. Everything is
 //! passed through the `Redactor` first, and paths under the project's folder are written relative to it, so the
 //! note says nothing about where the vault sits on this machine.
@@ -35,7 +36,7 @@ pub struct RunRecord {
     pub seconds: u64,
     pub turns: Option<u64>,
     /// The deliverables the run produced, named relative to the project's `deliverables/` folder: the versions that were
-    /// linked to the prompt (whose files are under `versions/`), or when none were, the files it changed.
+    /// linked to the prompt (whose files are under `history/deliverables/`), or when none were, the files it changed.
     pub files: Vec<String>,
     pub body: String,
 }
@@ -170,7 +171,8 @@ fn shorten(text: &str, max: usize) -> String {
 
 // ---- the database -----------------------------------------------------------------------------------
 
-/// Adds a record. Fails if its thread is gone (a record belongs to one).
+/// Adds a record. Fails if its project is gone; a thread or prompt that went while the run went is no reason to lose
+/// what it did.
 pub fn insert(conn: &Connection, record: &RunRecord) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute(
